@@ -1954,6 +1954,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             })
         return result
 
+    def _queue_overview_if_empty(background_tasks: BackgroundTasks, cd: Path, action: str) -> None:
+        remaining = list(cd.glob("*.md")) if cd.exists() else []
+        if not remaining:
+            background_tasks.add_task(app.state.orch.refresh_overview)
+            logger.info("candidates: %s — no candidates remain, overview.md refresh queued", action)
+        else:
+            logger.info("candidates: %s — %d candidates remain, overview.md refresh deferred", action, len(remaining))
+
     @app.post("/candidates/promote-all")
     async def candidates_promote_all(background_tasks: BackgroundTasks):
         from synthadoc.cli.candidates import _read_frontmatter as _cand_read_fm
@@ -1975,12 +1983,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if new_pages:
             _cand_add_to_index(wd, new_pages)
         if promoted:
-            remaining = list(cd.glob("*.md")) if cd.exists() else []
-            if not remaining:
-                background_tasks.add_task(app.state.orch.refresh_overview)
-                logger.info("candidates: promoted %d page(s) to wiki — overview.md refresh queued", len(promoted))
-            else:
-                logger.info("candidates: promoted %d page(s) to wiki — %d candidates remain, overview.md refresh deferred", len(promoted), len(remaining))
+            _queue_overview_if_empty(background_tasks, cd, f"promoted {len(promoted)} page(s) to wiki")
         return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
 
     @app.post("/candidates/discard-all")
@@ -2011,12 +2014,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         shutil.move(str(src), str(dest))
         if is_new:
             _cand_add_to_index(wd, [(slug, title)])
-        remaining = list(cd.glob("*.md")) if cd.exists() else []
-        if not remaining:
-            background_tasks.add_task(app.state.orch.refresh_overview)
-            logger.info("candidates: promoted slug=%s to wiki — no candidates remain, overview.md refresh queued", slug)
-        else:
-            logger.info("candidates: promoted slug=%s to wiki — %d candidates remain, overview.md refresh deferred", slug, len(remaining))
+        _queue_overview_if_empty(background_tasks, cd, f"promoted slug={slug} to wiki")
         return {"slug": slug, "promoted": True, "updated": not is_new}
 
     @app.post("/candidates/{slug}/discard")
@@ -2026,12 +2024,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if not src.exists():
             raise HTTPException(404, f"Candidate '{slug}' not found.")
         src.unlink()
-        remaining = list(cd.glob("*.md")) if cd.exists() else []
-        if not remaining:
-            background_tasks.add_task(app.state.orch.refresh_overview)
-            logger.info("candidates: discarded slug=%s — no candidates remain, overview.md refresh queued", slug)
-        else:
-            logger.info("candidates: discarded slug=%s — %d candidates remain, overview.md refresh deferred", slug, len(remaining))
+        _queue_overview_if_empty(background_tasks, cd, f"discarded slug={slug}")
         return {"slug": slug, "discarded": True}
 
     # ── Provenance ────────────────────────────────────────────────────────────
