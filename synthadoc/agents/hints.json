@@ -23,6 +23,7 @@
       "Run contradiction resolver",
       "Re-ingest stale pages",
       "Run orphan resolver",
+      "Run lint and report",
       "Show my lint report",
       "Show wiki status",
       "Run Synthadoc status",
@@ -43,6 +44,7 @@
       "What pages were added this year?",
       "Show me recently updated wiki pages",
       "Show me recently archived wiki pages",
+      "Run lint and report",
       "Show my lint report",
       "Which pages have adversarial warnings?",
       "Which sources were truncated?",
@@ -115,7 +117,7 @@
       "hints": [
         "Run orphan resolver",
         "What pages are orphan pages?",
-        "Show my lint report"
+        "Run lint and report"
       ]
     },
     {
@@ -125,7 +127,7 @@
         "Scan for broken wikilinks",
         "Fix broken wikilinks",
         "Check wikilink integrity",
-        "Show my lint report"
+        "Run lint and report"
       ]
     },
     {
@@ -140,7 +142,7 @@
         "Run lint on contradictions only",
         "Run lint with auto-resolve enabled",
         "How do I run a lint check?",
-        "Show my lint report"
+        "Run lint and report"
       ]
     },
     {
@@ -148,7 +150,7 @@
       "answer_keywords": ["truncated", "max_source_chars"],
       "hints": [
         "Which sources were truncated?",
-        "Show my lint report",
+        "Run lint and report",
         "How do I re-ingest with --force?"
       ]
     },
@@ -220,7 +222,7 @@
       "hints": [
         "Fix broken citations",
         "Run the citation resolver",
-        "Show my lint report",
+        "Run lint and report",
         "Scan for broken wikilinks"
       ]
     }
