@@ -760,7 +760,23 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     # ── job backoff (transient-failure retry) ────────────────────────────────
     print("\n[24] job backoff")
 
-    _BACKOFF_URL  = "https://httpstat.us/503"
+    # Spin up a local HTTP server that always returns 503.
+    # This avoids depending on httpstat.us, which can rate-limit (429) or be
+    # unavailable, causing the job to be *skipped* instead of entering backoff.
+    import threading as _threading
+    import http.server as _http_server
+
+    class _Always503(_http_server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_error(503, "Service Unavailable")
+        def log_message(self, *_):
+            pass
+
+    _mock_srv = _http_server.HTTPServer(("127.0.0.1", 0), _Always503)
+    _mock_port = _mock_srv.server_address[1]
+    _mock_thread = _threading.Thread(target=_mock_srv.serve_forever, daemon=True)
+    _mock_thread.start()
+    _BACKOFF_URL  = f"http://127.0.0.1:{_mock_port}/fail"
     _backoff_base = SYNTHADOC_URL.rstrip("/")
     _backoff_jid  = ""
 
@@ -773,7 +789,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         )
         with urllib.request.urlopen(_req, timeout=10) as _r:
             _backoff_jid = json.loads(_r.read().decode()).get("job_id", "")
-        info(f"Enqueued job {_backoff_jid} — waiting for first failure (~30-40s)…")
+        info(f"Enqueued job {_backoff_jid} — waiting for first backoff entry…")
     except Exception as _e:
         fail("job backoff — enqueue", str(_e))
 
@@ -849,6 +865,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         _wait_job_terminal(_backoff_jid, "job backoff — wait for dead", max_wait=360)
         run(["jobs", "delete", _backoff_jid] + w)
         ok("job backoff — cleanup", f"job {_backoff_jid} deleted")
+    _mock_srv.shutdown()
 
     # ── logging ───────────────────────────────────────────────────────────────
     print("\n[25] logging")
