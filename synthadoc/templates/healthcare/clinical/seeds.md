@@ -30,7 +30,8 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 ```
 synthadoc ingest "https://pmc.ncbi.nlm.nih.gov/articles/PMC10929252" -w <wiki>
 synthadoc ingest "https://www.eatg.org/hiv-news/federal-hiv-guidelines-add-chapter-on-cardiovascular-and-metabolic-health" -w <wiki>
-synthadoc ingest "https://www.gradeworkinggroup.org" -w <wiki>
+synthadoc ingest "https://gradepro.org/handbook" -w <wiki>
+synthadoc ingest "https://chs.libguides.com/c.php?g=1149014&p=9263649" -w <wiki>
 ```
 
 ## First steps checklist

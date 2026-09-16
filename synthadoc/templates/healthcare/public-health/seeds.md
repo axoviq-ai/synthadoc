@@ -32,8 +32,8 @@ synthadoc ingest "https://ctb.ku.edu/en/table-of-contents/overview/models-for-co
 synthadoc ingest "https://openstax.org/books/population-health/pages/17-1-assessment-tools-and-application-to-practice" -w <wiki>
 synthadoc ingest "https://www.health.state.mn.us/communities/practice/assessplan/lph/toolkit.html" -w <wiki>
 synthadoc ingest "https://www.nature.com/articles/s41591-022-01990-1" -w <wiki>
-synthadoc ingest "https://www.healthdata.org/sites/default/files/files/Projects/GBD/IHME_GBD_2019_1_DATA_TOOLS_GUIDE_Y2020M10D15.PDF" -w <wiki>
 synthadoc ingest "https://ghdx.healthdata.org/gbd-2019" -w <wiki>
+synthadoc ingest "https://cdn.who.int/media/docs/default-source/gho-documents/global-health-estimates/ghe2019_daly-methods.pdf?sfvrsn=3lb25009" -w <wiki>
 ```
 
 ## First steps checklist
