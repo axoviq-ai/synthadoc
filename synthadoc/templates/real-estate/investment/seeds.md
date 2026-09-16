@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.reit.com/" -w <wiki>
 ```
 
-**Investopedia — commercial mortgage-backed securities (CMBS) structure, tranches, and debt financing (public)**
+**NAR Commercial — commercial real estate market data, financing standards, and investment research (public)**
 ```
-synthadoc ingest "https://www.investopedia.com/terms/c/cmbs.asp" -w <wiki>
+synthadoc ingest "https://www.nar.realtor/commercial" -w <wiki>
 ```
 
 ## Recommended web searches

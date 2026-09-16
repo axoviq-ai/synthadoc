@@ -32,7 +32,7 @@ for accessibility and domain relevance before release.
 
 ```
 synthadoc ingest "https://cmmssoftware.leantransitionsolutions.com/software-blog/maintenance-scheduling-best-practices" -w <wiki>
-synthadoc ingest "https://micromain.com/how-to-create-a-robust-preventive-maintenance-schedule-fast-by-using-templates-2" -w <wiki>
+synthadoc ingest "https://limblecmms.com/blog/preventive-maintenance-schedule/" -w <wiki>
 synthadoc ingest "https://limble.com/learn/best-practices-guide" -w <wiki>
 synthadoc ingest "https://www.tdi.texas.gov/pubs/videoresource/cklgenindustry.pdf" -w <wiki>
 synthadoc ingest "https://oxmaint.com/industries/facility-management/iso-55000-asset-management-facilities-implementation" -w <wiki>

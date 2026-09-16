@@ -286,7 +286,7 @@ async def validate_template(
     llm_sem: asyncio.Semaphore,
 ) -> list[dict]:
     """Return a list of result dicts for every URL in this template's seeds.md."""
-    seeds_path = template_dir / "wiki" / "seeds.md"
+    seeds_path = template_dir / "seeds.md"
     purpose_path = template_dir / "wiki" / "purpose.md"
     if not seeds_path.exists():
         return []
@@ -388,8 +388,8 @@ async def async_main(args: argparse.Namespace) -> int:
             return 1
     else:
         dirs = sorted({
-            p.parent.parent          # templates/<cat>/<name>/wiki/seeds.md → templates/<cat>/<name>
-            for p in TEMPLATES_DIR.glob("**/wiki/seeds.md")
+            p.parent                 # templates/<cat>/<name>/seeds.md → templates/<cat>/<name>
+            for p in TEMPLATES_DIR.glob("*/*/seeds.md")
         })
 
     skill   = UrlSkill(fetch_timeout=30)
@@ -434,7 +434,7 @@ async def async_main(args: argparse.Namespace) -> int:
                 print(f"          {detail}")
         return 1
 
-    print(f"All {total} seed URLs passed ✓")
+    print(f"All {total} seed URLs passed")
     return 0
 
 
