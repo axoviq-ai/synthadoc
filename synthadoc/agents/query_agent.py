@@ -1559,7 +1559,7 @@ class QueryAgent(BaseAgent):
                 # the generator returns after _init without done — fall through to the
                 # QueryAgent pipeline so the user still gets an answer.
                 _had_done = False
-                async for _evt in _action_agent.run_gen(question, history=history or [], session_id=session_id):
+                async for _evt in _action_agent.run_gen(question, history=history or [], session_id=session_id, session_mode=session_mode):
                     yield _evt
                     if _evt.get("event") == "done":
                         _had_done = True

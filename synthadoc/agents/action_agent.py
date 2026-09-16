@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from synthadoc.agents._base import BaseAgent
+from synthadoc.agents.hint_engine import HintEngine
 from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
@@ -316,7 +317,11 @@ class ActionAgent(BaseAgent):
         return None
 
     async def run_gen(
-        self, question: str, history: list[dict] | None = None, session_id: str | None = None
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        session_id: str | None = None,
+        session_mode: str = "POWER_USER",
     ) -> "AsyncGenerator[dict, None]":
         """Like run(), but yields SSE event dicts for streaming.
 
@@ -330,13 +335,13 @@ class ActionAgent(BaseAgent):
         # Each workflow declares its own MATCH_RE; first match wins.
         for _wf_cls in ROUTED_WORKFLOWS:
             if _wf_cls.MATCH_RE and _wf_cls.MATCH_RE.search(question):
-                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls()):
+                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls(), session_mode=session_mode):
                     yield evt
                 return
 
         # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
         if _SLUG_REINGEST_RE.search(question):
-            async for evt in self._run_orchestrate(question, session_id=session_id):
+            async for evt in self._run_orchestrate(question, session_id=session_id, session_mode=session_mode):
                 yield evt
             return
 
@@ -348,7 +353,7 @@ class ActionAgent(BaseAgent):
         if action == "none":
             return
         if action == "orchestrate":
-            async for evt in self._run_orchestrate(question, session_id=session_id):
+            async for evt in self._run_orchestrate(question, session_id=session_id, session_mode=session_mode):
                 yield evt
             return
         try:
@@ -374,8 +379,11 @@ class ActionAgent(BaseAgent):
         from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
         _pre_prompt = _build_pre_prompt(result.message)
         _done_data: dict = {
-            "citations": [], "hints": [], "gap": not result.success,
-            "job_id": result.job_id, "cacheable": False,
+            "citations": [],
+            "next_hints": HintEngine.after_response(result.message, session_mode),
+            "gap": not result.success,
+            "job_id": result.job_id,
+            "cacheable": False,
         }
         if _pre_prompt:
             _done_data["pre_prompt"] = _pre_prompt
@@ -386,6 +394,7 @@ class ActionAgent(BaseAgent):
         question: str,
         session_id: str | None = None,
         workflow: "AgenticWorkflow | None" = None,
+        session_mode: str = "POWER_USER",
     ) -> "AsyncGenerator[dict, None]":
         """Run an AgenticWorkflow via the tool-call loop and yield SSE dicts.
 
@@ -526,7 +535,11 @@ class ActionAgent(BaseAgent):
                     # in the Ask field — same as the regular query path.
                     from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
                     _final_text = (evt.get("data") or {}).get("text", "")
-                    _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                    _done_data: dict = {
+                        "citations": [],
+                        "next_hints": HintEngine.after_response(_final_text, session_mode),
+                        "cacheable": False,
+                    }
                     _wf_pre_prompt = _build_pre_prompt(_final_text)
                     if _wf_pre_prompt:
                         _done_data["pre_prompt"] = _wf_pre_prompt
