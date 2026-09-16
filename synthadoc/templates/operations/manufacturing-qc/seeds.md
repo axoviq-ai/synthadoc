@@ -33,7 +33,7 @@ synthadoc ingest "https://quality-one.com/iatf-16949" -w <wiki>
 synthadoc ingest "https://www.knowllence.com/en/blog-design-manufacturing/control-plan-apqp.html" -w <wiki>
 synthadoc ingest "https://www.aiag.org/training-and-resources/manuals" -w <wiki>
 synthadoc ingest "https://numiqo.com/tutorial/process-capability-analysis" -w <wiki>
-synthadoc ingest "https://www.youtube.com/watch?v=jFsNSYzBWhk&vl=en" -w <wiki>
+synthadoc ingest "https://amrepinspect.com/blog/ppk-vs-cpk" -w <wiki>
 ```
 
 ## First steps checklist

@@ -31,9 +31,9 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://ipwatchdog.com/2016/12/10/patent-drafting-anatomy-patent-claim" -w <wiki>
 synthadoc ingest "https://ourtake.bakerbotts.com/post/102l0jx/patent-application-prosecution-timeline-what-startup-leaders-need-to-know" -w <wiki>
 synthadoc ingest "https://thompsonpatentlaw.com/us-patent-process" -w <wiki>
-synthadoc ingest "https://grant.legal/likelihood-of-confusion-in-trademark-disputes" -w <wiki>
-synthadoc ingest "https://patelip.com/likelihood-of-confusion-recent-ttab-decisions-and-their-impact" -w <wiki>
-synthadoc ingest "https://www.apple.com/legal/intellectual-property/frand" -w <wiki>
+synthadoc ingest "https://trademarkfactory.com/blog/trademark-review-ttab-rejects-wishbones-casino-bar-application-over-likelihood-of-confusion" -w <wiki>
+synthadoc ingest "https://www.globalpatentfiling.com/blog/Standard-Essential-Patents-and-FRAND-Licensing-Navigating-the-Interface-Between-Patent-Rights-and-Competition-Law" -w <wiki>
+synthadoc ingest "https://www.gov.uk/guidance/standard-essential-patent-licensing" -w <wiki>
 ```
 
 ## First steps checklist

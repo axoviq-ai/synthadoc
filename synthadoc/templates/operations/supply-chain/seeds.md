@@ -30,10 +30,10 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 ```
 synthadoc ingest "https://www.simplemanufacturing.com/approved-vendor-list-iso-9001-as9100" -w <wiki>
 synthadoc ingest "https://simplerqms.com/supplier-qualification" -w <wiki>
+synthadoc ingest "https://www.iso9001help.co.uk/741.html" -w <wiki>
 synthadoc ingest "https://business.amazon.com/en/blog/spend-management" -w <wiki>
 synthadoc ingest "https://www.supplychaindive.com/news/5-steps-mitigate-risks-sole-source-suppliers/609708" -w <wiki>
 synthadoc ingest "https://www.tacto.ai/en/procurement-glossary/single-source-management" -w <wiki>
-synthadoc ingest "https://www.ovrsea.com/insights/en/guides/incoterms-2020-who-pays-what" -w <wiki>
 ```
 
 ## First steps checklist

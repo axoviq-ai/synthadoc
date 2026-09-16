@@ -33,7 +33,7 @@ synthadoc ingest "https://www.leapfin.com/blog/guide-asc-606-revenue-recognition
 synthadoc ingest "https://rsmus.com/insights/financial-reporting/a-guide-to-revenue-recognition.html" -w <wiki>
 synthadoc ingest "https://viewpoint.pwc.com/dt/us/en/pwc/accounting_guides/leases/leases__4_US/preface__12_US.html" -w <wiki>
 synthadoc ingest "https://www.deloitte.com/us/en/services/audit-assurance/articles/roadmap-to-applying-the-new-leasing-standard.html" -w <wiki>
-synthadoc ingest "https://www.scribd.com/document/302191755/AS-2201" -w <wiki>
+synthadoc ingest "https://www.compliance-seminars.com/post/pcaob-as-2201-why-auditing-internal-control-over-financial-reporting-remains-one-of-the-biggest-cha" -w <wiki>
 ```
 
 ## First steps checklist

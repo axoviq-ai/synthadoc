@@ -33,7 +33,7 @@ synthadoc ingest "https://www.jvmlending.com/blog/florida-conforming-loan-limits
 synthadoc ingest "https://www.alstonconsumerfinance.com/cfpb-requests-input-on-trid-and-reverse-mortgage-disclosure-requirements-what-mortgage-industry-participants-need-to-know" -w <wiki>
 synthadoc ingest "https://www.sandlerllc.com/all-news/trid-refresher-series-part-3-examinations-under-trid" -w <wiki>
 synthadoc ingest "https://www.nar.realtor/trid-tila-respa-integrated-disclosure" -w <wiki>
-synthadoc ingest "https://gustancho.com/major-changes-in-fha-guidelines" -w <wiki>
+synthadoc ingest "https://www.hud.gov/sites/dfiles/OCHCO/documents/4000.1hsgh_20191024.pdf" -w <wiki>
 ```
 
 ## First steps checklist

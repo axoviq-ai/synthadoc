@@ -32,7 +32,7 @@ synthadoc ingest "https://hevodata.com/data-transformation/dbt-data-modeling" -w
 synthadoc ingest "https://www.datadoghq.com/blog/understanding-dbt" -w <wiki>
 synthadoc ingest "https://bi-art.com.tr/en/blog/dbt-best-practices-modular-data-transformations" -w <wiki>
 synthadoc ingest "https://thedatagovernor.com/open-source-data-catalog-tools" -w <wiki>
-synthadoc ingest "https://atlan.com/openmetadata-vs-amundsen" -w <wiki>
+synthadoc ingest "https://www.bugfree.ai/knowledge-hub/openmetadata-vs-amundsen-vs-datahub-comparison" -w <wiki>
 synthadoc ingest "https://www.decube.io/post/open-source-data-catalog-comparison" -w <wiki>
 ```
 

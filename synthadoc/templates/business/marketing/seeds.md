@@ -36,7 +36,7 @@ synthadoc ingest "https://www.bigmoves.marketing/blog/messaging-framework-exampl
 synthadoc ingest "https://pipeline.zoominfo.com/sales/b2b-saas-gtm-strategy-templates" -w <wiki>
 synthadoc ingest "https://nytlicensing.com/latest/methods/designing-content-marketing-editorial-calendar" -w <wiki>
 synthadoc ingest "https://contentmarketinginstitute.com/ai-content-creation-tools/editorial-calendar-tools-and-templates-to-help-you-master-your-content-to-do-list" -w <wiki>
-synthadoc ingest "https://www.youtube.com/watch?v=c9oKifDiuLk" -w <wiki>
+synthadoc ingest "https://www.notion.com/templates/category/content-calendar" -w <wiki>
 ```
 
 ## First steps checklist

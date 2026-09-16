@@ -29,11 +29,11 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://www.groupmap.com/templates/raid-analysis" -w <wiki>
-synthadoc ingest "https://www.youtube.com/watch?v=inZI16nIvdo" -w <wiki>
 synthadoc ingest "https://simplystakeholders.com/stakeholder-mapping-template" -w <wiki>
 synthadoc ingest "https://www.atlassian.com/agile/project-management/status-report" -w <wiki>
 synthadoc ingest "https://www.teamretro.com/retrospective-templates/start-stop-continue-retrospective" -w <wiki>
 synthadoc ingest "https://easyretro.io/sprint-retrospective/sprint-retrospective-start-stop-continue-examples" -w <wiki>
+synthadoc ingest "https://slideuplift.com/blog/start-stop-continue-retrospective-guide" -w <wiki>
 ```
 
 ## First steps checklist

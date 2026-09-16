@@ -32,7 +32,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 ```
 synthadoc ingest "https://www.wallstreetprep.com/knowledge/basics-of-an-lbo-model" -w <wiki>
 synthadoc ingest "https://growthequityinterviewguide.com/private-equity/how-to-get-into-private-equity/lbo-model" -w <wiki>
-synthadoc ingest "https://www.youtube.com/watch?v=Q7qNxmxkm8o" -w <wiki>
+synthadoc ingest "https://breakingintowallstreet.com/kb/leveraged-buyouts-and-lbo-models/simple-lbo-model-excel" -w <wiki>
 ```
 
 ## First steps checklist
