@@ -201,7 +201,7 @@ async def refresh_template(
     skill: object,
 ) -> dict:
     """Refresh one template's curated section.  Returns a status dict."""
-    seeds_path = template_dir / "wiki" / "seeds.md"
+    seeds_path = template_dir / "seeds.md"
     if not seeds_path.exists():
         return {"template": str(template_dir.name), "status": "no-seeds"}
 
@@ -293,8 +293,8 @@ async def async_main(args: argparse.Namespace) -> int:
             return 1
     else:
         dirs = sorted({
-            p.parent.parent  # …/<cat>/<name>/wiki/seeds.md → …/<cat>/<name>
-            for p in TEMPLATES_DIR.glob("**/wiki/seeds.md")
+            p.parent         # …/<cat>/<name>/seeds.md → …/<cat>/<name>
+            for p in TEMPLATES_DIR.glob("*/*/seeds.md")
         })
 
     skill = UrlSkill(fetch_timeout=15)
