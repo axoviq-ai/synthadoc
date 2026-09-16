@@ -113,7 +113,7 @@
     },
     {
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
-      "answer_keywords": ["no inbound"],
+      "answer_keywords": ["orphan", "no inbound"],
       "hints": [
         "Run orphan resolver",
         "What pages are orphan pages?",
