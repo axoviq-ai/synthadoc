@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**Nareit — worldwide representative voice for REITs and listed real estate companies (public)**
+**BiggerPockets — real estate investing education, deal analysis, and investment strategies (public)**
 ```
-synthadoc ingest "https://www.reit.com/" -w <wiki>
+synthadoc ingest "https://www.biggerpockets.com/real-estate-investing" -w <wiki>
 ```
 
 **NAR Commercial — commercial real estate market data, financing standards, and investment research (public)**

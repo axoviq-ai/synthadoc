@@ -48,6 +48,13 @@ def _ensure_path() -> None:
         _SYS_PATH_SET = True
 
 
+# ── Content-quality threshold ─────────────────────────────────────────────────
+
+# URLs that return HTTP 200 but fewer than this many characters are treated as
+# THIN (challenge pages, paywall stubs, empty navigation shells).  The ingest
+# agent would skip them anyway; we surface them here before users hit the wall.
+_MIN_CONTENT_CHARS = 500
+
 # ── URL extraction from seeds.md ──────────────────────────────────────────────
 
 _INGEST_URL_RE = re.compile(r'synthadoc\s+ingest\s+"(https?://[^"]+)"')
@@ -255,14 +262,19 @@ async def validate_url(
             extracted = await skill.extract(url)
             content = extracted.text.strip()
             result["chars"] = len(content)
-            result["url_status"] = "OK" if content else "EMPTY"
+            if not content:
+                result["url_status"] = "EMPTY"
+            elif len(content) < _MIN_CONTENT_CHARS:
+                result["url_status"] = "THIN"
+            else:
+                result["url_status"] = "OK"
         except DomainBlockedException as e:
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
             result["url_status"] = "ERROR"
             result["error_detail"] = str(e)[:120]
 
-    # ── Step 2: scope check (only when fetch succeeded and backend available) ─
+    # ── Step 2: scope check (only when content is substantive and backend available) ─
     if backend is not None and purpose and result["url_status"] == "OK":
         async with llm_sem:
             try:
@@ -332,7 +344,7 @@ def print_report(results: list[dict], scope_active: bool) -> list[dict]:
 
     failures: list[dict] = []
     for r in results:
-        url_ok   = r["url_status"] == "OK"
+        url_ok   = r["url_status"] == "OK"  # THIN/EMPTY/BLOCKED/ERROR all fail
         scope_ok = r["in_scope"] is None or r["in_scope"]
         passed   = url_ok and scope_ok
         if not passed:
