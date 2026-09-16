@@ -152,20 +152,18 @@ In Obsidian: **Open folder as vault** → select the installed wiki folder:
 - **Windows:** `%USERPROFILE%\wikis\history-of-computing`
 - **Linux / macOS:** `~/wikis/history-of-computing`
 
-> **Tip — show all file types:** By default Obsidian hides file types it does not
-> natively understand (`.xlsx`, `.pptx`, etc.). To show them: **Settings → Files and
-> links → Show all file types → on**.
-
-### 2. Trust the plugin
-
-When Obsidian opens the vault for the first time it will show a safety prompt:
+Obsidian will immediately show a safety prompt:
 
 > **"[Author] has a plugin in this vault…"**
 > Trust author and enable plugin / Keep plugins disabled
 
 Click **Trust author and enable plugin**. Without this the Synthadoc (and Dataview) plugins remain disabled and no Synthadoc commands will be available.
 
-### 3. Verify both plugins are active
+> **Tip — show all file types:** By default Obsidian hides file types it does not
+> natively understand (`.xlsx`, `.pptx`, etc.). To show them: **Settings → Files and
+> links → Show all file types → on**.
+
+### 2. Verify both plugins are active
 
 Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — no manual toggling required. Obsidian picks them up automatically when you open the vault.
 
