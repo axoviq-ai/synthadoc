@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.reit.com/" -w <wiki>
 ```
 
-**CRE Finance Council — commercial real estate lending, CMBS, and debt financing standards (public)**
+**Investopedia — commercial mortgage-backed securities (CMBS) structure, tranches, and debt financing (public)**
 ```
-synthadoc ingest "https://www.crefc.org/" -w <wiki>
+synthadoc ingest "https://www.investopedia.com/terms/c/cmbs.asp" -w <wiki>
 ```
 
 ## Recommended web searches
