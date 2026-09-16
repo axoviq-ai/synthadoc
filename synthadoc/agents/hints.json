@@ -134,6 +134,7 @@
       "keywords": ["lint", "contradiction", "dangling"],
       "answer_keywords": ["lint", "dangling", "contradiction"],
       "hints": [
+        "Run lint and report",
         "What pages are orphan pages?",
         "List contradicted pages",
         "Run contradiction resolver",
@@ -141,8 +142,7 @@
         "Which sources were truncated?",
         "Run lint on contradictions only",
         "Run lint with auto-resolve enabled",
-        "How do I run a lint check?",
-        "Run lint and report"
+        "How do I run a lint check?"
       ]
     },
     {
