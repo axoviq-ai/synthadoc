@@ -52,6 +52,8 @@ _BLOCKED_DOMAINS = {
     "tiktok.com",
     # Wikipedia blocks plain HTTP clients even with a browser User-Agent
     "wikipedia.org",
+    # GitHub returns 429 for automated access on raw file/blob pages
+    "github.com",
     # Require institutional/subscription access
     "ieeexplore.ieee.org",
     "dl.acm.org",
