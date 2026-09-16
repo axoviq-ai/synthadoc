@@ -70,7 +70,7 @@
   "topic_patterns": [
     {
       "keywords": ["stale", "outdated", "old"],
-      "answer_keywords": ["stale page", "stale pages"],
+      "answer_keywords": ["stale"],
       "hints": [
         "Re-ingest stale pages",
         "What are these stale pages?",
@@ -99,7 +99,7 @@
     },
     {
       "keywords": ["lifecycle", "active", "archive", "archived", "draft", "restore", "activate"],
-      "answer_keywords": ["lifecycle", "archived page", "archived pages", "restore", "activate"],
+      "answer_keywords": ["lifecycle", "archived", "restore", "activate"],
       "hints": [
         "Show me recently updated wiki pages",
         "Show me recently archived wiki pages",
@@ -113,7 +113,7 @@
     },
     {
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
-      "answer_keywords": ["orphan", "no inbound"],
+      "answer_keywords": ["no inbound"],
       "hints": [
         "Run orphan resolver",
         "What pages are orphan pages?",
@@ -132,9 +132,8 @@
     },
     {
       "keywords": ["lint", "contradiction", "dangling"],
-      "answer_keywords": ["lint", "dangling", "contradiction"],
+      "answer_keywords": ["lint", "dangling"],
       "hints": [
-        "Run lint and report",
         "What pages are orphan pages?",
         "List contradicted pages",
         "Run contradiction resolver",
@@ -142,7 +141,8 @@
         "Which sources were truncated?",
         "Run lint on contradictions only",
         "Run lint with auto-resolve enabled",
-        "How do I run a lint check?"
+        "How do I run a lint check?",
+        "Run lint and report"
       ]
     },
     {
