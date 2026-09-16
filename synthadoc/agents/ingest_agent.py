@@ -112,6 +112,38 @@ _OVERVIEW_PROMPT = (
 )
 
 CITATION_PASS4_CACHE_VERSION = "v4"  # bumped: total_lines ceiling in prompt + post-processing clamp
+
+_OVERVIEW_SYSTEM_SLUGS = frozenset({"overview", "index", "dashboard", "log"})
+
+
+async def _regenerate_overview(wiki_dir: Path, provider: "LLMProvider") -> None:
+    """Regenerate wiki/overview.md from the 10 most-recently-modified content pages.
+
+    Standalone so both IngestAgent._update_overview() and
+    Orchestrator.refresh_overview() can call it without duplicating logic.
+    """
+    pages = sorted(
+        [p for p in wiki_dir.glob("*.md") if p.stem not in _OVERVIEW_SYSTEM_SLUGS],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:10]
+    if not pages:
+        return
+    page_ctx = [f"- {p.stem}: {p.read_text(encoding='utf-8')[:200].replace(chr(10), ' ')}"
+                for p in pages]
+    resp = await provider.complete(
+        messages=[Message(role="user",
+                          content=_OVERVIEW_PROMPT.format(pages="\n".join(page_ctx)))],
+        temperature=0.3,
+        max_tokens=512,
+    )
+    _today = date.today().isoformat()
+    content = (
+        f"---\ntitle: Wiki Overview\nstatus: active\nconfidence: high\n"
+        f"created: '{_today}'\nupdated: {_today}\n---\n\n"
+        f"# Wiki Overview\n\n{resp.text.strip()}\n"
+    )
+    (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
@@ -805,33 +837,7 @@ class IngestAgent(BaseAgent):
         """Regenerate wiki/overview.md from the 10 most-recently-modified pages."""
         if self._wiki_root is None:
             return
-        wiki_dir = self._wiki_root / "wiki"
-        pages = sorted(
-            [p for p in wiki_dir.glob("*.md")
-             if p.stem not in {"overview", "index", "dashboard", "log"}],
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )[:10]
-        if not pages:
-            return
-        page_ctx = []
-        for p in pages:
-            snippet = p.read_text(encoding="utf-8")[:200].replace("\n", " ")
-            page_ctx.append(f"- {p.stem}: {snippet}")
-        pages_str = "\n".join(page_ctx)
-        resp = await self._provider.complete(
-            messages=[Message(role="user",
-                              content=_OVERVIEW_PROMPT.format(pages=pages_str))],
-            temperature=0.3,
-            max_tokens=512,
-        )
-        _today = date.today().isoformat()
-        content = (
-            f"---\ntitle: Wiki Overview\nstatus: active\nconfidence: high\n"
-            f"created: '{_today}'\nupdated: {_today}\n---\n\n"
-            f"# Wiki Overview\n\n{resp.text.strip()}\n"
-        )
-        (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
+        await _regenerate_overview(self._wiki_root / "wiki", self._provider)
 
     def _staging_policy(self) -> str:
         return self._cfg.ingest.staging_policy if self._cfg else "off"
