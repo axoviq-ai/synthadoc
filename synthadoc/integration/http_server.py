@@ -1281,9 +1281,30 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             mode = "EXPLORER"
         else:
             summary = await orch._audit.get_lifecycle_summary()
-            summary["orphan"] = orch._store.count_orphan_active_pages()
-            # broken_wikilinks and broken_citations omitted here; App.tsx fetches
-            # GET /lifecycle/status separately to drive the text pre-prompt.
+            _db_health = summary.get("stale", 0) + summary.get("contradicted", 0)
+            if _db_health > 0:
+                # HEALTH_CHECK already determined by stale/contradicted — use the
+                # fast frontmatter scan so we don't read every page's content.
+                summary["orphan"] = orch._store.count_orphan_active_pages()
+            else:
+                # DB looks healthy — do a live orphan graph check so newly ingested
+                # pages (not yet linted, no orphan: true in frontmatter) are counted.
+                # App.tsx fetches GET /lifecycle/status separately for the text
+                # pre-prompt; this drives the initial hint chip priority.
+                from synthadoc.agents.lint_agent import find_orphan_slugs as _sess_find_orphans
+                from synthadoc.storage.wiki import LifecycleState as _SLS
+                _sess_active: dict[str, str] = {}
+                _sess_all: dict[str, str] = {}
+                for _slug in orch._store.list_pages():
+                    _p = orch._store.read_page(_slug)
+                    if _p and _p.content:
+                        _st = _p.status
+                        if _st == _SLS.ACTIVE:
+                            _sess_active[_slug] = _p.content
+                            _sess_all[_slug] = _p.content
+                        elif _st == _SLS.CONTRADICTED:
+                            _sess_all[_slug] = _p.content
+                summary["orphan"] = len(_sess_find_orphans(_sess_active, link_texts=_sess_all))
             has_health_issues = (
                 summary.get("stale", 0)
                 + summary.get("contradicted", 0)

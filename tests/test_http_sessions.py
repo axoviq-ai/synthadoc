@@ -239,11 +239,13 @@ def test_post_sessions_health_check_mode_uses_db_not_read_page(tmp_wiki):
 
 
 def test_post_sessions_power_user_mode(tmp_wiki):
-    """With ≥5 pages, prior sessions, and no stale/contradicted pages, mode is POWER_USER."""
+    """With ≥5 pages, prior sessions, and no stale/contradicted/orphan pages, mode is POWER_USER."""
     wiki_dir = tmp_wiki / "wiki"
+    # Ring of wikilinks so every page has at least one inbound link (0 orphans).
     for i in range(5):
+        next_slug = f"page{(i + 1) % 5}"
         (wiki_dir / f"page{i}.md").write_text(
-            "---\ntitle: P\nstatus: active\n---\n\nbody\n", encoding="utf-8"
+            f"---\ntitle: P\nstatus: active\n---\n\nbody [[{next_slug}]]\n", encoding="utf-8"
         )
     app = _make_sessions_create_app(tmp_wiki)
     with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
