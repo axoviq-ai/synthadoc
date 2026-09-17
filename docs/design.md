@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.3.3
+**Version:** 1.3.4
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4139,6 +4139,24 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.3.4
+
+- **Contextual hint chips after workflow completion** — the action agent now calls `HintEngine.after_response` on the final workflow output text, surfacing relevant follow-up hint chips in the web UI sidebar after every agentic maintenance workflow completes. Previously, workflow completions produced no hint chips regardless of content. The lint-report, contradiction-resolver, orphan-resolver, broken-citation-resolver, broken-wikilinks, scaffold, and ingest-lint workflows all benefit.
+- **Hint chip accuracy fixes** — `hints.json` `answer_keywords` patterns tightened to eliminate false-positive chip matches on domain Q&A answers that happen to share vocabulary with maintenance topics: (1) stale pattern now requires phrase matches (`"is stale"`, `"are stale"`, `"stale page"`, `"stale pages"`) instead of bare `\bstale\b`, preventing contradiction-resolver output (which contains `stale: N` counters) from incorrectly triggering stale hints; (2) orphan pattern `answer_keywords` reverted to `["no inbound"]` — `"orphan"` alone was too common in domain answers (e.g. dashboard descriptions) and fired hints incorrectly; (3) lint pattern `answer_keywords` now includes `"contradiction resolver"` (multi-word phrase) instead of bare `"contradiction"`, preventing financial Q&A answers that mention contradictions from triggering lint hints. Orphan-resolver hint chip added to the lint pattern hints so it surfaces after lint-report workflow output.
+- **Obsidian plugin — trust-plugin prompt step** — Quick-Start Guide updated to document the Obsidian safety prompt that appears when opening a vault containing an untrusted plugin. Step 2 now explicitly instructs users to click **Trust author and enable plugin** and explains why the step is required.
+- **Smart overview refresh after candidates promote/discard** — `wiki/overview.md` is now regenerated only after the last candidate in a batch is promoted or discarded, rather than after every individual operation. This prevents redundant LLM calls on bulk-promote workflows and keeps the overview consistent with the final wiki state.
+- **Model pricing table refresh** — pricing table updated to 2026-09-15 rates for all seven API providers (Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI).
+- **Domain template seeds refresh** — `seeds.md` curated URL lists refreshed for all 30 templates via `refresh_search_seeds.py` (run date: 2026-09-16). URLs validated against the blocked-domain list; stale or redirected entries replaced.
+- **BM25 search corpus invalidated on lifecycle transition** — lifecycle state changes (activate, archive, restore, stale detection) now invalidate the BM25 corpus so that query results immediately reflect the updated page set without waiting for a server restart.
+- **CLI→server HTTP timeouts configurable** — `[http] client_timeout` in `config.toml` now sets the per-request timeout for CLI commands that delegate to the running server (ingest, lint, workflows). Previously hard-coded at 60 s, causing live-test timeouts on slow providers.
+- **Broken citation count surfaced in pre-prompt after lint** — the post-lint pre-prompt suggestion now includes the broken-citation count when non-zero, guiding users to run the citation resolver as a natural next step after lint.
+- **Overview LLM call skipped for staged pages** — ingesting to the `candidates/` staging area no longer triggers a `wiki/overview.md` regeneration, saving one LLM call per staged ingest. The overview is rebuilt only after a page is promoted to the live wiki.
+- **TOCTOU race in lifecycle transitions closed** — `WikiStorage.write_page_state` now uses a compare-and-set guard to prevent two concurrent lifecycle transitions (e.g. a lint run and a manual CLI activate) from overwriting each other's state.
+- **Non-ASCII character fix in CLI output** — Windows `cp1252` encoding mojibake in `templates.py`, `lint.py`, and `_tools.py` CLI output fixed by replacing non-ASCII characters with ASCII equivalents.
+- **Plugin integration entry point** — Obsidian plugin now has a dedicated server config-load error path that bypasses `server.py` startup, surfacing config errors (invalid `config.toml`, missing fields) as user-readable plugin notifications rather than a silent server crash.
+- **Install domain-name fallback** — `synthadoc install` now falls back gracefully when the LLM-generated domain name is unavailable, using the wiki name instead of failing the install.
+- **Opencode adversarial lint error fix** — Opencode CLI provider now handles adversarial lint LLM responses that arrive outside the expected JSON schema without raising an unhandled exception.
 
 ### v1.3.3
 
