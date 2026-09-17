@@ -98,7 +98,7 @@
       ]
     },
     {
-      "keywords": ["lifecycle", "active", "archive", "archived", "draft", "restore", "activate"],
+      "keywords": ["lifecycle", "archive", "archived", "draft", "restore", "activate"],
       "answer_keywords": ["lifecycle", "archived page", "archived pages", "restore", "activate"],
       "hints": [
         "Show me recently updated wiki pages",
