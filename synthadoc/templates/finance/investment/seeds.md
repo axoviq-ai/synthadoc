@@ -4,9 +4,9 @@
 
 Seed the wiki with real market context before adding proprietary research.
 
-**Investor.gov — SEC's investor education site covering stocks, bonds, funds, and accounts (public)**
+**Damodaran (NYU Stern) — industry betas, valuation multiples, cost of capital, and historical returns by sector**
 ```
-synthadoc ingest "https://www.investor.gov/introduction-investing" -w <wiki>
+synthadoc ingest "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/data.html" -w <wiki>
 ```
 
 **Federal Reserve H.15 — selected interest rates (treasury, corporate, prime)**
