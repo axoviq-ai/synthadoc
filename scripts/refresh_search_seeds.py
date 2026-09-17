@@ -401,14 +401,24 @@ async def refresh_template(
     purpose_path = template_dir / "wiki" / "purpose.md"
     purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
 
-    # ── Step 0 (optional): repair blocked/broken first-ingest URLs ────────────
+    # ── Step 0 (optional): repair blocked/broken/out-of-scope first-ingest URLs ─
     repairs: dict[str, str] = {}   # {old_url: new_url}
     no_replacement: list[str] = []
     if fix_first_ingests:
         for label, url in extract_first_ingests(seeds_text):
-            ok, _ = await _url_accessible(url, skill, url_sem)
+            ok, content = await _url_accessible(url, skill, url_sem)
             if ok:
-                continue  # still working — nothing to do
+                # Accessible — also verify it is in scope when we have a backend.
+                if purpose and backend:
+                    if await _in_scope(content, purpose, backend, llm_sem):
+                        continue  # accessible and in scope — nothing to do
+                    # Accessible but out of scope — treat as needing replacement.
+                    print(
+                        f"  [{template_name}] first-ingest out-of-scope, replacing: {url}",
+                        file=sys.stderr,
+                    )
+                else:
+                    continue  # no backend available — skip scope check
             query = _label_to_query(label)
             replacement = await _find_replacement_url(
                 query, blocked,
