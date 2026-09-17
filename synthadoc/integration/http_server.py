@@ -1284,16 +1284,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             # Live graph computation so newly ingested active pages (not yet linted)
             # are counted — mirrors the same approach in GET /lifecycle/status.
             from synthadoc.agents.lint_agent import find_orphan_slugs as _sess_find_orphans
+            from synthadoc.storage.wiki import LifecycleState as _SLS
             _sess_active: dict[str, str] = {}
             _sess_all: dict[str, str] = {}
             for _slug in orch._store.list_pages():
                 _p = orch._store.read_page(_slug)
                 if _p and _p.content:
-                    _st = _p.status.value if hasattr(_p.status, "value") else str(_p.status)
-                    if _st == "active":
+                    _st = _p.status
+                    if _st == _SLS.ACTIVE:
                         _sess_active[_slug] = _p.content
                         _sess_all[_slug] = _p.content
-                    elif _st == "contradicted":
+                    elif _st == _SLS.CONTRADICTED:
                         _sess_all[_slug] = _p.content
             summary["orphan"] = len(_sess_find_orphans(_sess_active, link_texts=_sess_all))
             # broken_wikilinks and broken_citations omitted here; App.tsx fetches
@@ -2113,6 +2114,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         # Live graph computation (same as GET /lint/report) so newly ingested
         # active pages appear without requiring a lint run first.
         from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken, find_orphan_slugs as _find_orphans
+        from synthadoc.storage.wiki import LifecycleState as _LS
         _all_slugs = set(orch._store.list_pages())
         _bwl_states = await orch._audit.get_live_page_states(orch._store.page_exists)
         _active_scan: dict[str, str] = {}      # active pages — orphan candidates + wikilink sources
@@ -2123,10 +2125,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _pstate = _p.get("state", "")
             _page = orch._store.read_page(_p["slug"])
             if _page and _page.content:
-                if _pstate == "active":
+                if _pstate == _LS.ACTIVE:
                     _active_scan[_p["slug"]] = _page.content
                     _all_content_scan[_p["slug"]] = _page.content
-                elif _pstate == "contradicted":
+                elif _pstate == _LS.CONTRADICTED:
                     _all_content_scan[_p["slug"]] = _page.content
         orphan = len(_find_orphans(_active_scan, link_texts=_all_content_scan))
         if orphan > 0:
