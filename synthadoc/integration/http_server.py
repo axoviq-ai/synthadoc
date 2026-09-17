@@ -1281,22 +1281,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             mode = "EXPLORER"
         else:
             summary = await orch._audit.get_lifecycle_summary()
-            # Live graph computation so newly ingested active pages (not yet linted)
-            # are counted — mirrors the same approach in GET /lifecycle/status.
-            from synthadoc.agents.lint_agent import find_orphan_slugs as _sess_find_orphans
-            from synthadoc.storage.wiki import LifecycleState as _SLS
-            _sess_active: dict[str, str] = {}
-            _sess_all: dict[str, str] = {}
-            for _slug in orch._store.list_pages():
-                _p = orch._store.read_page(_slug)
-                if _p and _p.content:
-                    _st = _p.status
-                    if _st == _SLS.ACTIVE:
-                        _sess_active[_slug] = _p.content
-                        _sess_all[_slug] = _p.content
-                    elif _st == _SLS.CONTRADICTED:
-                        _sess_all[_slug] = _p.content
-            summary["orphan"] = len(_sess_find_orphans(_sess_active, link_texts=_sess_all))
+            summary["orphan"] = orch._store.count_orphan_active_pages()
             # broken_wikilinks and broken_citations omitted here; App.tsx fetches
             # GET /lifecycle/status separately to drive the text pre-prompt.
             has_health_issues = (
