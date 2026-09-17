@@ -1281,11 +1281,23 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             mode = "EXPLORER"
         else:
             summary = await orch._audit.get_lifecycle_summary()
-            summary["orphan"] = orch._store.count_orphan_active_pages()
-            # broken_wikilinks and broken_citations counts are intentionally omitted here:
-            # computing them requires reading every page (violates the no-read_page invariant
-            # for POST /sessions). Counts are available via GET /lifecycle/status; App.tsx
-            # fetches that separately to drive the pre-prompt.
+            # Live graph computation so newly ingested active pages (not yet linted)
+            # are counted — mirrors the same approach in GET /lifecycle/status.
+            from synthadoc.agents.lint_agent import find_orphan_slugs as _sess_find_orphans
+            _sess_active: dict[str, str] = {}
+            _sess_all: dict[str, str] = {}
+            for _slug in orch._store.list_pages():
+                _p = orch._store.read_page(_slug)
+                if _p and _p.content:
+                    _st = _p.status.value if hasattr(_p.status, "value") else str(_p.status)
+                    if _st == "active":
+                        _sess_active[_slug] = _p.content
+                        _sess_all[_slug] = _p.content
+                    elif _st == "contradicted":
+                        _sess_all[_slug] = _p.content
+            summary["orphan"] = len(_sess_find_orphans(_sess_active, link_texts=_sess_all))
+            # broken_wikilinks and broken_citations omitted here; App.tsx fetches
+            # GET /lifecycle/status separately to drive the text pre-prompt.
             has_health_issues = (
                 summary.get("stale", 0)
                 + summary.get("contradicted", 0)
@@ -2096,22 +2108,29 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         unlinted = len(all_pages) - sum(counts.values())
         if unlinted > 0:
             counts["unlinted"] = unlinted
-        # Orphan count: active pages with no incoming wikilinks from other active pages.
-        # Returned so the web UI can pre-fill the text field with an orphan resolver prompt.
-        orphan = orch._store.count_orphan_active_pages()
-        if orphan > 0:
-            counts["orphan"] = orphan
-        # Broken wikilinks: count dead [[slug]] refs across active pages.
-        # Pure text scan — no LLM, fast enough for a status call.
-        from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken
+        # Orphan count and broken wikilinks both need page body content.
+        # Build the content maps in one pass and reuse for both computations.
+        # Live graph computation (same as GET /lint/report) so newly ingested
+        # active pages appear without requiring a lint run first.
+        from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken, find_orphan_slugs as _find_orphans
         _all_slugs = set(orch._store.list_pages())
         _bwl_states = await orch._audit.get_live_page_states(orch._store.page_exists)
-        _active_scan: dict[str, str] = {}
+        _active_scan: dict[str, str] = {}      # active pages — orphan candidates + wikilink sources
+        _all_content_scan: dict[str, str] = {} # active + contradicted — full link graph for orphan check
         for _p in _bwl_states:
-            if _p.get("state") == "active" and _p["slug"] not in LINT_SKIP_SLUGS:
-                _page = orch._store.read_page(_p["slug"])
-                if _page and _page.content:
+            if _p["slug"] in LINT_SKIP_SLUGS:
+                continue
+            _pstate = _p.get("state", "")
+            _page = orch._store.read_page(_p["slug"])
+            if _page and _page.content:
+                if _pstate == "active":
                     _active_scan[_p["slug"]] = _page.content
+                    _all_content_scan[_p["slug"]] = _page.content
+                elif _pstate == "contradicted":
+                    _all_content_scan[_p["slug"]] = _page.content
+        orphan = len(_find_orphans(_active_scan, link_texts=_all_content_scan))
+        if orphan > 0:
+            counts["orphan"] = orphan
         _broken = _find_broken(_active_scan, _all_slugs)
         _broken_total = sum(len(refs) for refs in _broken.values())
         if _broken_total > 0:
