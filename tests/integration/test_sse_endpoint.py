@@ -73,11 +73,16 @@ def test_post_sessions_returns_session_id_and_mode(tmp_wiki):
 
 
 def _make_wiki_pages(wiki_dir, count=5, stale_index=None):
-    """Create count wiki pages; if stale_index is set, that page gets status: stale."""
+    """Create count wiki pages; if stale_index is set, that page gets status: stale.
+
+    Pages form a ring of wikilinks (page_i → page_{i+1 mod count}) so that
+    every page has at least one inbound link and the live orphan check returns 0.
+    """
     for i in range(count):
         status = "stale" if i == stale_index else "active"
+        next_slug = f"page{(i + 1) % count}"
         (wiki_dir / f"page{i}.md").write_text(
-            f"---\ntitle: Page {i}\nstatus: {status}\n---\n\nContent.\n",
+            f"---\ntitle: Page {i}\nstatus: {status}\n---\n\nContent. See [[{next_slug}]].\n",
             encoding="utf-8",
         )
 
