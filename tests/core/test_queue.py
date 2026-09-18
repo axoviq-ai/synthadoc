@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
+import aiosqlite
 from synthadoc.core.queue import JobQueue, JobStatus
 
 
@@ -583,3 +584,13 @@ async def test_has_pending_jobs_with_pending(tmp_wiki):
     await q.init()
     await q.enqueue("ingest", {"source": "test.pdf"})
     assert await q.has_pending_jobs() is True
+
+
+@pytest.mark.asyncio
+async def test_job_queue_uses_wal_journal_mode(tmp_wiki):
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    async with aiosqlite.connect(tmp_wiki / ".synthadoc" / "jobs.db") as conn:
+        async with conn.execute("PRAGMA journal_mode") as cur:
+            row = await cur.fetchone()
+    assert row[0] == "wal"
