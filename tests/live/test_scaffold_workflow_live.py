@@ -244,8 +244,19 @@ def test_confirm_message_lists_scaffold_files():
     events = _stream_with_confirm_response("run scaffold", accept=False)
     _assert_stream_complete(events)
 
+    tool_names = _tool_names(events)
+    if "run_scaffold" not in tool_names:
+        pytest.skip(
+            f"LLM did not call run_scaffold this run (tools fired: {tool_names}); "
+            "confirm_request content cannot be verified — re-run to retry."
+        )
+
     confirm_events = [e[1] for e in events if e[0] == "confirm_request"]
-    assert confirm_events, "No confirm_request events emitted"
+    assert confirm_events, (
+        f"run_scaffold was called but no confirm_request emitted "
+        f"(check server log for 'tool_confirm: failed to send confirm_request SSE'). "
+        f"Event types seen: {[t for t, _ in events]}"
+    )
 
     msg = confirm_events[0].get("message", "").lower()
     assert "index" in msg or "scaffold" in msg or "domain" in msg, (

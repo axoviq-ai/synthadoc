@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import logging
 import os
 import re
 import time
+
+_log = logging.getLogger(__name__)
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -828,6 +831,7 @@ async def tool_confirm(
         try:
             await ctx.send_sse_event("confirm_request", payload)
         except Exception:  # noqa: BLE001
+            _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s); treating as declined", ctx.session_id, exc_info=True)
             return {"confirmed": False}
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
