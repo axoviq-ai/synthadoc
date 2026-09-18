@@ -382,15 +382,17 @@ async def async_main(args: argparse.Namespace) -> int:
         backend = _detect_backend(args.model)
         if backend is None:
             print(
-                "WARNING: SCOPE CHECK SKIPPED — no LLM backend available.\n"
-                "  Results below show URL accessibility only; out-of-scope seeds\n"
-                "  will NOT be detected.\n"
-                "  To enable scope checks (required before shipping), use one of:\n"
+                "ERROR: SCOPE CHECK REQUIRED but no LLM backend is available.\n"
+                "  Without scope checks, out-of-scope seeds will NOT be detected\n"
+                "  (this is how a zoning-board URL ended up in finance/banking).\n"
+                "  Fix one of:\n"
                 "    • set ANTHROPIC_API_KEY in your environment\n"
                 "    • install opencode  (opencode run is used)\n"
-                "    • install claude    (Claude Code, claude -p is used)",
+                "    • install claude    (Claude Code, claude -p is used)\n"
+                "  To skip scope checks explicitly:  --no-scope",
                 file=sys.stderr,
             )
+            return 1
 
     # ── Template directories ──────────────────────────────────────────────────
     if args.template:

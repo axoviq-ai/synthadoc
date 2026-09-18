@@ -555,10 +555,19 @@ async def async_main(args: argparse.Namespace) -> int:
     )
     if not backend:
         print(
-            "  NOTE: set ANTHROPIC_API_KEY (or install opencode / claude) to enable\n"
-            "  LLM scope checks so out-of-scope curated URLs are filtered out.",
+            "ERROR: no LLM backend available — scope checks will be SKIPPED.\n"
+            "  Without scope checks, Tavily can return off-domain URLs that look\n"
+            "  accessible but are completely wrong (e.g. a city zoning board for a\n"
+            "  banking wiki because both abbreviate to 'BSA').\n"
+            "  Fix one of:\n"
+            "    • set ANTHROPIC_API_KEY in your environment\n"
+            "    • install opencode  (opencode run is used)\n"
+            "    • install claude    (Claude Code, claude -p is used)\n"
+            "  Then re-run this script so curated URLs are scope-validated before\n"
+            "  being written to seeds.md.",
             file=sys.stderr,
         )
+        return 1
 
     results = await asyncio.gather(*[
         refresh_template(
