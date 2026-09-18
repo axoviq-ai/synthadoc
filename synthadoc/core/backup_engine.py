@@ -7,6 +7,7 @@ import json
 import platform
 import re
 import socket
+import sqlite3
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,30 @@ def _count_pages(wiki_root: Path) -> int:
     return sum(1 for p in wiki_dir.glob("*.md") if p.stem not in LINT_SKIP_SLUGS)
 
 
+def _write_db_to_zip(src: Path, zf: zipfile.ZipFile, arc_name: str) -> None:
+    """Copy a SQLite database into the zip using the Online Backup API.
+
+    Direct zf.write() is unsafe under WAL mode: committed pages may still be
+    in the -wal sidecar and absent from the .db file.  Backing up to an
+    in-memory database via sqlite3.Connection.backup() produces a single
+    consistent snapshot, and serialize() converts it to bytes without any
+    temp files — avoiding Windows file-locking issues entirely.
+    """
+    try:
+        src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+        mem_conn = sqlite3.connect(":memory:")
+        try:
+            src_conn.backup(mem_conn)
+            data = mem_conn.serialize()
+        finally:
+            mem_conn.close()
+            src_conn.close()
+        zf.writestr(arc_name, data)
+    except sqlite3.DatabaseError:
+        # File is not a valid SQLite database — copy raw bytes as-is.
+        zf.write(src, arc_name)
+
+
 def _compute_content_checksum(zip_path: Path) -> str:
     """SHA-256 of all non-manifest members in sorted name order."""
     with zipfile.ZipFile(zip_path, "r") as zf:
@@ -130,7 +155,10 @@ def create_backup(
         for abs_path, arc_name in _iter_wiki_files(
             wiki_root, include_sources, include_exports, include_cache
         ):
-            zf.write(abs_path, arc_name)
+            if abs_path.suffix == ".db":
+                _write_db_to_zip(abs_path, zf, arc_name)
+            else:
+                zf.write(abs_path, arc_name)
 
     manifest["checksum_sha256"] = _compute_content_checksum(zip_path)
     with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:

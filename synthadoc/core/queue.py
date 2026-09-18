@@ -73,6 +73,8 @@ class JobQueue:
         if stale_pending_seconds is None:
             stale_pending_seconds = self._DEFAULT_JOB_TIMEOUT_SECONDS * 2
         async with aiosqlite.connect(self._path) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,

@@ -33,6 +33,8 @@ class CacheManager:
     async def init(self) -> None:
         self._conn = await aiosqlite.connect(self._path)
         self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
         await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS response_cache (
                 key TEXT PRIMARY KEY,
