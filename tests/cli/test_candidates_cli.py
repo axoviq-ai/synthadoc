@@ -44,11 +44,13 @@ def test_candidates_list(tmp_path):
 
 def test_candidates_promote(tmp_path):
     w = _make_wiki_with_candidate(tmp_path)
-    (w / "wiki").mkdir(exist_ok=True)
-    result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
+    from unittest.mock import patch
+    with patch("synthadoc.cli._http.post", return_value={"slug": "new-page", "promoted": True, "updated": False}) as mock_post:
+        result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
     assert result.exit_code == 0, result.output
-    assert (w / "wiki" / "new-page.md").exists()
-    assert not (w / "wiki" / "candidates" / "new-page.md").exists()
+    assert "Promoted" in result.output
+    assert "new-page" in result.output
+    mock_post.assert_called_once()
 
 
 def test_candidates_discard(tmp_path):
@@ -66,33 +68,21 @@ def test_candidates_list_empty(tmp_path):
 
 
 def test_candidates_promote_appends_to_recently_added(tmp_path):
-    """Promoting a candidate appends its entry to an existing ## Recently Added section."""
+    """index.md update is server-side; CLI delegates promote to HTTP endpoint."""
     w = _make_wiki_with_candidate(tmp_path)
-    (w / "wiki").mkdir(exist_ok=True)
-    (w / "wiki" / "index.md").write_text(
-        "---\ntitle: Index\ntags: []\nstatus: active\n---\n\n"
-        "# Index\n\n## People\n- [[existing-page]]\n\n"
-        "## Recently Added\n- [[old-page]] -- Old Page\n",
-        encoding="utf-8",
-    )
-    runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
-    index = (w / "wiki" / "index.md").read_text(encoding="utf-8")
-    assert "[[new-page]]" in index
-    assert "[[old-page]]" in index          # existing entry preserved
+    from unittest.mock import patch
+    with patch("synthadoc.cli._http.post", return_value={"slug": "new-page", "promoted": True, "updated": False}):
+        result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
 
 
 def test_candidates_promote_creates_recently_added_section(tmp_path):
-    """Promoting a candidate creates ## Recently Added when index.md has no such section."""
+    """index.md update is server-side; CLI delegates promote to HTTP endpoint."""
     w = _make_wiki_with_candidate(tmp_path)
-    (w / "wiki").mkdir(exist_ok=True)
-    (w / "wiki" / "index.md").write_text(
-        "---\ntitle: Index\ntags: []\nstatus: active\n---\n\n# Index\n\n## People\n- [[existing]]\n",
-        encoding="utf-8",
-    )
-    runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
-    index = (w / "wiki" / "index.md").read_text(encoding="utf-8")
-    assert "## Recently Added" in index
-    assert "[[new-page]]" in index
+    from unittest.mock import patch
+    with patch("synthadoc.cli._http.post", return_value={"slug": "new-page", "promoted": True, "updated": False}):
+        result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
 
 
 # ── _toml_value() ────────────────────────────────────────────────────────────
@@ -174,16 +164,18 @@ def test_patch_toml_section_at_end_of_file(tmp_path):
 # ── --all flag ────────────────────────────────────────────────────────────────
 
 def test_candidates_promote_all(tmp_path):
-    """promote --all promotes every candidate in the directory."""
+    """promote --all delegates to /candidates/promote-all and reports promoted slugs."""
     w = _make_wiki_with_candidate(tmp_path)
-    (w / "wiki" / "candidates" / "another-page.md").write_text(
-        "---\ntitle: Another\nconfidence: high\ncreated: '2026-05-05'\ntags: []\nstatus: active\nsources: []\n---\nContent."
-    )
-    (w / "wiki").mkdir(exist_ok=True)
-    result = runner.invoke(app, ["candidates", "promote", "--all", "--wiki", str(w)])
+    from unittest.mock import patch
+    payload = {"promoted": ["new-page", "another-page"], "count": 2}
+    with patch("synthadoc.cli._http.post", return_value=payload) as mock_post:
+        result = runner.invoke(app, ["candidates", "promote", "--all", "--wiki", str(w)])
     assert result.exit_code == 0, result.output
-    assert (w / "wiki" / "new-page.md").exists()
-    assert (w / "wiki" / "another-page.md").exists()
+    assert "new-page" in result.output
+    assert "another-page" in result.output
+    args, _ = mock_post.call_args
+    assert args[1] == "/candidates/promote-all"
+    assert args[2] == {}
 
 
 def test_candidates_discard_all(tmp_path):
@@ -197,11 +189,11 @@ def test_candidates_discard_all(tmp_path):
 
 
 def test_candidates_promote_shows_updated_when_page_exists(tmp_path):
-    """Promoting over an existing wiki page shows 'Updated', not 'Promoted'."""
+    """Server returns updated=True when page already existed; CLI prints 'Updated'."""
     w = _make_wiki_with_candidate(tmp_path)
-    (w / "wiki").mkdir(exist_ok=True)
-    (w / "wiki" / "new-page.md").write_text("# Existing version\n", encoding="utf-8")
-    result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
+    from unittest.mock import patch
+    with patch("synthadoc.cli._http.post", return_value={"slug": "new-page", "promoted": True, "updated": True}):
+        result = runner.invoke(app, ["candidates", "promote", "new-page", "--wiki", str(w)])
     assert result.exit_code == 0, result.output
     assert "Updated" in result.output
 

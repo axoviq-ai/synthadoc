@@ -2,7 +2,6 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
-import shutil
 import tomllib
 from pathlib import Path
 from typing import Optional
@@ -132,32 +131,25 @@ def candidates_promote(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w", help="Wiki name or path"),
 ) -> None:
     """Promote candidate(s) to the main wiki."""
-    root, _, cand_dir = _paths(wiki)
-    wiki_dir = root / "wiki"
+    from synthadoc.cli._http import post as http_post
+    wiki_name = resolve_wiki(wiki)
 
-    targets = list(cand_dir.glob("*.md")) if all_ else []
-    if not all_ and slug:
-        targets = [cand_dir / f"{slug}.md"]
-
-    promoted: list[tuple[str, str]] = []
-    new_pages: list[tuple[str, str]] = []
-    for src in targets:
-        if not src.exists():
-            typer.echo(f"  Not found: {src.stem}")
-            continue
-        dest = wiki_dir / src.name
-        is_new = not dest.exists()
-        title = _page_title(src)
-        shutil.move(str(src), str(dest))
-        promoted.append((src.stem, title))
-        if is_new:
-            new_pages.append((src.stem, title))
-        action = "Promoted" if is_new else "Updated"
-        typer.echo(f"  {action} {src.stem} -> wiki/{src.name}")
-
-    if new_pages:
-        _add_to_index(wiki_dir, new_pages)
-        typer.echo(f"  Updated index.md - added {len(new_pages)} entr{'y' if len(new_pages) == 1 else 'ies'} to ## Recently Added")
+    if all_:
+        result = http_post(wiki_name, "/candidates/promote-all", {})
+        count = result.get("count", 0)
+        for s in result.get("promoted", []):
+            typer.echo(f"  Promoted {s} -> wiki/{s}.md")
+        if count:
+            typer.echo(f"  Overview refresh queued ({count} page(s) promoted)")
+        else:
+            typer.echo("  No candidates to promote.")
+    elif slug:
+        result = http_post(wiki_name, f"/candidates/{slug}/promote", {})
+        action = "Updated" if result.get("updated") else "Promoted"
+        typer.echo(f"  {action} {slug} -> wiki/{slug}.md")
+        typer.echo("  Overview refresh queued")
+    else:
+        typer.echo("Specify a slug or use --all.")
 
 
 @candidates_app.command("discard")
