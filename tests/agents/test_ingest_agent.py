@@ -1791,6 +1791,7 @@ async def test_pass4_annotates_page_content(tmp_wiki):
     page = store.read_page(slug)
     assert page is not None
     assert "^[" in page.content, f"Expected citation marker in page content, got: {page.content!r}"
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -1836,6 +1837,7 @@ async def test_pass4_failure_does_not_fail_ingest(tmp_wiki):
     events, _ = await audit.list_events()
     assert any(e["event"] == "citation_pass4_skipped" for e in events), \
         f"Expected citation_pass4_skipped event, got: {[e['event'] for e in events]}"
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -1882,6 +1884,7 @@ async def test_pass4_only_annotates_update_content(tmp_wiki):
     assert original_body in page.content
     # The new update section has the citation marker
     assert "^[" in page.content, f"Expected citation in page, got: {page.content!r}"
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -1925,6 +1928,7 @@ async def test_sidecar_written_for_pdf(tmp_wiki):
     txt_file = tmp_wiki / ".synthadoc" / "extracted" / "sample.txt"
     assert txt_file.exists(), f"Expected sidecar txt at {txt_file}"
     assert "PDF content here" in txt_file.read_text(encoding="utf-8")
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -1972,6 +1976,7 @@ async def test_sidecar_pagemap_written_for_pdf(tmp_wiki):
     data = json.loads(pagemap_file.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     assert len(data) == 3
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -2010,6 +2015,7 @@ async def test_sidecar_not_written_for_txt_source(tmp_wiki):
     assert not sidecar_txt.exists() or not (extracted_dir / "notes.pdf.pagemap").exists(), \
         "Sidecar files must NOT be written for plain-text sources without page_boundaries"
     assert not sidecar_pagemap.exists(), "pagemap must not exist for non-PDF sources"
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -2116,6 +2122,7 @@ async def test_pass4_no_citations_logs_warning(tmp_wiki, caplog):
         f"Expected citation_pass4_no_markers audit event. Got events: "
         f"{[e['event'] for e in events]}"
     )
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -2162,6 +2169,7 @@ async def test_pass4_with_citation_does_not_warn(tmp_wiki, caplog):
         f"Unexpected citation warning: {warning_msgs}. "
         f"Full log records: {[(r.levelname, r.message) for r in caplog.records]}"
     )
+    await agent._cache.close()
 
 
 # ── Bug A: sanity check ───────────────────────────────────────────────────────
@@ -2185,6 +2193,7 @@ async def test_pass4_sanity_check_tolerates_heading_reformat(tmp_wiki):
         section, "line 1\nline 2\n", "file.md"
     )
     assert citations, f"Expected citations but got empty list. Annotated: {annotated!r}"
+    await agent._cache.close()
 
 
 @pytest.mark.asyncio
@@ -2215,6 +2224,7 @@ async def test_pass4_sanity_check_rejects_too_short_response(tmp_wiki):
         and _json.loads(e.get("metadata") or "{}").get("error") == "response_too_short"
     ]
     assert skipped, f"Expected citation_pass4_skipped with response_too_short, got: {events}"
+    await agent._cache.close()
 
 
 # ── Bug B: case-sensitive filename ────────────────────────────────────────────
@@ -2238,6 +2248,7 @@ async def test_pass4_case_insensitive_filename_match(tmp_wiki):
         section, "line 1\nline 2\n", "file.md"
     )
     assert citations, f"Expected citations for uppercase FILENAME match, got: {citations}"
+    await agent._cache.close()
 
 
 # ── Bug C: line-based truncation ──────────────────────────────────────────────
@@ -2285,6 +2296,7 @@ async def test_pass4_empty_source_text_emits_audit_event(tmp_wiki):
         and _json.loads(e.get("metadata") or "{}").get("error") == "empty_source_text"
         for e in events
     ), f"Expected empty_source_text audit event, got: {events}"
+    await agent._cache.close()
 
 
 # ── Bug E: bust_cache propagation ─────────────────────────────────────────────
@@ -2317,6 +2329,7 @@ async def test_pass4_bust_cache_bypasses_annotation_cache(tmp_wiki):
     _, c2 = await agent._annotate_citations(section, source, "file.md", bust_cache=True)
     assert c2, f"Expected citations on second call with bust_cache=True, got: {c2}"
     assert call_count["n"] == 2, f"Expected 2 LLM calls, got {call_count['n']}"
+    await agent._cache.close()
 
 
 # ── Bug F: zero-citation results not cached ────────────────────────────────────
@@ -2344,6 +2357,7 @@ async def test_pass4_zero_citation_result_not_cached(tmp_wiki):
         f"0-citation result was cached — second call did not reach LLM. "
         f"LLM calls: {call_count['n']}"
     )
+    await agent._cache.close()
 
 
 # --- _backfill_okf_fields unit tests ---
