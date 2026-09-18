@@ -378,3 +378,114 @@ def test_rewrite_config_no_domain_change_when_none(tmp_path):
     cfg.write_text(original, encoding="utf-8")
     rewrite_config(cfg, 7071, new_domain=None)
     assert 'domain = "keep-me"' in cfg.read_text(encoding="utf-8")
+
+
+# ── WAL-safe backup path ──────────────────────────────────────────────────────
+
+def _make_real_wal_db(path):
+    """Replace fixture's fake-bytes .db with a real WAL-mode SQLite database."""
+    path.unlink(missing_ok=True)
+    import sqlite3
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE t (x TEXT)")
+    conn.execute("INSERT INTO t VALUES ('hello')")
+    conn.commit()
+    conn.close()
+
+
+def test_backup_of_wal_database_produces_valid_sqlite(wiki_root, tmp_path):
+    """_write_db_to_zip must produce a valid SQLite file for a real WAL database."""
+    _make_real_wal_db(wiki_root / ".synthadoc" / "audit.db")
+
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        data = zf.read(".synthadoc/audit.db")
+
+    assert data[:16] == b"SQLite format 3\x00"
+
+
+def test_backup_of_wal_database_contains_committed_data(wiki_root, tmp_path):
+    """Backup must capture rows committed before the archive was created."""
+    import sqlite3
+    sd = wiki_root / ".synthadoc"
+    sd / "audit.db" and (sd / "audit.db").unlink(missing_ok=True)
+    conn = sqlite3.connect(str(sd / "audit.db"))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE facts (id INTEGER PRIMARY KEY, val TEXT)")
+    conn.execute("INSERT INTO facts VALUES (1, 'answer-42')")
+    conn.commit()
+    conn.close()
+
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        data = zf.read(".synthadoc/audit.db")
+
+    verify_db = tmp_path / "verify.db"
+    verify_db.write_bytes(data)
+    verify_conn = sqlite3.connect(str(verify_db))
+    row = verify_conn.execute("SELECT val FROM facts WHERE id=1").fetchone()
+    verify_conn.close()
+    assert row is not None
+    assert row[0] == "answer-42"
+
+
+def test_backup_wal_archive_contains_no_sidecar_paths(wiki_root, tmp_path):
+    """The zip must not contain -wal or -shm sibling paths for any .db entry."""
+    _make_real_wal_db(wiki_root / ".synthadoc" / "audit.db")
+
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+
+    assert not any("-wal" in n or "-shm" in n for n in names)
+
+
+def test_restore_of_pre_wal_backup_produces_usable_database(tmp_path):
+    """A backup created before WAL mode (DELETE journal, raw bytes) must restore cleanly.
+
+    Simulates what an old release wrote: the .db file in the zip is a plain
+    DELETE-journal SQLite database.  After extract_backup(), the restored file
+    must be openable and usable — AuditDB.init() migrates it to WAL silently.
+    """
+    import asyncio
+    import sqlite3
+    from synthadoc.core.backup_engine import create_backup, extract_backup
+    from synthadoc.storage.log import AuditDB
+
+    # Build a minimal wiki with a DELETE-journal audit.db (simulates pre-WAL release).
+    wiki_root = tmp_path / "old-wiki"
+    sd = wiki_root / ".synthadoc"
+    sd.mkdir(parents=True)
+    (wiki_root / "wiki").mkdir()
+
+    old_conn = sqlite3.connect(str(sd / "audit.db"))
+    old_conn.execute("CREATE TABLE ingests (id INTEGER PRIMARY KEY, source_hash TEXT)")
+    old_conn.execute("INSERT INTO ingests VALUES (1, 'abc123')")
+    old_conn.commit()
+    old_conn.close()
+    # Confirm it is NOT in WAL mode (sanity check for the test setup).
+    check_conn = sqlite3.connect(str(sd / "audit.db"))
+    assert check_conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    check_conn.close()
+
+    zip_path = create_backup(
+        wiki_root=wiki_root,
+        output_dir=tmp_path / "out",
+        wiki_name="old-wiki",
+        synthadoc_version="1.3.4",
+        db_schema_version=1,
+        cache_version="4",
+        include_cache=False,
+    )
+
+    restore_root = extract_backup(zip_path, tmp_path / "restore", "old-wiki")
+
+    # AuditDB.init() must migrate the restored DELETE-journal DB to WAL.
+    restored_db = AuditDB(restore_root / ".synthadoc" / "audit.db")
+    asyncio.run(restored_db.init())
+
+    verify = sqlite3.connect(str(restore_root / ".synthadoc" / "audit.db"))
+    mode = verify.execute("PRAGMA journal_mode").fetchone()[0]
+    verify.close()
+    assert mode == "wal"

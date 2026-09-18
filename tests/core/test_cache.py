@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
+import aiosqlite
 from synthadoc.core.cache import CacheManager, make_cache_key, CACHE_VERSION
 
 
@@ -205,5 +206,18 @@ async def test_set_query_overwrites_existing_entry(tmp_path):
         await cm.set_query("key-x", epoch=2, result={"answer": "second"})
         stored = await cm.get_query("key-x")
         assert stored == {"answer": "second"}
+    finally:
+        await cm.close()
+
+
+@pytest.mark.asyncio
+async def test_cache_manager_uses_wal_journal_mode(tmp_wiki):
+    cm = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cm.init()
+    try:
+        async with aiosqlite.connect(tmp_wiki / ".synthadoc" / "cache.db") as conn:
+            async with conn.execute("PRAGMA journal_mode") as cur:
+                row = await cur.fetchone()
+        assert row[0] == "wal"
     finally:
         await cm.close()

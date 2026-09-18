@@ -2,6 +2,17 @@
 import pytest
 import aiosqlite
 import asyncio
+from synthadoc.storage.log import AuditDB
+
+
+@pytest.mark.asyncio
+async def test_audit_db_uses_wal_journal_mode(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        async with conn.execute("PRAGMA journal_mode") as cur:
+            row = await cur.fetchone()
+    assert row[0] == "wal"
 
 
 @pytest.mark.asyncio
