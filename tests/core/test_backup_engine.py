@@ -77,6 +77,7 @@ def test_create_backup_includes_root_config_files(wiki_root, tmp_path):
     (wiki_root / "GEMINI.md").write_text("# Gemini", encoding="utf-8")
     (wiki_root / "ROUTING.md").write_text("# Routing", encoding="utf-8")
     (wiki_root / "log.md").write_text("# Log", encoding="utf-8")
+    (wiki_root / "seeds.md").write_text("# Getting Started\n", encoding="utf-8")
     (wiki_root / "sources.txt").write_text("https://example.com\n", encoding="utf-8")
     zip_path = _make_backup(wiki_root, tmp_path)
     with zipfile.ZipFile(zip_path) as zf:
@@ -86,6 +87,7 @@ def test_create_backup_includes_root_config_files(wiki_root, tmp_path):
     assert "GEMINI.md" in names
     assert "ROUTING.md" in names
     assert "log.md" in names
+    assert "seeds.md" in names
     assert "sources.txt" in names
 
 
