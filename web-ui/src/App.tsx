@@ -8,6 +8,8 @@ import { getSessionMessages, getHints, getLifecycleStatus } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import { GraphView } from "./components/GraphView";
+import { ThemeToggle } from "./components/ThemeToggle";
+import { useTheme } from "./useTheme";
 import type { Message } from "./useQueryStream";
 import heroBg from "./assets/hero-bg.png";
 
@@ -15,6 +17,7 @@ import heroBg from "./assets/hero-bg.png";
 const GRAPH_HINT_PIN_TURNS = 3;
 
 export default function App() {
+    const { mode: themeMode, cycle: cycleTheme } = useTheme();
     const { session, hints, updateHints, sessionError, resetSession, resumeSession } = useSession();
     const { sessions, refresh: refreshSessions } = useSessions();
     const [resetKey, setResetKey] = useState(0);
@@ -162,6 +165,7 @@ export default function App() {
                     >
                         Graph
                     </button>
+                    <ThemeToggle mode={themeMode} onCycle={cycleTheme} />
                 </div>
                 {activeTab === "chat" && (
                     <ChatWindow

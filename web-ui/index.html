@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web-ui</title>
+    <title>Synthadoc</title>
+    <!-- Apply stored theme before React renders to prevent flash -->
+    <script>
+      (function(){try{var t=localStorage.getItem("synthadoc-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}}());
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/app/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web-ui</title>
-    <script type="module" crossorigin src="/app/assets/index-DRPWSKbB.js"></script>
-    <link rel="stylesheet" crossorigin href="/app/assets/index-C4o_PeNx.css">
+    <title>Synthadoc</title>
+    <!-- Apply stored theme before React renders to prevent flash -->
+    <script>
+      (function(){try{var t=localStorage.getItem("synthadoc-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}}());
+    </script>
+    <script type="module" crossorigin src="/app/assets/index-CfTBcFuH.js"></script>
+    <link rel="stylesheet" crossorigin href="/app/assets/index-BcQTGLqT.css">
   </head>
   <body>
     <div id="root"></div>
