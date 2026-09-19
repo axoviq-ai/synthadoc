@@ -1004,6 +1004,19 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .badge-stale { background: rgba(239,68,68,0.2); color: #fca5a5; }
 .badge-archived { background: rgba(100,116,139,0.2); color: var(--text-muted); }
 .badge-contradicted { background: rgba(249,115,22,0.2); color: #fdba74; }
+/* Light mode: darken badge text for contrast on light backgrounds */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .badge-concept     { color: #1d4ed8; }
+    :root:not([data-theme="dark"]) .badge-active      { color: #15803d; }
+    :root:not([data-theme="dark"]) .badge-draft       { color: #a16207; }
+    :root:not([data-theme="dark"]) .badge-stale       { color: #b91c1c; }
+    :root:not([data-theme="dark"]) .badge-contradicted{ color: #c2410c; }
+}
+:root[data-theme="light"] .badge-concept     { color: #1d4ed8; }
+:root[data-theme="light"] .badge-active      { color: #15803d; }
+:root[data-theme="light"] .badge-draft       { color: #a16207; }
+:root[data-theme="light"] .badge-stale       { color: #b91c1c; }
+:root[data-theme="light"] .badge-contradicted{ color: #c2410c; }
 .graph-sidebar-meta { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .graph-meta-row { display: flex; align-items: center; justify-content: space-between; }
 .graph-meta-label { color: var(--text-faint); }
