@@ -998,21 +998,42 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .graph-sidebar-title { font-size: 14px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
 .graph-sidebar-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; cursor: default; }
-.badge-concept { background: rgba(76,130,220,0.2); color: #7eb3ff; }
-.badge-active { background: rgba(74,222,128,0.2); color: #4ade80; }
-.badge-draft { background: rgba(250,204,21,0.2); color: #facc15; }
-.badge-stale { background: rgba(239,68,68,0.2); color: #fca5a5; }
-.badge-archived { background: rgba(100,116,139,0.2); color: var(--text-muted); }
-.badge-contradicted { background: rgba(249,115,22,0.2); color: #fdba74; }
+.badge-concept     { background: rgba(76,130,220,0.2);  color: #7eb3ff; }
+.badge-technology  { background: rgba(20,184,166,0.2);  color: #5eead4; }
+.badge-reference   { background: rgba(139,92,246,0.2);  color: #c4b5fd; }
+.badge-tutorial    { background: rgba(236,72,153,0.2);  color: #f9a8d4; }
+.badge-event       { background: rgba(245,158,11,0.2);  color: #fcd34d; }
+.badge-person      { background: rgba(99,102,241,0.2);  color: #a5b4fc; }
+.badge-guide       { background: rgba(16,185,129,0.2);  color: #6ee7b7; }
+.badge-paper       { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+.badge-active      { background: rgba(74,222,128,0.2);  color: #4ade80; }
+.badge-draft       { background: rgba(250,204,21,0.2);  color: #facc15; }
+.badge-stale       { background: rgba(239,68,68,0.2);   color: #fca5a5; }
+.badge-archived    { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+.badge-contradicted{ background: rgba(249,115,22,0.2);  color: #fdba74; }
 /* Light mode: darken badge text for contrast on light backgrounds */
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) .badge-concept     { color: #1d4ed8; }
+    :root:not([data-theme="dark"]) .badge-technology  { color: #0f766e; }
+    :root:not([data-theme="dark"]) .badge-reference   { color: #6d28d9; }
+    :root:not([data-theme="dark"]) .badge-tutorial    { color: #be185d; }
+    :root:not([data-theme="dark"]) .badge-event       { color: #b45309; }
+    :root:not([data-theme="dark"]) .badge-person      { color: #4338ca; }
+    :root:not([data-theme="dark"]) .badge-guide       { color: #047857; }
+    :root:not([data-theme="dark"]) .badge-paper       { color: #475569; }
     :root:not([data-theme="dark"]) .badge-active      { color: #15803d; }
     :root:not([data-theme="dark"]) .badge-draft       { color: #a16207; }
     :root:not([data-theme="dark"]) .badge-stale       { color: #b91c1c; }
     :root:not([data-theme="dark"]) .badge-contradicted{ color: #c2410c; }
 }
 :root[data-theme="light"] .badge-concept     { color: #1d4ed8; }
+:root[data-theme="light"] .badge-technology  { color: #0f766e; }
+:root[data-theme="light"] .badge-reference   { color: #6d28d9; }
+:root[data-theme="light"] .badge-tutorial    { color: #be185d; }
+:root[data-theme="light"] .badge-event       { color: #b45309; }
+:root[data-theme="light"] .badge-person      { color: #4338ca; }
+:root[data-theme="light"] .badge-guide       { color: #047857; }
+:root[data-theme="light"] .badge-paper       { color: #475569; }
 :root[data-theme="light"] .badge-active      { color: #15803d; }
 :root[data-theme="light"] .badge-draft       { color: #a16207; }
 :root[data-theme="light"] .badge-stale       { color: #b91c1c; }
