@@ -537,9 +537,9 @@ body {
     overflow: hidden;
 }
 @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) .hero { justify-content: center; }
+    :root:not([data-theme="dark"]) .hero { justify-content: flex-start; }
 }
-:root[data-theme="light"] .hero { justify-content: center; }
+:root[data-theme="light"] .hero { justify-content: flex-start; }
 
 .hero-bg {
     position: absolute;
