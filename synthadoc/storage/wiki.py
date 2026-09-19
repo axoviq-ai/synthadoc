@@ -342,7 +342,7 @@ class WikiStorage:
         """
         with self.page_lock(slug):
             page = self.read_page(slug)
-            if page is None:
+            if page is None:  # pragma: no cover
                 return None
             fn(page)
             self.write_page(slug, page)

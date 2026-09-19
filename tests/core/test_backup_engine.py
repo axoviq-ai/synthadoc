@@ -491,3 +491,12 @@ def test_restore_of_pre_wal_backup_produces_usable_database(tmp_path):
     mode = verify.execute("PRAGMA journal_mode").fetchone()[0]
     verify.close()
     assert mode == "wal"
+
+
+
+# ── _count_pages ─────────────────────────────────────────────────────────────
+
+def test_count_pages_returns_zero_when_no_wiki_dir(tmp_path):
+    """_count_pages returns 0 when the wiki/ subdirectory does not exist."""
+    from synthadoc.core.backup_engine import _count_pages
+    assert _count_pages(tmp_path) == 0

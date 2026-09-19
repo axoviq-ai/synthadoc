@@ -323,3 +323,28 @@ def test_server_config_client_timeouts_default(tmp_path):
     assert cfg.server.client_timeout_seconds == 60
     assert cfg.server.client_llm_timeout_seconds == 180
     assert cfg.server.client_stream_timeout_seconds == 120
+
+# ── _server_info ConfigError path ─────────────────────────────────────────────
+
+def test_server_info_config_error_exits(tmp_path, monkeypatch):
+    """_server_info exits when load_config raises ConfigError (lines 33-34)."""
+    import synthadoc.cli._wiki as wiki_mod
+    import synthadoc.cli._http as http_mod
+    from synthadoc import errors as E
+
+    # Create a real wiki path with a config file so config_path.exists() is True
+    (tmp_path / ".synthadoc").mkdir()
+    (tmp_path / ".synthadoc" / "config.toml").write_text(
+        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash-lite" }\n'
+    )
+    # Patch _wiki._read_registry so resolve_wiki_path("mywiki") returns tmp_path
+    monkeypatch.setattr(wiki_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+
+    def _bad_load(*args, **kwargs):
+        raise E.ConfigError(E.CFG_INVALID_TOML, "bad config value", hint="check the docs")
+
+    monkeypatch.setattr(http_mod, "load_config", _bad_load)
+
+    with pytest.raises((SystemExit, typer.Exit)):
+        http_mod._server_info("mywiki")

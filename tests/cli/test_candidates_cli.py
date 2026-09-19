@@ -209,3 +209,102 @@ def test_staging_policy_show_threshold_displays_min_confidence(tmp_path):
     assert result.exit_code == 0, result.output
     assert "threshold" in result.output
     assert "high" in result.output
+
+
+# ── _page_title() ─────────────────────────────────────────────────────────────
+
+def test_page_title_with_frontmatter_title(tmp_path):
+    """_page_title returns fm['title'] when frontmatter contains a title field."""
+    from synthadoc.cli.candidates import _page_title
+    page = tmp_path / "my-page.md"
+    page.write_text("---\ntitle: My Custom Title\n---\n\nContent.", encoding="utf-8")
+    assert _page_title(page) == "My Custom Title"
+
+
+def test_page_title_falls_back_to_slug(tmp_path):
+    """_page_title derives title from filename when frontmatter has no title."""
+    from synthadoc.cli.candidates import _page_title
+    page = tmp_path / "my-page.md"
+    page.write_text("---\nconfidence: low\n---\n\nContent.", encoding="utf-8")
+    assert _page_title(page) == "My Page"
+
+
+# ── _add_to_index() ───────────────────────────────────────────────────────────
+
+def test_add_to_index_creates_recently_added_section(tmp_path):
+    """When index.md has no ## Recently Added, the section is appended."""
+    from synthadoc.cli.candidates import _add_to_index
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "index.md").write_text(
+        "---\ntitle: Index\n---\n\n# Index\n\nSome content.", encoding="utf-8"
+    )
+    _add_to_index(wiki_dir, [("new-page", "New Page"), ("other", "Other")])
+    text = (wiki_dir / "index.md").read_text(encoding="utf-8")
+    assert "## Recently Added" in text
+    assert "[[new-page]] - New Page" in text
+    assert "[[other]] - Other" in text
+
+
+def test_add_to_index_inserts_into_existing_section(tmp_path):
+    """When index.md already has ## Recently Added, new entries are inserted inside it."""
+    from synthadoc.cli.candidates import _add_to_index
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "index.md").write_text(
+        "---\ntitle: Index\n---\n\n# Index\n\n## Recently Added\n- [[old-page]] - Old Page\n\n## Other Section\n",
+        encoding="utf-8",
+    )
+    _add_to_index(wiki_dir, [("newest", "Newest Page")])
+    text = (wiki_dir / "index.md").read_text(encoding="utf-8")
+    assert "[[newest]] - Newest Page" in text
+    # New entries must appear inside the Recently Added section, before Other Section
+    ra_pos = text.index("## Recently Added")
+    new_pos = text.index("[[newest]]")
+    other_pos = text.index("## Other Section")
+    assert ra_pos < new_pos < other_pos
+
+
+def test_add_to_index_no_index_file_is_noop(tmp_path):
+    """_add_to_index silently does nothing when index.md does not exist."""
+    from synthadoc.cli.candidates import _add_to_index
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    _add_to_index(wiki_dir, [("page", "Page")])  # should not raise
+
+
+def test_add_to_index_empty_entries_is_noop(tmp_path):
+    """_add_to_index silently does nothing when the entries list is empty."""
+    from synthadoc.cli.candidates import _add_to_index
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "index.md").write_text("# Index\n", encoding="utf-8")
+    _add_to_index(wiki_dir, [])
+    assert (wiki_dir / "index.md").read_text(encoding="utf-8") == "# Index\n"
+
+
+# ── candidates_promote edge cases ────────────────────────────────────────────
+
+def test_candidates_promote_all_zero_count(tmp_path):
+    """promote --all with count=0 prints 'No candidates to promote.'"""
+    w = _make_wiki_with_candidate(tmp_path)
+    from unittest.mock import patch
+    payload = {"promoted": [], "count": 0}
+    with patch("synthadoc.cli._http.post", return_value=payload):
+        result = runner.invoke(app, ["candidates", "promote", "--all", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
+    assert "No candidates to promote" in result.output
+
+
+def test_candidates_promote_no_args_prints_usage(tmp_path):
+    """promote with no slug and no --all prints the usage hint."""
+    w = _make_wiki_with_candidate(tmp_path)
+    result = runner.invoke(app, ["candidates", "promote", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
+    assert "Specify a slug or use --all" in result.output
+
+
+def test_toml_value_none_uses_json_dumps_fallback():
+    """Non-standard types (e.g. None) fall through to the json.dumps fallback in _utils.py."""
+    from synthadoc.cli._utils import _toml_value
+    assert _toml_value(None) == "null"

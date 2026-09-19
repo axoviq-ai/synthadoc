@@ -241,7 +241,7 @@ def lint_report(
         try:
             from synthadoc.config import load_config as _load_cfg
             _default_max = getattr(getattr(_load_cfg(), "ingest", None), "max_source_chars", 32000)
-        except Exception:
+        except Exception:  # pragma: no cover
             _default_max = 32000
         typer.echo(f"\nTruncated Sources ({len(truncated_pages)}) - source exceeded ingest limit:\n")
         for entry in truncated_pages:

@@ -487,7 +487,7 @@ class ScaffoldAgent(BaseAgent):
         _validate_scaffold_result(scaffold, effective_domain)
         return scaffold
 
-    def _safe_default(self) -> None:  # type: ignore[override]
+    def _safe_default(self) -> None:  # pragma: no cover  # type: ignore[override]
         """Never reached — ``run()`` does not suppress errors."""
         return None
 
