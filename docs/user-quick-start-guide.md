@@ -2582,6 +2582,20 @@ The ⚙ gear icon in the bottom-left corner of the chat window opens a settings 
 
 Increase the timeout when using a reasoning model (e.g. MiniMax M3, Qwen with thinking enabled) that takes longer on large or complex questions. Lower it to fail fast if you suspect the server is hanging.
 
+### Theme — dark, light, and system mode
+
+The **theme toggle** button sits at the right end of the tab bar (Chat | Graph | [toggle]). Clicking it cycles through three modes:
+
+| Mode | Effect |
+| --- | --- |
+| **System** (default) | Follows your OS `prefers-color-scheme` setting — dark on a dark-mode OS, light on a light-mode OS |
+| **Dark** | Deep navy background with purple/violet accent |
+| **Light** | Off-white background with the same accent |
+
+Your choice is saved in your browser's `localStorage` and restored on the next page load. A small inline script applies the stored preference before React renders, so there is no flash of the wrong theme.
+
+In system or dark mode the hero background image is visible behind the chat content. In light mode (or system mode on a light-theme OS) the background falls back to a plain white surface — the dark image does not bleed through.
+
 ### Configure conversation history depth
 
 The number of prior turns included in each request is configurable via `config.toml`. The default (5 turns) covers most sessions:
