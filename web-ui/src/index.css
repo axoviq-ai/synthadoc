@@ -787,7 +787,7 @@ body {
 
 .bubble { max-width: 82%; padding: 0.65rem 0.95rem; border-radius: 12px; line-height: 1.55; }
 .bubble-user { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-.bubble-assistant { background: var(--bg-card); color: var(--text-primary); align-self: flex-start; border-bottom-left-radius: 4px; max-width: 100%; }
+.bubble-assistant { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); align-self: flex-start; border-bottom-left-radius: 4px; max-width: 100%; }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 
 /* Markdown prose styles (assistant bubbles only) */
