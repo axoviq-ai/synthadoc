@@ -271,3 +271,30 @@ def test_saved_default_hint_on_stderr_not_stdout(monkeypatch):
     assert mock_get.call_args[0][0] == "saved-wiki"
     # The hint mentioning saved-wiki appears (goes to stderr, mixed into output)
     assert "saved-wiki" in result.output
+
+
+# --- _read_registry and resolve_wiki_path ---
+
+def test_read_registry_returns_empty_when_file_missing(monkeypatch, tmp_path):
+    """_read_registry returns {} when the registry file does not exist (line 20)."""
+    import synthadoc.cli._wiki as wiki_mod
+    monkeypatch.setattr(wiki_mod, "_REGISTRY", tmp_path / "nonexistent_wikis.json")
+    assert wiki_mod._read_registry() == {}
+
+
+def test_resolve_wiki_path_uses_registry(monkeypatch, tmp_path):
+    """resolve_wiki_path returns Path from registry when wiki name is registered (line 33)."""
+    import synthadoc.cli._wiki as wiki_mod
+    monkeypatch.setattr(wiki_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = wiki_mod.resolve_wiki_path("mywiki")
+    assert result == tmp_path
+
+
+def test_resolve_wiki_explicit_no_conflict_echoes_wiki_name(monkeypatch):
+    """resolve_wiki echoes [wiki: name] when explicit is given with no env/saved conflict (line 84)."""
+    import synthadoc.cli._wiki as wiki_mod
+    monkeypatch.delenv("SYNTHADOC_WIKI", raising=False)
+    monkeypatch.setattr(wiki_mod, "_read_default_wiki", lambda: None)
+    result = wiki_mod.resolve_wiki("mywiki")
+    assert result == "mywiki"

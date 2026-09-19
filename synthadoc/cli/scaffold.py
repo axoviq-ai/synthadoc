@@ -80,4 +80,4 @@ def scaffold_cmd(
             error = job.get("error") or "unknown error"
             E.cli_error(E.AGENT_FAILED, f"Scaffold failed: {error}",
                         "Check `synthadoc jobs` for details.")
-            break
+            break  # pragma: no cover

@@ -91,6 +91,13 @@ def blank_wiki(tmp_path):
 
 # ── list_templates ──────────────────────────────────────────────────────────
 
+def test_list_templates_returns_empty_when_root_missing(monkeypatch, tmp_path):
+    """list_templates returns {} when _TEMPLATES_ROOT is not a directory."""
+    import synthadoc.core.template_engine as te
+    monkeypatch.setattr(te, "_TEMPLATES_ROOT", tmp_path / "nonexistent")
+    assert list_templates() == {}
+
+
 def test_list_templates_returns_category_mapping(fake_templates):
     result = list_templates()
     assert "finance" in result
@@ -150,6 +157,16 @@ def test_get_template_path_rejects_bad_format(fake_templates):
 def test_get_template_description(fake_templates):
     desc = get_template_description("finance/investment")
     assert "Investment" in desc
+
+
+def test_get_template_description_returns_ref_when_no_description_txt(fake_templates):
+    """Returns the template_ref itself when description.txt is absent."""
+    import synthadoc.core.template_engine as te
+    # Remove description.txt from the finance/investment template
+    desc_path = te._TEMPLATES_ROOT / "finance" / "investment" / "description.txt"
+    desc_path.unlink()
+    result = get_template_description("finance/investment")
+    assert result == "finance/investment"
 
 
 def test_get_template_guidelines(fake_templates):
