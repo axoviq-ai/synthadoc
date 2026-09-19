@@ -73,6 +73,11 @@
     /* Shadow */
     --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.5);
 
+    /* Hero */
+    --hero-title-shadow: 0 2px 20px rgba(124, 58, 237, 0.4);
+    --main-panel-bg: none;
+    --main-panel-bg-size: cover;
+
     /* copy btn (sits on dark code blocks, same both themes) */
     --copy-btn-bg:       rgba(255, 255, 255, 0.08);
     --copy-btn-border:   rgba(255, 255, 255, 0.12);
@@ -140,6 +145,10 @@
         --code-inline-bg: #eaebf2;
 
         --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.12);
+
+        --hero-title-shadow: none;
+        --main-panel-bg: radial-gradient(circle, rgba(124,58,237,0.07) 1px, transparent 1px);
+        --main-panel-bg-size: 28px 28px;
     }
 }
 
@@ -201,6 +210,10 @@
     --code-inline-bg: #eaebf2;
 
     --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.12);
+
+    --hero-title-shadow: none;
+    --main-panel-bg: radial-gradient(circle, rgba(124,58,237,0.07) 1px, transparent 1px);
+    --main-panel-bg-size: 28px 28px;
 }
 
 /* ─── Smooth theme transitions ────────────────────── */
@@ -483,7 +496,8 @@ body {
     height: 100%;
     overflow: hidden;
     min-width: 0;
-    background-size: cover;
+    background-image: var(--main-panel-bg);
+    background-size: var(--main-panel-bg-size);
     background-position: center top;
     background-repeat: no-repeat;
 }
@@ -565,7 +579,7 @@ body {
     color: var(--text-primary);
     line-height: 1.1;
     margin-bottom: 0.75rem;
-    text-shadow: 0 2px 20px rgba(124, 58, 237, 0.4);
+    text-shadow: var(--hero-title-shadow);
 }
 
 .hero-subtitle {
