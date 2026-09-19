@@ -49,21 +49,23 @@ async def test_orchestrator_query_records_nonzero_cost_for_known_model(tmp_wiki)
     cfg = _cfg("anthropic", "claude-haiku-4-5-20251001")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_agent = _mock_query_agent(input_tokens=1000, output_tokens=500)
+        recorded: dict = {}
 
-    mock_agent = _mock_query_agent(input_tokens=1000, output_tokens=500)
-    recorded: dict = {}
+        async def capture_record_query(**kwargs):
+            recorded.update(kwargs)
 
-    async def capture_record_query(**kwargs):
-        recorded.update(kwargs)
+        with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+             patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch.object(orch._audit, "record_query", side_effect=capture_record_query), \
+             patch.object(orch._log, "log_query"):
+            await orch.query("test question")
 
-    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
-         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
-         patch.object(orch._audit, "record_query", side_effect=capture_record_query), \
-         patch.object(orch._log, "log_query"):
-        await orch.query("test question")
-
-    assert "cost_usd" in recorded
-    assert recorded["cost_usd"] > 0.0, "Known paid model must produce non-zero cost"
+        assert "cost_usd" in recorded
+        assert recorded["cost_usd"] > 0.0, "Known paid model must produce non-zero cost"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -73,22 +75,24 @@ async def test_orchestrator_query_records_zero_cost_for_ollama(tmp_wiki):
     cfg = _cfg("ollama", "llama3")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_agent = _mock_query_agent(input_tokens=1000, output_tokens=500)
+        recorded: dict = {}
 
-    mock_agent = _mock_query_agent(input_tokens=1000, output_tokens=500)
-    recorded: dict = {}
+        async def capture_record_query(**kwargs):
+            recorded.update(kwargs)
 
-    async def capture_record_query(**kwargs):
-        recorded.update(kwargs)
+        mock_ollama_provider = MagicMock(spec=OllamaProvider)
 
-    mock_ollama_provider = MagicMock(spec=OllamaProvider)
+        with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+             patch("synthadoc.core.orchestrator.make_provider", return_value=mock_ollama_provider), \
+             patch.object(orch._audit, "record_query", side_effect=capture_record_query), \
+             patch.object(orch._log, "log_query"):
+            await orch.query("test question")
 
-    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
-         patch("synthadoc.core.orchestrator.make_provider", return_value=mock_ollama_provider), \
-         patch.object(orch._audit, "record_query", side_effect=capture_record_query), \
-         patch.object(orch._log, "log_query"):
-        await orch.query("test question")
-
-    assert recorded["cost_usd"] == 0.0, "Ollama (local) must always record $0.00"
+        assert recorded["cost_usd"] == 0.0, "Ollama (local) must always record $0.00"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -97,28 +101,30 @@ async def test_orchestrator_query_cost_scales_with_token_count(tmp_wiki):
     cfg = _cfg("anthropic", "claude-haiku-4-5-20251001")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        costs = []
 
-    costs = []
+        for multiplier in (1, 2):
+            mock_agent = _mock_query_agent(
+                input_tokens=1000 * multiplier,
+                output_tokens=500 * multiplier,
+            )
+            recorded: dict = {}
 
-    for multiplier in (1, 2):
-        mock_agent = _mock_query_agent(
-            input_tokens=1000 * multiplier,
-            output_tokens=500 * multiplier,
-        )
-        recorded: dict = {}
+            async def capture(**kwargs):
+                recorded.update(kwargs)
 
-        async def capture(**kwargs):
-            recorded.update(kwargs)
+            with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+                 patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+                 patch.object(orch._audit, "record_query", side_effect=capture), \
+                 patch.object(orch._log, "log_query"):
+                await orch.query("test question")
 
-        with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
-             patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
-             patch.object(orch._audit, "record_query", side_effect=capture), \
-             patch.object(orch._log, "log_query"):
-            await orch.query("test question")
+            costs.append(recorded["cost_usd"])
 
-        costs.append(recorded["cost_usd"])
-
-    assert abs(costs[1] - 2 * costs[0]) < 1e-9, "Cost must scale linearly with token count"
+        assert abs(costs[1] - 2 * costs[0]) < 1e-9, "Cost must scale linearly with token count"
+    finally:
+        await orch.close()
 
 
 # ── Orchestrator._run_ingest() cost ──────────────────────────────────────────
@@ -179,9 +185,12 @@ async def test_orchestrator_ingest_unknown_model_uses_fallback_nonzero(tmp_wiki)
     cfg = _cfg("openai", "some-future-model-not-in-table")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
-    cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
-    assert cost is not None
-    assert cost > 0.0, "Unknown model must use fallback rate, not $0.00"
+    try:
+        cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
+        assert cost is not None
+        assert cost > 0.0, "Unknown model must use fallback rate, not $0.00"
+    finally:
+        await orch.close()
 
 
 # ── CostGuard wiring ─────────────────────────────────────────────────────────
@@ -384,21 +393,23 @@ async def test_orchestrator_query_stream_records_nonzero_cost(tmp_wiki):
     cfg = _cfg("anthropic", "claude-haiku-4-5-20251001")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
+        recorded: dict = {}
 
-    mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
-    recorded: dict = {}
+        async def capture_record_query(**kwargs):
+            recorded.update(kwargs)
 
-    async def capture_record_query(**kwargs):
-        recorded.update(kwargs)
+        with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+             patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch.object(orch._audit, "record_query", side_effect=capture_record_query):
+            async for _ in orch.query_stream("what is AI?"):
+                pass
 
-    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
-         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
-         patch.object(orch._audit, "record_query", side_effect=capture_record_query):
-        async for _ in orch.query_stream("what is AI?"):
-            pass
-
-    assert recorded.get("tokens", 0) == 1500, "streaming must record real token count"
-    assert recorded.get("cost_usd", 0.0) > 0.0, "streaming must record non-zero cost for paid model"
+        assert recorded.get("tokens", 0) == 1500, "streaming must record real token count"
+        assert recorded.get("cost_usd", 0.0) > 0.0, "streaming must record non-zero cost for paid model"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -408,23 +419,25 @@ async def test_orchestrator_query_stream_records_zero_cost_for_ollama(tmp_wiki):
     cfg = _cfg("ollama", "llama3")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
+        recorded: dict = {}
 
-    mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
-    recorded: dict = {}
+        async def capture_record_query(**kwargs):
+            recorded.update(kwargs)
 
-    async def capture_record_query(**kwargs):
-        recorded.update(kwargs)
+        mock_ollama_provider = MagicMock(spec=OllamaProvider)
 
-    mock_ollama_provider = MagicMock(spec=OllamaProvider)
+        with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+             patch("synthadoc.core.orchestrator.make_provider", return_value=mock_ollama_provider), \
+             patch.object(orch._audit, "record_query", side_effect=capture_record_query):
+            async for _ in orch.query_stream("what is AI?"):
+                pass
 
-    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
-         patch("synthadoc.core.orchestrator.make_provider", return_value=mock_ollama_provider), \
-         patch.object(orch._audit, "record_query", side_effect=capture_record_query):
-        async for _ in orch.query_stream("what is AI?"):
-            pass
-
-    assert recorded.get("tokens", 0) == 1500, "streaming must record real token count even for Ollama"
-    assert recorded.get("cost_usd", 0.0) == 0.0, "Ollama (local) must record $0.00"
+        assert recorded.get("tokens", 0) == 1500, "streaming must record real token count even for Ollama"
+        assert recorded.get("cost_usd", 0.0) == 0.0, "Ollama (local) must record $0.00"
+    finally:
+        await orch.close()
 
 
 # ── Permanent failure handling ────────────────────────────────────────────────
@@ -439,17 +452,19 @@ async def test_run_ingest_file_not_found_marks_job_permanently_failed(tmp_wiki):
     cfg = _cfg()
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_provider = MagicMock()
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
+            with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
+                       new=AsyncMock(side_effect=FileNotFoundError("Source not found: /bad/path"))):
+                with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
+                    with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
+                        await orch._run_ingest("job-1", "/bad/path", auto_confirm=True)
 
-    mock_provider = MagicMock()
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
-        with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
-                   new=AsyncMock(side_effect=FileNotFoundError("Source not found: /bad/path"))):
-            with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
-                with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
-                    await orch._run_ingest("job-1", "/bad/path", auto_confirm=True)
-
-    mock_perm.assert_awaited_once()
-    mock_fail.assert_not_awaited()
+        mock_perm.assert_awaited_once()
+        mock_fail.assert_not_awaited()
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -459,15 +474,17 @@ async def test_run_ingest_transient_error_uses_retryable_fail(tmp_wiki):
     cfg = _cfg()
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
+    try:
+        mock_provider = MagicMock()
+        timeout_exc = httpx.ReadTimeout("timed out", request=MagicMock())
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
+            with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
+                       new=AsyncMock(side_effect=timeout_exc)):
+                with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
+                    with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
+                        await orch._run_ingest("job-2", "https://example.com", auto_confirm=True)
 
-    mock_provider = MagicMock()
-    timeout_exc = httpx.ReadTimeout("timed out", request=MagicMock())
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
-        with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
-                   new=AsyncMock(side_effect=timeout_exc)):
-            with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
-                with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
-                    await orch._run_ingest("job-2", "https://example.com", auto_confirm=True)
-
-    mock_perm.assert_not_awaited()
-    mock_fail.assert_awaited_once()
+        mock_perm.assert_not_awaited()
+        mock_fail.assert_awaited_once()
+    finally:
+        await orch.close()

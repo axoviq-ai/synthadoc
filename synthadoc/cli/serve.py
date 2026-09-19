@@ -355,7 +355,7 @@ def serve_cmd(
         config = uvicorn.Config(http_app, host=cfg.server.host, port=effective_port,
                                 log_level="warning", log_config=None)
         server = uvicorn.Server(config)
-        if sys.platform == "win32":
+        if sys.platform == "win32":  # pragma: no cover
             # On Windows asyncio cannot install signal handlers via
             # add_signal_handler(), so uvicorn only catches SIGINT via the
             # default KeyboardInterrupt path — which can get stuck when
