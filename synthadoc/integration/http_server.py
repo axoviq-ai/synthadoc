@@ -917,11 +917,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             worker.cancel()
             scheduler.cancel()
             scan_loop.cancel()
-            for task in (worker, scheduler, scan_loop):
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(worker, scheduler, scan_loop, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                pass  # tasks didn't cancel in 5 s — proceed anyway
             await orch.close()
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)

@@ -348,10 +348,28 @@ def serve_cmd(
         print_banner(**_banner_kwargs)
 
     if not mcp_only:
+        import asyncio
+        import signal
         from synthadoc.integration.http_server import create_app
         http_app = create_app(wiki_root=root, enable_mcp=not http_only)
-        uvicorn.run(http_app, host=cfg.server.host, port=effective_port,
-                    log_level="warning", log_config=None)
+        config = uvicorn.Config(http_app, host=cfg.server.host, port=effective_port,
+                                log_level="warning", log_config=None)
+        server = uvicorn.Server(config)
+        if sys.platform == "win32":
+            # On Windows asyncio cannot install signal handlers via
+            # add_signal_handler(), so uvicorn only catches SIGINT via the
+            # default KeyboardInterrupt path — which can get stuck when
+            # background tasks are running.  Register both SIGINT and
+            # SIGBREAK (Ctrl+Break) explicitly so either key combo delivers
+            # a clean shutdown via uvicorn's own should_exit flag.
+            def _win_exit(sig, frame):
+                server.should_exit = True
+            signal.signal(signal.SIGINT, _win_exit)
+            try:
+                signal.signal(signal.SIGBREAK, _win_exit)
+            except (AttributeError, OSError):
+                pass
+        asyncio.run(server.serve())
     else:
         import asyncio
         from synthadoc.core.orchestrator import Orchestrator
