@@ -532,14 +532,10 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    justify-content: flex-start;
     min-height: 100%;
     overflow: hidden;
 }
-@media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) .hero { justify-content: flex-start; }
-}
-:root[data-theme="light"] .hero { justify-content: flex-start; }
 
 .hero-bg {
     position: absolute;
