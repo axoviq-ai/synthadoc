@@ -25,6 +25,7 @@ interface Props {
     pendingPrompt?: string | null;
     onPendingPromptConsumed?: () => void;
     onConfirmDecision?: (sessionId: string, confirmed: boolean) => void;
+    resolvedDark: boolean;
 }
 
 export function ChatWindow({
@@ -32,6 +33,7 @@ export function ChatWindow({
     injectedQuery, onInjected, onQuerySent, showTip,
     initialMessages = [],
     pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
+    resolvedDark,
 }: Props) {
     const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(sessionId, onHints, initialMessages, onQuerySent);
     const [input, setInput] = useState("");
@@ -119,7 +121,7 @@ export function ChatWindow({
         <div className="chat-window">
             <div className="messages" ref={messagesRef} aria-live="polite">
                 {messages.length === 0
-                    ? <Hero mode={mode} />
+                    ? <Hero mode={mode} resolvedDark={resolvedDark} />
                     : (
                         <div className="messages-list">
                             {messages.map((m) => (

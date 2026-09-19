@@ -25,6 +25,7 @@ export function ThemeToggle({ mode, onCycle }: Props) {
             {mode === "dark"   ? <MoonIcon />   :
              mode === "light"  ? <SunIcon />    :
                                  <SystemIcon />}
+            <span>{LABELS[mode]}</span>
         </button>
     );
 }

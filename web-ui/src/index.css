@@ -44,6 +44,10 @@
             #0b0d18 100%
         );
     --graph-bg: linear-gradient(160deg, #05060e 0%, #080d1a 60%, #0a0818 100%);
+    --graph-label-fill:   #94a3b8;
+    --graph-label-stroke: rgba(5,6,14,0.85);
+    --graph-edge-stroke:  rgba(160,170,220,0.35);
+    --graph-node-stroke:  #ffffff;
 
     /* Accent (purple — identical in both themes) */
     --accent:            #7c3aed;
@@ -115,6 +119,10 @@
                 #f8f9fc 100%
             );
         --graph-bg: linear-gradient(160deg, #f2f3f8 0%, #f8f9fc 60%, #f5f3fb 100%);
+        --graph-label-fill:   #1f2937;
+        --graph-label-stroke: rgba(242,243,248,0.9);
+        --graph-edge-stroke:  rgba(100,110,180,0.4);
+        --graph-node-stroke:  rgba(255,255,255,0.85);
 
         --accent-text:      #6d28d9;
         --accent-text-soft: #7c3aed;
@@ -173,6 +181,10 @@
             #f8f9fc 100%
         );
     --graph-bg: linear-gradient(160deg, #f2f3f8 0%, #f8f9fc 60%, #f5f3fb 100%);
+    --graph-label-fill:   #1f2937;
+    --graph-label-stroke: rgba(242,243,248,0.9);
+    --graph-edge-stroke:  rgba(100,110,180,0.4);
+    --graph-node-stroke:  rgba(255,255,255,0.85);
 
     --accent-text:      #6d28d9;
     --accent-text-soft: #7c3aed;
@@ -916,7 +928,10 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px 0;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
 }
 .tab-btn { background: none; border: none; color: var(--text-muted); font-size: 14px; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
 .tab-btn.active { background: var(--accent-bg-faint); color: var(--text-primary); }
@@ -924,28 +939,29 @@ body {
 /* ─── Theme toggle button ──────────────────────────── */
 .theme-toggle {
     margin-left: auto;
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    border-radius: 6px;
-    padding: 5px 9px;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    border-radius: 999px;
+    padding: 5px 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 5px;
     font-size: 0.78rem;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    font-weight: 500;
+    transition: background 0.15s;
     line-height: 1;
-    margin-bottom: 4px;
 }
 .theme-toggle:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent);
-    color: var(--text-primary);
+    background: var(--accent-hover);
 }
 
 /* ─── Graph view ───────────────────────────────────── */
 .graph-view { display: flex; flex-direction: column; flex: 1; height: 100%; overflow: hidden; background: var(--graph-bg); }
+text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-stroke); }
+.graph-view line { stroke: var(--graph-edge-stroke); }
+.graph-view circle { stroke: var(--graph-node-stroke); }
 .graph-controls { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--accent-border); }
 .graph-controls select { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--accent-border-med); border-radius: 6px; padding: 4px 8px; }
 .graph-stats { color: var(--text-muted); font-size: 12px; }

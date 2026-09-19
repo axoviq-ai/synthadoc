@@ -150,6 +150,7 @@ export default function App() {
                 activeSessionId={activeSessionId}
                 onSelectSession={handleSelectSession}
                 onNewRun={handleNewRun}
+                resolvedDark={resolvedDark}
             />
             <main className="main-panel" style={resolvedDark ? { backgroundImage: `url(${heroBg})` } : undefined}>
                 {sessionError && (
@@ -186,6 +187,7 @@ export default function App() {
                         pendingPrompt={pendingPrompt}
                         onPendingPromptConsumed={() => setPendingPrompt(null)}
                         onConfirmDecision={handleConfirmDecision}
+                        resolvedDark={resolvedDark}
                     />
                 )}
                 {activeTab === "graph" && (
