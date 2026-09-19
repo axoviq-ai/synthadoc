@@ -210,17 +210,19 @@ def test_staging_policy_threshold_with_min_confidence(tmp_path):
     assert cfg["ingest"]["staging_confidence_min"] == "medium"
 
 
-def test_candidates_promote_missing_slug_shows_not_found(tmp_path):
-    """Promoting a slug that does not exist shows 'Not found'."""
+def test_candidates_promote_delegates_to_server(tmp_path):
+    """promote now delegates to the HTTP server; CLI reports slug and queues overview."""
+    from unittest.mock import patch
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     runner = CliRunner()
     (tmp_path / "wiki" / "candidates").mkdir(parents=True)
     (tmp_path / ".synthadoc").mkdir(exist_ok=True)
     (tmp_path / ".synthadoc" / "config.toml").write_text('[ingest]\n')
-    result = runner.invoke(app, ["candidates", "promote", "missing-slug", "--wiki", str(tmp_path)])
-    assert result.exit_code == 0
-    assert "Not found" in result.output
+    with patch("synthadoc.cli._http.post", return_value={"slug": "my-slug", "promoted": True, "updated": False}):
+        result = runner.invoke(app, ["candidates", "promote", "my-slug", "--wiki", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "my-slug" in result.output
 
 
 def test_read_frontmatter_no_leading_dashes(tmp_path):
