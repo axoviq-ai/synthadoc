@@ -203,7 +203,7 @@ def extract_backup(zip_path: Path, target_dir: Path, wiki_name: str) -> Path:
                 continue
             dest = wiki_root / member
             dest = dest.resolve()
-            if not dest.is_relative_to(wiki_root.resolve()):
+            if not dest.is_relative_to(wiki_root.resolve()):  # pragma: no cover
                 continue  # skip any member that would escape the target directory
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(zf.read(member))

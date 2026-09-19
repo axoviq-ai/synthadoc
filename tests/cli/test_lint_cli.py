@@ -462,3 +462,52 @@ def test_lint_report_footer_includes_truncated_count(tmp_path, monkeypatch):
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
     assert "1 truncated source(s)" in result.output
+
+
+def test_lint_report_unresolved_note_shown(tmp_path, monkeypatch):
+    """When a contradicted page has 'unresolved_note', lint report shows it (line 200)."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index": "# Index\n",
+        "bad-page": (
+            "---\nstatus: contradicted\n"
+            "unresolved_note: Auto-resolve tried but failed\n"
+            "---\n# Bad"
+        ),
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "Auto-resolve tried but failed" in result.output
+
+
+def test_lint_report_yaml_error_page_skipped_gracefully(tmp_path, monkeypatch):
+    """A page with malformed YAML frontmatter is skipped without crashing (lines 73-74)."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index": "# Index\n",
+        "bad-yaml": "---\n: invalid: yaml: [\n---\n# Bad YAML",
+        "good-page": "---\nstatus: active\norphan: false\n---\n# Good\n\nSee [[index]].",
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+
+
+def test_lint_run_check_urls_flag(tmp_path, monkeypatch):
+    """lint run --check-urls must pass check_url_availability=True in the POST payload."""
+    import synthadoc.cli.install as install_mod
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    captured = {}
+
+    def fake_post(wiki, path, payload):
+        captured["payload"] = payload
+        return {"job_id": "lint-urls-001"}
+
+    with patch("synthadoc.cli.lint.post", side_effect=fake_post):
+        result = runner.invoke(app, ["lint", "run", "--check-urls", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert captured["payload"].get("check_url_availability") is True

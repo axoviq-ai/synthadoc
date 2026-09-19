@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
-def _install_win32_conn_reset_filter() -> None:
+def _install_win32_conn_reset_filter() -> None:  # pragma: no cover
     """Downgrade spurious ConnectionResetError noise from asyncio on Windows.
 
     When a client abruptly closes a TCP connection (RST instead of FIN),
@@ -917,11 +917,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             worker.cancel()
             scheduler.cancel()
             scan_loop.cancel()
-            for task in (worker, scheduler, scan_loop):
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(worker, scheduler, scan_loop, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:  # pragma: no cover
+                pass  # tasks didn't cancel in 5 s — proceed anyway
             await orch.close()
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)

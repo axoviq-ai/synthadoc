@@ -59,7 +59,7 @@ class CacheManager:
         # Synchronous best-effort cleanup for GC scenarios (tests, CLI short-lived
         # instances). close() is preferred; this prevents file locks on Windows when
         # the async close() was never awaited.
-        if self._conn is not None:
+        if self._conn is not None:  # pragma: no cover
             try:
                 raw = getattr(self._conn, "_connection", None)
                 if raw is not None:

@@ -96,6 +96,17 @@ async def test_llms_full_txt_contains_page_content(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_llms_full_txt_includes_tags_when_present(tmp_path):
+    """llms-full.txt includes Tags line when a page has tags (export.py line 157)."""
+    store = _make_store(tmp_path)
+    _write_page(store, "turing", "Alan Turing", LifecycleState.ACTIVE,
+                content="Father of computer science.", tags=["pioneer", "cryptography"])
+    agent = _agent(tmp_path, store)
+    result = await agent.run(ExportOptions(format="llms-full.txt"))
+    assert "Tags: pioneer, cryptography" in result
+
+
+@pytest.mark.asyncio
 async def test_llms_full_txt_has_header_with_count(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "p1", "Page One", LifecycleState.ACTIVE)
