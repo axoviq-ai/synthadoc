@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 5
+DB_SCHEMA_VERSION: int = 6
 
 CITATION_EXCERPT_LEN = 100
 
@@ -118,6 +118,14 @@ class AuditDB:
                 await db.commit()
             except Exception:
                 pass  # column already exists
+
+        # Table additions — idempotent via IF NOT EXISTS
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS graph_meta (
+                id       INTEGER PRIMARY KEY,
+                built_at TEXT    NOT NULL
+            )""")
+        await db.commit()
 
         # Secondary indexes — idempotent via IF NOT EXISTS; placed after column
         # migrations so referenced columns (e.g. content_snapshot) are guaranteed
@@ -1189,16 +1197,27 @@ class AuditDB:
                 "INSERT INTO graph_edges (from_slug, to_slug, weight, edge_type) VALUES (?,?,?,?)",
                 [(e["from_slug"], e["to_slug"], e["weight"], e.get("edge_type", "mixed")) for e in edges],
             )
+            # Record that a build has completed; read_graph uses this to
+            # distinguish "empty wiki" from "never been built".
+            await db.execute(
+                "INSERT OR REPLACE INTO graph_meta (id, built_at) VALUES (1, ?)", (ts,)
+            )
             await db.commit()
 
     async def read_graph(self) -> dict | None:
-        """Return graph data or None if tables are empty (graph not yet computed)."""
+        """Return graph data or None if the graph has never been built.
+
+        An empty wiki produces ``{"nodes": [], "edges": []}`` after the first
+        build; returning None only when graph_meta has no row avoids an
+        infinite re-build loop when the wiki has 0 active pages.
+        """
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
+            cur = await db.execute("SELECT built_at FROM graph_meta WHERE id = 1")
+            if await cur.fetchone() is None:
+                return None  # never built
             cur = await db.execute("SELECT slug, cluster_id FROM graph_nodes")
             nodes = [dict(r) for r in await cur.fetchall()]
-            if not nodes:
-                return None
             cur = await db.execute("SELECT from_slug, to_slug, weight, edge_type FROM graph_edges")
             edges = [dict(r) for r in await cur.fetchall()]
         return {"nodes": nodes, "edges": edges}
