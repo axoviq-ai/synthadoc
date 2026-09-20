@@ -337,38 +337,60 @@ async def _find_replacement_url(
     purpose: str = "",
     backend: "_Backend | None" = None,
     llm_sem: "asyncio.Semaphore | None" = None,
+    template_name: str = "",
 ) -> str | None:
     """Search Tavily for *query* and return the first accessible, in-scope URL.
 
     *skip_domains* prevents re-using the same domain that just failed.
     When *purpose* and *backend* are provided, candidates are also checked
     against the wiki scope before being accepted.
+
+    Retries with 3× max_per_query when the initial result set is exhausted
+    without finding an acceptable replacement, then with 6× as a final
+    attempt, logging each scope rejection to stderr.
     Returns None when no working replacement is found.
     """
     _ensure_path()
     from synthadoc.skills.web_search.scripts.fetcher import search_tavily  # type: ignore
 
-    async with tav_sem:
-        try:
-            resp = await search_tavily(query, max_per_query, tavily_key)
-        except Exception:
-            return None
+    seen: set[str] = set()
 
-    for result in resp.get("results", []):
-        url = result.get("url", "").strip()
-        if not url:
-            continue
-        if _is_blocked(url, blocked):
-            continue
-        if _netloc(url) in skip_domains:
-            continue
-        ok, content = await _url_accessible(url, skill, url_sem)
-        if not ok:
-            continue
-        if purpose and backend and llm_sem:
-            if not await _in_scope(content, purpose, backend, llm_sem):
+    for attempt, n in enumerate([max_per_query, max_per_query * 3, max_per_query * 6]):
+        async with tav_sem:
+            try:
+                resp = await search_tavily(query, n, tavily_key)
+            except Exception:
+                return None
+
+        for result in resp.get("results", []):
+            url = result.get("url", "").strip()
+            if not url or url in seen:
                 continue
-        return url
+            seen.add(url)
+            if _is_blocked(url, blocked):
+                continue
+            if _netloc(url) in skip_domains:
+                continue
+            ok, content = await _url_accessible(url, skill, url_sem)
+            if not ok:
+                continue
+            if purpose and backend and llm_sem:
+                if not await _in_scope(content, purpose, backend, llm_sem):
+                    label = f"[{template_name}] " if template_name else ""
+                    print(
+                        f"  {label}first-ingest candidate scope-rejected: {url}",
+                        file=sys.stderr,
+                    )
+                    continue
+            return url
+
+        if attempt == 0:
+            label = f"[{template_name}] " if template_name else ""
+            print(
+                f"  {label}first-ingest: initial {n} results exhausted, retrying with more …",
+                file=sys.stderr,
+            )
+
     return None
 
 
@@ -426,6 +448,7 @@ async def refresh_template(
                 skill=skill, url_sem=url_sem, tav_sem=tav_sem,
                 tavily_key=tavily_key, max_per_query=max_per_query,
                 purpose=purpose, backend=backend, llm_sem=llm_sem,
+                template_name=template_name,
             )
             if replacement:
                 repairs[url] = replacement
