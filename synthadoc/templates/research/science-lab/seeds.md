@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**Good Laboratory Practice — lab quality standards, SOPs, organizational processes, and conditions for reproducible research**
+**ORI Lab Management guide — laboratory notebooks, data management standards, and record-keeping requirements for research PIs**
 ```
-synthadoc ingest "https://en.wikipedia.org/wiki/Good_laboratory_practice" -w <wiki>
+synthadoc ingest "https://ori.hhs.gov/education/products/wsu/data.html" -w <wiki>
 ```
 
 **protocols.io researcher guide — how to find, use, and publish reproducible laboratory protocols**
