@@ -288,8 +288,12 @@ async def validate_url(
         except DomainBlockedException as e:
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
-            result["url_status"] = "ERROR"
-            result["error_detail"] = str(e)[:120]
+            err = str(e)
+            if any(code in err for code in ("404", "410", "Not Found", "Gone")):
+                result["url_status"] = "NOT FOUND"
+            else:
+                result["url_status"] = "ERROR"
+                result["error_detail"] = err[:120]
 
     # ── Step 2: scope check (only when content is substantive and backend available) ─
     if backend is not None and purpose and result["url_status"] == "OK":
@@ -341,7 +345,7 @@ class _Progress:
             f"{template:<32} {status:<14} {short_url}{self._RESET}",
             flush=True,
         )
-        if status == "ERROR" and result.get("error_detail"):
+        if result.get("error_detail") and status not in ("NOT FOUND",):
             print(f"    {self._RED}  └─ {result['error_detail']}{self._RESET}", flush=True)
 
 
