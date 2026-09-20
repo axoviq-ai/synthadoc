@@ -56,6 +56,23 @@ from urllib.parse import urlparse
 # sync with the same constant in validate_seeds.py.
 _MIN_CONTENT_CHARS = 500
 
+# WAF/CDN bot-challenge patterns — some hosts return HTTP 200 with a JS challenge
+# or "Access Denied" body instead of real content.  Keep in sync with validate_seeds.py.
+_BOT_BLOCK_RE = re.compile(
+    r"""
+    (?:
+        Incapsula\s+incident\s+ID
+      | _cf_chl_opt
+      | challenge-form
+      | Ray\s+ID:\s+[0-9a-f]{16}
+      | Access\s+Denied\b.*?(?:server|reference\s+\#)
+      | enable\s+JavaScript\s+and\s+cookies
+      | bot\s+or\s+(?:automated?\s+)?(?:request|traffic|crawler)
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -231,6 +248,8 @@ async def _url_accessible(url: str, skill: object, sem: asyncio.Semaphore) -> tu
         try:
             result = await skill.extract(url)  # type: ignore[attr-defined]
             text = result.text.strip()
+            if _BOT_BLOCK_RE.search(text[:1_000]):
+                return False, ""
             return len(text) >= _MIN_CONTENT_CHARS, text
         except DomainBlockedException:
             return False, ""
