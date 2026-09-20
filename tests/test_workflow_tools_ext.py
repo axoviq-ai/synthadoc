@@ -313,6 +313,21 @@ async def test_transition_lifecycle_state_invalid_state_string(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_transition_lifecycle_state_toctou_raises_value_error(tmp_path):
+    """Cover the except ValueError branch — race where state changes between pre-check and _apply."""
+    store = _make_store(tmp_path, {"p": _page(status=LifecycleState.CONTRADICTED)})
+    ctx = _ctx(tmp_path, store)
+    # Patch update_page to raise ValueError simulating a TOCTOU state change.
+    with patch.object(store, "update_page", side_effect=ValueError("transition invalid")):
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        result = await tool_transition_lifecycle_state(
+            ctx, slug="p", to_state="active", reason="test"
+        )
+    assert result["success"] is False
+    assert "transition invalid" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_transition_lifecycle_state_updates_markdown_file_frontmatter(tmp_path):
     """The markdown file on disk must have status: active after transition.
 
