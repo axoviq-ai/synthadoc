@@ -341,6 +341,8 @@ class _Progress:
             f"{template:<32} {status:<14} {short_url}{self._RESET}",
             flush=True,
         )
+        if status == "ERROR" and result.get("error_detail"):
+            print(f"    {self._RED}  └─ {result['error_detail']}{self._RESET}", flush=True)
 
 
 # ── Per-template validation ───────────────────────────────────────────────────
