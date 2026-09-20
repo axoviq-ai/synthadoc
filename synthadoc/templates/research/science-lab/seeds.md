@@ -2,12 +2,6 @@
 
 ## Recommended first ingests
 
-**Your own SOPs and protocols** — paste existing protocol documents into `raw_sources/protocols/`, then ingest them:
-```
-synthadoc ingest raw_sources/protocols/ --batch -w <wiki>
-```
-*No existing SOPs yet? Use the starter template: copy `raw_sources/protocols/template-sop.md`, rename and fill in, then ingest.*
-
 **protocols.io researcher guide — how to find, use, and publish reproducible laboratory protocols**
 ```
 synthadoc ingest "https://www.protocols.io/researchers" -w <wiki>
