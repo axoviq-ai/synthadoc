@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**Lab Manager — laboratory management best practices, SOPs, and instrument maintenance guides**
+**Good Laboratory Practice — lab quality standards, SOPs, organizational processes, and conditions for reproducible research**
 ```
-synthadoc ingest "https://www.labmanager.com/laboratory-management" -w <wiki>
+synthadoc ingest "https://en.wikipedia.org/wiki/Good_laboratory_practice" -w <wiki>
 ```
 
 **protocols.io researcher guide — how to find, use, and publish reproducible laboratory protocols**
