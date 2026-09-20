@@ -50,7 +50,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from _url_quality import BOT_BLOCK_RE as _BOT_BLOCK_RE
+from _url_quality import LOGIN_WALL_RE as _LOGIN_WALL_RE
 from _url_quality import MIN_CONTENT_CHARS as _MIN_CONTENT_CHARS
+from _url_quality import SEEDS_SCOPE_PROMPT as _SCOPE_PROMPT
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +162,24 @@ def extract_first_ingests(seeds_text: str) -> list[tuple[str, str]]:
     return pairs
 
 
+def _remove_first_ingest_entry(seeds_text: str, url: str) -> str:
+    """Remove the **label** + fenced code block for *url* from the first-ingest section.
+
+    Matches the canonical format written by the template generator:
+        **label text**
+        ```
+        synthadoc ingest "url" -w <wiki>
+        ```
+    """
+    pattern = (
+        r'\*\*[^\n]+\*\*\n'
+        r'```\n'
+        r'synthadoc ingest "' + re.escape(url) + r'"[^\n]*\n'
+        r'```\n'
+    )
+    return re.sub(pattern, '', seeds_text)
+
+
 def _label_to_query(label: str) -> str:
     """Return a Tavily search query from a bold label.
 
@@ -229,6 +249,8 @@ async def _url_accessible(url: str, skill: object, sem: asyncio.Semaphore) -> tu
             text = result.text.strip()
             if _BOT_BLOCK_RE.search(text[:1_000]):
                 return False, ""
+            if _LOGIN_WALL_RE.search(text[:3_000]):
+                return False, ""
             return len(text) >= _MIN_CONTENT_CHARS, text
         except DomainBlockedException:
             return False, ""
@@ -236,25 +258,7 @@ async def _url_accessible(url: str, skill: object, sem: asyncio.Semaphore) -> tu
             return False, ""
 
 
-# ── Scope check (mirrors validate_seeds.py) ───────────────────────────────────
-
-_SCOPE_PROMPT = """\
-You maintain a knowledge wiki. Decide whether a new source document is in scope.
-
-Wiki scope (from purpose.md):
-{purpose}
-
-action="skip" means the source is completely OUTSIDE the wiki's domain \
-(e.g. spam, unrelated e-commerce, generic listicles with no domain-specific value).
-A broad general resource that adds no domain-specific value should be action="skip".
-A source clearly authored for practitioners in this specific domain should be \
-action="ingest".
-
-Source text (first 4 000 characters):
-{content}
-
-Return ONLY valid JSON (no markdown fences):
-{{"action": "ingest or skip", "reasoning": "one concise sentence"}}"""
+# ── Scope check ──────────────────────────────────────────────────────────────
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]")
 
@@ -480,11 +484,16 @@ async def refresh_template(
         else:
             no_replacement.append(url)
             print(
-                f"  [{template_name}] WARNING: no replacement found for {url}",
+                f"  [{template_name}] WARNING: no replacement found for {url} — removing entry",
                 file=sys.stderr,
             )
     for old, new in repairs.items():
         seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
+    for url in no_replacement:
+        seeds_text = _remove_first_ingest_entry(seeds_text, url)
+
+    remaining_first_ingests = len(extract_first_ingests(seeds_text))
+    first_ingest_changed = bool(repairs or no_replacement)
 
     queries = extract_search_queries(seeds_text)
     existing_domains = first_ingest_domains(seeds_text)
@@ -510,26 +519,31 @@ async def refresh_template(
     checked = await asyncio.gather(*[_check_existing(u) for u in existing_curated])
     valid_existing = [u for u in checked if u is not None]
     valid_existing_domains = {_netloc(u) for u in valid_existing}
+    # Domains that were just dropped (blocked/out-of-scope) must not be re-added
+    # by Tavily returning a different URL from the same domain.
+    dropped_domains = {_netloc(u) for u, r in zip(existing_curated, checked) if r is None}
 
     needed = max_refs - len(valid_existing)
 
     if needed <= 0:
         # Existing curated URLs fill all slots.
         accessible = valid_existing[:max_refs]
-        if accessible == existing_curated:
-            # Nothing changed — skip the write entirely.
+        curated_changed = accessible != existing_curated
+        if not curated_changed and not first_ingest_changed:
+            # Nothing changed at all — skip the write entirely.
             return {
                 "template": template_name,
                 "status": "ok-no-change",
                 "repairs": repairs,
                 "no_replacement": no_replacement,
+                "remaining_first_ingests": remaining_first_ingests,
             }
-        # Some URLs were dropped — rewrite without Tavily.
+        # Something changed (dropped curated URLs or first-ingest repairs/removals) —
+        # rewrite without running Tavily.
         today = date.today().isoformat()
+        new_text = update_curated_section(seeds_text, accessible, today) if curated_changed else seeds_text
         if not dry_run:
-            seeds_path.write_text(
-                update_curated_section(seeds_text, accessible, today), encoding="utf-8"
-            )
+            seeds_path.write_text(new_text, encoding="utf-8")
         return {
             "template": template_name,
             "status": "updated",
@@ -539,6 +553,7 @@ async def refresh_template(
             "urls": accessible,
             "repairs": repairs,
             "no_replacement": no_replacement,
+            "remaining_first_ingests": remaining_first_ingests,
             "dry_run": dry_run,
         }
 
@@ -549,9 +564,10 @@ async def refresh_template(
             "status": "no-queries",
             "repairs": repairs,
             "no_replacement": no_replacement,
+            "remaining_first_ingests": remaining_first_ingests,
         }
 
-    skip_domains = existing_domains | valid_existing_domains
+    skip_domains = existing_domains | valid_existing_domains | dropped_domains
     if valid_existing:
         print(
             f"  [{template_name}] {len(valid_existing)}/{len(existing_curated)} curated valid,"
@@ -652,6 +668,7 @@ async def refresh_template(
         "urls": accessible,
         "repairs": repairs,
         "no_replacement": no_replacement,
+        "remaining_first_ingests": remaining_first_ingests,
         "dry_run": dry_run,
     }
 
@@ -769,13 +786,28 @@ async def async_main(args: argparse.Namespace) -> int:
             print(f"  [{r['template']}] first-ingest UNRESOLVED (update manually): {url}")
 
     total_skipped = sum(1 for r in results if r["status"] == "ok-no-change")
+    empty_first_ingest = sorted(
+        r["template"] for r in results
+        if r.get("remaining_first_ingests", 1) == 0
+    )
+
     print(f"\n{'='*60}")
     print(f"Done: {total_added} curated URL(s) written, {total_repaired} first-ingest(s) repaired"
           + (f", {total_unresolved} unresolved" if total_unresolved else "")
           + (f", {total_skipped} template(s) skipped (all URLs still valid)" if total_skipped else "")
           + f" across {len(dirs)} template(s).")
+    if empty_first_ingest:
+        print(f"\n{'='*60}")
+        print(f"WARNING: {len(empty_first_ingest)} template(s) now have NO 'Recommended first ingests' URLs")
+        print("(blocked/unavailable entries were removed and no replacement was found).")
+        print("Add at least one working URL manually to each seeds.md below,")
+        print("under '## Recommended first ingests', then re-run this script:\n")
+        for tmpl in empty_first_ingest:
+            seeds_rel = f"synthadoc/templates/{tmpl}/seeds.md"
+            print(f"  {tmpl}")
+            print(f"    {seeds_rel}")
     if not args.dry_run:
-        print("Next step: run  python scripts/validate_seeds.py  to verify scope + accessibility.")
+        print("\nNext step: run  python scripts/validate_seeds.py  to verify scope + accessibility.")
     return 0
 
 

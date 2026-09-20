@@ -3,6 +3,37 @@ from __future__ import annotations
 
 import re
 
+# Scope-check prompt for seeds (curated reference list).
+# Intentionally more permissive than the ingest-agent's prompt:
+# seeds are reference resources for practitioners, not wiki content itself.
+SEEDS_SCOPE_PROMPT = """\
+You curate a reference reading list for a knowledge wiki. Decide whether a URL \
+belongs on this list.
+
+Wiki domain (from purpose.md):
+{purpose}
+
+Rules:
+- action="ingest" if the source is useful reference material for practitioners \
+working in this wiki's domain, even if the source also serves broader audiences \
+(e.g. a government data portal, a standards body, an academic guide, a \
+professional-association resource, a tool practitioners use).
+- action="skip" ONLY when the source is clearly off-domain (wrong industry entirely, \
+spam, generic e-commerce, unrelated listicle) OR explicitly matches an Exclude \
+criterion in the purpose above.
+- Authoritative references — government agencies, standards bodies (NIST, ISO, OSHA, \
+IES), academic institutions, professional associations, industry benchmarks — are \
+action="ingest" when their content is relevant to the domain, even if not narrowly \
+targeted at one sub-domain.
+- When unsure, prefer action="ingest" — a broad-but-relevant reference is better than \
+a missing one.
+
+Source text (first 4 000 characters):
+{content}
+
+Return ONLY valid JSON (no markdown fences):
+{{"action": "ingest or skip", "reasoning": "one concise sentence"}}"""
+
 # URLs returning fewer than this many characters are treated as thin/unusable.
 MIN_CONTENT_CHARS = 500
 

@@ -4,7 +4,7 @@
 
 **PMI project charter guide — components, purpose, and approval process (public)**
 ```
-synthadoc ingest "https://project-management.com/project-charter/" -w <wiki>
+synthadoc ingest "https://kissflow.com/workflow/project-charter-guide" -w <wiki>
 ```
 
 **RAID log templates -- risks, assumptions, issues, dependencies (Smartsheet)**

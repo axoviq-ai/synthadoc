@@ -9,7 +9,7 @@ synthadoc ingest "https://www.census.gov/topics/health.html" -w <wiki>
 
 **CDC Data & Statistics — surveillance data, disease tracking, and public health indicators (public)**
 ```
-synthadoc ingest "https://www.cdc.gov/datastatistics/index.html" -w <wiki>
+synthadoc ingest "https://data.cdc.gov" -w <wiki>
 ```
 
 ## Recommended web searches

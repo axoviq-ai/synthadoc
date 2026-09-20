@@ -9,7 +9,7 @@ synthadoc ingest "https://www.fda.gov/drugs/development-approval-process-drugs" 
 
 **ClinicalTrials.gov — registry and results database for interventional clinical studies (public)**
 ```
-synthadoc ingest "https://clinicaltrials.gov/" -w <wiki>
+synthadoc ingest "http://www.aeaweb.org/forum/3246/clinical-trials-registry-results-databank-invites-comments" -w <wiki>
 ```
 
 ## Recommended web searches

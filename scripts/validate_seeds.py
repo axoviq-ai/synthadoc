@@ -55,6 +55,7 @@ def _ensure_path() -> None:
 from _url_quality import BOT_BLOCK_RE as _BOT_BLOCK_RE
 from _url_quality import LOGIN_WALL_RE as _LOGIN_WALL_RE
 from _url_quality import MIN_CONTENT_CHARS as _MIN_CONTENT_CHARS
+from _url_quality import SEEDS_SCOPE_PROMPT as _SCOPE_PROMPT
 
 # ── URL extraction from seeds.md ──────────────────────────────────────────────
 
@@ -79,32 +80,7 @@ def extract_seed_urls(seeds_text: str) -> list[str]:
 
 
 # ── Scope check ───────────────────────────────────────────────────────────────
-
-# Mirrors the purpose_block prepended to _DECISION_PROMPT in ingest_agent.py.
-# The ingest agent uses action="skip" for out-of-scope content; this prompt
-# reduces that to a binary yes/no so we can report it without writing pages.
-_SCOPE_PROMPT = """\
-You maintain a knowledge wiki. Decide whether a new source document is in scope.
-
-Wiki scope (from purpose.md):
-{purpose}
-
-action="skip" means the source is completely OUTSIDE the wiki's domain \
-(e.g. spam, medical receipts, unrelated e-commerce).
-action="skip" must NEVER be used because a topic is already covered by an \
-existing page — that is what action="update" is for.
-A broad general resource (e.g. a macro-economic report covering all sectors \
-when the wiki is focused on one sub-domain, or raw JSON metadata with no \
-readable prose) should be action="skip" because it adds no domain-specific \
-value.
-A source that is clearly authored for practitioners in this specific domain \
-should be action="ingest".
-
-Source text (first 4 000 characters):
-{content}
-
-Return ONLY valid JSON (no markdown fences):
-{{"action": "ingest or skip", "reasoning": "one concise sentence"}}"""
+# Shared with refresh_search_seeds.py via _url_quality.SEEDS_SCOPE_PROMPT.
 
 # ANSI escape sequence pattern used to strip CLI colour output
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]")
@@ -417,7 +393,7 @@ def collect_failures(results: list[dict]) -> list[dict]:
     return failures
 
 
-def print_summary(all_results: list[dict], failures: list[dict]) -> None:
+def print_summary(all_results: list[dict], failures: list[dict], backend_label: str = "auto") -> None:
     """Print a compact failure list and suggested fix commands."""
     RED   = "\033[31m"
     RESET = "\033[0m"
@@ -451,11 +427,12 @@ def print_summary(all_results: list[dict], failures: list[dict]) -> None:
     for tmpl in failing_templates:
         print(f"  {tmpl:<40} {tmpl_counts[tmpl]} failing")
 
-    # Ready-to-run fix commands (clean, no annotations — copy/paste friendly).
+    # Ready-to-run fix commands — include the same backend so scope decisions match.
+    backend_flag = f" --backend {backend_label}" if backend_label not in ("auto", "") else ""
     print(f"\nTo fix, re-run the refresh script for each failing template")
     print(f"(requires TAVILY_API_KEY — get a free key at https://tavily.com):")
     for tmpl in failing_templates:
-        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}")
+        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}{backend_flag}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -534,7 +511,8 @@ async def async_main(args: argparse.Namespace) -> int:
         return 0
 
     failures = collect_failures(all_results)
-    print_summary(all_results, failures)
+    backend_label = backend.label if backend is not None else "auto"
+    print_summary(all_results, failures, backend_label=backend_label)
     return 1 if failures else 0
 
 

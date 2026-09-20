@@ -9,7 +9,7 @@ synthadoc ingest "https://www.biggerpockets.com/real-estate-investing" -w <wiki>
 
 **NAR Commercial Market Insights — quarterly reports on commercial real estate pricing, sales, and leasing (public)**
 ```
-synthadoc ingest "https://www.nar.realtor/commercial/commercial-market-insights" -w <wiki>
+synthadoc ingest "https://www.nar.realtor/commercial-real-estate-market-insights/september-2026-commercial-real-estate-market-insights-report" -w <wiki>
 ```
 
 ## Recommended web searches
