@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**NIH Good Laboratory Practices — federal standards for lab records, SOPs, and data integrity**
+**FDA Good Laboratory Practices — federal GLP requirements for lab records, SOPs, and data integrity**
 ```
-synthadoc ingest "https://www.niaid.nih.gov/research/good-laboratory-practices" -w <wiki>
+synthadoc ingest "https://www.fda.gov/inspections-compliance-enforcement-and-criminal-investigations/inspection-guides/good-laboratory-practices" -w <wiki>
 ```
 
-**EPA laboratory quality assurance — QC procedures, method validation, and data quality (public)**
+**protocols.io — open repository of peer-reviewed lab protocols and methods**
 ```
-synthadoc ingest "https://www.epa.gov/quality/laboratory-quality-assurance-and-qaqc" -w <wiki>
+synthadoc ingest "https://www.protocols.io/" -w <wiki>
 ```
 
 ## Recommended web searches
