@@ -199,31 +199,39 @@ class _Backend:
         return stdout.decode(errors="replace").strip()
 
 
-def _detect_backend(model: str) -> "_Backend | None":
-    """Return the first usable LLM backend, or None if none is available.
+def _detect_backend(model: str, prefer: str = "auto") -> "_Backend | None":
+    """Return the requested (or first usable) LLM backend.
 
-    Priority:
-      1. ANTHROPIC_API_KEY env var  → direct async Anthropic client (fastest)
-      2. opencode in PATH           → opencode run "<prompt>"
-      3. claude in PATH             → claude -p "<prompt>"  (Claude Code)
+    prefer values:
+      "auto"       — try anthropic-sdk → opencode → claude in order
+      "anthropic"  — force ANTHROPIC_API_KEY / anthropic SDK
+      "opencode"   — force opencode CLI
+      "claude"     — force claude -p (Claude Code CLI)
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if api_key:
-        try:
-            import anthropic
-            return _Backend(
-                label="anthropic-sdk",
-                client=anthropic.AsyncAnthropic(api_key=api_key),
-                model=model,
-            )
-        except ImportError:
-            pass  # fall through to CLI detection
+    if prefer in ("auto", "anthropic"):
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if api_key:
+            try:
+                import anthropic
+                return _Backend(
+                    label="anthropic-sdk",
+                    client=anthropic.AsyncAnthropic(api_key=api_key),
+                    model=model,
+                )
+            except ImportError:
+                if prefer == "anthropic":
+                    return None  # explicitly requested but unavailable
+        elif prefer == "anthropic":
+            return None
 
-    # CLI candidates: (binary name, base command list)
-    for binary, cli_cmd in [
-        ("opencode", ["opencode", "run"]),   # opencode run "<prompt>"
-        ("claude",   ["claude", "-p"]),       # claude -p "<prompt>"
-    ]:
+    cli_candidates = [
+        ("opencode", ["opencode", "run"]),
+        ("claude",   ["claude", "-p"]),
+    ]
+    if prefer in ("opencode", "claude"):
+        cli_candidates = [(b, c) for b, c in cli_candidates if b == prefer]
+
+    for binary, cli_cmd in cli_candidates:
         if shutil.which(binary):
             return _Backend(label=binary, cli_cmd=cli_cmd)
 
@@ -397,48 +405,48 @@ async def validate_template(
 
 # ── Report ─────────────────────────────────────────────────────────────────────
 
-def print_report(results: list[dict], scope_active: bool) -> list[dict]:
-    """Print a colour-coded table and return the list of failed rows."""
-    GREEN = "\033[32m"
+def collect_failures(results: list[dict]) -> list[dict]:
+    """Return only the failed rows (inaccessible or out-of-scope)."""
+    failures = []
+    for r in results:
+        url_ok   = r["url_status"] == "OK"
+        scope_ok = r["in_scope"] is None or r["in_scope"]
+        if not (url_ok and scope_ok):
+            failures.append(r)
+    return failures
+
+
+def print_summary(all_results: list[dict], failures: list[dict]) -> None:
+    """Print a compact failure list and suggested fix commands."""
     RED   = "\033[31m"
     RESET = "\033[0m"
 
-    COL_T = 32   # template name
-    COL_S = 18   # url_status
+    total   = len(all_results)
+    n_fail  = len(failures)
+    n_pass  = total - n_fail
 
-    hdr = f"{'TEMPLATE':<{COL_T}}  {'URL_STATUS':<{COL_S}}"
-    if scope_active:
-        hdr += f"  {'SCOPE':<6}"
-    hdr += "  URL"
-    print(f"\n{hdr}")
-    print("-" * (len(hdr) + 35))
+    print(f"\n{'='*60}")
+    print(f"{n_pass}/{total} URLs passed" + (f", {n_fail} failed" if n_fail else ""))
 
-    failures: list[dict] = []
-    for r in results:
-        url_ok   = r["url_status"] == "OK"  # THIN/EMPTY/BLOCKED/ERROR all fail
-        scope_ok = r["in_scope"] is None or r["in_scope"]
-        passed   = url_ok and scope_ok
-        if not passed:
-            failures.append(r)
+    if not failures:
+        return
 
-        color = GREEN if passed else RED
-        scope_str = ""
-        if scope_active and r["in_scope"] is not None:
-            scope_str = "YES" if r["in_scope"] else "NO "
-        short_url = r["url"][:56] + "…" if len(r["url"]) > 57 else r["url"]
+    print(f"\nFailed URLs:")
+    for r in failures:
+        tag = r["url_status"] if r["url_status"] != "OK" else "OUT-OF-SCOPE"
+        from urllib.parse import urlparse
+        domain = urlparse(r["url"]).netloc or r["url"]
+        print(f"  {RED}[{tag}] {r['template']}  {domain}{RESET}")
+        print(f"         {r['url']}")
+        detail = r.get("error_detail") or r.get("scope_reason", "")
+        if detail:
+            print(f"         ↳ {detail}")
 
-        row = f"{color}{r['template']:<{COL_T}}  {r['url_status']:<{COL_S}}"
-        if scope_active:
-            row += f"  {scope_str:<6}"
-        row += f"  {short_url}{RESET}"
-        print(row)
-
-        if not url_ok and r["error_detail"]:
-            print(f"  {'':>{COL_T}}  {r['error_detail']}")
-        if scope_active and not scope_ok:
-            print(f"  {'':>{COL_T}}  ↳ {r['scope_reason']}")
-
-    return failures
+    # Deduplicate failing templates and emit ready-to-run fix commands.
+    failing_templates = sorted({r["template"] for r in failures})
+    print(f"\nTo fix, re-run the refresh script for each failing template:")
+    for tmpl in failing_templates:
+        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -450,7 +458,7 @@ async def async_main(args: argparse.Namespace) -> int:
     # ── LLM backend resolution ────────────────────────────────────────────────
     backend: "_Backend | None" = None
     if not args.no_scope:
-        backend = _detect_backend(args.model)
+        backend = _detect_backend(args.model, prefer=args.backend)
         if backend is None:
             print(
                 "ERROR: SCOPE CHECK REQUIRED but no LLM backend is available.\n"
@@ -516,22 +524,9 @@ async def async_main(args: argparse.Namespace) -> int:
         print("No concrete seed URLs found.")
         return 0
 
-    failures = print_report(all_results, scope_active=backend is not None)
-
-    total = len(all_results)
-    print(f"\n{'='*60}")
-    if failures:
-        print(f"FAILED: {len(failures)} of {total} URLs")
-        for r in failures:
-            tag = r["url_status"] if r["url_status"] != "OK" else "OUT-OF-SCOPE"
-            print(f"  [{tag}] {r['template']}: {r['url']}")
-            detail = r.get("error_detail") or r.get("scope_reason", "")
-            if detail:
-                print(f"          {detail}")
-        return 1
-
-    print(f"All {total} seed URLs passed")
-    return 0
+    failures = collect_failures(all_results)
+    print_summary(all_results, failures)
+    return 1 if failures else 0
 
 
 def main() -> None:
@@ -554,6 +549,18 @@ def main() -> None:
         "--model", default="claude-haiku-4-5-20251001",
         metavar="MODEL_ID",
         help="Model used for LLM scope checks (default: claude-haiku-4-5-20251001).",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "anthropic", "opencode", "claude"],
+        default="auto",
+        help=(
+            "LLM backend for scope checks: "
+            "'auto' tries anthropic-sdk → opencode → claude in order (default); "
+            "'anthropic' forces ANTHROPIC_API_KEY / SDK; "
+            "'opencode' forces opencode CLI; "
+            "'claude' forces claude -p (Claude Code CLI)."
+        ),
     )
     sys.exit(asyncio.run(async_main(parser.parse_args())))
 
