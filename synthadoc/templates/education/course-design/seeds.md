@@ -29,9 +29,9 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://plpnetwork.com/2012/05/15/flipping-blooms-taxonomy" -w <wiki>
-synthadoc ingest "https://gohugo.io/content-management/taxonomies" -w <wiki>
+synthadoc ingest "https://cft.vanderbilt.edu/guides-sub-pages/blooms-taxonomy/" -w <wiki>
 synthadoc ingest "https://www.digitallearninginstitute.com/blog/the-digital-learning-design-process-addie-model-for-instructional-design" -w <wiki>
-synthadoc ingest "https://bradfrost.com/blog/post/atomic-web-design" -w <wiki>
+synthadoc ingest "https://www.instructionaldesign.org/theories/gagnes-nine-events/" -w <wiki>
 synthadoc ingest "https://www.cablecast.tv/resources/blog/wcag-video-accessibility-cheat-sheet" -w <wiki>
 synthadoc ingest "https://drexel.edu/teaching-and-learning/resources/assessment/designing-assessments" -w <wiki>
 ```

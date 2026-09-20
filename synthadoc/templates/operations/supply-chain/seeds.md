@@ -31,9 +31,9 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://www.simplemanufacturing.com/approved-vendor-list-iso-9001-as9100" -w <wiki>
 synthadoc ingest "https://simplerqms.com/supplier-qualification" -w <wiki>
 synthadoc ingest "https://asqasktheexperts.org/2015/07/16/approved-supplier-list" -w <wiki>
-synthadoc ingest "https://finance.yahoo.com/news/gep-procurement-software-secures-top-135300004.html" -w <wiki>
-synthadoc ingest "https://tracxn.com/d/acquisitions/acquisitions-by-sole-source-capital/__bRBR7ScCSo5jbj5FyAjHnRJyBrn_RwYMrGQWi6PofsI" -w <wiki>
-synthadoc ingest "https://tothesource.com" -w <wiki>
+synthadoc ingest "https://www.ism.ws/tools-resources/supply-management-tools/" -w <wiki>
+synthadoc ingest "https://www.inboundlogistics.com/articles/supply-chain-risk-management/" -w <wiki>
+synthadoc ingest "https://www.iaccm.com/resources/contract-management-best-practices/" -w <wiki>
 ```
 
 ## First steps checklist

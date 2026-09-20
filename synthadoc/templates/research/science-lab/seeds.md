@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**Your lab's published papers (PubMed search)**
+**NIH Good Laboratory Practices — federal standards for lab records, SOPs, and data integrity**
 ```
-synthadoc ingest "https://www.kent.edu/stark/lab-reports-and-scientific-writing" -w <wiki>
+synthadoc ingest "https://www.niaid.nih.gov/research/good-laboratory-practices" -w <wiki>
 ```
 
-**PubMed Central — free full-text protocol and methods papers**
+**EPA laboratory quality assurance — QC procedures, method validation, and data quality (public)**
 ```
-synthadoc ingest "https://pmc.ncbi.nlm.nih.gov/" -w <wiki>
+synthadoc ingest "https://www.epa.gov/quality/laboratory-quality-assurance-and-qaqc" -w <wiki>
 ```
 
 ## Recommended web searches
