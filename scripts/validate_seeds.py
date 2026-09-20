@@ -289,8 +289,20 @@ async def validate_url(
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
             err = str(e)
-            if any(code in err for code in ("404", "410", "Not Found", "Gone")):
+            if any(s in err for s in ("404", "410", "Not Found", "Gone")):
                 result["url_status"] = "NOT FOUND"
+            elif any(s in err for s in ("Timeout", "timed out", "ReadTimeout", "ConnectTimeout")):
+                result["url_status"] = "TIMEOUT"
+                result["error_detail"] = err[:120]
+            elif any(s in err for s in ("SSL", "certificate", "CERTIFICATE")):
+                result["url_status"] = "SSL ERROR"
+                result["error_detail"] = err[:120]
+            elif any(s in err for s in ("Too many redirects", "too many redirects", "RedirectLoop")):
+                result["url_status"] = "REDIRECT LOOP"
+                result["error_detail"] = err[:120]
+            elif any(s in err for s in ("50", "Server error", "Service Unavailable", "Bad Gateway")):
+                result["url_status"] = "SERVER ERROR"
+                result["error_detail"] = err[:120]
             else:
                 result["url_status"] = "ERROR"
                 result["error_detail"] = err[:120]
@@ -345,7 +357,7 @@ class _Progress:
             f"{template:<32} {status:<14} {short_url}{self._RESET}",
             flush=True,
         )
-        if result.get("error_detail") and status not in ("NOT FOUND",):
+        if result.get("error_detail") and status not in ("NOT FOUND", "REDIRECT LOOP"):
             print(f"    {self._RED}  └─ {result['error_detail']}{self._RESET}", flush=True)
 
 
