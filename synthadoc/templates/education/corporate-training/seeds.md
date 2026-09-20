@@ -39,7 +39,7 @@ synthadoc ingest "https://asana.com/resources/sop-template" -w <wiki>
 synthadoc ingest "https://www.atlassian.com/software/confluence/templates/sop" -w <wiki>
 synthadoc ingest "https://ks-agents.com/blog/competency-framework-examples-by-role" -w <wiki>
 synthadoc ingest "https://www.leapsome.com/blog/competency-framework-template" -w <wiki>
-synthadoc ingest "https://www.aihr.com/blog/30-60-90-day-plan-template" -w <wiki>
+synthadoc ingest "https://hbr.org/2018/12/the-first-30-days-in-a-new-job" -w <wiki>
 ```
 
 ## First steps checklist

@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**Lab Manager — trade publication covering lab protocols, SOPs, instrument management, and quality**
+**Lab Manager — laboratory management best practices, SOPs, and instrument maintenance guides**
 ```
-synthadoc ingest "https://www.labmanager.com/" -w <wiki>
+synthadoc ingest "https://www.labmanager.com/laboratory-management" -w <wiki>
 ```
 
-**protocols.io — open repository of peer-reviewed lab protocols and methods**
+**protocols.io researcher guide — how to find, use, and publish reproducible laboratory protocols**
 ```
-synthadoc ingest "https://www.protocols.io/" -w <wiki>
+synthadoc ingest "https://www.protocols.io/researchers" -w <wiki>
 ```
 
 ## Recommended web searches
@@ -29,7 +29,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://research.columbia.edu/sites/default/files/content/RCT%20content/ReaDI%20Program/tutorial_LabNotebook_V9.pdf" -w <wiki>
-synthadoc ingest "https://libguides.umn.edu/c.php?g=1164012&p=8497442" -w <wiki>
+synthadoc ingest "https://www.dataone.org/resources/data-management-plan/" -w <wiki>
 synthadoc ingest "https://ori.hhs.gov/education/products/wsu/data_lab.html" -w <wiki>
 ```
 

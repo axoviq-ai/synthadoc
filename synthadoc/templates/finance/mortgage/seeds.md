@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.va.gov/housing-assistance/home-loans/loan-types/" -w <wiki>
 ```
 
-**FHFA House Price Index — measures repeat-sale home price changes (public)**
+**Fannie Mae housing and economic research — housing forecasts, price indices, and lender surveys (public)**
 ```
-synthadoc ingest "https://www.fhfa.gov/data/hpi" -w <wiki>
+synthadoc ingest "https://www.fanniemae.com/research-and-insights/economic-housing-research" -w <wiki>
 ```
 
 ## Recommended web searches
@@ -29,7 +29,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://finance.yahoo.com/news/conforming-loan-limits-2024-180052245.html" -w <wiki>
-synthadoc ingest "https://disclosureofficial.com" -w <wiki>
+synthadoc ingest "https://www.consumerfinance.gov/owning-a-home/loan-estimate/" -w <wiki>
 synthadoc ingest "https://gustancho.com/major-changes-in-fha-guidelines" -w <wiki>
 synthadoc ingest "https://gcamortgage.com/hud-4000-1-fha-handbook" -w <wiki>
 synthadoc ingest "https://www.carringtoncorrespondent.com/2023/03/23/updated-non-qm-product-underwriting-guidelines" -w <wiki>

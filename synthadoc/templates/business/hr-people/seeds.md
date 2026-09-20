@@ -37,7 +37,7 @@ synthadoc ingest "https://rockstardeveloperuniversity.com/software-engineer-care
 synthadoc ingest "https://www.levels.fyi/blog/swe-level-framework.html" -w <wiki>
 synthadoc ingest "https://lattice.com/templates/software-engineering-career-track-template" -w <wiki>
 synthadoc ingest "https://workleap.com/blog/a-quick-start-guide-to-building-pay-bands-with-benchmark-data" -w <wiki>
-synthadoc ingest "https://www.aihr.com/blog/employee-handbook/" -w <wiki>
+synthadoc ingest "https://www.trinet.com/insights/how-to-create-an-employee-handbook" -w <wiki>
 synthadoc ingest "https://www.confirm.com/blog/performance-calibration-guide-hr-leaders-2026" -w <wiki>
 ```
 

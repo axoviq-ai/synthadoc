@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**Cornell LII Code of Federal Regulations — all 50 titles (free)**
+**IIA International Standards for the Professional Practice of Internal Auditing (free)**
 ```
-synthadoc ingest "https://www.law.cornell.edu/cfr/text" -w <wiki>
+synthadoc ingest "https://www.theiia.org/en/standards/2024-standards/global-internal-audit-standards/" -w <wiki>
 ```
 
 **NIST Risk Management Framework overview (free)**
@@ -31,9 +31,9 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://assets.kpmg.com/content/dam/kpmg/pdf/2016/05/2750-New-COSO-2013-Framework-WHITEPAPER-V4.pdf" -w <wiki>
 synthadoc ingest "https://www.theiia.org/en/products/bookstore/coso---internal-control--integrated-framework-2013-framework" -w <wiki>
 synthadoc ingest "https://www.tx.cpa/docs/default-source/default-document-library/coso2013_julyaugust2015.pdf?sfvrsn=2" -w <wiki>
-synthadoc ingest "https://finance.yahoo.com/news/codoxo-achieves-nist-800-53-205600794.html" -w <wiki>
+synthadoc ingest "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final" -w <wiki>
 synthadoc ingest "https://www.ovaledge.com/blog/data-privacy-compliance-checklist" -w <wiki>
-synthadoc ingest "https://www.onetrust.com/resources/gdpr-compliance-checklist" -w <wiki>
+synthadoc ingest "https://ico.org.uk/for-organisations/guide-to-the-general-data-protection-regulation-gdpr/" -w <wiki>
 ```
 
 ## First steps checklist

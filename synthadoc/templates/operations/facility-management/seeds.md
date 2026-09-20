@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**Energy Star commercial buildings program (public)**
+**ENERGY STAR Portfolio Manager — benchmark building energy use and track efficiency over time (public)**
 ```
-synthadoc ingest "https://www.energystar.gov/buildings" -w <wiki>
+synthadoc ingest "https://www.energystar.gov/buildings/benchmark" -w <wiki>
 ```
 
-**OSHA workers — hazard recognition, worker rights, and safety standards (public)**
+**OSHA General Industry Standards 1910 — full text of safety and health regulations for general industry (public)**
 ```
-synthadoc ingest "https://www.osha.gov/workers" -w <wiki>
+synthadoc ingest "https://www.osha.gov/laws-regs/regulations/standardnumber/1910" -w <wiki>
 ```
 
 ## Recommended web searches
@@ -33,7 +33,7 @@ synthadoc ingest "https://www.clickmaint.com/blog/cmms-preventive-maintenance-ex
 synthadoc ingest "https://limble.com/learn/best-practices-guide" -w <wiki>
 synthadoc ingest "https://oxmaint.com/blog/post/osha-self-inspection-checklist-general-industry" -w <wiki>
 synthadoc ingest "https://www.checksheets.com/safety-inspection-checklist" -w <wiki>
-synthadoc ingest "https://www.abs-qe.com/Knowledge/ISO-Standards/ISO-55001-Asset-Management-Overview" -w <wiki>
+synthadoc ingest "https://www.facilitiesnet.com/maintenanceoperations/" -w <wiki>
 ```
 
 ## First steps checklist

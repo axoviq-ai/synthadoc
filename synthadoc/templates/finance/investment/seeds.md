@@ -9,9 +9,9 @@ Seed the wiki with real market context before adding proprietary research.
 synthadoc ingest "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/data.html" -w <wiki>
 ```
 
-**Federal Reserve H.15 — selected interest rates (treasury, corporate, prime)**
+**FRED — Federal Reserve Economic Data: interactive database of interest rates, yields, and economic indicators**
 ```
-synthadoc ingest "https://www.federalreserve.gov/releases/h15/" -w <wiki>
+synthadoc ingest "https://fred.stlouisfed.org/" -w <wiki>
 ```
 
 ## Recommended web searches

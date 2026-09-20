@@ -32,7 +32,7 @@ synthadoc ingest "https://plpnetwork.com/2012/05/15/flipping-blooms-taxonomy" -w
 synthadoc ingest "https://cft.vanderbilt.edu/guides-sub-pages/blooms-taxonomy/" -w <wiki>
 synthadoc ingest "https://www.digitallearninginstitute.com/blog/the-digital-learning-design-process-addie-model-for-instructional-design" -w <wiki>
 synthadoc ingest "https://cft.vanderbilt.edu/guides-sub-pages/understanding-by-design/" -w <wiki>
-synthadoc ingest "https://www.cablecast.tv/resources/blog/wcag-video-accessibility-cheat-sheet" -w <wiki>
+synthadoc ingest "https://webaim.org/articles/captions/" -w <wiki>
 synthadoc ingest "https://drexel.edu/teaching-and-learning/resources/assessment/designing-assessments" -w <wiki>
 ```
 

@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.census.gov/topics/health.html" -w <wiki>
 ```
 
-**WHO Global Health Observatory (public)**
+**CDC Data & Statistics — surveillance data, disease tracking, and public health indicators (public)**
 ```
-synthadoc ingest "https://www.who.int/data/gho" -w <wiki>
+synthadoc ingest "https://www.cdc.gov/datastatistics/index.html" -w <wiki>
 ```
 
 ## Recommended web searches

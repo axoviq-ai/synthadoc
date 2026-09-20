@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**US Census Bureau economic indicators (public)**
+**BLS Industries at a Glance — sector-level employment, wages, and productivity data from the Bureau of Labor Statistics (public)**
 ```
-synthadoc ingest "https://www.census.gov/economic-indicators/" -w <wiki>
+synthadoc ingest "https://www.bls.gov/bls/industry.htm" -w <wiki>
 ```
 
-**SBA market research guide — industry analysis and competitive landscape (public)**
+**BLS Consumer Expenditure Survey — household spending patterns and consumer demographics (public)**
 ```
-synthadoc ingest "https://www.sba.gov/business-guide/plan-your-business/market-research-competitive-analysis" -w <wiki>
+synthadoc ingest "https://www.bls.gov/cex/" -w <wiki>
 ```
 
 ## Recommended web searches

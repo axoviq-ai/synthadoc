@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**AHRQ — Agency for Healthcare Research and Quality: patient safety, clinical quality, and evidence-based care (public)**
+**AHRQ Patient Safety — tools, guides, and quality improvement resources for clinical practice (public)**
 ```
-synthadoc ingest "https://www.ahrq.gov/" -w <wiki>
+synthadoc ingest "https://www.ahrq.gov/patient-safety/index.html" -w <wiki>
 ```
 
 **USPSTF preventive care recommendations (free)**

@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**PMBOK-aligned project charter guidance (PMI / Blackscrum)**
+**PMI project charter guide — components, purpose, and approval process (public)**
 ```
-synthadoc ingest "https://blackscrum.com.au/a-comprehensive-pmbok-project-charter-template" -w <wiki>
+synthadoc ingest "https://project-management.com/project-charter/" -w <wiki>
 ```
 
 **RAID log templates -- risks, assumptions, issues, dependencies (Smartsheet)**
@@ -31,7 +31,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://performance.eleapsoftware.com/project-charter-for-pmp-complete-guide-and-examples" -w <wiki>
 synthadoc ingest "https://kiolo.com/en/blog/raid-log-template" -w <wiki>
 synthadoc ingest "https://expertprogrammanagement.com/raid-risks-assumptions-issues-and-dependencies" -w <wiki>
-synthadoc ingest "https://www.teamretro.com/retrospective-templates/start-stop-continue-retrospective" -w <wiki>
+synthadoc ingest "https://www.atlassian.com/team-playbook/plays/retrospective" -w <wiki>
 synthadoc ingest "https://easyretro.io/sprint-retrospective/sprint-retrospective-start-stop-continue-examples" -w <wiki>
 synthadoc ingest "https://slideuplift.com/blog/start-stop-continue-retrospective-guide" -w <wiki>
 ```

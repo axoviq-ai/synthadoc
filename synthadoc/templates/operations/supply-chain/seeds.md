@@ -2,14 +2,14 @@
 
 ## Recommended first ingests
 
-**ITA trade resources — international trade data, logistics, and market access (public)**
+**ISM Report on Business — monthly PMI and procurement activity indicators from the Institute for Supply Management (public)**
 ```
-synthadoc ingest "https://www.trade.gov/" -w <wiki>
+synthadoc ingest "https://www.ismworld.org/supply-management-news-and-reports/reports/ism-report-on-business/" -w <wiki>
 ```
 
-**USTR trade agreements — US free trade agreement texts and summaries (public)**
+**ICC Incoterms 2020 — official international commercial terms for trade contracts (public)**
 ```
-synthadoc ingest "https://ustr.gov/trade-agreements" -w <wiki>
+synthadoc ingest "https://iccwbo.org/business-solutions/incoterms-rules/incoterms-2020/" -w <wiki>
 ```
 
 ## Recommended web searches
@@ -31,9 +31,9 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://www.simplemanufacturing.com/approved-vendor-list-iso-9001-as9100" -w <wiki>
 synthadoc ingest "https://simplerqms.com/supplier-qualification" -w <wiki>
 synthadoc ingest "https://asqasktheexperts.org/2015/07/16/approved-supplier-list" -w <wiki>
-synthadoc ingest "https://www.supplychainbrain.com/" -w <wiki>
+synthadoc ingest "https://www.cips.org/knowledge/procurement-topics-and-skills/" -w <wiki>
 synthadoc ingest "https://www.inboundlogistics.com/articles/supply-chain-risk-management/" -w <wiki>
-synthadoc ingest "https://www.iaccm.com/resources/contract-management-best-practices/" -w <wiki>
+synthadoc ingest "https://www.cips.org/knowledge/procurement-topics-and-skills/contract-management/" -w <wiki>
 ```
 
 ## First steps checklist

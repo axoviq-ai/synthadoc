@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.fda.gov/drugs/development-approval-process-drugs" -w <wiki>
 ```
 
-**PubMed clinical trials for your indication (free)**
+**ClinicalTrials.gov — registry and results database for interventional clinical studies (public)**
 ```
-synthadoc ingest "https://www.bumc.bu.edu/medlib/portals/camed/clinical-queries" -w <wiki>
+synthadoc ingest "https://clinicaltrials.gov/" -w <wiki>
 ```
 
 ## Recommended web searches

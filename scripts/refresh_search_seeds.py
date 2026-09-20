@@ -477,17 +477,57 @@ async def refresh_template(
         seen_domains.add(d)
         candidates.append(url)
 
-    # ── Step 3: accessibility + scope check ───────────────────────────────────
-    async def _ok(url: str) -> bool:
-        accessible, content = await _url_accessible(url, skill, url_sem)
-        if not accessible:
+    # ── Step 3: accessibility + scope check (sequential, with retry) ─────────
+    found: list[str] = []
+    seen_all: set[str] = set(candidates)
+
+    async def _try_candidate(url: str) -> bool:
+        ok, content = await _url_accessible(url, skill, url_sem)
+        if not ok:
             return False
         if purpose and backend:
-            return await _in_scope(content, purpose, backend, llm_sem)
+            if not await _in_scope(content, purpose, backend, llm_sem):
+                print(f"  [{template_name}] scope-rejected: {url}", file=sys.stderr)
+                return False
         return True
 
-    checks = await asyncio.gather(*[_ok(u) for u in candidates])
-    accessible = [u for u, ok in zip(candidates, checks) if ok][:max_refs]
+    for url in candidates:
+        if len(found) >= max_refs:
+            break
+        if await _try_candidate(url):
+            found.append(url)
+
+    # If we still need more, retry each query with a larger result set
+    if len(found) < max_refs and queries:
+        retry_per_query = max_per_query * 3
+        for query in queries:
+            if len(found) >= max_refs:
+                break
+            async with tav_sem:
+                try:
+                    resp = await search_tavily(query, retry_per_query, tavily_key)
+                except Exception as exc:
+                    print(
+                        f"  [{template_name}] Tavily retry error for {query!r}: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+            for result in resp.get("results", []):
+                if len(found) >= max_refs:
+                    break
+                url = result.get("url", "").strip()
+                if not url or url in seen_all:
+                    continue
+                if _is_blocked(url, blocked):
+                    continue
+                d = _netloc(url)
+                if d in existing_domains or d in {_netloc(u) for u in found}:
+                    continue
+                seen_all.add(url)
+                if await _try_candidate(url):
+                    found.append(url)
+
+    accessible = found
 
     # ── Step 4: write section ─────────────────────────────────────────────────
     today = date.today().isoformat()
