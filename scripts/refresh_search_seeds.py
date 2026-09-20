@@ -608,10 +608,14 @@ async def async_main(args: argparse.Namespace) -> int:
     scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
+    tavily_masked = f"tvly-...{tavily_key[-4:]}" if len(tavily_key) > 4 else "***"
+    lm_label = backend.label if backend else "none"
     print(
         f"{mode}Refreshing {len(dirs)} template(s) "
-        f"(Tavily max_per_query={args.max_per_query}, "
-        f"max_refs={args.max_refs}{scope_note}) …"
+        f"(Tavily key: {tavily_masked}, "
+        f"LLM backend: {lm_label}, "
+        f"max_per_query={args.max_per_query}, "
+        f"max_refs={args.max_refs}) …"
     )
     if not backend:
         print(
