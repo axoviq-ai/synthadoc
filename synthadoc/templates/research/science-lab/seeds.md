@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**FDA Good Laboratory Practices — federal GLP requirements for lab records, SOPs, and data integrity**
+**Lab Manager — trade publication covering lab protocols, SOPs, instrument management, and quality**
 ```
-synthadoc ingest "https://www.fda.gov/inspections-compliance-enforcement-and-criminal-investigations/inspection-guides/good-laboratory-practices" -w <wiki>
+synthadoc ingest "https://www.labmanager.com/" -w <wiki>
 ```
 
 **protocols.io — open repository of peer-reviewed lab protocols and methods**

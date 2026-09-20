@@ -31,7 +31,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://www.simplemanufacturing.com/approved-vendor-list-iso-9001-as9100" -w <wiki>
 synthadoc ingest "https://simplerqms.com/supplier-qualification" -w <wiki>
 synthadoc ingest "https://asqasktheexperts.org/2015/07/16/approved-supplier-list" -w <wiki>
-synthadoc ingest "https://www.ism.ws/tools-resources/supply-management-tools/" -w <wiki>
+synthadoc ingest "https://www.supplychainbrain.com/" -w <wiki>
 synthadoc ingest "https://www.inboundlogistics.com/articles/supply-chain-risk-management/" -w <wiki>
 synthadoc ingest "https://www.iaccm.com/resources/contract-management-best-practices/" -w <wiki>
 ```

@@ -32,7 +32,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://www.occupier.com/blog/pillars-commercial-lease-abstraction" -w <wiki>
-synthadoc ingest "https://www.nfpa.org/for-professionals/codes-and-standards/list-of-codes-and-standards/detail?code=101" -w <wiki>
+synthadoc ingest "https://www.irem.org/" -w <wiki>
 synthadoc ingest "https://www.netvendor.com/blog/the-best-vendor-compliance-guide-for-property-management-teams" -w <wiki>
 synthadoc ingest "https://getjones.com/blog/vendor-certificates-of-insurance-what-property-managers-need-to-know" -w <wiki>
 synthadoc ingest "https://visitt.io/glossary/vendor-insurance" -w <wiki>

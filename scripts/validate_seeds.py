@@ -55,6 +55,29 @@ def _ensure_path() -> None:
 # agent would skip them anyway; we surface them here before users hit the wall.
 _MIN_CONTENT_CHARS = 500
 
+# ── Login / paywall wall detection ───────────────────────────────────────────
+
+# Some sites redirect 200 → a login or subscribe page instead of raising 401/403.
+# These patterns are matched against the first 3 000 characters of extracted text.
+# A match sets url_status = "LOGIN_WALL" and counts as a failure, because the
+# ingest agent would receive the same gated content and skip the page.
+_LOGIN_WALL_RE = re.compile(
+    r"""
+    (?:
+        please\s+(?:sign|log)\s*(?:-\s*)?in\b                                   # "please sign in"
+      | (?:sign|log)\s*(?:-\s*)?in\s+(?:to\s+access|is\s+required|required)     # "sign in required"
+      | you\s+(?:must|need\s+to)\s+(?:be\s+)?(?:signed|logged)\s*[-\s]?in      # "you must be logged in"
+      | (?:this\s+)?(?:page|content|article|resource)\s+(?:is\s+)?(?:available\s+only|requires?)\s+(?:to\s+)?(?:subscribers?|members?|registered\s+users?)
+      | (?:subscribe|subscription)\s+(?:to\s+access|required\s+to)              # "subscribe to access"
+      | (?:access\s+denied|not\s+authorized\s+to\s+access)                      # hard auth errors
+      | authentication\s+required                                                # "authentication required"
+      | \bpaywall\b                                                              # explicit paywall mention
+      | restricted\s+to\s+(?:subscribers?|members?|registered\s+users?)         # "restricted to members"
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # ── URL extraction from seeds.md ──────────────────────────────────────────────
 
 _INGEST_URL_RE = re.compile(r'synthadoc\s+ingest\s+"(https?://[^"]+)"')
@@ -267,7 +290,12 @@ async def validate_url(
             elif len(content) < _MIN_CONTENT_CHARS:
                 result["url_status"] = "THIN"
             else:
-                result["url_status"] = "OK"
+                m = _LOGIN_WALL_RE.search(content[:3_000])
+                if m:
+                    result["url_status"] = "LOGIN_WALL"
+                    result["error_detail"] = f"auth/paywall pattern: {m.group().strip()!r}"
+                else:
+                    result["url_status"] = "OK"
         except DomainBlockedException as e:
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
