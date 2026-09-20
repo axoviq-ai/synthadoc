@@ -444,7 +444,8 @@ def print_summary(all_results: list[dict], failures: list[dict]) -> None:
 
     # Deduplicate failing templates and emit ready-to-run fix commands.
     failing_templates = sorted({r["template"] for r in failures})
-    print(f"\nTo fix, re-run the refresh script for each failing template:")
+    print(f"\nTo fix, re-run the refresh script for each failing template")
+    print(f"(requires TAVILY_API_KEY — get a free key at https://tavily.com):")
     for tmpl in failing_templates:
         print(f"  python scripts/refresh_search_seeds.py --template {tmpl}")
 
