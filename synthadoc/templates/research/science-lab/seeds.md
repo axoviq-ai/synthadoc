@@ -2,10 +2,11 @@
 
 ## Recommended first ingests
 
-**ORI Lab Management guide — laboratory notebooks, data management standards, and record-keeping requirements for research PIs**
+**Your own SOPs and protocols** — paste existing protocol documents into `raw_sources/protocols/`, then ingest them:
 ```
-synthadoc ingest "https://ori.hhs.gov/education/products/wsu/data.html" -w <wiki>
+synthadoc ingest raw_sources/protocols/ --batch -w <wiki>
 ```
+*No existing SOPs yet? Use the starter template: copy `raw_sources/protocols/template-sop.md`, rename and fill in, then ingest.*
 
 **protocols.io researcher guide — how to find, use, and publish reproducible laboratory protocols**
 ```
