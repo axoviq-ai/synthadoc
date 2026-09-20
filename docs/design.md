@@ -2897,6 +2897,24 @@ The left navigation bar in the web UI is driven by `GET /sessions` (returns up t
 conversation_history_turns = 5    # turns to include in each request (default: 5; 0 = disable history)
 ```
 
+### Theme Toggle
+
+The tab bar (`Chat | Graph | [toggle]`) has a cycling button at the right end that switches between three display modes:
+
+| Mode | Behaviour |
+| --- | --- |
+| **System** (default) | No `data-theme` attribute on `<html>` — follows `prefers-color-scheme` |
+| **Dark** | Sets `data-theme="dark"` on `<html>` |
+| **Light** | Sets `data-theme="light"` on `<html>` |
+
+**Persistence:** `localStorage` key `synthadoc-theme` stores the choice. An inline `<script>` in `index.html` reads it and applies `data-theme` before React renders, preventing a flash of the wrong theme on page load.
+
+**Implementation:** `web-ui/src/useTheme.ts` — a React hook that owns the `ThemeMode` state (`"system" | "dark" | "light"`), persists it to `localStorage`, and applies/removes `data-theme` on `document.documentElement` via `useEffect`. `ThemeToggle.tsx` renders the corresponding icon (moon / sun / monitor) and cycles modes: `system → dark → light → system`.
+
+**Background image:** The hero background image (`hero-bg.png` — a dark navy/purple scene) is applied only when the resolved theme is dark: `themeMode === "dark"` or (`themeMode === "system"` and `window.matchMedia("(prefers-color-scheme: dark)").matches`). In light mode the background falls back to the plain `--bg-page` CSS token.
+
+**CSS token system:** All colours are CSS custom properties on `:root`. Dark defaults sit in the bare `:root` block; light overrides are defined twice — in `@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) }` for system mode and in `:root[data-theme="light"]` for the explicit choice — so the toggle wins in both directions. Code blocks are kept dark in all themes (`--code-bg: #1e1f2e`).
+
 ### CLI command
 
 ```
