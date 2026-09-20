@@ -49,29 +49,8 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
-# ── Content-quality threshold ─────────────────────────────────────────────────
-
-# URLs returning fewer than this many characters are treated as thin/unusable
-# (Cloudflare JS challenges, paywall stubs, empty navigation shells).  Keep in
-# sync with the same constant in validate_seeds.py.
-_MIN_CONTENT_CHARS = 500
-
-# WAF/CDN bot-challenge patterns — some hosts return HTTP 200 with a JS challenge
-# or "Access Denied" body instead of real content.  Keep in sync with validate_seeds.py.
-_BOT_BLOCK_RE = re.compile(
-    r"""
-    (?:
-        Incapsula\s+incident\s+ID
-      | _cf_chl_opt
-      | challenge-form
-      | Ray\s+ID:\s+[0-9a-f]{16}
-      | Access\s+Denied\b.*?(?:server|reference\s+\#)
-      | enable\s+JavaScript\s+and\s+cookies
-      | bot\s+or\s+(?:automated?\s+)?(?:request|traffic|crawler)
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE | re.DOTALL,
-)
+from _url_quality import BOT_BLOCK_RE as _BOT_BLOCK_RE
+from _url_quality import MIN_CONTENT_CHARS as _MIN_CONTENT_CHARS
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 

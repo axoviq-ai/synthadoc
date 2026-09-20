@@ -48,55 +48,9 @@ def _ensure_path() -> None:
         _SYS_PATH_SET = True
 
 
-# ── Content-quality threshold ─────────────────────────────────────────────────
-
-# URLs that return HTTP 200 but fewer than this many characters are treated as
-# THIN (challenge pages, paywall stubs, empty navigation shells).  The ingest
-# agent would skip them anyway; we surface them here before users hit the wall.
-_MIN_CONTENT_CHARS = 500
-
-# ── Bot-challenge / WAF block detection ──────────────────────────────────────
-
-# Some CDNs (Incapsula, Cloudflare, Akamai) return HTTP 200 but serve a JS
-# challenge or "Access Denied" page instead of real content.  Matched against
-# the first 1 000 characters of extracted text; sets url_status = "BLOCKED (bot-challenge)".
-_BOT_BLOCK_RE = re.compile(
-    r"""
-    (?:
-        Incapsula\s+incident\s+ID                   # Imperva/Incapsula challenge
-      | _cf_chl_opt                                 # Cloudflare challenge JS
-      | challenge-form                              # Cloudflare challenge form
-      | Ray\s+ID:\s+[0-9a-f]{16}                   # Cloudflare Ray ID in block page
-      | Access\s+Denied\b.*?(?:server|reference\s+\#)  # Akamai / generic deny page
-      | enable\s+JavaScript\s+and\s+cookies         # generic JS/cookie wall
-      | bot\s+or\s+(?:automated?\s+)?(?:request|traffic|crawler)  # bot accusation
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE | re.DOTALL,
-)
-
-# ── Login / paywall wall detection ───────────────────────────────────────────
-
-# Some sites redirect 200 → a login or subscribe page instead of raising 401/403.
-# These patterns are matched against the first 3 000 characters of extracted text.
-# A match sets url_status = "LOGIN_WALL" and counts as a failure, because the
-# ingest agent would receive the same gated content and skip the page.
-_LOGIN_WALL_RE = re.compile(
-    r"""
-    (?:
-        please\s+(?:sign|log)\s*(?:-\s*)?in\b                                   # "please sign in"
-      | (?:sign|log)\s*(?:-\s*)?in\s+(?:to\s+access|is\s+required|required)     # "sign in required"
-      | you\s+(?:must|need\s+to)\s+(?:be\s+)?(?:signed|logged)\s*[-\s]?in      # "you must be logged in"
-      | (?:this\s+)?(?:page|content|article|resource)\s+(?:is\s+)?(?:available\s+only|requires?)\s+(?:to\s+)?(?:subscribers?|members?|registered\s+users?)
-      | (?:subscribe|subscription)\s+(?:to\s+access|required\s+to)              # "subscribe to access"
-      | (?:access\s+denied|not\s+authorized\s+to\s+access)                      # hard auth errors
-      | authentication\s+required                                                # "authentication required"
-      | \bpaywall\b                                                              # explicit paywall mention
-      | restricted\s+to\s+(?:subscribers?|members?|registered\s+users?)         # "restricted to members"
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
+from _url_quality import BOT_BLOCK_RE as _BOT_BLOCK_RE
+from _url_quality import LOGIN_WALL_RE as _LOGIN_WALL_RE
+from _url_quality import MIN_CONTENT_CHARS as _MIN_CONTENT_CHARS
 
 # ── URL extraction from seeds.md ──────────────────────────────────────────────
 
