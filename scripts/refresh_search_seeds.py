@@ -403,7 +403,6 @@ async def refresh_template(
     max_per_query: int,
     max_refs: int,
     dry_run: bool,
-    fix_first_ingests: bool,
     blocked: set[str],
     url_sem: asyncio.Semaphore,
     tav_sem: asyncio.Semaphore,
@@ -423,43 +422,42 @@ async def refresh_template(
     purpose_path = template_dir / "wiki" / "purpose.md"
     purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
 
-    # ── Step 0 (optional): repair blocked/broken/out-of-scope first-ingest URLs ─
+    # ── Step 0: repair blocked/broken/out-of-scope first-ingest URLs ─────────
     repairs: dict[str, str] = {}   # {old_url: new_url}
     no_replacement: list[str] = []
-    if fix_first_ingests:
-        for label, url in extract_first_ingests(seeds_text):
-            ok, content = await _url_accessible(url, skill, url_sem)
-            if ok:
-                # Accessible — also verify it is in scope when we have a backend.
-                if purpose and backend:
-                    if await _in_scope(content, purpose, backend, llm_sem):
-                        continue  # accessible and in scope — nothing to do
-                    # Accessible but out of scope — treat as needing replacement.
-                    print(
-                        f"  [{template_name}] first-ingest out-of-scope, replacing: {url}",
-                        file=sys.stderr,
-                    )
-                else:
-                    continue  # no backend available — skip scope check
-            query = _label_to_query(label)
-            replacement = await _find_replacement_url(
-                query, blocked,
-                skip_domains={_netloc(url)},
-                skill=skill, url_sem=url_sem, tav_sem=tav_sem,
-                tavily_key=tavily_key, max_per_query=max_per_query,
-                purpose=purpose, backend=backend, llm_sem=llm_sem,
-                template_name=template_name,
-            )
-            if replacement:
-                repairs[url] = replacement
-            else:
-                no_replacement.append(url)
+    for label, url in extract_first_ingests(seeds_text):
+        ok, content = await _url_accessible(url, skill, url_sem)
+        if ok:
+            # Accessible — also verify it is in scope when we have a backend.
+            if purpose and backend:
+                if await _in_scope(content, purpose, backend, llm_sem):
+                    continue  # accessible and in scope — nothing to do
+                # Accessible but out of scope — treat as needing replacement.
                 print(
-                    f"  [{template_name}] WARNING: no replacement found for {url}",
+                    f"  [{template_name}] first-ingest out-of-scope, replacing: {url}",
                     file=sys.stderr,
                 )
-        for old, new in repairs.items():
-            seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
+            else:
+                continue  # no backend available — skip scope check
+        query = _label_to_query(label)
+        replacement = await _find_replacement_url(
+            query, blocked,
+            skip_domains={_netloc(url)},
+            skill=skill, url_sem=url_sem, tav_sem=tav_sem,
+            tavily_key=tavily_key, max_per_query=max_per_query,
+            purpose=purpose, backend=backend, llm_sem=llm_sem,
+            template_name=template_name,
+        )
+        if replacement:
+            repairs[url] = replacement
+        else:
+            no_replacement.append(url)
+            print(
+                f"  [{template_name}] WARNING: no replacement found for {url}",
+                file=sys.stderr,
+            )
+    for old, new in repairs.items():
+        seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
 
     queries = extract_search_queries(seeds_text)
     if not queries:
@@ -610,11 +608,10 @@ async def async_main(args: argparse.Namespace) -> int:
     scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
-    fi_note = ", --fix-first-ingests" if args.fix_first_ingests else ""
     print(
         f"{mode}Refreshing {len(dirs)} template(s) "
         f"(Tavily max_per_query={args.max_per_query}, "
-        f"max_refs={args.max_refs}{fi_note}{scope_note}) …"
+        f"max_refs={args.max_refs}{scope_note}) …"
     )
     if not backend:
         print(
@@ -639,7 +636,6 @@ async def async_main(args: argparse.Namespace) -> int:
             max_per_query=args.max_per_query,
             max_refs=args.max_refs,
             dry_run=args.dry_run,
-            fix_first_ingests=args.fix_first_ingests,
             blocked=blocked,
             url_sem=url_sem,
             tav_sem=tav_sem,
@@ -694,8 +690,8 @@ def main() -> None:
         description=(
             "Populate each template's 'Curated reference websites' section "
             "by running its web-search queries through Tavily. "
-            "With --fix-first-ingests, also checks 'Recommended first ingests' "
-            "URLs and replaces any that are blocked or unavailable."
+            "Also checks 'Recommended first ingests' URLs and replaces any "
+            "that are blocked, unavailable, or out of scope."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -703,9 +699,8 @@ def main() -> None:
             "  TAVILY_API_KEY   required (https://tavily.com)\n\n"
             "Examples:\n"
             "  python scripts/refresh_search_seeds.py\n"
-            "  python scripts/refresh_search_seeds.py --fix-first-ingests\n"
             "  python scripts/refresh_search_seeds.py --template real-estate/investment\n"
-            "  python scripts/refresh_search_seeds.py --dry-run --fix-first-ingests\n"
+            "  python scripts/refresh_search_seeds.py --dry-run\n"
         ),
     )
     parser.add_argument(
@@ -715,14 +710,6 @@ def main() -> None:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Print what would be written without modifying any file.",
-    )
-    parser.add_argument(
-        "--fix-first-ingests", action="store_true",
-        help=(
-            "Check each 'Recommended first ingests' URL for accessibility and "
-            "use Tavily to find a replacement for any that are blocked or unavailable. "
-            "Recommended at release time alongside the curated refresh."
-        ),
     )
     parser.add_argument(
         "--max-per-query", type=int, default=3, metavar="N",
