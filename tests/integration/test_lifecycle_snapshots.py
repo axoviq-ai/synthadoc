@@ -79,8 +79,8 @@ def _seed_page_state(db_path, slug, state, triggered_by="user"):
 
 # ── Task 1 tests ────────────────────────────────────────────────────────────
 
-def test_schema_version_is_5():
-    assert DB_SCHEMA_VERSION == 5
+def test_schema_version_is_6():
+    assert DB_SCHEMA_VERSION == 6
 
 
 @pytest.mark.asyncio

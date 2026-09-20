@@ -279,76 +279,76 @@ heading that does not match any of the five standard section names.
 
 | Template | Domain | Install command |
 |---|---|---|
-| `product-management` | Product requirements, roadmaps, customer research, and feature specs | `synthadoc install my-wiki --template business/product-management` |
-| `marketing` | Campaigns, content strategy, brand guidelines, and channel performance | `synthadoc install my-wiki --template business/marketing` |
-| `hr-people` | HR policies, org design, job frameworks, and performance management | `synthadoc install my-wiki --template business/hr-people` |
-| `project-management` | Project tracking, decisions, stakeholder updates, and post-project reviews | `synthadoc install my-wiki --template business/project-management` |
+| `product-management` | Product requirements, roadmaps, customer research, and feature specs | `synthadoc install my-prod-mgmt --target ~/wikis --template business/product-management` |
+| `marketing` | Campaigns, content strategy, brand guidelines, and channel performance | `synthadoc install my-marketing --target ~/wikis --template business/marketing` |
+| `hr-people` | HR policies, org design, job frameworks, and performance management | `synthadoc install my-hr-wiki --target ~/wikis --template business/hr-people` |
+| `project-management` | Project tracking, decisions, stakeholder updates, and post-project reviews | `synthadoc install my-projects --target ~/wikis --template business/project-management` |
 
 ## Education
 
 | Template | Domain | Install command |
 |---|---|---|
-| `course-design` | Curriculum development, lesson plans, and learning objectives | `synthadoc install my-wiki --template education/course-design` |
-| `personal-learning` | Study notes, Zettelkasten, book summaries, and learning progress | `synthadoc install my-wiki --template education/personal-learning` |
-| `corporate-training` | Onboarding programs, SOPs, and employee skill development | `synthadoc install my-wiki --template education/corporate-training` |
+| `course-design` | Curriculum development, lesson plans, and learning objectives | `synthadoc install my-courses --target ~/wikis --template education/course-design` |
+| `personal-learning` | Study notes, Zettelkasten, book summaries, and learning progress | `synthadoc install my-notes --target ~/wikis --template education/personal-learning` |
+| `corporate-training` | Onboarding programs, SOPs, and employee skill development | `synthadoc install my-training --target ~/wikis --template education/corporate-training` |
 
 ## Finance
 
 | Template | Domain | Install command |
 |---|---|---|
-| `investment` | Investment research, portfolio management, M&A analysis | `synthadoc install my-wiki --template finance/investment` |
-| `mortgage` | Loan origination, underwriting, and servicing workflows | `synthadoc install my-wiki --template finance/mortgage` |
-| `banking` | Retail and commercial banking operations and products | `synthadoc install my-wiki --template finance/banking` |
-| `accounting` | Financial reporting, audit, and tax compliance | `synthadoc install my-wiki --template finance/accounting` |
+| `investment` | Investment research, portfolio management, M&A analysis | `synthadoc install my-investments --target ~/wikis --template finance/investment` |
+| `mortgage` | Loan origination, underwriting, and servicing workflows | `synthadoc install my-mortgage --target ~/wikis --template finance/mortgage` |
+| `banking` | Retail and commercial banking operations and products | `synthadoc install my-banking --target ~/wikis --template finance/banking` |
+| `accounting` | Financial reporting, audit, and tax compliance | `synthadoc install my-accounting --target ~/wikis --template finance/accounting` |
 
 ## Healthcare
 
 | Template | Domain | Install command |
 |---|---|---|
-| `clinical` | Patient protocols, clinical guidelines, and evidence-based medicine | `synthadoc install my-wiki --template healthcare/clinical` |
-| `pharmaceutical` | Drug development, regulatory submissions, and clinical trials | `synthadoc install my-wiki --template healthcare/pharmaceutical` |
-| `public-health` | Epidemiology, population health, and policy research | `synthadoc install my-wiki --template healthcare/public-health` |
+| `clinical` | Patient protocols, clinical guidelines, and evidence-based medicine | `synthadoc install my-clinical --target ~/wikis --template healthcare/clinical` |
+| `pharmaceutical` | Drug development, regulatory submissions, and clinical trials | `synthadoc install my-pharma --target ~/wikis --template healthcare/pharmaceutical` |
+| `public-health` | Epidemiology, population health, and policy research | `synthadoc install my-public-health --target ~/wikis --template healthcare/public-health` |
 
 ## Legal
 
 | Template | Domain | Install command |
 |---|---|---|
-| `legal-ops` | Contracts, case law, legal research, and matter management | `synthadoc install my-wiki --template legal/legal-ops` |
-| `compliance` | Regulatory requirements, audit trails, and risk register | `synthadoc install my-wiki --template legal/compliance` |
-| `ip-management` | Patents, trademarks, and licensing agreements | `synthadoc install my-wiki --template legal/ip-management` |
+| `legal-ops` | Contracts, case law, legal research, and matter management | `synthadoc install my-legal --target ~/wikis --template legal/legal-ops` |
+| `compliance` | Regulatory requirements, audit trails, and risk register | `synthadoc install my-compliance --target ~/wikis --template legal/compliance` |
+| `ip-management` | Patents, trademarks, and licensing agreements | `synthadoc install my-ip-wiki --target ~/wikis --template legal/ip-management` |
 
 ## Operations
 
 | Template | Domain | Install command |
 |---|---|---|
-| `manufacturing-qc` | Quality control, defect tracking, process specs, and standards | `synthadoc install my-wiki --template operations/manufacturing-qc` |
-| `facility-management` | Equipment maintenance, work orders, and asset tracking | `synthadoc install my-wiki --template operations/facility-management` |
-| `supply-chain` | Vendor management, logistics, procurement, and inventory | `synthadoc install my-wiki --template operations/supply-chain` |
+| `manufacturing-qc` | Quality control, defect tracking, process specs, and standards | `synthadoc install my-mfg-wiki --target ~/wikis --template operations/manufacturing-qc` |
+| `facility-management` | Equipment maintenance, work orders, and asset tracking | `synthadoc install my-facilities --target ~/wikis --template operations/facility-management` |
+| `supply-chain` | Vendor management, logistics, procurement, and inventory | `synthadoc install my-supply-chain --target ~/wikis --template operations/supply-chain` |
 
 ## Real Estate
 
 | Template | Domain | Install command |
 |---|---|---|
-| `investment` | Property underwriting, cap rates, NOI analysis, and portfolio management | `synthadoc install my-wiki --template real-estate/investment` |
-| `property-management` | Lease management, tenant relations, maintenance, and work orders | `synthadoc install my-wiki --template real-estate/property-management` |
-| `development` | Construction, permitting, zoning, and contractor management | `synthadoc install my-wiki --template real-estate/development` |
+| `investment` | Property underwriting, cap rates, NOI analysis, and portfolio management | `synthadoc install my-re-invest --target ~/wikis --template real-estate/investment` |
+| `property-management` | Lease management, tenant relations, maintenance, and work orders | `synthadoc install my-properties --target ~/wikis --template real-estate/property-management` |
+| `development` | Construction, permitting, zoning, and contractor management | `synthadoc install my-re-dev --target ~/wikis --template real-estate/development` |
 
 ## Research
 
 | Template | Domain | Install command |
 |---|---|---|
-| `academic` | Academic papers, literature review, hypotheses, and experimental notes | `synthadoc install my-wiki --template research/academic` |
-| `science-lab` | Lab protocols, experiments, instrument logs, and findings | `synthadoc install my-wiki --template research/science-lab` |
-| `market-research` | Consumer insights, competitive intelligence, and survey research | `synthadoc install my-wiki --template research/market-research` |
+| `academic` | Academic papers, literature review, hypotheses, and experimental notes | `synthadoc install my-research --target ~/wikis --template research/academic` |
+| `science-lab` | Lab protocols, experiments, instrument logs, and findings | `synthadoc install my-lab --target ~/wikis --template research/science-lab` |
+| `market-research` | Consumer insights, competitive intelligence, and survey research | `synthadoc install my-market-research --target ~/wikis --template research/market-research` |
 
 ## Technology
 
 | Template | Domain | Install command |
 |---|---|---|
-| `software-dev` | Codebase docs, ADRs, runbooks, and engineering decisions | `synthadoc install my-wiki --template technology/software-dev` |
-| `devops` | Infrastructure, CI/CD, SRE, and incident management | `synthadoc install my-wiki --template technology/devops` |
-| `ai-ml` | ML research, model tracking, experiments, and benchmarks | `synthadoc install my-wiki --template technology/ai-ml` |
-| `data-engineering` | Pipelines, data quality, schema registry, and lineage | `synthadoc install my-wiki --template technology/data-engineering` |
+| `software-dev` | Codebase docs, ADRs, runbooks, and engineering decisions | `synthadoc install my-engineering --target ~/wikis --template technology/software-dev` |
+| `devops` | Infrastructure, CI/CD, SRE, and incident management | `synthadoc install my-devops --target ~/wikis --template technology/devops` |
+| `ai-ml` | ML research, model tracking, experiments, and benchmarks | `synthadoc install my-ml-wiki --target ~/wikis --template technology/ai-ml` |
+| `data-engineering` | Pipelines, data quality, schema registry, and lineage | `synthadoc install my-data-wiki --target ~/wikis --template technology/data-engineering` |
 
 ---
 

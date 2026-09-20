@@ -24,9 +24,10 @@ interface Props {
     activeSessionId: string | null;
     onSelectSession: (sessionId: string, mode: string) => void;
     onNewRun: () => void;
+    resolvedDark: boolean;
 }
 
-export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSelectSession, onNewRun }: Props) {
+export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSelectSession, onNewRun, resolvedDark }: Props) {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
     // Auto-expand the active session
@@ -46,7 +47,7 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
     };
 
     return (
-        <aside className="sidebar" style={{ backgroundImage: `url(${sidebarBg})` }}>
+        <aside className="sidebar" style={resolvedDark ? { backgroundImage: `url(${sidebarBg})` } : undefined}>
             <div className="sidebar-logo">
                 <SynthadocLogo />
                 <span className="sidebar-brand">Synthadoc</span>

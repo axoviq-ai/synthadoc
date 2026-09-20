@@ -117,3 +117,11 @@ async def test_context_pack_to_dict_has_required_keys():
     assert "tokens_used" in d
     assert "pages" in d
     assert "omitted" in d
+
+
+def test_safe_default_returns_none():
+    provider = MagicMock()
+    store = MagicMock()
+    search = MagicMock()
+    agent = ContextAgent(provider=provider, store=store, search=search)
+    assert agent._safe_default() is None

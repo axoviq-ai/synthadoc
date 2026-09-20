@@ -11,13 +11,14 @@ const MODE_LABELS: Record<string, string> = {
 
 interface Props {
     mode: string;
+    resolvedDark: boolean;
 }
 
-export function Hero({ mode }: Props) {
+export function Hero({ mode, resolvedDark }: Props) {
     const modeLabel = MODE_LABELS[mode] ?? mode;
     return (
         <div className="hero">
-            <div className="hero-bg" style={{ backgroundImage: `url(${heroBg})` }} />
+            {resolvedDark && <div className="hero-bg" style={{ backgroundImage: `url(${heroBg})` }} />}
             <div className="hero-content">
                 {modeLabel && (
                     <span className="hero-mode-badge">{modeLabel.toUpperCase()}</span>
