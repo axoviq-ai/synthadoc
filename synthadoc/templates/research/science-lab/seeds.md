@@ -24,7 +24,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://research.columbia.edu/sites/default/files/content/RCT%20content/ReaDI%20Program/tutorial_LabNotebook_V9.pdf" -w <wiki>
-synthadoc ingest "https://www.dataone.org/resources/data-management-plan/" -w <wiki>
+synthadoc ingest "https://dmptool.org/general_guidance" -w <wiki>
 synthadoc ingest "https://ori.hhs.gov/education/products/wsu/data_lab.html" -w <wiki>
 ```
 
