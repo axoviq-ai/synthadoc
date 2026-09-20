@@ -55,6 +55,26 @@ def _ensure_path() -> None:
 # agent would skip them anyway; we surface them here before users hit the wall.
 _MIN_CONTENT_CHARS = 500
 
+# ── Bot-challenge / WAF block detection ──────────────────────────────────────
+
+# Some CDNs (Incapsula, Cloudflare, Akamai) return HTTP 200 but serve a JS
+# challenge or "Access Denied" page instead of real content.  Matched against
+# the first 1 000 characters of extracted text; sets url_status = "BLOCKED (bot-challenge)".
+_BOT_BLOCK_RE = re.compile(
+    r"""
+    (?:
+        Incapsula\s+incident\s+ID                   # Imperva/Incapsula challenge
+      | _cf_chl_opt                                 # Cloudflare challenge JS
+      | challenge-form                              # Cloudflare challenge form
+      | Ray\s+ID:\s+[0-9a-f]{16}                   # Cloudflare Ray ID in block page
+      | Access\s+Denied\b.*?(?:server|reference\s+\#)  # Akamai / generic deny page
+      | enable\s+JavaScript\s+and\s+cookies         # generic JS/cookie wall
+      | bot\s+or\s+(?:automated?\s+)?(?:request|traffic|crawler)  # bot accusation
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
+
 # ── Login / paywall wall detection ───────────────────────────────────────────
 
 # Some sites redirect 200 → a login or subscribe page instead of raising 401/403.
@@ -295,6 +315,9 @@ async def validate_url(
             result["chars"] = len(content)
             if not content:
                 result["url_status"] = "EMPTY"
+            elif (m := _BOT_BLOCK_RE.search(content[:1_000])):
+                result["url_status"] = "BLOCKED (bot-challenge)"
+                result["error_detail"] = f"WAF/CDN challenge: {m.group().strip()[:60]!r}"
             elif len(content) < _MIN_CONTENT_CHARS:
                 result["url_status"] = "THIN"
             else:
