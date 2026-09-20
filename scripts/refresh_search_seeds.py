@@ -298,7 +298,30 @@ class _Backend:
         return stdout.decode(errors="replace").strip()
 
 
-def _detect_backend(model: str = "claude-haiku-4-5-20251001") -> "_Backend | None":
+def _detect_backend(
+    model: str = "claude-haiku-4-5-20251001",
+    prefer: str = "auto",
+) -> "_Backend | None":
+    if prefer == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if api_key:
+            try:
+                import anthropic
+                return _Backend(label="anthropic-sdk",
+                                client=anthropic.AsyncAnthropic(api_key=api_key),
+                                model=model)
+            except ImportError:
+                pass
+        return None
+    if prefer == "opencode":
+        if shutil.which("opencode"):
+            return _Backend(label="opencode", cli_cmd=["opencode", "run"])
+        return None
+    if prefer == "claude":
+        if shutil.which("claude"):
+            return _Backend(label="claude", cli_cmd=["claude", "-p"])
+        return None
+    # auto: anthropic-sdk → opencode → claude
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if api_key:
         try:
@@ -667,7 +690,7 @@ async def async_main(args: argparse.Namespace) -> int:
     tav_sem = asyncio.Semaphore(2)  # concurrent Tavily API calls
     llm_sem = asyncio.Semaphore(2)  # concurrent LLM scope checks
 
-    backend = _detect_backend()
+    backend = _detect_backend(model=args.model, prefer=args.backend)
     scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
@@ -771,12 +794,22 @@ def main() -> None:
             "Examples:\n"
             "  python scripts/refresh_search_seeds.py\n"
             "  python scripts/refresh_search_seeds.py --template real-estate/investment\n"
+            "  python scripts/refresh_search_seeds.py --backend claude\n"
             "  python scripts/refresh_search_seeds.py --dry-run\n"
         ),
     )
     parser.add_argument(
         "--template", metavar="CATEGORY/NAME",
         help="Refresh only this template (e.g. real-estate/investment).",
+    )
+    parser.add_argument(
+        "--backend", metavar="NAME", default="auto",
+        choices=["auto", "anthropic", "opencode", "claude"],
+        help="LLM backend for scope checks: auto (default), anthropic, opencode, claude.",
+    )
+    parser.add_argument(
+        "--model", metavar="MODEL_ID", default="claude-haiku-4-5-20251001",
+        help="Model ID passed to the anthropic backend (default: claude-haiku-4-5-20251001).",
     )
     parser.add_argument(
         "--dry-run", action="store_true",

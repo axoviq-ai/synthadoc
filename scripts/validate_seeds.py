@@ -289,23 +289,25 @@ async def validate_url(
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
             err = str(e)
+            _typ = type(e).__name__
+            detail = (f"{_typ}: {err}" if err else _typ)[:120]
             if any(s in err for s in ("404", "410", "Not Found", "Gone")):
                 result["url_status"] = "NOT FOUND"
             elif any(s in err for s in ("Timeout", "timed out", "ReadTimeout", "ConnectTimeout")):
                 result["url_status"] = "TIMEOUT"
-                result["error_detail"] = err[:120]
+                result["error_detail"] = detail
             elif any(s in err for s in ("SSL", "certificate", "CERTIFICATE")):
                 result["url_status"] = "SSL ERROR"
-                result["error_detail"] = err[:120]
+                result["error_detail"] = detail
             elif any(s in err for s in ("Too many redirects", "too many redirects", "RedirectLoop")):
                 result["url_status"] = "REDIRECT LOOP"
-                result["error_detail"] = err[:120]
+                result["error_detail"] = detail
             elif any(s in err for s in ("50", "Server error", "Service Unavailable", "Bad Gateway")):
                 result["url_status"] = "SERVER ERROR"
-                result["error_detail"] = err[:120]
+                result["error_detail"] = detail
             else:
                 result["url_status"] = "ERROR"
-                result["error_detail"] = err[:120]
+                result["error_detail"] = detail
 
     # ── Step 2: scope check (only when content is substantive and backend available) ─
     if backend is not None and purpose and result["url_status"] == "OK":
@@ -441,8 +443,15 @@ def print_summary(all_results: list[dict], failures: list[dict]) -> None:
         if detail:
             print(f"         ↳ {detail}")
 
-    # Deduplicate failing templates and emit ready-to-run fix commands.
-    failing_templates = sorted({r["template"] for r in failures})
+    # Per-template failure counts.
+    from collections import Counter
+    tmpl_counts: Counter = Counter(r["template"] for r in failures)
+    failing_templates = sorted(tmpl_counts)
+    print(f"\nTemplates with failures ({len(failing_templates)} templates, {n_fail} URLs):")
+    for tmpl in failing_templates:
+        print(f"  {tmpl:<40} {tmpl_counts[tmpl]} failing")
+
+    # Ready-to-run fix commands (clean, no annotations — copy/paste friendly).
     print(f"\nTo fix, re-run the refresh script for each failing template")
     print(f"(requires TAVILY_API_KEY — get a free key at https://tavily.com):")
     for tmpl in failing_templates:
