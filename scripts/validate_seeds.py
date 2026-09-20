@@ -8,6 +8,10 @@ Usage:
   python scripts/validate_seeds.py                        # all templates
   python scripts/validate_seeds.py --template real-estate/investment
   python scripts/validate_seeds.py --no-scope             # URL check only
+  python scripts/validate_seeds.py --backend claude       # use Claude Code CLI for scope checks
+  python scripts/validate_seeds.py --backend opencode     # use opencode CLI
+  python scripts/validate_seeds.py --backend anthropic    # use ANTHROPIC_API_KEY directly
+  python scripts/validate_seeds.py --backend claude --template research/science-lab
 
 Exit code: 0 = all pass, 1 = any failure.
 
