@@ -140,6 +140,12 @@ def first_ingest_domains(seeds_text: str) -> set[str]:
     return {_netloc(m.group(1)) for m in _INGEST_URL_RE.finditer(body)}
 
 
+def extract_curated_urls(seeds_text: str) -> list[str]:
+    """Return existing ingest URLs from the 'Curated reference websites' section."""
+    body = _section_text(seeds_text, _CURATED_HEADER)
+    return [m.group(1) for m in _INGEST_URL_RE.finditer(body)]
+
+
 def extract_first_ingests(seeds_text: str) -> list[tuple[str, str]]:
     """Return (label, url) pairs for every URL entry in 'Recommended first ingests'.
 
@@ -460,6 +466,62 @@ async def refresh_template(
         seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
 
     queries = extract_search_queries(seeds_text)
+    existing_domains = first_ingest_domains(seeds_text)
+
+    _ensure_path()
+    from synthadoc.skills.web_search.scripts.fetcher import search_tavily  # type: ignore
+
+    # ── Step 1: validate existing curated URLs (concurrent) ───────────────────
+    # Only query Tavily for the slots that are missing or broken/out-of-scope.
+    existing_curated = extract_curated_urls(seeds_text)
+
+    async def _check_existing(url: str) -> "str | None":
+        ok, content = await _url_accessible(url, skill, url_sem)
+        if not ok:
+            print(f"  [{template_name}] curated dropped (inaccessible): {url}", file=sys.stderr)
+            return None
+        if purpose and backend:
+            if not await _in_scope(content, purpose, backend, llm_sem):
+                print(f"  [{template_name}] curated dropped (out-of-scope): {url}", file=sys.stderr)
+                return None
+        return url
+
+    checked = await asyncio.gather(*[_check_existing(u) for u in existing_curated])
+    valid_existing = [u for u in checked if u is not None]
+    valid_existing_domains = {_netloc(u) for u in valid_existing}
+
+    needed = max_refs - len(valid_existing)
+
+    if needed <= 0:
+        # Existing curated URLs fill all slots.
+        accessible = valid_existing[:max_refs]
+        if accessible == existing_curated:
+            # Nothing changed — skip the write entirely.
+            return {
+                "template": template_name,
+                "status": "ok-no-change",
+                "repairs": repairs,
+                "no_replacement": no_replacement,
+            }
+        # Some URLs were dropped — rewrite without Tavily.
+        today = date.today().isoformat()
+        if not dry_run:
+            seeds_path.write_text(
+                update_curated_section(seeds_text, accessible, today), encoding="utf-8"
+            )
+        return {
+            "template": template_name,
+            "status": "updated",
+            "queries_run": 0,
+            "candidates": len(existing_curated),
+            "urls_added": len(accessible),
+            "urls": accessible,
+            "repairs": repairs,
+            "no_replacement": no_replacement,
+            "dry_run": dry_run,
+        }
+
+    # Some slots are empty or broken — fill via Tavily.
     if not queries:
         return {
             "template": template_name,
@@ -468,12 +530,15 @@ async def refresh_template(
             "no_replacement": no_replacement,
         }
 
-    existing_domains = first_ingest_domains(seeds_text)
+    skip_domains = existing_domains | valid_existing_domains
+    if valid_existing:
+        print(
+            f"  [{template_name}] {len(valid_existing)}/{len(existing_curated)} curated valid,"
+            f" querying Tavily for {needed} more …",
+            file=sys.stderr,
+        )
 
-    _ensure_path()
-    from synthadoc.skills.web_search.scripts.fetcher import search_tavily  # type: ignore
-
-    # ── Step 1: collect Tavily results ────────────────────────────────────────
+    # ── Step 2: collect Tavily results ────────────────────────────────────────
     raw_urls: list[str] = []
     for query in queries:
         async with tav_sem:
@@ -486,19 +551,19 @@ async def refresh_template(
             except Exception as exc:
                 print(f"  [{template_name}] Tavily error for {query!r}: {exc}", file=sys.stderr)
 
-    # ── Step 2: filter and deduplicate ────────────────────────────────────────
+    # ── Step 3: filter and deduplicate ────────────────────────────────────────
     seen_domains: set[str] = set()
     candidates: list[str] = []
     for url in raw_urls:
         if _is_blocked(url, blocked):
             continue
         d = _netloc(url)
-        if d in existing_domains or d in seen_domains:
+        if d in skip_domains or d in seen_domains:
             continue
         seen_domains.add(d)
         candidates.append(url)
 
-    # ── Step 3: accessibility + scope check (sequential, with retry) ─────────
+    # ── Step 4: accessibility + scope check (sequential, with retry) ──────────
     found: list[str] = []
     seen_all: set[str] = set(candidates)
 
@@ -513,16 +578,16 @@ async def refresh_template(
         return True
 
     for url in candidates:
-        if len(found) >= max_refs:
+        if len(found) >= needed:
             break
         if await _try_candidate(url):
             found.append(url)
 
-    # If we still need more, retry each query with a larger result set
-    if len(found) < max_refs and queries:
+    # Retry with larger result set if still short.
+    if len(found) < needed:
         retry_per_query = max_per_query * 3
         for query in queries:
-            if len(found) >= max_refs:
+            if len(found) >= needed:
                 break
             async with tav_sem:
                 try:
@@ -534,7 +599,7 @@ async def refresh_template(
                     )
                     continue
             for result in resp.get("results", []):
-                if len(found) >= max_refs:
+                if len(found) >= needed:
                     break
                 url = result.get("url", "").strip()
                 if not url or url in seen_all:
@@ -542,27 +607,27 @@ async def refresh_template(
                 if _is_blocked(url, blocked):
                     continue
                 d = _netloc(url)
-                if d in existing_domains or d in {_netloc(u) for u in found}:
+                if d in skip_domains or d in {_netloc(u) for u in found}:
                     continue
                 seen_all.add(url)
                 if await _try_candidate(url):
                     found.append(url)
 
-    accessible = found
+    accessible = valid_existing + found
 
-    # ── Step 4: write section ─────────────────────────────────────────────────
+    # ── Step 5: write section ─────────────────────────────────────────────────
     today = date.today().isoformat()
-    updated = update_curated_section(seeds_text, accessible, today)
-
     if not dry_run:
-        seeds_path.write_text(updated, encoding="utf-8")
+        seeds_path.write_text(
+            update_curated_section(seeds_text, accessible, today), encoding="utf-8"
+        )
 
     return {
         "template": template_name,
         "status": "updated",
         "queries_run": len(queries),
         "candidates": len(candidates),
-        "urls_added": len(accessible),
+        "urls_added": len(found),
         "urls": accessible,
         "repairs": repairs,
         "no_replacement": no_replacement,
@@ -664,9 +729,12 @@ async def async_main(args: argparse.Namespace) -> int:
             n = r["urls_added"]
             q = r["queries_run"]
             c = r["candidates"]
-            print(f"  [{r['template']}] {n} URL(s) added{dr}  ({q} queries, {c} candidates)")
+            tav_note = f", {q} queries, {c} candidates" if q else ", no Tavily (trimmed stale)"
+            print(f"  [{r['template']}] {n} URL(s) written{dr}  ({tav_note})")
             for url in r["urls"]:
                 print(f"    + {url}")
+        elif r["status"] == "ok-no-change":
+            pass  # all URLs still valid — nothing to report
         elif r["status"] == "no-queries":
             print(f"  [{r['template']}] skipped — all queries have <placeholders>")
         # "no-seeds" templates skipped silently
@@ -679,9 +747,11 @@ async def async_main(args: argparse.Namespace) -> int:
         for url in no_rep:
             print(f"  [{r['template']}] first-ingest UNRESOLVED (update manually): {url}")
 
+    total_skipped = sum(1 for r in results if r["status"] == "ok-no-change")
     print(f"\n{'='*60}")
     print(f"Done: {total_added} curated URL(s) written, {total_repaired} first-ingest(s) repaired"
           + (f", {total_unresolved} unresolved" if total_unresolved else "")
+          + (f", {total_skipped} template(s) skipped (all URLs still valid)" if total_skipped else "")
           + f" across {len(dirs)} template(s).")
     if not args.dry_run:
         print("Next step: run  python scripts/validate_seeds.py  to verify scope + accessibility.")
