@@ -315,6 +315,45 @@ async def validate_url(
     return result
 
 
+# ── Progress tracker ─────────────────────────────────────────────────────────
+
+class _Progress:
+    """Thread-safe-enough (asyncio is single-threaded) URL progress counter."""
+
+    _GREEN = "\033[32m"
+    _RED   = "\033[31m"
+    _YEL   = "\033[33m"
+    _RESET = "\033[0m"
+
+    def __init__(self, total: int) -> None:
+        self.done = 0
+        self.total = total
+
+    def tick(self, template: str, result: dict) -> None:
+        self.done += 1
+        url_ok   = result["url_status"] == "OK"
+        scope_ok = result["in_scope"] is None or result["in_scope"]
+        passed   = url_ok and scope_ok
+
+        if not url_ok:
+            status = result["url_status"]
+            color  = self._YEL if result["url_status"].startswith("BLOCKED") else self._RED
+        elif not scope_ok:
+            status = "OUT-OF-SCOPE"
+            color  = self._RED
+        else:
+            status = "OK"
+            color  = self._GREEN
+
+        url = result["url"]
+        short_url = url[:68] + "…" if len(url) > 69 else url
+        print(
+            f"  {color}[{self.done:>3}/{self.total}] "
+            f"{template:<32} {status:<14} {short_url}{self._RESET}",
+            flush=True,
+        )
+
+
 # ── Per-template validation ───────────────────────────────────────────────────
 
 async def validate_template(
@@ -324,6 +363,7 @@ async def validate_template(
     backend: "_Backend | None",
     url_sem: asyncio.Semaphore,
     llm_sem: asyncio.Semaphore,
+    progress: "_Progress | None" = None,
 ) -> list[dict]:
     """Return a list of result dicts for every URL in this template's seeds.md."""
     seeds_path = template_dir / "seeds.md"
@@ -339,16 +379,19 @@ async def validate_template(
     purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
     template_name = template_dir.relative_to(TEMPLATES_DIR).as_posix()
 
-    url_results = await asyncio.gather(*[
-        validate_url(
+    async def _run(url: str) -> dict:
+        result = await validate_url(
             url, purpose,
             skill=skill,
             backend=backend,
             url_sem=url_sem,
             llm_sem=llm_sem,
         )
-        for url in urls
-    ])
+        if progress is not None:
+            progress.tick(template_name, result)
+        return result
+
+    url_results = await asyncio.gather(*[_run(url) for url in urls])
     return [{"template": template_name, **r} for r in url_results]
 
 
@@ -443,8 +486,18 @@ async def async_main(args: argparse.Namespace) -> int:
         if backend is not None
         else "--no-scope: URL check only"
     )
-    print(f"Scanning {len(dirs)} template(s) …  ({scope_label})")
 
+    # Count total URLs upfront so the progress counter shows [n/total].
+    total_urls = sum(
+        len(extract_seed_urls((d / "seeds.md").read_text(encoding="utf-8")))
+        for d in dirs
+        if (d / "seeds.md").exists()
+    )
+    print(
+        f"Scanning {total_urls} URL(s) across {len(dirs)} template(s)  ({scope_label})"
+    )
+
+    progress = _Progress(total_urls)
     batches = await asyncio.gather(*[
         validate_template(
             d,
@@ -452,6 +505,7 @@ async def async_main(args: argparse.Namespace) -> int:
             backend=backend,
             url_sem=url_sem,
             llm_sem=llm_sem,
+            progress=progress,
         )
         for d in dirs
     ])
