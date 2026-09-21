@@ -7,6 +7,7 @@ import json as _json
 import os
 import re as _re
 import shutil
+import subprocess as _subprocess
 import sys
 from abc import abstractmethod
 from pathlib import Path
@@ -182,19 +183,32 @@ class CodingToolCLIProvider(LLMProvider):
             + self._build_system_args(system)
         )
 
+        # asyncio.create_subprocess_exec requires ProactorEventLoop on Windows,
+        # but we run SelectorEventLoop to avoid aiosqlite deadlocks.  Run the
+        # subprocess synchronously in a thread executor instead — works on any loop.
+        _input = prompt.encode()
+        _timeout = self._timeout
+
+        def _run_sync() -> tuple[bytes, bytes, int]:
+            with _subprocess.Popen(
+                cmd,
+                stdin=_subprocess.PIPE,
+                stdout=_subprocess.PIPE,
+                stderr=_subprocess.PIPE,
+            ) as _proc:
+                try:
+                    _out, _err = _proc.communicate(input=_input, timeout=_timeout)
+                    return _out, _err, _proc.returncode
+                except _subprocess.TimeoutExpired:
+                    _proc.kill()
+                    _proc.communicate()
+                    raise
+
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            stdout, stderr, _returncode = await asyncio.get_running_loop().run_in_executor(
+                None, _run_sync
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=prompt.encode()),
-                timeout=self._timeout,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
+        except _subprocess.TimeoutExpired:
             raise TimeoutError(
                 f"{self._tool_binary}: LLM call timed out after {self._timeout}s. "
                 f"Increase agents.llm_timeout_seconds in config.toml."
@@ -210,7 +224,7 @@ class CodingToolCLIProvider(LLMProvider):
             from synthadoc.errors import CodingToolQuotaExhaustedException
             raise CodingToolQuotaExhaustedException(self._tool_binary)
 
-        if proc.returncode != 0:
+        if _returncode != 0:
             # Prefer stderr; fall back to stdout (JSON tools write errors there).
             detail = stderr_text
             if not detail:
@@ -235,7 +249,7 @@ class CodingToolCLIProvider(LLMProvider):
                 from synthadoc.errors import CodingToolPermanentError
                 raise CodingToolPermanentError(self._tool_binary, detail or "(no detail)")
             raise RuntimeError(
-                f"{self._tool_binary}: exited with code {proc.returncode}"
+                f"{self._tool_binary}: exited with code {_returncode}"
                 + (f": {detail}" if detail else "")
             )
 

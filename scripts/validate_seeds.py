@@ -204,7 +204,7 @@ async def check_scope(
     """
     prompt = _SCOPE_PROMPT.format(
         purpose=purpose.strip()[:4_000],
-        content=content[:4_000],
+        content=content[:8_000],
     )
     raw = await backend.complete(prompt)
     try:
@@ -238,6 +238,7 @@ async def validate_url(
         "in_scope": None,
         "scope_reason": "",
         "error_detail": "",
+        "large_content_warning": None,
     }
 
     # ── Step 1: URL accessibility ────────────────────────────────────────────
@@ -294,6 +295,12 @@ async def validate_url(
                 in_scope, reasoning = True, f"(scope check error: {e!s:.100})"
         result["in_scope"] = in_scope
         result["scope_reason"] = reasoning
+        # Flag large pages where scope was checked on a partial sample.
+        if in_scope and len(content) > 32_000:
+            result["large_content_warning"] = (
+                f"content is large ({len(content):,} chars); "
+                "scope evaluated on first 8,000 chars only — verify full page manually"
+            )
 
     return result
 
@@ -404,6 +411,18 @@ def print_summary(all_results: list[dict], failures: list[dict], backend_label: 
 
     print(f"\n{'='*60}")
     print(f"{n_pass}/{total} URLs passed" + (f", {n_fail} failed" if n_fail else ""))
+
+    # Collect passed-but-large-content warnings separately.
+    YEL = "\033[33m"
+    large_warnings = [r for r in all_results if r.get("large_content_warning")]
+    if large_warnings:
+        print(f"\n{YEL}⚠ Large-content scope warnings (scope checked on partial sample):{RESET}")
+        for r in large_warnings:
+            from urllib.parse import urlparse
+            domain = urlparse(r["url"]).netloc or r["url"]
+            print(f"  [{r['template']}] {domain}")
+            print(f"    {r['url']}")
+            print(f"    ↳ {r['large_content_warning']}")
 
     if not failures:
         return
