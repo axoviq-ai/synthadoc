@@ -29,7 +29,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://ipwatchdog.com/2016/12/10/patent-drafting-anatomy-patent-claim" -w <wiki>
-synthadoc ingest "https://www.fvap.gov/fpca-privacy-notice" -w <wiki>
+synthadoc ingest "https://law.cornell.edu/wex/intellectual_property" -w <wiki>
 synthadoc ingest "https://patelip.com/likelihood-of-confusion-recent-ttab-decisions-and-their-impact" -w <wiki>
 synthadoc ingest "https://grant.legal/likelihood-of-confusion-in-trademark-disputes" -w <wiki>
 synthadoc ingest "https://www.apple.com/legal/intellectual-property/frand" -w <wiki>

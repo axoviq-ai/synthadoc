@@ -7,9 +7,9 @@
 synthadoc ingest "https://www.fdic.gov/regulations/laws/rules/" -w <wiki>
 ```
 
-**OCC publications — comptroller's handbook and regulatory guidance (public)**
+**OCC Comptroller's Handbook — exam procedures and supervisory guidance by banking activity (public)**
 ```
-synthadoc ingest "https://www.occ.gov/publications-and-resources/publications/index-publications.html" -w <wiki>
+synthadoc ingest "https://www.occ.gov/publications-and-resources/publications/comptrollers-handbook/index-comptrollers-handbook.html" -w <wiki>
 ```
 
 ## Recommended web searches

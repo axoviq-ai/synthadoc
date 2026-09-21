@@ -10,9 +10,9 @@ synthadoc ingest raw_sources/brand/ --batch -w <wiki>
 *No brand guidelines yet? Use the starter template:*
 `raw_sources/brand/template-brand-brief.md` — copy, rename, fill in, then ingest.
 
-**Competitor website analysis (manual content export)**
+**Backlinko competitor analysis guide — step-by-step methodology for researching competitors (public)**
 ```
-synthadoc ingest "https://seranking.com/competitor-traffic-research.html" -w <wiki>
+synthadoc ingest "https://backlinko.com/competitor-analysis" -w <wiki>
 ```
 
 ## Recommended web searches
@@ -36,7 +36,7 @@ synthadoc ingest "https://www.thestarrconspiracy.com/insights/guides/marketing-m
 synthadoc ingest "https://www.bigmoves.marketing/blog/messaging-framework-examples" -w <wiki>
 synthadoc ingest "https://www.smartsheet.com/content/editorial-calendar-templates" -w <wiki>
 synthadoc ingest "https://contentmarketinginstitute.com/ai-content-creation-tools/editorial-calendar-tools-and-templates-to-help-you-master-your-content-to-do-list" -w <wiki>
-synthadoc ingest "https://www.notion.com/templates/category/content-calendar" -w <wiki>
+synthadoc ingest "https://coschedule.com/blog/social-media-marketing-strategy" -w <wiki>
 ```
 
 ## First steps checklist
