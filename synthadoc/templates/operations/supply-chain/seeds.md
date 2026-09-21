@@ -32,7 +32,6 @@ synthadoc ingest "https://www.simplemanufacturing.com/approved-vendor-list-iso-9
 synthadoc ingest "https://simplerqms.com/supplier-qualification" -w <wiki>
 synthadoc ingest "https://asqasktheexperts.org/2015/07/16/approved-supplier-list" -w <wiki>
 synthadoc ingest "https://www.inboundlogistics.com/articles/supply-chain-risk-management/" -w <wiki>
-synthadoc ingest "https://business.amazon.com/en/blog/spend-management" -w <wiki>
 synthadoc ingest "https://sievo.com/blog/category-management" -w <wiki>
 ```
 
