@@ -1116,7 +1116,7 @@ const TERMINAL_STATUSES = new Set(["completed", "failed", "skipped", "dead", "ca
 const JOBS_PAGE_SIZE = 25;
 
 class JobsModal extends Modal {
-    private _selected: Set<string> = new Set(["pending", "in_progress"]);
+    private _selected: Set<string> = new Set(["pending", "in_progress", "completed", "skipped"]);
 
     constructor(app: App, initialFilters?: Set<string>) {
         super(app);

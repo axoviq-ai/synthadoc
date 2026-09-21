@@ -2,9 +2,9 @@
 
 ## Recommended first ingests
 
-**IRS publications index — all tax guidance and instructions (free)**
+**IRS small-business tax center — tax obligations, forms, and guidance for businesses (free)**
 ```
-synthadoc ingest "https://www.irs.gov/publications" -w <wiki>
+synthadoc ingest "https://www.irs.gov/businesses/small-businesses-self-employed/business-taxes" -w <wiki>
 ```
 
 **PCAOB auditing standards (free)**

@@ -1742,12 +1742,15 @@ describe("JobsModal", () => {
 
     it("Retry selected calls api.retryJob for failed/dead/cancelled checked jobs", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
-        // Default _selected = {pending, in_progress}. Clear filter via unchecking those two
-        // checkboxes so _selected becomes empty and all jobs pass through.
+        // Default _selected = {pending, in_progress, completed, skipped}.
+        // Uncheck all four so _selected becomes empty and all jobs pass through.
+        // STATUS_FILTER_OPTIONS order: pending[1] in_progress[2] completed[3] failed[4] skipped[5] …
         apiMock.jobs
-            .mockResolvedValueOnce([]) // initial load (pending+in_progress filter, no matches)
-            .mockResolvedValueOnce([]) // after unchecking pending (in_progress only, no matches)
-            .mockResolvedValueOnce([   // after unchecking in_progress (_selected={}, show all)
+            .mockResolvedValueOnce([]) // initial load
+            .mockResolvedValueOnce([]) // after unchecking pending
+            .mockResolvedValueOnce([]) // after unchecking in_progress
+            .mockResolvedValueOnce([]) // after unchecking completed
+            .mockResolvedValueOnce([   // after unchecking skipped (_selected={}, show all)
                 { id: "job-f1", status: "failed", operation: "ingest", payload: { source: "a.pdf" }, created_at: null, error: "err" },
                 { id: "job-c1", status: "cancelled", operation: "ingest", payload: { source: "b.pdf" }, created_at: null },
             ])
@@ -1768,6 +1771,16 @@ describe("JobsModal", () => {
         const inProgressCb = filterRow._children[2]._children[0]; // "in_progress" label > checkbox
         inProgressCb.checked = false;
         inProgressCb.onchange();
+        await flushPromises();
+
+        const completedCb = filterRow._children[3]._children[0]; // "completed" label > checkbox
+        completedCb.checked = false;
+        completedCb.onchange();
+        await flushPromises();
+
+        const skippedCb = filterRow._children[5]._children[0]; // "skipped" label > checkbox
+        skippedCb.checked = false;
+        skippedCb.onchange();
         await flushPromises(); // now _filteredJobs = [job-f1, job-c1]
 
         // Select all terminal jobs via select-all checkbox in table header

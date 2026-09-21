@@ -8,6 +8,10 @@ Usage:
   python scripts/validate_seeds.py                        # all templates
   python scripts/validate_seeds.py --template real-estate/investment
   python scripts/validate_seeds.py --no-scope             # URL check only
+  python scripts/validate_seeds.py --backend claude       # use Claude Code CLI for scope checks
+  python scripts/validate_seeds.py --backend opencode     # use opencode CLI
+  python scripts/validate_seeds.py --backend anthropic    # use ANTHROPIC_API_KEY directly
+  python scripts/validate_seeds.py --backend claude --template research/science-lab
 
 Exit code: 0 = all pass, 1 = any failure.
 
@@ -48,12 +52,10 @@ def _ensure_path() -> None:
         _SYS_PATH_SET = True
 
 
-# ── Content-quality threshold ─────────────────────────────────────────────────
-
-# URLs that return HTTP 200 but fewer than this many characters are treated as
-# THIN (challenge pages, paywall stubs, empty navigation shells).  The ingest
-# agent would skip them anyway; we surface them here before users hit the wall.
-_MIN_CONTENT_CHARS = 500
+from _url_quality import BOT_BLOCK_RE as _BOT_BLOCK_RE
+from _url_quality import LOGIN_WALL_RE as _LOGIN_WALL_RE
+from _url_quality import MIN_CONTENT_CHARS as _MIN_CONTENT_CHARS
+from _url_quality import SEEDS_SCOPE_PROMPT as _SCOPE_PROMPT
 
 # ── URL extraction from seeds.md ──────────────────────────────────────────────
 
@@ -78,32 +80,7 @@ def extract_seed_urls(seeds_text: str) -> list[str]:
 
 
 # ── Scope check ───────────────────────────────────────────────────────────────
-
-# Mirrors the purpose_block prepended to _DECISION_PROMPT in ingest_agent.py.
-# The ingest agent uses action="skip" for out-of-scope content; this prompt
-# reduces that to a binary yes/no so we can report it without writing pages.
-_SCOPE_PROMPT = """\
-You maintain a knowledge wiki. Decide whether a new source document is in scope.
-
-Wiki scope (from purpose.md):
-{purpose}
-
-action="skip" means the source is completely OUTSIDE the wiki's domain \
-(e.g. spam, medical receipts, unrelated e-commerce).
-action="skip" must NEVER be used because a topic is already covered by an \
-existing page — that is what action="update" is for.
-A broad general resource (e.g. a macro-economic report covering all sectors \
-when the wiki is focused on one sub-domain, or raw JSON metadata with no \
-readable prose) should be action="skip" because it adds no domain-specific \
-value.
-A source that is clearly authored for practitioners in this specific domain \
-should be action="ingest".
-
-Source text (first 4 000 characters):
-{content}
-
-Return ONLY valid JSON (no markdown fences):
-{{"action": "ingest or skip", "reasoning": "one concise sentence"}}"""
+# Shared with refresh_search_seeds.py via _url_quality.SEEDS_SCOPE_PROMPT.
 
 # ANSI escape sequence pattern used to strip CLI colour output
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]")
@@ -176,31 +153,39 @@ class _Backend:
         return stdout.decode(errors="replace").strip()
 
 
-def _detect_backend(model: str) -> "_Backend | None":
-    """Return the first usable LLM backend, or None if none is available.
+def _detect_backend(model: str, prefer: str = "auto") -> "_Backend | None":
+    """Return the requested (or first usable) LLM backend.
 
-    Priority:
-      1. ANTHROPIC_API_KEY env var  → direct async Anthropic client (fastest)
-      2. opencode in PATH           → opencode run "<prompt>"
-      3. claude in PATH             → claude -p "<prompt>"  (Claude Code)
+    prefer values:
+      "auto"       — try anthropic-sdk → opencode → claude in order
+      "anthropic"  — force ANTHROPIC_API_KEY / anthropic SDK
+      "opencode"   — force opencode CLI
+      "claude"     — force claude -p (Claude Code CLI)
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if api_key:
-        try:
-            import anthropic
-            return _Backend(
-                label="anthropic-sdk",
-                client=anthropic.AsyncAnthropic(api_key=api_key),
-                model=model,
-            )
-        except ImportError:
-            pass  # fall through to CLI detection
+    if prefer in ("auto", "anthropic"):
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if api_key:
+            try:
+                import anthropic
+                return _Backend(
+                    label="anthropic-sdk",
+                    client=anthropic.AsyncAnthropic(api_key=api_key),
+                    model=model,
+                )
+            except ImportError:
+                if prefer == "anthropic":
+                    return None  # explicitly requested but unavailable
+        elif prefer == "anthropic":
+            return None
 
-    # CLI candidates: (binary name, base command list)
-    for binary, cli_cmd in [
-        ("opencode", ["opencode", "run"]),   # opencode run "<prompt>"
-        ("claude",   ["claude", "-p"]),       # claude -p "<prompt>"
-    ]:
+    cli_candidates = [
+        ("opencode", ["opencode", "run"]),
+        ("claude",   ["claude", "-p"]),
+    ]
+    if prefer in ("opencode", "claude"):
+        cli_candidates = [(b, c) for b, c in cli_candidates if b == prefer]
+
+    for binary, cli_cmd in cli_candidates:
         if shutil.which(binary):
             return _Backend(label=binary, cli_cmd=cli_cmd)
 
@@ -264,15 +249,41 @@ async def validate_url(
             result["chars"] = len(content)
             if not content:
                 result["url_status"] = "EMPTY"
+            elif (m := _BOT_BLOCK_RE.search(content[:1_000])):
+                result["url_status"] = "BLOCKED (bot-challenge)"
+                result["error_detail"] = f"WAF/CDN challenge: {m.group().strip()[:60]!r}"
             elif len(content) < _MIN_CONTENT_CHARS:
                 result["url_status"] = "THIN"
             else:
-                result["url_status"] = "OK"
+                m = _LOGIN_WALL_RE.search(content[:3_000])
+                if m:
+                    result["url_status"] = "LOGIN_WALL"
+                    result["error_detail"] = f"auth/paywall pattern: {m.group().strip()!r}"
+                else:
+                    result["url_status"] = "OK"
         except DomainBlockedException as e:
             result["url_status"] = f"BLOCKED ({e.status_code})"
         except Exception as e:
-            result["url_status"] = "ERROR"
-            result["error_detail"] = str(e)[:120]
+            err = str(e)
+            _typ = type(e).__name__
+            detail = (f"{_typ}: {err}" if err else _typ)[:120]
+            if any(s in err for s in ("404", "410", "Not Found", "Gone")):
+                result["url_status"] = "NOT FOUND"
+            elif any(s in err for s in ("Timeout", "timed out", "ReadTimeout", "ConnectTimeout")):
+                result["url_status"] = "TIMEOUT"
+                result["error_detail"] = detail
+            elif any(s in err for s in ("SSL", "certificate", "CERTIFICATE")):
+                result["url_status"] = "SSL ERROR"
+                result["error_detail"] = detail
+            elif any(s in err for s in ("Too many redirects", "too many redirects", "RedirectLoop")):
+                result["url_status"] = "REDIRECT LOOP"
+                result["error_detail"] = detail
+            elif any(s in err for s in ("50", "Server error", "Service Unavailable", "Bad Gateway")):
+                result["url_status"] = "SERVER ERROR"
+                result["error_detail"] = detail
+            else:
+                result["url_status"] = "ERROR"
+                result["error_detail"] = detail
 
     # ── Step 2: scope check (only when content is substantive and backend available) ─
     if backend is not None and purpose and result["url_status"] == "OK":
@@ -287,6 +298,47 @@ async def validate_url(
     return result
 
 
+# ── Progress tracker ─────────────────────────────────────────────────────────
+
+class _Progress:
+    """Thread-safe-enough (asyncio is single-threaded) URL progress counter."""
+
+    _GREEN = "\033[32m"
+    _RED   = "\033[31m"
+    _YEL   = "\033[33m"
+    _RESET = "\033[0m"
+
+    def __init__(self, total: int) -> None:
+        self.done = 0
+        self.total = total
+
+    def tick(self, template: str, result: dict) -> None:
+        self.done += 1
+        url_ok   = result["url_status"] == "OK"
+        scope_ok = result["in_scope"] is None or result["in_scope"]
+        passed   = url_ok and scope_ok
+
+        if not url_ok:
+            status = result["url_status"]
+            color  = self._YEL if result["url_status"].startswith("BLOCKED") else self._RED
+        elif not scope_ok:
+            status = "OUT-OF-SCOPE"
+            color  = self._RED
+        else:
+            status = "OK"
+            color  = self._GREEN
+
+        url = result["url"]
+        short_url = url[:68] + "…" if len(url) > 69 else url
+        print(
+            f"  {color}[{self.done:>3}/{self.total}] "
+            f"{template:<32} {status:<14} {short_url}{self._RESET}",
+            flush=True,
+        )
+        if result.get("error_detail") and status not in ("NOT FOUND", "REDIRECT LOOP"):
+            print(f"    {self._RED}  └─ {result['error_detail']}{self._RESET}", flush=True)
+
+
 # ── Per-template validation ───────────────────────────────────────────────────
 
 async def validate_template(
@@ -296,6 +348,7 @@ async def validate_template(
     backend: "_Backend | None",
     url_sem: asyncio.Semaphore,
     llm_sem: asyncio.Semaphore,
+    progress: "_Progress | None" = None,
 ) -> list[dict]:
     """Return a list of result dicts for every URL in this template's seeds.md."""
     seeds_path = template_dir / "seeds.md"
@@ -311,63 +364,75 @@ async def validate_template(
     purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
     template_name = template_dir.relative_to(TEMPLATES_DIR).as_posix()
 
-    url_results = await asyncio.gather(*[
-        validate_url(
+    async def _run(url: str) -> dict:
+        result = await validate_url(
             url, purpose,
             skill=skill,
             backend=backend,
             url_sem=url_sem,
             llm_sem=llm_sem,
         )
-        for url in urls
-    ])
+        if progress is not None:
+            progress.tick(template_name, result)
+        return result
+
+    url_results = await asyncio.gather(*[_run(url) for url in urls])
     return [{"template": template_name, **r} for r in url_results]
 
 
 # ── Report ─────────────────────────────────────────────────────────────────────
 
-def print_report(results: list[dict], scope_active: bool) -> list[dict]:
-    """Print a colour-coded table and return the list of failed rows."""
-    GREEN = "\033[32m"
+def collect_failures(results: list[dict]) -> list[dict]:
+    """Return only the failed rows (inaccessible or out-of-scope)."""
+    failures = []
+    for r in results:
+        url_ok   = r["url_status"] == "OK"
+        scope_ok = r["in_scope"] is None or r["in_scope"]
+        if not (url_ok and scope_ok):
+            failures.append(r)
+    return failures
+
+
+def print_summary(all_results: list[dict], failures: list[dict], backend_label: str = "auto") -> None:
+    """Print a compact failure list and suggested fix commands."""
     RED   = "\033[31m"
     RESET = "\033[0m"
 
-    COL_T = 32   # template name
-    COL_S = 18   # url_status
+    total   = len(all_results)
+    n_fail  = len(failures)
+    n_pass  = total - n_fail
 
-    hdr = f"{'TEMPLATE':<{COL_T}}  {'URL_STATUS':<{COL_S}}"
-    if scope_active:
-        hdr += f"  {'SCOPE':<6}"
-    hdr += "  URL"
-    print(f"\n{hdr}")
-    print("-" * (len(hdr) + 35))
+    print(f"\n{'='*60}")
+    print(f"{n_pass}/{total} URLs passed" + (f", {n_fail} failed" if n_fail else ""))
 
-    failures: list[dict] = []
-    for r in results:
-        url_ok   = r["url_status"] == "OK"  # THIN/EMPTY/BLOCKED/ERROR all fail
-        scope_ok = r["in_scope"] is None or r["in_scope"]
-        passed   = url_ok and scope_ok
-        if not passed:
-            failures.append(r)
+    if not failures:
+        return
 
-        color = GREEN if passed else RED
-        scope_str = ""
-        if scope_active and r["in_scope"] is not None:
-            scope_str = "YES" if r["in_scope"] else "NO "
-        short_url = r["url"][:56] + "…" if len(r["url"]) > 57 else r["url"]
+    print(f"\nFailed URLs:")
+    for r in failures:
+        tag = r["url_status"] if r["url_status"] != "OK" else "OUT-OF-SCOPE"
+        from urllib.parse import urlparse
+        domain = urlparse(r["url"]).netloc or r["url"]
+        print(f"  {RED}[{tag}] {r['template']}  {domain}{RESET}")
+        print(f"         {r['url']}")
+        detail = r.get("error_detail") or r.get("scope_reason", "")
+        if detail:
+            print(f"         ↳ {detail}")
 
-        row = f"{color}{r['template']:<{COL_T}}  {r['url_status']:<{COL_S}}"
-        if scope_active:
-            row += f"  {scope_str:<6}"
-        row += f"  {short_url}{RESET}"
-        print(row)
+    # Per-template failure counts.
+    from collections import Counter
+    tmpl_counts: Counter = Counter(r["template"] for r in failures)
+    failing_templates = sorted(tmpl_counts)
+    print(f"\nTemplates with failures ({len(failing_templates)} templates, {n_fail} URLs):")
+    for tmpl in failing_templates:
+        print(f"  {tmpl:<40} {tmpl_counts[tmpl]} failing")
 
-        if not url_ok and r["error_detail"]:
-            print(f"  {'':>{COL_T}}  {r['error_detail']}")
-        if scope_active and not scope_ok:
-            print(f"  {'':>{COL_T}}  ↳ {r['scope_reason']}")
-
-    return failures
+    # Ready-to-run fix commands — include the same backend so scope decisions match.
+    backend_flag = f" --backend {backend_label}" if backend_label not in ("auto", "") else ""
+    print(f"\nTo fix, re-run the refresh script for each failing template")
+    print(f"(requires TAVILY_API_KEY — get a free key at https://tavily.com):")
+    for tmpl in failing_templates:
+        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}{backend_flag}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -379,7 +444,7 @@ async def async_main(args: argparse.Namespace) -> int:
     # ── LLM backend resolution ────────────────────────────────────────────────
     backend: "_Backend | None" = None
     if not args.no_scope:
-        backend = _detect_backend(args.model)
+        backend = _detect_backend(args.model, prefer=args.backend)
         if backend is None:
             print(
                 "ERROR: SCOPE CHECK REQUIRED but no LLM backend is available.\n"
@@ -415,8 +480,18 @@ async def async_main(args: argparse.Namespace) -> int:
         if backend is not None
         else "--no-scope: URL check only"
     )
-    print(f"Scanning {len(dirs)} template(s) …  ({scope_label})")
 
+    # Count total URLs upfront so the progress counter shows [n/total].
+    total_urls = sum(
+        len(extract_seed_urls((d / "seeds.md").read_text(encoding="utf-8")))
+        for d in dirs
+        if (d / "seeds.md").exists()
+    )
+    print(
+        f"Scanning {total_urls} URL(s) across {len(dirs)} template(s)  ({scope_label})"
+    )
+
+    progress = _Progress(total_urls)
     batches = await asyncio.gather(*[
         validate_template(
             d,
@@ -424,6 +499,7 @@ async def async_main(args: argparse.Namespace) -> int:
             backend=backend,
             url_sem=url_sem,
             llm_sem=llm_sem,
+            progress=progress,
         )
         for d in dirs
     ])
@@ -434,22 +510,10 @@ async def async_main(args: argparse.Namespace) -> int:
         print("No concrete seed URLs found.")
         return 0
 
-    failures = print_report(all_results, scope_active=backend is not None)
-
-    total = len(all_results)
-    print(f"\n{'='*60}")
-    if failures:
-        print(f"FAILED: {len(failures)} of {total} URLs")
-        for r in failures:
-            tag = r["url_status"] if r["url_status"] != "OK" else "OUT-OF-SCOPE"
-            print(f"  [{tag}] {r['template']}: {r['url']}")
-            detail = r.get("error_detail") or r.get("scope_reason", "")
-            if detail:
-                print(f"          {detail}")
-        return 1
-
-    print(f"All {total} seed URLs passed")
-    return 0
+    failures = collect_failures(all_results)
+    backend_label = backend.label if backend is not None else "auto"
+    print_summary(all_results, failures, backend_label=backend_label)
+    return 1 if failures else 0
 
 
 def main() -> None:
@@ -472,6 +536,18 @@ def main() -> None:
         "--model", default="claude-haiku-4-5-20251001",
         metavar="MODEL_ID",
         help="Model used for LLM scope checks (default: claude-haiku-4-5-20251001).",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "anthropic", "opencode", "claude"],
+        default="auto",
+        help=(
+            "LLM backend for scope checks: "
+            "'auto' tries anthropic-sdk → opencode → claude in order (default); "
+            "'anthropic' forces ANTHROPIC_API_KEY / SDK; "
+            "'opencode' forces opencode CLI; "
+            "'claude' forces claude -p (Claude Code CLI)."
+        ),
     )
     sys.exit(asyncio.run(async_main(parser.parse_args())))
 

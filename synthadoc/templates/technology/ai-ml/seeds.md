@@ -31,7 +31,7 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 synthadoc ingest "https://mlflow.org/docs/latest/ml/tracking" -w <wiki>
 synthadoc ingest "https://verifywise.ai/ai-governance-library/transparency-and-documentation/model-cards" -w <wiki>
 synthadoc ingest "https://optro.ai/blog/what-is-a-model-card-report-your-guide-to-responsible-ai" -w <wiki>
-synthadoc ingest "https://cloud.google.com/responsible-ai" -w <wiki>
+synthadoc ingest "https://huggingface.co/docs/hub/model-cards" -w <wiki>
 synthadoc ingest "https://www.ml4devs.com/what-is/train-validation-test-data-split" -w <wiki>
 synthadoc ingest "https://builtin.com/data-science/train-test-split" -w <wiki>
 ```
