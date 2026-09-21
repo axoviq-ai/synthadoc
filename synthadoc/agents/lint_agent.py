@@ -258,7 +258,10 @@ async def cascade_archive(
 
 def suggested_reingest_cmd(file: str, wiki_name: str, size: int) -> str:
     """Return the CLI command a user should run to re-ingest a truncated source."""
-    return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 2} --force'
+    # Use 4× the known source size.  2× is insufficient when the URL content has
+    # grown between the first ingest and the re-ingest, which is the common case
+    # that causes the re-ingest to truncate again.
+    return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 4} --force'
 
 
 def find_orphan_slugs(
@@ -597,9 +600,9 @@ class LintAgent(BaseAgent):
                     f"[WARN] {slug}.md: source '{src.file}' was truncated at ingest "
                     f"(source exceeded max_source_chars={max_chars} — {src.size:,} chars in source).\n"
                     f"       To re-ingest with a higher limit (this source only):\n"
-                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2} --force\n"
+                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 4} --force\n"
                     f"       To raise the limit for all future ingests:\n"
-                    f"         set [ingest] max_source_chars = {src.size * 2} in your config"
+                    f"         set [ingest] max_source_chars = {src.size * 4} in your config"
                 )
         return warnings
 
