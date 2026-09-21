@@ -1,16 +1,28 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 import asyncio
+import subprocess
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
+_POPEN_PATCH = "synthadoc.providers.coding_tool._subprocess.Popen"
+
 
 def _make_mock_proc(stdout: bytes, stderr: bytes, returncode: int):
+    """Sync-compatible mock process (context manager + communicate)."""
     proc = MagicMock()
     proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(stdout, stderr))
+    proc.communicate = MagicMock(return_value=(stdout, stderr))
     proc.kill = MagicMock()
+    proc.__enter__ = MagicMock(return_value=proc)
+    proc.__exit__ = MagicMock(return_value=False)
     return proc
+
+
+def _make_popen_mock(stdout: bytes, stderr: bytes, returncode: int):
+    """Return (popen_cls_mock, proc) for patching _subprocess.Popen."""
+    proc = _make_mock_proc(stdout, stderr, returncode)
+    return MagicMock(return_value=proc), proc
 
 
 @pytest.mark.asyncio
@@ -34,11 +46,12 @@ async def test_base_raises_timeout_error():
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         provider = ClaudeCodeCLIProvider(model=None, timeout=1)
 
-    mock_proc = MagicMock()
-    mock_proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError())
-    mock_proc.kill = MagicMock()
+    mock_proc = _make_mock_proc(b"", b"", returncode=0)
+    mock_proc.communicate = MagicMock(
+        side_effect=subprocess.TimeoutExpired(cmd="test", timeout=1)
+    )
 
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    with patch(_POPEN_PATCH, MagicMock(return_value=mock_proc)):
         from synthadoc.providers.base import Message
         with pytest.raises(TimeoutError, match="timed out"):
             await provider.complete([Message(role="user", content="hello")])
@@ -51,8 +64,8 @@ async def test_base_raises_runtime_error_on_nonzero_exit():
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         provider = ClaudeCodeCLIProvider(model=None, timeout=30)
 
-    mock_proc = _make_mock_proc(b"", b"something went wrong", returncode=1)
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    popen_mock, _ = _make_popen_mock(b"", b"something went wrong", returncode=1)
+    with patch(_POPEN_PATCH, popen_mock):
         from synthadoc.providers.base import Message
         with pytest.raises(RuntimeError, match="something went wrong"):
             await provider.complete([Message(role="user", content="hello")])
@@ -65,8 +78,8 @@ async def test_base_raises_quota_exhausted():
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         provider = ClaudeCodeCLIProvider(model=None, timeout=30)
 
-    mock_proc = _make_mock_proc(b"", b"Claude AI usage limit reached", returncode=1)
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    popen_mock, _ = _make_popen_mock(b"", b"Claude AI usage limit reached", returncode=1)
+    with patch(_POPEN_PATCH, popen_mock):
         from synthadoc.providers.base import Message
         from synthadoc.errors import CodingToolQuotaExhaustedException
         with pytest.raises(CodingToolQuotaExhaustedException):
@@ -146,8 +159,8 @@ async def test_coding_tool_complete_stream_yields_words():
         "total_output_tokens": 5,
         "is_error": False,
     })
-    mock_proc = _make_mock_proc(raw.encode(), b"", returncode=0)
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    popen_mock, _ = _make_popen_mock(raw.encode(), b"", returncode=0)
+    with patch(_POPEN_PATCH, popen_mock):
         tokens = []
         async for tok in provider.complete_stream([Message(role="user", content="hi")]):
             tokens.append(tok)
@@ -227,21 +240,19 @@ async def test_claude_complete_passes_system_via_flag():
         "total_output_tokens": 10,
         "is_error": False,
     })
-    mock_proc = _make_mock_proc(raw.encode(), b"", returncode=0)
     captured_cmd: list = []
     captured_stdin: list = []
 
-    async def fake_exec(*args, **kwargs):
-        captured_cmd.extend(args)
-        return mock_proc
+    def fake_popen(cmd, **kwargs):
+        captured_cmd.extend(cmd)
+        proc = _make_mock_proc(raw.encode(), b"", returncode=0)
+        def _capture_communicate(input=None, timeout=None):
+            captured_stdin.append(input)
+            return raw.encode(), b""
+        proc.communicate = MagicMock(side_effect=_capture_communicate)
+        return proc
 
-    mock_proc.communicate = AsyncMock(
-        side_effect=lambda input=None: (
-            captured_stdin.append(input) or (raw.encode(), b"")
-        )
-    )
-
-    with patch("asyncio.create_subprocess_exec", fake_exec):
+    with patch(_POPEN_PATCH, side_effect=fake_popen):
         await provider.complete(
             [Message(role="user", content="run workflow")],
             system="You are a JSON tool-call agent.",
@@ -548,7 +559,7 @@ async def test_opencode_complete_retries_on_no_text_content():
 
     calls = 0
 
-    async def _fake_exec(*args, **kwargs):
+    def _fake_popen(*args, **kwargs):
         nonlocal calls
         calls += 1
         return _make_mock_proc(
@@ -557,7 +568,7 @@ async def test_opencode_complete_retries_on_no_text_content():
         )
 
     from synthadoc.providers.base import Message
-    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+    with patch(_POPEN_PATCH, side_effect=_fake_popen):
         with patch("asyncio.sleep", new_callable=AsyncMock):  # skip real sleep
             resp = await provider.complete([Message(role="user", content="hi")])
 
@@ -577,11 +588,11 @@ async def test_opencode_complete_raises_after_two_silent_failures():
                     "tokens": {"input": 5, "output": 20}}),
     ]).encode()
 
-    async def _fake_exec(*args, **kwargs):
+    def _fake_popen(*args, **kwargs):
         return _make_mock_proc(silent_output, b"", returncode=0)
 
     from synthadoc.providers.base import Message
-    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+    with patch(_POPEN_PATCH, side_effect=_fake_popen):
         with patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ValueError, match="no text content"):
                 await provider.complete([Message(role="user", content="hi")])
@@ -594,13 +605,13 @@ async def test_opencode_complete_does_not_retry_on_other_errors():
 
     calls = 0
 
-    async def _fake_exec(*args, **kwargs):
+    def _fake_popen(*args, **kwargs):
         nonlocal calls
         calls += 1
         return _make_mock_proc(b"", b"auth failed", returncode=1)
 
     from synthadoc.providers.base import Message
-    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+    with patch(_POPEN_PATCH, side_effect=_fake_popen):
         with pytest.raises(RuntimeError, match="auth failed"):
             await provider.complete([Message(role="user", content="hi")])
 
@@ -663,9 +674,9 @@ async def test_complete_raises_permanent_error_on_isretryable_false():
 
     provider = _make_claude_provider()
     stderr_payload = b'{"isRetryable": false, "statusCode": 400, "message": "speech model"}'
-    mock_proc = _make_mock_proc(b"", stderr_payload, returncode=1)
+    popen_mock, _ = _make_popen_mock(b"", stderr_payload, returncode=1)
 
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    with patch(_POPEN_PATCH, popen_mock):
         with pytest.raises(CodingToolPermanentError, match="ERR-PROV-004"):
             await provider.complete([Message(role="user", content="hello")])
 
@@ -676,9 +687,9 @@ async def test_complete_falls_through_to_runtime_error_for_transient():
     from synthadoc.providers.base import Message
 
     provider = _make_claude_provider()
-    mock_proc = _make_mock_proc(b"", b"network timeout", returncode=1)
+    popen_mock, _ = _make_popen_mock(b"", b"network timeout", returncode=1)
 
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    with patch(_POPEN_PATCH, popen_mock):
         with pytest.raises(RuntimeError, match="network timeout"):
             await provider.complete([Message(role="user", content="hello")])
 
@@ -699,7 +710,7 @@ async def test_opencode_complete_retries_on_database_locked():
 
     calls = 0
 
-    async def _fake_exec(*args, **kwargs):
+    def _fake_popen(*args, **kwargs):
         nonlocal calls
         calls += 1
         if calls < 3:
@@ -708,7 +719,7 @@ async def test_opencode_complete_retries_on_database_locked():
         return _make_mock_proc(good_output, b"", returncode=0)
 
     from synthadoc.providers.base import Message
-    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+    with patch(_POPEN_PATCH, side_effect=_fake_popen):
         with patch("asyncio.sleep", new_callable=AsyncMock):  # skip real delay
             resp = await provider.complete([Message(role="user", content="hi")])
 
@@ -724,13 +735,13 @@ async def test_opencode_complete_raises_after_max_db_locked_retries():
 
     calls = 0
 
-    async def _fake_exec(*args, **kwargs):
+    def _fake_popen(*args, **kwargs):
         nonlocal calls
         calls += 1
         return _make_mock_proc(b"", b"database is locked", returncode=1)
 
     from synthadoc.providers.base import Message
-    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+    with patch(_POPEN_PATCH, side_effect=_fake_popen):
         with patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(RuntimeError, match="database is locked"):
                 await provider.complete([Message(role="user", content="hi")])
@@ -757,9 +768,9 @@ async def test_complete_detail_dict_does_not_crash():
     stdout_payload = json.dumps({
         "result": {"message": "LLM provider unavailable", "code": 503}
     }).encode()
-    mock_proc = _make_mock_proc(stdout_payload, b"", returncode=1)
+    popen_mock, _ = _make_popen_mock(stdout_payload, b"", returncode=1)
 
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+    with patch(_POPEN_PATCH, popen_mock):
         # Must raise RuntimeError (not AttributeError)
         with pytest.raises(RuntimeError):
             await provider.complete([Message(role="user", content="hi")])

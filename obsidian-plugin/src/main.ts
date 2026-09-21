@@ -1915,12 +1915,12 @@ class LintReportModal extends Modal {
                 panels["Truncated"].createEl("p", { text: "✅ No truncated sources." });
             } else {
                 const ul = panels["Truncated"].createEl("ul");
-                truncatedSources.forEach(({ slug, file, size, suggested_reingest }) => {
+                truncatedSources.forEach(({ slug, file, size, suggested_reingest, growth_warning }) => {
                     const li = ul.createEl("li");
                     const slugLink = li.createEl("a", { text: slug });
                     slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
                     slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
-                    li.appendText(` — source exceeded limit (${(size as number).toLocaleString()} chars)`);
+                    li.appendText(` — source has ${(size as number).toLocaleString()} chars at last ingest (limit was exceeded)`);
                     const srcDiv = li.createEl("div");
                     srcDiv.style.cssText = "font-size:11px;margin-top:2px";
                     const srcLbl = srcDiv.createEl("span", { text: "Source: " });
@@ -1929,10 +1929,14 @@ class LintReportModal extends Modal {
                     if (suggested_reingest) {
                         const reingestDiv = li.createEl("div");
                         reingestDiv.style.cssText = "margin-top:4px";
-                        reingestDiv.createEl("div", { text: "💡 Re-ingest with a higher limit:" })
+                        reingestDiv.createEl("div", { text: `💡 Re-ingest using the full source size (${(size as number).toLocaleString()} chars):` })
                             .style.cssText = "font-size:11px;color:var(--text-muted)";
                         reingestDiv.createEl("code", { text: suggested_reingest })
                             .style.cssText = "font-size:11px;-webkit-user-select:text;user-select:text";
+                        if (growth_warning) {
+                            reingestDiv.createEl("div", { text: "⚠ If still truncated, the source has grown since last ingest — increase the limit further." })
+                                .style.cssText = "font-size:11px;color:var(--color-orange,#f59e0b);margin-top:3px";
+                        }
                     }
                 });
             }

@@ -1609,6 +1609,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         "file": src.file,
                         "size": src.size,
                         "suggested_reingest": _src_cmd(src.file, wiki_name, src.size),
+                        "growth_warning": True,
                     })
 
         # Citation issues — same logic as CLI lint report
