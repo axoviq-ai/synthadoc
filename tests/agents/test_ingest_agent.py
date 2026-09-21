@@ -2621,3 +2621,111 @@ def test_citation_prompt_example_uses_actual_filename():
     # The placeholder word must NOT appear as part of a citation marker
     assert "^[FILENAME:" not in formatted, \
         "Formatted _CITATION_PROMPT must not contain the literal placeholder ^[FILENAME:"
+
+
+# ── staging_policy + --force bypass ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_force_reingest_bypasses_staging_policy_all(tmp_wiki, cache):
+    """--force on an existing wiki page writes directly to wiki/ even when
+    staging_policy = "all".  Regression: forced re-ingests were routed to
+    candidates/, leaving the wiki page unchanged and truncated-source flags
+    persisting after the user followed the suggested re-ingest command.
+    """
+    import itertools
+    from unittest.mock import MagicMock
+    from synthadoc.config import IngestConfig
+
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["biography"],"relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"update","target":"alan-turing","new_slug":"","update_content":"## Updated\\n\\nNew content."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    from synthadoc.storage.wiki import SourceRef
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nOriginal.",
+        status="active", confidence="high",
+        sources=[SourceRef(file="turing.md", hash="abc", size=50000, ingested="2026-01-01", truncated=True)],
+        created="2026-01-01",
+    ))
+    assert store.read_page("alan-turing").sources[0].truncated is True
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "turing.md"
+    source.write_text("Alan Turing biography updated.", encoding="utf-8")
+
+    cfg = MagicMock()
+    cfg.ingest = IngestConfig(staging_policy="all")
+    cfg.agents.llm_timeout_seconds = 0
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15,
+                        wiki_root=tmp_wiki, cfg=cfg)
+    result = await agent.run(str(source), force=True)
+
+    assert "alan-turing" in result.pages_updated
+    # Page must be written directly to wiki/, NOT staged to candidates/
+    assert (tmp_wiki / "wiki" / "alan-turing.md").exists()
+    cand = tmp_wiki / "wiki" / "candidates" / "alan-turing.md"
+    assert not cand.exists(), "force re-ingest must not stage to candidates/"
+    # SourceRef truncated flag must be cleared
+    page = store.read_page("alan-turing")
+    assert page.sources[0].truncated is False
+
+
+@pytest.mark.asyncio
+async def test_force_reingest_create_existing_slug_bypasses_staging(tmp_wiki, cache):
+    """--force on an action=create that hits an existing slug also bypasses
+    staging.  The create-but-slug-exists fallback path had the same bug.
+    """
+    import itertools
+    from unittest.mock import MagicMock
+    from synthadoc.config import IngestConfig
+
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["biography"],"relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    # LLM says create with a slug that already exists → fallback to update-in-place
+    _decision = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"alan-turing","update_content":"","page_content":"# Alan Turing\\n\\nNew facts."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=[], content="# Alan Turing\n\nOld.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "turing2.md"
+    source.write_text("More Turing facts.", encoding="utf-8")
+
+    cfg = MagicMock()
+    cfg.ingest = IngestConfig(staging_policy="all")
+    cfg.agents.llm_timeout_seconds = 0
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15,
+                        wiki_root=tmp_wiki, cfg=cfg)
+    result = await agent.run(str(source), force=True)
+
+    cand = tmp_wiki / "wiki" / "candidates" / "alan-turing.md"
+    assert not cand.exists(), "force re-ingest of existing slug must not stage to candidates/"
+    assert (tmp_wiki / "wiki" / "alan-turing.md").exists()
