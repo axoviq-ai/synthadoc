@@ -559,12 +559,29 @@ async def refresh_template(
 
     # Some slots are empty or broken — fill via Tavily.
     if not queries:
+        # No usable queries (all have <placeholders>), so Tavily can't run.
+        # Still write the file if first-ingest repairs/removals changed seeds_text
+        # or if curated URLs were dropped (valid_existing shrank).
+        curated_changed = valid_existing != existing_curated
+        anything_changed = first_ingest_changed or curated_changed
+        if anything_changed and not dry_run:
+            today = date.today().isoformat()
+            new_text = (
+                update_curated_section(seeds_text, valid_existing, today)
+                if curated_changed else seeds_text
+            )
+            seeds_path.write_text(new_text, encoding="utf-8")
         return {
             "template": template_name,
-            "status": "no-queries",
+            "status": "updated" if anything_changed else "no-queries",
+            "queries_run": 0,
+            "candidates": 0,
+            "urls_added": len(valid_existing),
+            "urls": valid_existing,
             "repairs": repairs,
             "no_replacement": no_replacement,
             "remaining_first_ingests": remaining_first_ingests,
+            "dry_run": dry_run,
         }
 
     skip_domains = existing_domains | valid_existing_domains | dropped_domains

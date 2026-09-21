@@ -37,11 +37,14 @@ Return ONLY valid JSON (no markdown fences):
 # URLs returning fewer than this many characters are treated as thin/unusable.
 MIN_CONTENT_CHARS = 500
 
-# WAF/CDN bot-challenge patterns — some hosts return HTTP 200 with a JS challenge
-# or "Access Denied" body instead of real content.  Check against text[:1_000].
+# WAF/CDN bot-challenge and HTTP error page patterns.
+# Some hosts return HTTP 200 with a JS challenge body; others return a 403/429
+# body on the FIRST fetch (before auto-blocking kicks in for subsequent calls).
+# Check against text[:1_000].
 BOT_BLOCK_RE = re.compile(
     r"""
     (?:
+        # WAF / CDN challenge pages (HTTP 200 with challenge body)
         Incapsula\s+incident\s+ID
       | _cf_chl_opt
       | challenge-form
@@ -49,6 +52,14 @@ BOT_BLOCK_RE = re.compile(
       | Access\s+Denied\b.*?(?:server|reference\s+\#)
       | enable\s+JavaScript\s+and\s+cookies
       | bot\s+or\s+(?:automated?\s+)?(?:request|traffic|crawler)
+
+        # HTTP 403/401 error pages returned as body text on first encounter
+      | \b40[13]\s+(?:Forbidden|Unauthorized|Access\s+Denied)\b
+      | \bError\s+40[13]\b
+      | You\s+don't\s+have\s+permission\s+to\s+access
+      | (?:Access|Permission)\s+Denied\b
+      | This\s+(?:page|resource|site)\s+(?:is\s+)?(?:blocked|restricted|unavailable)
+      | \bRequest\s+(?:blocked|rejected|denied)\b
     )
     """,
     re.IGNORECASE | re.VERBOSE | re.DOTALL,

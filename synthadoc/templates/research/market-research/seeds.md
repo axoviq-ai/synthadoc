@@ -4,12 +4,12 @@
 
 **BLS Industries at a Glance — sector-level employment, wages, and productivity data from the Bureau of Labor Statistics (public)**
 ```
-synthadoc ingest "https://www.bls.gov/bls/industry.htm" -w <wiki>
+synthadoc ingest "https://www.bea.gov/data/employment/employment-by-industry" -w <wiki>
 ```
 
 **BLS Consumer Expenditure Survey — household spending patterns and consumer demographics (public)**
 ```
-synthadoc ingest "https://www.bls.gov/cex/" -w <wiki>
+synthadoc ingest "https://www.policymap.com/data/sources/policymap-qi-bls-and-census" -w <wiki>
 ```
 
 ## Recommended web searches
