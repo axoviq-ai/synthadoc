@@ -35,7 +35,6 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ```
 synthadoc ingest "https://www.productplan.com/glossary/product-requirements-document" -w <wiki>
-synthadoc ingest "https://productschool.com/blog/product-strategy/product-template-requirements-document-prd" -w <wiki>
 synthadoc ingest "https://www.workboard.com/resources/blog/product-management-okrs" -w <wiki>
 synthadoc ingest "https://guides.visual-paradigm.com/give-when-then-acceptance-criteria-for-user-stories-in-agile-development" -w <wiki>
 synthadoc ingest "https://uxcam.com/blog/north-star-metric-framework" -w <wiki>
