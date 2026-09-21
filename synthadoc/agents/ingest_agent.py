@@ -1209,7 +1209,11 @@ class IngestAgent(BaseAgent):
                 result.skipped = True
                 result.skip_reason = "no extractable text"
             else:
-                policy = self._staging_policy()
+                # --force on an existing wiki page bypasses staging: the user is
+                # explicitly updating a page they already own (e.g. clearing a
+                # truncated-source flag). Routing to candidates/ would silently
+                # leave the old page in wiki/ and confuse lint/report.
+                policy = "off" if force else self._staging_policy()
                 staged = False
                 with self._store.page_lock(target):
                     page = self._store.read_page(target)
@@ -1267,8 +1271,10 @@ class IngestAgent(BaseAgent):
                         else f"source-{src_hash[:12]}"
 
                 if self._store.page_exists(slug):
-                    # Slug already exists — never overwrite; append as update instead
-                    policy = self._staging_policy()
+                    # Slug already exists — never overwrite; append as update instead.
+                    # --force bypasses staging for the same reason as the action=update
+                    # branch above: the user is explicitly updating an existing page.
+                    policy = "off" if force else self._staging_policy()
                     staged = False
                     with self._store.page_lock(slug):
                         page = self._store.read_page(slug)
