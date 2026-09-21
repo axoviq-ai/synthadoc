@@ -349,8 +349,14 @@ async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asynci
             raw = await backend.complete(prompt)
             data = _extract_scope_json(raw)
             return str(data.get("action", "ingest")).strip().lower() != "skip"
-        except Exception:
-            return True  # treat errors as pass to avoid false negatives
+        except Exception as exc:
+            # Treat errors as pass to avoid false negatives, but log so the user
+            # can see when the LLM backend failed rather than genuinely said "ingest".
+            print(
+                f"  scope-check error (treating as in-scope): {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return True
 
 
 # ── First-ingest replacement search ──────────────────────────────────────────
@@ -456,6 +462,11 @@ async def refresh_template(
     # ── Step 0: repair blocked/broken/out-of-scope first-ingest URLs ─────────
     repairs: dict[str, str] = {}   # {old_url: new_url}
     no_replacement: list[str] = []
+    # Pre-compute all domains currently used in both sections so replacements
+    # don't duplicate a domain that's already covered elsewhere in the file.
+    _all_fi_domains = {_netloc(u) for _, u in extract_first_ingests(seeds_text)}
+    _all_curated_domains = {_netloc(u) for u in extract_curated_urls(seeds_text)}
+    _chosen_replacement_domains: set[str] = set()
     for label, url in extract_first_ingests(seeds_text):
         ok, content = await _url_accessible(url, skill, url_sem)
         if ok:
@@ -471,9 +482,12 @@ async def refresh_template(
             else:
                 continue  # no backend available — skip scope check
         query = _label_to_query(label)
+        # Exclude all domains already used in either section plus any domain
+        # already chosen as a replacement earlier in this loop.
+        fi_skip = _all_fi_domains | _all_curated_domains | _chosen_replacement_domains
         replacement = await _find_replacement_url(
             query, blocked,
-            skip_domains={_netloc(url)},
+            skip_domains=fi_skip,
             skill=skill, url_sem=url_sem, tav_sem=tav_sem,
             tavily_key=tavily_key, max_per_query=max_per_query,
             purpose=purpose, backend=backend, llm_sem=llm_sem,
@@ -481,6 +495,7 @@ async def refresh_template(
         )
         if replacement:
             repairs[url] = replacement
+            _chosen_replacement_domains.add(_netloc(replacement))
         else:
             no_replacement.append(url)
             print(
