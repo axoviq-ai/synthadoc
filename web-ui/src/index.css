@@ -100,9 +100,9 @@
         --text-primary:   #111827;
         --text-secondary: #374151;
         --text-muted:     #6b7280;
-        --text-faint:     #9ca3af;
+        --text-faint:     #6b7280; /* bumped from #9ca3af — passes WCAG AA on light surfaces */
         --text-dim:       #6b7280;
-        --text-ghost:     #d1d5db;
+        --text-ghost:     #9ca3af; /* bumped from #d1d5db — keyboard hints must be readable */
 
         --border-color:  #d1d5db;
         --border-muted:  #e5e7eb;
@@ -125,20 +125,20 @@
             );
         --graph-bg: linear-gradient(160deg, #f2f3f8 0%, #f8f9fc 60%, #f5f3fb 100%);
         --graph-label-fill:   #1f2937;
-        --graph-label-stroke: rgba(242,243,248,0.9);
-        --graph-edge-stroke:  rgba(100,110,180,0.4);
+        --graph-label-stroke: rgba(248,249,252,0.50); /* was 0.9 — opaque halo washed out dark labels */
+        --graph-edge-stroke:  rgba(100,110,180,0.45);
         --graph-node-stroke:  rgba(255,255,255,0.85);
 
         --accent-text:      #6d28d9;
         --accent-text-soft: #7c3aed;
 
-        --accent-border:       rgba(124, 58, 237, 0.2);
-        --accent-bg-faint:     rgba(124, 58, 237, 0.06);
-        --accent-bg:           rgba(124, 58, 237, 0.08);
-        --accent-bg-active:    rgba(124, 58, 237, 0.15);
-        --accent-chip:         rgba(124, 58, 237, 0.12);
-        --accent-badge:        rgba(124, 58, 237, 0.12);
-        --accent-badge-border: rgba(124, 58, 237, 0.3);
+        --accent-border:       rgba(124, 58, 237, 0.22);
+        --accent-bg-faint:     rgba(124, 58, 237, 0.07);
+        --accent-bg:           rgba(124, 58, 237, 0.10);
+        --accent-bg-active:    rgba(124, 58, 237, 0.16);
+        --accent-chip:         rgba(124, 58, 237, 0.13);
+        --accent-badge:        rgba(124, 58, 237, 0.14);
+        --accent-badge-border: rgba(124, 58, 237, 0.38);
 
         /* Code blocks stay dark in light mode */
         --code-bg:        #1e1f2e;
@@ -166,9 +166,9 @@
     --text-primary:   #111827;
     --text-secondary: #374151;
     --text-muted:     #6b7280;
-    --text-faint:     #9ca3af;
+    --text-faint:     #6b7280; /* bumped from #9ca3af — passes WCAG AA on light surfaces */
     --text-dim:       #6b7280;
-    --text-ghost:     #d1d5db;
+    --text-ghost:     #9ca3af; /* bumped from #d1d5db — keyboard hints must be readable */
 
     --border-color:  #d1d5db;
     --border-muted:  #e5e7eb;
@@ -191,20 +191,20 @@
         );
     --graph-bg: linear-gradient(160deg, #f2f3f8 0%, #f8f9fc 60%, #f5f3fb 100%);
     --graph-label-fill:   #1f2937;
-    --graph-label-stroke: rgba(242,243,248,0.9);
-    --graph-edge-stroke:  rgba(100,110,180,0.4);
+    --graph-label-stroke: rgba(248,249,252,0.50); /* was 0.9 — opaque halo washed out dark labels */
+    --graph-edge-stroke:  rgba(100,110,180,0.45);
     --graph-node-stroke:  rgba(255,255,255,0.85);
 
     --accent-text:      #6d28d9;
     --accent-text-soft: #7c3aed;
 
-    --accent-border:       rgba(124, 58, 237, 0.2);
-    --accent-bg-faint:     rgba(124, 58, 237, 0.06);
-    --accent-bg:           rgba(124, 58, 237, 0.08);
-    --accent-bg-active:    rgba(124, 58, 237, 0.15);
-    --accent-chip:         rgba(124, 58, 237, 0.12);
-    --accent-badge:        rgba(124, 58, 237, 0.12);
-    --accent-badge-border: rgba(124, 58, 237, 0.3);
+    --accent-border:       rgba(124, 58, 237, 0.22);
+    --accent-bg-faint:     rgba(124, 58, 237, 0.07);
+    --accent-bg:           rgba(124, 58, 237, 0.10);
+    --accent-bg-active:    rgba(124, 58, 237, 0.16);
+    --accent-chip:         rgba(124, 58, 237, 0.13);
+    --accent-badge:        rgba(124, 58, 237, 0.14);
+    --accent-badge-border: rgba(124, 58, 237, 0.38);
 
     --code-bg:        #1e1f2e;
     --code-inline-bg: #eaebf2;
@@ -626,7 +626,7 @@ body {
 
 .hero-feature-text p {
     font-size: 0.78rem;
-    color: var(--text-faint);
+    color: var(--text-muted);
     line-height: 1.45;
     margin: 0;
 }
@@ -979,7 +979,7 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .graph-controls { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--accent-border); }
 .graph-controls select { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--accent-border-med); border-radius: 6px; padding: 4px 8px; }
 .graph-stats { color: var(--text-muted); font-size: 12px; }
-.graph-stats-note { opacity: 0.6; font-size: 11px; }
+.graph-stats-note { opacity: 0.85; font-size: 11px; }
 .graph-canvas-wrap { position: relative; flex: 1; display: flex; overflow: hidden; }
 .graph-canvas { flex: 1; width: 100%; height: 100%; }
 .graph-computing { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; color: var(--text-muted); }
@@ -1044,7 +1044,7 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .graph-meta-value { color: var(--text-secondary); display: flex; align-items: center; gap: 5px; }
 .graph-cluster-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .graph-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 14px; flex-shrink: 0; border-top: 1px solid var(--accent-border); font-size: 11px; color: var(--text-muted); min-height: 28px; }
-.graph-legend-item { display: flex; align-items: center; gap: 4px; opacity: 0.7; }
+.graph-legend-item { display: flex; align-items: center; gap: 4px; }
 .graph-conn-label { color: var(--text-faint); font-size: 10.5px; }
 .graph-sidebar-hint { font-size: 11px; color: #f59e0b; background: rgba(245,158,11,0.08); border-radius: 5px; padding: 6px 8px; margin: 0; }
 .graph-sidebar-hint-list { display: flex; flex-direction: column; gap: 5px; }
