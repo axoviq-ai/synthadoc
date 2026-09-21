@@ -343,7 +343,7 @@ def _detect_backend(
 
 async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asyncio.Semaphore) -> bool:
     """Return True when the LLM judges *content* as in scope for *purpose*."""
-    prompt = _SCOPE_PROMPT.format(purpose=purpose.strip()[:4_000], content=content[:4_000])
+    prompt = _SCOPE_PROMPT.format(purpose=purpose.strip()[:4_000], content=content[:8_000])
     async with sem:
         try:
             raw = await backend.complete(prompt)
@@ -529,6 +529,13 @@ async def refresh_template(
             if not await _in_scope(content, purpose, backend, llm_sem):
                 print(f"  [{template_name}] curated dropped (out-of-scope): {url}", file=sys.stderr)
                 return None
+            if len(content) > 32_000:
+                print(
+                    f"  [{template_name}] scope-check warning: {url} content is large "
+                    f"({len(content):,} chars); only first 8,000 evaluated — "
+                    "verify manually that the full page is in scope",
+                    file=sys.stderr,
+                )
         return url
 
     checked = await asyncio.gather(*[_check_existing(u) for u in existing_curated])
