@@ -246,10 +246,11 @@ def lint_report(
         typer.echo(f"\nTruncated Sources ({len(truncated_pages)}) - source exceeded ingest limit:\n")
         for entry in truncated_pages:
             size = entry.get("size") or 0
-            typer.echo(f"  {entry['slug']} - source exceeded limit ({size:,} chars)")
+            typer.echo(f"  {entry['slug']} — source has {size:,} chars at last ingest (limit was exceeded)")
             typer.echo(f"    Source: {entry['file']}")
-            typer.echo(f"    Tip: Re-ingest with a higher limit:")
+            typer.echo(f"    💡 Re-ingest using the full source size ({size:,} chars):")
             typer.echo(f"       {suggested_reingest_cmd(entry['file'], wiki, size or _default_max)}")
+            typer.echo(f"    ⚠  If still truncated, the source has grown since last ingest — increase the limit further.")
 
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.
