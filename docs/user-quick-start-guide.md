@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.3.4 (Community Edition)**
+**Version: v1.3.5 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -4225,6 +4225,12 @@ For architecture details and the brain/memory use case framing, see [docs/design
 | Development workflow: freeze a good state, do risky dev, restore if needed | `backup` → dev work → `restore`         |
 | CI/test fixture: start from a known state before each run                  | `restore` at test start                   |
 | Share an exact wiki state with a colleague                                 | Send the zip, they run`restore`           |
+
+### Database reliability — WAL mode
+
+All Synthadoc databases (`audit.db`, `jobs.db`, `cache.db`) run in **WAL mode** (SQLite Write-Ahead Logging). WAL mode allows concurrent reads during writes, which eliminates `database is locked` errors when the CLI, Obsidian plugin, and server access the database simultaneously — a common source of friction on Windows. No configuration is needed; existing databases upgrade automatically on first open after a Synthadoc upgrade.
+
+Backup uses in-process serialization rather than a file copy, making `synthadoc backup` safe to run against a live database on any platform.
 
 ### Backup
 

@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.3.4
+**Version:** 1.3.5
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4157,6 +4157,17 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.3.5
+
+- **Dark/light theme toggle in Web UI** — the web chat UI now ships a full polished light mode alongside the existing dark mode. A three-state **theme toggle** button (System / Dark / Light) sits at the right end of the tab bar; the choice persists in `localStorage` and is applied by an inline script before React renders, eliminating any flash-of-wrong-theme on reload. System mode follows the OS `prefers-color-scheme` media query. Both themes share the same design-token system — CSS custom properties defined once and overridden per theme — so accent colors, graph strokes, and sidebar labels all adapt correctly. Full light-mode polish covers the Query (Chat) tab, Graph tab, sidebar labels (`Cluster`, `Connections`, `Questions to Explore`, `Maintenance`), and all badge and border tokens. Light-mode text-contrast improvements (WCAG AA) applied in a follow-up pass, including raising `--text-faint` to `#6b7280` and fixing graph-label stroke bleed.
+- **WAL mode for all databases** — `audit.db`, `jobs.db`, and `cache.db` are now opened with `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL`. WAL mode allows multiple concurrent readers without blocking the writer, eliminating the `database is locked` errors that appeared when the CLI, Obsidian plugin, and server wrote simultaneously on Windows. Backup now uses `sqlite3.Connection.serialize()` (writes the entire database to bytes in-process) instead of a temporary file copy, making `synthadoc backup` safe on Windows and on active databases. Fully backward-compatible — existing databases upgrade automatically on first open.
+- **`--force` re-ingest bypasses staging policy** — when `force=True` is passed to `IngestAgent.run()`, both the `action=update` and `create-but-slug-exists` code paths now set `policy = "off"` regardless of `staging_policy` in `config.toml`. Previously a re-ingest of an existing page with `staging_policy = "all"` would write to `candidates/` instead of `wiki/`, leaving the live page unchanged. The fix ensures that `--force` on an existing page always updates the live page and clears the `truncated` flag correctly.
+- **Query agent — false stale pre-prompt fix** — `QueryAgent` was including pages from the current ingest job in the `changed_pages` list when building the post-response pre-prompt, causing a "re-ingest stale pages?" suggestion to appear immediately after an ingest whose pages had just been written. The fix filters out pages whose lifecycle state changed within the current request cycle before computing the stale-pages count for the pre-prompt.
+- **Candidates promote CLI delegates to server** — `synthadoc candidates promote` and `synthadoc candidates discard` now route through the running server's HTTP API (same as the web UI and Obsidian plugin) when a server is running, instead of writing directly to disk from the CLI process. This ensures promote/discard events are recorded in the audit trail and trigger the standard post-lifecycle hooks.
+- **Clean Ctrl-C shutdown on Windows** — `synthadoc serve` on Windows now handles `SIGINT` (Ctrl-C) via a `win32api.SetConsoleCtrlHandler` hook instead of relying on POSIX signal handling. The server drains in-progress requests and closes database connections before exiting, preventing `database is locked` errors and orphaned PIDs on interrupt.
+- **Architecture overview diagram** — `docs/png/architecture-overview.png` added; referenced from README.md in the Architecture section. Shows all major components and data flow in a single diagram.
+- **Domain template seeds refresh** — `seeds.md` curated URL lists refreshed for all 30 templates via `refresh_search_seeds.py`. `validate_seeds.py` rewritten to report broken and redirected URLs separately, with concurrency and retry logic for rate-limited domains.
 
 ### v1.3.4
 
