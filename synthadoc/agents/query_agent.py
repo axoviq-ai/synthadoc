@@ -486,19 +486,45 @@ def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
 # ── pre_prompt helpers (stale pages / re-ingest completion detection) ─────────
 
 _STALE_SLUG_RE = re.compile(
-    # Handles common LLM list formats:
-    #   - slug (stale since...)      ← dash bullet + paren
+    # Handles common LLM list formats — requires "stale" in the qualifier so
+    # a "changed pages this week" list doesn't trigger the pre-prompt:
+    #   - slug (stale since...)      ← paren contains "stale"
     #   1. slug (stale since...)     ← numbered bullet
     #   - `slug` (stale...)          ← backtick-wrapped
     #   - **slug** (stale...)        ← bold
-    #   - slug: stale since...       ← colon separator
-    #   - slug — stale               ← em-dash separator
+    #   - slug: stale since...       ← colon, "stale" follows on same line
+    #   - slug — stale               ← em-dash, "stale" follows
     r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*|]?\s*)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?'
-    r'\s*(?:\(|:|\s+—|\s+–)',
+    r'\s*(?:'
+    r'\([^)\n]{0,120}stale[^)\n]{0,120}\)'  # (... stale ...)
+    r'|:\s*stale\b'                          # : stale since ...
+    r'|\s+[—–]\s*stale\b'                   # — stale / – stale
+    r')',
+    re.MULTILINE | re.IGNORECASE,
+)
+# Fallback for slug lists under a header line that mentions "stale pages" anywhere,
+# e.g. "Stale pages:", "You have 2 stale pages:", "## Currently stale pages —"
+# Items may lack a "stale" qualifier; the header provides the context.
+_STALE_SECTION_RE = re.compile(
+    r'(?:^|\n)[^\n]*\bstale\s+pages?\b[^\n]*[:\-—]\s*\n'
+    r'((?:[ \t]*(?:\d+[.)]\s*|[-*]\s*)[^\n]+\n?)*)',
+    re.IGNORECASE | re.MULTILINE,
+)
+_SIMPLE_LIST_SLUG_RE = re.compile(
+    r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*]\s*)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?',
     re.MULTILINE,
 )
 _STALE_HEADER_RE = re.compile(r'\bstale\b', re.IGNORECASE)
-_NO_STALE_RE = re.compile(r'\bno stale\b|0 stale|zero stale', re.IGNORECASE)
+_NO_STALE_RE = re.compile(
+    r'\bno\s+stale\b'
+    r'|0\s+stale'
+    r'|\bzero\s+stale\b'
+    r'|\|\s*stale\s*\|\s*0\s*\|'                        # wiki-status table: | stale | 0 |
+    r'|\bstale\b[^(\n]*\(0\)'                            # lint header: Stale pages (0)
+    r'|\bno\s+pages?\s+(?:are\s+)?(?:currently\s+)?stale\b'   # "no pages are stale"
+    r'|\bthere\s+(?:are|is)\s+no\s+stale\b',            # "there are no stale pages"
+    re.IGNORECASE,
+)
 _REINGEST_COMPLETE_RE = re.compile(
     r're[-\s]?ingested\s+successfully', re.IGNORECASE
 )
@@ -637,7 +663,12 @@ def _build_pre_prompt(answer: str) -> str | None:
                 )
     # Only trigger on positive stale context ("stale pages" but not "no stale pages").
     if _STALE_HEADER_RE.search(answer) and not _NO_STALE_RE.search(answer):
+        # Primary: slugs whose qualifier explicitly says "stale" on the same line.
         slugs = _STALE_SLUG_RE.findall(answer)
+        if not slugs:
+            # Fallback: simple list items under a "Stale pages:" section header.
+            for m in _STALE_SECTION_RE.finditer(answer):
+                slugs.extend(_SIMPLE_LIST_SLUG_RE.findall(m.group(1)))
         if slugs:
             slug_list = ", ".join(slugs[:10])
             return (
