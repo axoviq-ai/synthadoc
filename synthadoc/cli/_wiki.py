@@ -13,11 +13,45 @@ ENV_VAR = "SYNTHADOC_WIKI"
 DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
 _REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
 
+CROSS_WIKI_ROUTING_PATH: Path = Path.home() / ".synthadoc" / "CROSS_WIKI_ROUTING.md"
+
 
 def _read_registry() -> dict:
     if _REGISTRY.exists():
         return json.loads(_REGISTRY.read_text(encoding="utf-8"))
     return {}
+
+
+def read_registry_all() -> dict:
+    """Return full registry dict. Keys are wiki names, values include path/port/purpose_summary."""
+    return _read_registry()
+
+
+def extract_purpose_summary(wiki_root: Path) -> str:
+    """Read wiki_root/wiki/purpose.md, strip YAML frontmatter, return first 500 chars of body.
+
+    Returns an empty string when purpose.md does not exist.
+    """
+    purpose_path = wiki_root / "wiki" / "purpose.md"
+    if not purpose_path.exists():
+        return ""
+    text = purpose_path.read_text(encoding="utf-8")
+    # Strip YAML frontmatter delimited by --- ... ---
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            text = text[end + 3:].lstrip("\n")
+    return text[:500]
+
+
+def probe_port(port: int, timeout: float = 1.0) -> bool:
+    """Return True if the synthadoc server at the given port responds to /health."""
+    try:
+        import httpx
+        httpx.get(f"http://127.0.0.1:{port}/health", timeout=timeout)
+        return True
+    except Exception:
+        return False
 
 
 def resolve_wiki_path(wiki: str) -> Path:

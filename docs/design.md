@@ -47,6 +47,7 @@
 36. [Orphan Resolver Workflow](#36-orphan-resolver-workflow)
 37. [Citation Faithfulness Audit](#37-citation-faithfulness-audit)
 39. [Broken Citation Resolver Workflow](#39-broken-citation-resolver-workflow)
+40. [Cross-Wiki Queries (v1.4.0)](#40-cross-wiki-queries-v140)
 
 **Appendices**
 
@@ -4161,6 +4162,199 @@ The broken citation resolver is the 7th agentic maintenance workflow. It scans a
 **Pre-prompt priority:** 5th in the chain (after contradicted → stale → orphan → broken_wikilinks). `/lifecycle/status` exposes `broken_citations` count; `initial_hints()` and `App.tsx` both read it.
 
 Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natural language ("fix broken citations", "run citation resolver"), and `synthadoc workflow run --name broken-citation-resolver [--slug SLUG]`.
+
+---
+
+## 40. Cross-Wiki Queries (v1.4.0)
+
+Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic.
+
+### Architecture
+
+Every wiki server exposes two endpoints:
+
+- **`POST /retrieve`** — a lightweight BM25-only responder; returns matching pages without any LLM call.
+- **`POST /cross-wiki/query`** — a coordinator; picks relevant wikis, fans out to their `/retrieve` endpoints in parallel, merges results, and runs one LLM synthesis pass.
+
+Any server can act as the coordinator for a given request.
+
+```
+CLI / Web UI
+    │
+    │  synthadoc query --cross-wiki "question"
+    │  POST /cross-wiki/query  {question, history}
+    ▼
+┌──────────────────────────────────────────────┐
+│  Coordinator wiki server (any registered wiki)│
+│                                              │
+│  CrossWikiQueryAgent                         │
+│    1. decompose_question(provider, q)        │
+│    2. _wiki_pick(q) → [wiki_a, wiki_b]       │
+│    3. asyncio.gather(                        │
+│         POST wiki_a/retrieve {q, sub_qs},    │
+│         POST wiki_b/retrieve {q, sub_qs}     │
+│       )                                      │
+│    4. merge + prefix pages by wiki name      │
+│    5. LLM synthesis → QueryResult           │
+└──────────────────────────────────────────────┘
+         │                    │
+         ▼                    ▼
+  wiki_a server           wiki_b server
+  POST /retrieve          POST /retrieve
+  BM25 only, top-K        BM25 only, top-K
+  returns page text       returns page text
+```
+
+### Setup
+
+**Step 1 — Register wikis.**  
+Each wiki must be registered via `synthadoc install` so it appears in the global registry (`~/.synthadoc/wikis.json`).
+
+**Step 2 — Start all servers.**
+
+```bash
+synthadoc serve --all --background
+```
+
+Iterates the registry and spawns a background server for every wiki not already running. Skips wikis whose port is already responding.
+
+**Step 3 — Verify all servers are up.**
+
+```bash
+synthadoc status --all
+```
+
+Example output:
+
+```
+wiki           port   status    pages
+finance-wiki   7070   running   142
+legal-wiki     7071   running   38
+ops-wiki       7072   stopped   —
+```
+
+### CROSS_WIKI_ROUTING.md
+
+`~/.synthadoc/CROSS_WIKI_ROUTING.md` is an optional global routing override. When present, it maps topic areas to specific wikis, allowing you to pin certain question types to particular knowledge bases rather than relying on LLM auto-routing. When the file is absent or unparseable, the coordinator falls back to LLM auto-routing (selects wikis based on their `purpose.md` summaries) and logs a warning on parse error.
+
+Manage the file with the `synthadoc cross-wiki routing` commands:
+
+```bash
+synthadoc cross-wiki routing init    # generate from registry and open for editing
+synthadoc cross-wiki routing show    # print current contents
+synthadoc cross-wiki routing edit    # open in $EDITOR
+```
+
+### CLI Reference
+
+| Command | Description |
+|---|---|
+| `synthadoc query --cross-wiki "question"` | Fan-out query across all registered running wikis |
+| `synthadoc status --all` | Print running/stopped table for all registered wikis |
+| `synthadoc serve --all --background` | Start background servers for all wikis in the registry |
+| `synthadoc stop` | Stop the active wiki server |
+| `synthadoc stop -w <wiki>` | Stop a named wiki server |
+| `synthadoc stop --all` | Stop all running wiki servers |
+| `synthadoc cross-wiki routing init/show/edit` | Manage `CROSS_WIKI_ROUTING.md` |
+| `synthadoc cross-wiki status` | Alias for `synthadoc status --all` |
+
+### Web UI
+
+The cross-wiki feature is accessible from the web chat UI (`synthadoc web`):
+
+- **Toggle** — a globe icon button (🌐) at the right end of the message input bar toggles cross-wiki mode. Default: OFF. State persists in `localStorage` per origin.
+- **Context bar** — when the toggle is ON, a narrow strip above the conversation shows which wikis will be queried (`🌐 Querying across: finance-wiki · legal-wiki · ops-wiki`). After a response it updates to show which wikis responded and which were offline (`🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`).
+- **Citation pills** — cross-wiki citations use the format `[[wiki-name::PageTitle]]`, rendered as a two-part pill: `[wiki-name]  Page Title`.
+- **Offline indicator** — when one or more target wikis were unreachable, the context bar updates to show which wikis were offline: `🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`.
+- **Operation detection** — if the query text matches an operation keyword (`run`, `lint`, `ingest`, `resolve`, `orphan`, `promote`, etc.) while cross-wiki is ON, a dim footnote appears before submission: "This looks like an operation — will run on `finance-wiki` only." Operations always execute on the active wiki; they are never cross-wiki fanned out. When the server detects this pattern, `cross_wiki_skipped: true` is set in the response.
+
+### API Reference — `POST /retrieve`
+
+BM25-only retrieval endpoint on every wiki server. No LLM call, no synthesis, no gap detection. Used by coordinators for parallel fan-out.
+
+**Request:**
+```json
+{
+  "question": "string",
+  "sub_questions": ["string"],
+  "top_k": 10
+}
+```
+`sub_questions` and `top_k` are optional (`top_k` defaults to 10, capped at 20).
+
+**Response:**
+```json
+{
+  "wiki_name": "finance-wiki",
+  "pages": [
+    {
+      "slug": "valuation-methods",
+      "title": "Valuation Methods",
+      "score": 4.7,
+      "content": "full page text (truncated to 8 000 chars)"
+    }
+  ],
+  "purpose_summary": "string or null",
+  "routing_warning": "string or empty"
+}
+```
+
+`purpose_summary` carries the first 500 characters of the wiki's `purpose.md` body; the coordinator uses it to label wiki context in the synthesis prompt. `routing_warning` is non-empty when the ROUTING.md scope was too narrow and the search fell back to the full corpus.
+
+### API Reference — `POST /cross-wiki/query`
+
+Coordinator endpoint. Picks relevant wikis, fans out, merges, synthesises.
+
+**Request:**
+```json
+{
+  "question": "string",
+  "history": [],
+  "no_cache": false
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "string",
+  "citations": ["finance-wiki::valuation-methods", "legal-wiki::nda-template"],
+  "knowledge_gap": false,
+  "tokens_used": 1240,
+  "routing_warning": "",
+  "cross_wiki_searched": ["finance-wiki", "legal-wiki", "ops-wiki"],
+  "cross_wiki_offline": ["ops-wiki"],
+  "cross_wiki_skipped": false,
+  "cross_wiki_skip_reason": ""
+}
+```
+
+`cross_wiki_skipped: true` when operation detection fires and the query is routed to the local wiki only. `cross_wiki_skip_reason` is a human-readable string for the UI footnote.
+
+### Streaming — `GET /cross-wiki/query/stream`
+
+SSE stream with new event types emitted before the token stream:
+
+| Event | Payload | Description |
+|---|---|---|
+| `wikis_querying` | `{"wikis": []}` | Fan-out starting (spinner signal; actual wikis in `wikis_result`) |
+| `wikis_result` | `{"responded": ["finance-wiki"], "offline": ["ops-wiki"]}` | Fan-out complete; offline wikis listed |
+| `token` | `{"text": "…"}` | LLM output token |
+| `citations` | `{"citations": ["finance-wiki::valuation-methods", …]}` | Citation list (omitted when empty) |
+| `gap` | `{"gap": true, "suggested_searches": []}` | Knowledge gap detected (omitted when `knowledge_gap` is false) |
+| `done` | `{"knowledge_gap": false, "cross_wiki_offline": ["ops-wiki"], "cross_wiki_skipped": false, "cross_wiki_skip_reason": ""}` | Stream complete |
+
+### Graceful Degradation
+
+| Scenario | Behaviour |
+|---|---|
+| Target wiki offline | Excluded from fan-out; `cross_wiki_offline` populated; offline indicator in Web UI context bar; answer synthesised from available wikis |
+| All target wikis offline | `knowledge_gap: true`; message: "All target wikis were offline. Try `synthadoc serve --all --background`." |
+| Target wiki returns empty pages | Not a degradation; absent pages are simply not included in the merge; synthesis proceeds |
+| Target wiki HTTP timeout (> 15 s) | Treated as offline |
+| Wiki-pick LLM call fails | Falls back to querying all registered wikis |
+| `CROSS_WIKI_ROUTING.md` parse error | Falls back to LLM auto-routing; logs a warning |
+| Operation detected while cross-wiki ON | Routes to local wiki only; `cross_wiki_skipped: true` in response |
 
 ---
 

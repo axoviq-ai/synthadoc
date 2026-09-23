@@ -411,6 +411,35 @@ class CitationFaithfulnessRequest(BaseModel):
     stale_only: bool = False  # only run for stale slugs (per cache)
 
 
+class RetrieveRequest(BaseModel):
+    question: str
+    sub_questions: list[str] = []
+    top_k: int = 10
+
+
+class CrossWikiQueryRequest(BaseModel):
+    question: str
+    history: list[dict] = []
+    no_cache: bool = False
+
+
+def _make_cross_wiki_agent(app: FastAPI) -> "CrossWikiQueryAgent":
+    """Construct a CrossWikiQueryAgent from the app's live state."""
+    from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent
+    from synthadoc.cli._wiki import read_registry_all
+    from synthadoc.providers import make_provider
+    orch = app.state.orch
+    registry = read_registry_all()
+    own_wiki_name = orch._root.name
+    provider = make_provider("query", orch._cfg)
+    return CrossWikiQueryAgent(
+        provider=provider,
+        registry=registry,
+        own_wiki_name=own_wiki_name,
+        orchestrator=orch,
+    )
+
+
 def _load_blocked_domains(wiki_root: Path) -> set[str]:
     """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
     import json as _json_mod
@@ -974,6 +1003,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def health():
         return {"status": "ok"}
 
+    @app.post("/shutdown")
+    async def shutdown():
+        """Gracefully stop this wiki server. Used by `synthadoc stop`."""
+        import asyncio as _asyncio
+        async def _stop():
+            await _asyncio.sleep(0.1)
+            raise SystemExit(0)
+        _asyncio.create_task(_stop())
+        return {"status": "stopping"}
+
     @app.get("/status")
     async def status():
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
@@ -987,6 +1026,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "jobs_pending": pending,
             "jobs_total": len(jobs),
         }
+
+    @app.get("/registry")
+    async def registry_endpoint():
+        """Return all registered wikis with their port and running state."""
+        from synthadoc.cli._wiki import read_registry_all, probe_port
+        reg = read_registry_all()
+        result = {}
+        for name, entry in reg.items():
+            port = entry.get("port")
+            result[name] = {"port": port, "running": probe_port(port) if port else False}
+        return JSONResponse(content={"wikis": result}, headers=_NO_STORE)
 
     @app.get("/config")
     async def config_info():
@@ -1054,6 +1104,108 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if result.get("cacheable", True):
             await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
         return JSONResponse(content=result, headers=_NO_STORE)
+
+    @app.post("/retrieve")
+    async def retrieve(req: RetrieveRequest):
+        """BM25-only retrieval — no LLM, no synthesis. Used by cross-wiki coordinators."""
+        from synthadoc.cli._wiki import extract_purpose_summary
+        from synthadoc.storage.wiki import LifecycleState
+        from synthadoc.storage.search import HybridSearch
+        from synthadoc.storage.wiki import WikiStorage
+        from typing import Any
+        if not req.question.strip():
+            raise HTTPException(status_code=400, detail="question must not be empty")
+        top_k = min(max(req.top_k, 1), 20)
+        orch = app.state.orch
+        search: HybridSearch = orch._search
+        store: WikiStorage = orch._store
+        wiki_root_path = orch._root
+        wiki_name = orch._root.name
+
+        queries = req.sub_questions if req.sub_questions else [req.question]
+        best: dict[str, Any] = {}
+        for q in queries:
+            results = await search.hybrid_search(q.split(), top_n=top_k)
+            for r in results:
+                if r.slug not in best or r.score > best[r.slug].score:
+                    best[r.slug] = r
+
+        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:top_k]
+        pages = []
+        for r in candidates:
+            page = store.read_page(r.slug)
+            if page and page.status == LifecycleState.ACTIVE:
+                pages.append({
+                    "slug": r.slug,
+                    "title": page.title,
+                    "score": r.score,
+                    "content": page.content[:8000],
+                })
+
+        purpose_summary = extract_purpose_summary(wiki_root_path) or None
+
+        return JSONResponse(content={
+            "wiki_name": wiki_name,
+            "pages": pages,
+            "purpose_summary": purpose_summary,
+            "routing_warning": "",
+        }, headers=_NO_STORE)
+
+    @app.post("/cross-wiki/query")
+    async def cross_wiki_query(req: CrossWikiQueryRequest):
+        if not req.question.strip():
+            raise HTTPException(status_code=400, detail="question must not be empty")
+        agent = _make_cross_wiki_agent(app)
+        result = await agent.run(req.question, history=req.history or None)
+        return JSONResponse(content={
+            "answer": result.answer,
+            "citations": result.citations,
+            "knowledge_gap": result.knowledge_gap,
+            "tokens_used": result.tokens_used,
+            "routing_warning": result.routing_warning,
+            "cross_wiki_searched": result.cross_wiki_searched,
+            "cross_wiki_offline": result.cross_wiki_offline,
+            "cross_wiki_skipped": result.cross_wiki_skipped,
+            "cross_wiki_skip_reason": result.cross_wiki_skip_reason,
+        }, headers=_NO_STORE)
+
+    @app.get("/cross-wiki/query/stream")
+    async def cross_wiki_query_stream(q: str, session_id: str | None = None, timeout_seconds: int = 90):
+        import asyncio as _asyncio
+        import json as _json
+        from fastapi.responses import StreamingResponse
+        from synthadoc.cli._wiki import read_registry_all
+        if not q.strip():
+            raise HTTPException(status_code=400, detail="q must not be empty")
+
+        async def generate():
+            registry = read_registry_all()
+            wiki_names = list(registry.keys())
+            # Emit early so the UI shows a spinner; actual queried wikis arrive in wikis_result
+            yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
+
+            agent = _make_cross_wiki_agent(app)
+            try:
+                result = await _asyncio.wait_for(
+                    agent.run(q),
+                    timeout=timeout_seconds,
+                )
+            except _asyncio.TimeoutError:
+                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
+                return
+            except Exception as exc:
+                yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+                return
+
+            yield f"event: wikis_result\ndata: {_json.dumps({'responded': [w for w in result.cross_wiki_searched if w not in result.cross_wiki_offline], 'offline': result.cross_wiki_offline})}\n\n"
+            yield f"event: token\ndata: {_json.dumps({'text': result.answer})}\n\n"
+            if result.citations:
+                yield f"event: citations\ndata: {_json.dumps({'citations': result.citations})}\n\n"
+            if result.knowledge_gap:
+                yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+            yield f"event: done\ndata: {_json.dumps({'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
+
+        return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
     @app.get("/query/stream")
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):

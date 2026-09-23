@@ -8,12 +8,44 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get
+from synthadoc.cli._wiki import read_registry_all
 from synthadoc.storage.wiki import LifecycleState
 
 
+def render_status_all(registry: dict) -> None:
+    """Print a running/stopped table for all registered wikis."""
+    from synthadoc.cli._wiki import probe_port
+    if not registry:
+        typer.echo("No wikis registered.")
+        return
+    typer.echo(f"{'wiki':<20} {'port':<8} {'status':<10} {'pages':<8} {'last-ingest'}")
+    typer.echo("-" * 60)
+    for name, entry in registry.items():
+        port = entry.get("port")
+        if port and probe_port(port):
+            try:
+                import httpx
+                resp = httpx.get(f"http://127.0.0.1:{port}/status", timeout=2)
+                data = resp.json()
+                pages = data.get("pages", "?")
+                last = data.get("last_ingest", "—")
+                typer.echo(f"{name:<20} {port:<8} {'running':<10} {str(pages):<8} {last}")
+            except Exception:
+                typer.echo(f"{name:<20} {str(port):<8} {'running':<10} {'—':<8} —")
+        else:
+            typer.echo(f"{name:<20} {str(port or '?'):<8} {'stopped':<10} {'—':<8} —")
+
+
 @app.command("status")
-def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
-    """Show wiki status including lifecycle summary. Requires synthadoc serve to be running."""
+def status_cmd(
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    all_wikis: bool = typer.Option(False, "--all", help="Show status for all registered wikis"),
+):
+    """Show wiki status. With --all: show running/stopped state for every registered wiki."""
+    if all_wikis:
+        render_status_all(read_registry_all())
+        return
+
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     result = get(wiki, "/status")
