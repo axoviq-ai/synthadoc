@@ -108,6 +108,8 @@ class QueryResult:
     routing_warning: str = ""  # Non-empty when routing-scoped search fell back to full corpus
     cross_wiki_offline: list[str] = field(default_factory=list)
     cross_wiki_searched: list[str] = field(default_factory=list)
+    cross_wiki_skipped: bool = False
+    cross_wiki_skip_reason: str = ""
 
 
 # Keywords that indicate the question is asking about live wiki state
