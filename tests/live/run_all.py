@@ -114,15 +114,20 @@ SUITES = {
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
 
+# Suites whose test files use pytest conventions — run via `python -m pytest`
+# rather than direct script execution.
+PYTEST_SUITES = {"cross_wiki"}
+
 
 def run_suite(name: str, script: Path, extra_args: list[str], env: dict) -> int:
     print(f"\n{'='*64}")
     print(f"  Running suite: {name.upper()} — {script.name}")
     print(f"{'='*64}")
-    r = subprocess.run(
-        [sys.executable, "-X", "utf8", str(script)] + extra_args,
-        env=env,
-    )
+    if name in PYTEST_SUITES:
+        cmd = [sys.executable, "-X", "utf8", "-m", "pytest", str(script), "-v", "--timeout=120"] + extra_args
+    else:
+        cmd = [sys.executable, "-X", "utf8", str(script)] + extra_args
+    r = subprocess.run(cmd, env=env)
     return r.returncode
 
 
