@@ -30,3 +30,26 @@ def test_cross_wiki_status_delegates_to_status_all():
     with patch("synthadoc.cli.cross_wiki.render_status_all") as mock_status:
         runner.invoke(app, ["cross-wiki", "status"])
     mock_status.assert_called_once()
+
+def test_routing_show_when_no_file(tmp_path):
+    from synthadoc.cli.main import app
+    routing_path = tmp_path / "MISSING.md"
+    with patch("synthadoc.cli.cross_wiki.CROSS_WIKI_ROUTING_PATH", routing_path):
+        result = runner.invoke(app, ["cross-wiki", "routing", "show"])
+    assert "No routing file" in result.output or "init" in result.output
+
+def test_routing_edit_no_file_exits(tmp_path):
+    from synthadoc.cli.main import app
+    routing_path = tmp_path / "MISSING.md"
+    with patch("synthadoc.cli.cross_wiki.CROSS_WIKI_ROUTING_PATH", routing_path):
+        result = runner.invoke(app, ["cross-wiki", "routing", "edit"])
+    assert result.exit_code != 0 or "No routing file" in result.output
+
+def test_routing_edit_calls_execlp(tmp_path):
+    from synthadoc.cli.main import app
+    routing_path = tmp_path / "CROSS_WIKI_ROUTING.md"
+    routing_path.write_text("## default\nwikis: a\n")
+    with patch("synthadoc.cli.cross_wiki.CROSS_WIKI_ROUTING_PATH", routing_path):
+        with patch("os.execlp") as mock_exec:
+            runner.invoke(app, ["cross-wiki", "routing", "edit"])
+    mock_exec.assert_called_once()

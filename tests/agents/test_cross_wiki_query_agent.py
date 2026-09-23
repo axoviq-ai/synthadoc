@@ -141,3 +141,95 @@ def test_cross_wiki_routing_md_default_fallback():
     ]
     result = _pick_wikis_from_routing("how do I deploy the app?", rules)
     assert result == ["finance-wiki", "ops-wiki"]  # default
+
+
+@pytest.mark.asyncio
+async def test_no_pages_no_offline_returns_gap():
+    """All wikis return empty pages with no offline → knowledge_gap=True (line 151)."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    empty_resp = {"wiki_name": "coordinator", "pages": [], "purpose_summary": "", "routing_warning": ""}
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=empty_resp)):
+        result = await agent.run("what is the conversion ratio?")
+    assert result.knowledge_gap is True
+    assert result.cross_wiki_offline == []
+
+
+@pytest.mark.asyncio
+async def test_wiki_pick_uses_routing_file(tmp_path):
+    """When routing file exists and matches keywords, uses it (lines 213-220)."""
+    routing_file = tmp_path / "CROSS_WIKI_ROUTING.md"
+    routing_file.write_text("## finance\nwikis: coordinator\nkeywords: leverage\n")
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(
+        provider=provider, registry=REGISTRY, own_wiki_name="coordinator",
+        cross_wiki_routing_path=routing_file,
+    )
+    retrieve_resp = {"wiki_name": "coordinator", "pages": [
+        {"slug": "lev", "title": "Leverage", "score": 4.0, "content": "leverage info"}
+    ], "purpose_summary": "Finance", "routing_warning": ""}
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("what is leverage?")
+    assert result.answer
+
+
+@pytest.mark.asyncio
+async def test_wiki_pick_lm_failure_falls_back_to_all():
+    """LLM call raises → _wiki_pick falls back to all wikis (lines 247-249)."""
+    provider = _make_provider()
+    provider.complete = AsyncMock(side_effect=RuntimeError("API error"))
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    picked = await agent._wiki_pick("anything?", ["anything?"])
+    picked_names = [name for name, _ in picked]
+    assert "coordinator" in picked_names
+    assert "target" in picked_names
+
+
+@pytest.mark.asyncio
+async def test_merge_results_with_retrieve_response_object_and_warning():
+    """_merge_results handles _RetrieveResponse objects and routing_warning (lines 298-299, 303)."""
+    from synthadoc.agents.cross_wiki_query_agent import _RetrieveResponse
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    resp_obj = _RetrieveResponse(
+        wiki_name="coordinator",
+        pages=[{"slug": "p", "title": "P", "score": 2.0, "content": "page content"}],
+        purpose_summary="Finance",
+        routing_warning="partial index",
+    )
+    target_wikis = [("coordinator", "http://127.0.0.1:7070")]
+    raw_results = [resp_obj]
+    pages, offline, warnings = agent._merge_results(target_wikis, raw_results)
+    assert len(pages) == 1
+    assert pages[0]["wiki_name"] == "coordinator"
+    assert any("partial index" in w for w in warnings)
+
+
+def test_build_context_truncates_long_content():
+    """Context builder truncates when total exceeds _MAX_CONTEXT_CHARS (lines 313-314)."""
+    from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _MAX_CONTEXT_CHARS
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    big_content = "x" * (_MAX_CONTEXT_CHARS + 500)
+    pages = [
+        {"wiki_name": "coordinator", "title": "A", "score": 5.0, "content": big_content},
+        {"wiki_name": "target", "title": "B", "score": 4.0, "content": "short"},
+    ]
+    ctx = agent._build_cross_wiki_context(pages)
+    assert len(ctx) <= _MAX_CONTEXT_CHARS + 200  # truncated
+
+
+def test_synthesis_prompt_includes_scope_block():
+    """purpose_summaries → scope block in synthesis prompt (lines 334-335)."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    prompt = agent._build_cross_wiki_synthesis_prompt(
+        question="what is leverage?",
+        context="page content",
+        purpose_summaries={"coordinator": "Finance domain", "target": "Legal domain"},
+        offline_wikis=[],
+        warnings=[],
+        history=[],
+    )
+    assert "Finance domain" in prompt
+    assert "Wiki scopes:" in prompt
