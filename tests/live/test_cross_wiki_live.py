@@ -163,6 +163,11 @@ def live_wikis(tmp_path_factory):
     _wait_for_jobs(_COORDINATOR_PORT, coord_job_ids, timeout=300)
     _wait_for_jobs(_TARGET_PORT, target_job_ids, timeout=300)
 
+    # Ingest agent creates pages as DRAFT; /retrieve only returns ACTIVE pages.
+    # Promote every DRAFT page on both wikis so cross-wiki queries can find them.
+    _activate_draft_pages(_COORDINATOR_PORT)
+    _activate_draft_pages(_TARGET_PORT)
+
     yield {
         "coord_dir": coord_dir,
         "target_dir": target_dir,
@@ -320,6 +325,27 @@ def _wait_for_jobs(port: int, job_ids: list[str], timeout: int = 300) -> None:
             f"{len(pending)} ingest job(s) on port {port} did not reach "
             f"terminal state within {timeout}s"
         )
+
+
+def _activate_draft_pages(port: int) -> None:
+    """Promote every DRAFT page on the wiki at *port* to ACTIVE.
+
+    The ingest agent creates pages as LifecycleState.DRAFT, but /retrieve
+    only serves LifecycleState.ACTIVE pages.  Calling this after all ingest
+    jobs complete makes the freshly created pages visible to cross-wiki queries.
+    """
+    resp = httpx.get(f"http://127.0.0.1:{port}/lifecycle/pages", timeout=10.0)
+    resp.raise_for_status()
+    draft_slugs = [
+        p["slug"] for p in resp.json().get("pages", []) if p.get("state") == "draft"
+    ]
+    for slug in draft_slugs:
+        r = httpx.post(
+            f"http://127.0.0.1:{port}/lifecycle/transition",
+            json={"slug": slug, "to_state": "active", "reason": "live-test activation"},
+            timeout=10.0,
+        )
+        r.raise_for_status()
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
