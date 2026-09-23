@@ -59,9 +59,14 @@ def live_wikis(tmp_path_factory):
         if changed:
             _registry_path.write_text(_json.dumps(_reg, indent=2), encoding="utf-8")
 
-    # Install wikis
-    _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir), "--port", str(_COORDINATOR_PORT)])
-    _run(["synthadoc", "install", "live-target", "--target", str(target_dir), "--port", str(_TARGET_PORT)])
+    # Install wikis — set domains that match seeded content so the ingest agent
+    # does not reject the pages as out-of-scope (default domain is derived from
+    # the wiki name, e.g. "Live Coord", which caused finance/ops content to be
+    # skipped).
+    _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir),
+          "--port", str(_COORDINATOR_PORT), "--domain", "Finance and Corporate Strategy"])
+    _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
+          "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
     # Patch config.toml to use opencode — the install default is gemini which
     # requires GEMINI_API_KEY; opencode needs no separate key.
@@ -75,12 +80,47 @@ def live_wikis(tmp_path_factory):
         _cfg_path.write_text(_cfg_text, encoding="utf-8")
 
     # Seed content — coordinator: finance domain
-    _write_page(coord_dir, "leverage", "Leverage\n\nLeverage is the ratio of debt to equity in a capital structure. High leverage amplifies returns but increases risk.\n\nFormula: Leverage = Total Debt / Total Equity")
-    _write_page(coord_dir, "ebitda", "EBITDA\n\nEBITDA stands for Earnings Before Interest, Taxes, Depreciation, and Amortisation. It measures operating performance.\n\nTypical EBITDA multiples in M&A range from 6x to 12x depending on sector.")
+    _write_page(coord_dir, "leverage", (
+        "Leverage\n\n"
+        "Leverage is the ratio of debt to equity in a capital structure. "
+        "High leverage amplifies returns but also increases financial risk. "
+        "In corporate finance, the leverage ratio measures how much of a company's "
+        "capital comes from debt versus equity.\n\n"
+        "Formula: Leverage Ratio = Total Debt / Total Equity\n\n"
+        "A leverage ratio above 2x is considered high; below 1x is conservative."
+    ))
+    _write_page(coord_dir, "ebitda", (
+        "EBITDA and M&A Valuation Multiples\n\n"
+        "EBITDA stands for Earnings Before Interest, Taxes, Depreciation, and Amortisation. "
+        "It is the primary metric used to value companies in mergers and acquisitions (M&A). "
+        "Analysts apply an EBITDA multiple to estimate enterprise value.\n\n"
+        "Typical EBITDA multiples in M&A range from 6x to 12x depending on sector and growth rate. "
+        "Technology companies often trade at 10x–15x EBITDA; industrials at 5x–8x EBITDA.\n\n"
+        "Example: a company with $10M EBITDA at an 8x multiple has an enterprise value of $80M."
+    ))
 
     # Seed content — target: operations domain
-    _write_page(target_dir, "deployment-runbook", "Deployment Runbook\n\nTo deploy the application: (1) run `make build`, (2) push Docker image, (3) run `kubectl apply`.\n\nRollback: `kubectl rollout undo deployment/app`")
-    _write_page(target_dir, "incident-response", "Incident Response\n\nSeverity levels: P1 (outage), P2 (degraded), P3 (minor). P1 requires response within 15 minutes.")
+    _write_page(target_dir, "deployment-runbook", (
+        "Kubernetes Deployment Runbook\n\n"
+        "This runbook covers deploying and rolling back applications on Kubernetes.\n\n"
+        "## Deploy\n"
+        "To deploy the application to Kubernetes: (1) run `make build` to build the Docker image, "
+        "(2) push the Docker image to the registry, (3) run `kubectl apply -f k8s/` to apply the "
+        "Kubernetes manifests.\n\n"
+        "## Rollback a Kubernetes Deployment\n"
+        "To roll back a Kubernetes deployment to the previous revision:\n"
+        "  kubectl rollout undo deployment/app\n\n"
+        "To roll back to a specific Kubernetes revision:\n"
+        "  kubectl rollout undo deployment/app --to-revision=2\n\n"
+        "To check Kubernetes rollout status: kubectl rollout status deployment/app"
+    ))
+    _write_page(target_dir, "incident-response", (
+        "Incident Response\n\n"
+        "Severity levels: P1 (complete outage), P2 (degraded service), P3 (minor issue). "
+        "P1 incidents require a response within 15 minutes. "
+        "P2 incidents require acknowledgement within 1 hour.\n\n"
+        "Escalation: page the on-call engineer via PagerDuty for P1 and P2."
+    ))
 
     # Start servers
     subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"])
@@ -92,6 +132,13 @@ def live_wikis(tmp_path_factory):
     # Ingest pages now that servers are up
     _run(["synthadoc", "ingest", str(coord_dir / "wiki"), "-w", "live-coord", "--batch"])
     _run(["synthadoc", "ingest", str(target_dir / "wiki"), "-w", "live-target", "--batch"])
+
+    # Wait until ingest jobs complete and content is retrievable.  The ingest
+    # commands only enqueue the work; the LLM processes it asynchronously.
+    # Poll the /retrieve endpoint with a sentinel query for each wiki until
+    # at least one result comes back, or until the timeout expires.
+    _wait_for_content(_COORDINATOR_PORT, "EBITDA", timeout=120)
+    _wait_for_content(_TARGET_PORT, "Kubernetes deployment rollback", timeout=120)
 
     yield {"coord_dir": coord_dir, "target_dir": target_dir}
 
@@ -166,6 +213,29 @@ def _write_page(wiki_dir: Path, slug: str, content: str) -> None:
     page_dir = wiki_dir / "wiki"
     page_dir.mkdir(parents=True, exist_ok=True)
     (page_dir / f"{slug}.md").write_text(content, encoding="utf-8")
+
+
+def _wait_for_content(port: int, query: str, timeout: int = 120) -> None:
+    """Poll /retrieve until at least one result is returned (ingest completed)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            resp = httpx.post(
+                f"http://127.0.0.1:{port}/retrieve",
+                json={"question": query, "top_k": 1},
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results") or data.get("pages") or []
+                if results:
+                    return
+        except Exception:
+            pass
+        time.sleep(3)
+    raise TimeoutError(
+        f"Content for query '{query}' not available on port {port} within {timeout}s"
+    )
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
