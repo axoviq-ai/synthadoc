@@ -46,7 +46,7 @@ def _stop_wiki(wiki_name: str) -> bool:
             pid_file.unlink(missing_ok=True)
             typer.echo(f"  {wiki_name}: stopped (via PID {pid})")
             return True
-        except (ProcessLookupError, ValueError):
+        except (ProcessLookupError, ValueError, OSError, PermissionError):
             pid_file.unlink(missing_ok=True)
 
     typer.echo(f"  {wiki_name}: not running")

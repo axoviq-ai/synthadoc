@@ -4438,10 +4438,10 @@ synthadoc status --all
 Output:
 
 ```
-wiki           port   status    pages   last-ingest
-finance-wiki   7070   running   142     2026-09-22
-legal-wiki     7071   running   38      2026-09-20
-ops-wiki       7072   stopped   —       —
+wiki           port   status    pages
+finance-wiki   7070   running   142
+legal-wiki     7071   running   38
+ops-wiki       7072   stopped   —
 ```
 
 Any wiki showing `stopped` will be excluded from cross-wiki queries. Start it with `synthadoc serve -w ops-wiki --background` to include it.
@@ -4469,7 +4469,7 @@ For example:
 [[legal-wiki::NDA Template]]
 ```
 
-In the web UI (`synthadoc web`), these render as two-part pills: `[wiki-name]  Page Title`. Clicking a pill opens the page in that wiki's server in a new browser tab.
+In the web UI (`synthadoc web`), these render as two-part pills: `[wiki-name]  Page Title`.
 
 ### Step 5 — Configuring CROSS_WIKI_ROUTING.md
 
@@ -4500,18 +4500,17 @@ In the chat input bar:
 
 - **Globe toggle (🌐)** — at the right end of the input bar. Click to enable cross-wiki mode. Default: OFF. Your choice persists between sessions.
 - **Context bar** — when the toggle is ON, a narrow strip above the conversation shows which wikis will be queried. After the response it shows which wikis responded and which (if any) were offline.
-- **Citation pills** — cross-wiki citations render as `[wiki-name]  Page Title`. Clicking opens the page in that wiki's server.
+- **Citation pills** — cross-wiki citations render as `[wiki-name]  Page Title`.
 
 ### Step 7 — When a wiki is offline
 
-If a target wiki is offline when the query runs, the web UI shows an amber warning below the answer:
+If a target wiki is offline when the query runs, the context bar updates to show which wikis were offline:
 
 ```
-⚠  ops-wiki was offline — results are from finance-wiki and legal-wiki only.
-   Run `synthadoc serve ops-wiki --background` to include it.
+🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline
 ```
 
-The CLI prints the same warning. The answer is still synthesised from the available wikis.
+The CLI prints a similar warning to stderr. The answer is still synthesised from the available wikis.
 
 To restore a stopped wiki:
 

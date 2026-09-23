@@ -1003,6 +1003,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def health():
         return {"status": "ok"}
 
+    @app.post("/shutdown")
+    async def shutdown():
+        """Gracefully stop this wiki server. Used by `synthadoc stop`."""
+        import asyncio as _asyncio
+        async def _stop():
+            await _asyncio.sleep(0.1)
+            raise SystemExit(0)
+        _asyncio.create_task(_stop())
+        return {"status": "stopping"}
+
     @app.get("/status")
     async def status():
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
@@ -1171,7 +1181,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         async def generate():
             registry = read_registry_all()
             wiki_names = list(registry.keys())
-            yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': wiki_names})}\n\n"
+            # Emit early so the UI shows a spinner; actual queried wikis arrive in wikis_result
+            yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
 
             agent = _make_cross_wiki_agent(app)
             try:
@@ -1188,7 +1199,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
             yield f"event: wikis_result\ndata: {_json.dumps({'responded': [w for w in result.cross_wiki_searched if w not in result.cross_wiki_offline], 'offline': result.cross_wiki_offline})}\n\n"
             yield f"event: token\ndata: {_json.dumps({'text': result.answer})}\n\n"
-            yield f"event: done\ndata: {_json.dumps({'citations': result.citations, 'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
+            if result.citations:
+                yield f"event: citations\ndata: {_json.dumps({'citations': result.citations})}\n\n"
+            if result.knowledge_gap:
+                yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+            yield f"event: done\ndata: {_json.dumps({'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
 
         return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 

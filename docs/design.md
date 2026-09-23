@@ -4219,10 +4219,10 @@ synthadoc status --all
 Example output:
 
 ```
-wiki           port   status    pages   last-ingest
-finance-wiki   7070   running   142     2026-09-22
-legal-wiki     7071   running   38      2026-09-20
-ops-wiki       7072   stopped   —       —
+wiki           port   status    pages
+finance-wiki   7070   running   142
+legal-wiki     7071   running   38
+ops-wiki       7072   stopped   —
 ```
 
 ### CROSS_WIKI_ROUTING.md
@@ -4256,8 +4256,8 @@ The cross-wiki feature is accessible from the web chat UI (`synthadoc web`):
 
 - **Toggle** — a globe icon button (🌐) at the right end of the message input bar toggles cross-wiki mode. Default: OFF. State persists in `localStorage` per origin.
 - **Context bar** — when the toggle is ON, a narrow strip above the conversation shows which wikis will be queried (`🌐 Querying across: finance-wiki · legal-wiki · ops-wiki`). After a response it updates to show which wikis responded and which were offline (`🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`).
-- **Citation pills** — cross-wiki citations use the format `[[wiki-name::PageTitle]]`, rendered as a two-part pill: `[wiki-name]  Page Title`. Clicking a pill opens the page at that wiki's registered server port in a new tab.
-- **Offline banner** — an amber warning appears below the answer when one or more target wikis were unreachable: "⚠ `ops-wiki` was offline — results are from `finance-wiki` and `legal-wiki` only. Run `synthadoc serve ops-wiki --background` to include it."
+- **Citation pills** — cross-wiki citations use the format `[[wiki-name::PageTitle]]`, rendered as a two-part pill: `[wiki-name]  Page Title`.
+- **Offline indicator** — when one or more target wikis were unreachable, the context bar updates to show which wikis were offline: `🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`.
 - **Operation detection** — if the query text matches an operation keyword (`run`, `lint`, `ingest`, `resolve`, `orphan`, `promote`, etc.) while cross-wiki is ON, a dim footnote appears before submission: "This looks like an operation — will run on `finance-wiki` only." Operations always execute on the active wiki; they are never cross-wiki fanned out. When the server detects this pattern, `cross_wiki_skipped: true` is set in the response.
 
 ### API Reference — `POST /retrieve`
@@ -4329,16 +4329,18 @@ SSE stream with new event types emitted before the token stream:
 
 | Event | Payload | Description |
 |---|---|---|
-| `wikis_querying` | `{"wikis": ["finance-wiki", "legal-wiki"]}` | Fan-out has started to these wikis |
+| `wikis_querying` | `{"wikis": []}` | Fan-out starting (spinner signal; actual wikis in `wikis_result`) |
 | `wikis_result` | `{"responded": ["finance-wiki"], "offline": ["ops-wiki"]}` | Fan-out complete; offline wikis listed |
 | `token` | `{"text": "…"}` | LLM output token |
-| `done` | `{"citations": […], "knowledge_gap": false, "cross_wiki_offline": ["ops-wiki"]}` | Stream complete |
+| `citations` | `{"citations": ["finance-wiki::valuation-methods", …]}` | Citation list (omitted when empty) |
+| `gap` | `{"gap": true, "suggested_searches": []}` | Knowledge gap detected (omitted when `knowledge_gap` is false) |
+| `done` | `{"knowledge_gap": false, "cross_wiki_offline": ["ops-wiki"], "cross_wiki_skipped": false, "cross_wiki_skip_reason": ""}` | Stream complete |
 
 ### Graceful Degradation
 
 | Scenario | Behaviour |
 |---|---|
-| Target wiki offline | Excluded from fan-out; `cross_wiki_offline` populated; amber banner in Web UI; answer synthesised from available wikis |
+| Target wiki offline | Excluded from fan-out; `cross_wiki_offline` populated; offline indicator in Web UI context bar; answer synthesised from available wikis |
 | All target wikis offline | `knowledge_gap: true`; message: "All target wikis were offline. Try `synthadoc serve --all --background`." |
 | Target wiki returns empty pages | Not a degradation; absent pages are simply not included in the merge; synthesis proceeds |
 | Target wiki HTTP timeout (> 15 s) | Treated as offline |

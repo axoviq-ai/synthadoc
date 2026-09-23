@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +12,11 @@ from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents._query_utils import (
-    build_synthesis_system, decompose_question, has_cjk, history_block, trim_history,
+    build_synthesis_system, decompose_question, history_block, trim_history,
 )
 from synthadoc.agents.query_agent import QueryResult
 from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH   # single source of truth
 from synthadoc.providers.base import LLMProvider, Message
-from synthadoc.storage.wiki import LifecycleState          # use constants, not "active" strings
-
 logger = logging.getLogger(__name__)
 
 # NOTE: Do NOT define _OPERATION_KEYWORDS here.
@@ -97,9 +95,6 @@ class CrossWikiQueryAgent(BaseAgent):
 
     async def run(self, question: str, history: list[dict] | None = None) -> QueryResult:  # type: ignore[override]
         return await self._run(question, history)
-
-    def _safe_default(self) -> None:
-        return None
 
     async def _run(self, question: str, history: list[dict] | None = None) -> QueryResult:
         # Pre-flight: detect operations → route to local wiki
