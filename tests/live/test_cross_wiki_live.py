@@ -20,8 +20,15 @@ import tempfile
 import subprocess
 from pathlib import Path
 
+import sys
+
 import httpx
 import pytest
+
+# Suppress console popup windows on Windows when spawning background processes.
+_POPEN_HIDDEN: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+if sys.platform == "win32":
+    _POPEN_HIDDEN["creationflags"] = subprocess.CREATE_NO_WINDOW
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SYNTHADOC_LIVE_TESTS") != "1",
@@ -123,8 +130,8 @@ def live_wikis(tmp_path_factory):
     ))
 
     # Start servers
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"])
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"], **_POPEN_HIDDEN)
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"], **_POPEN_HIDDEN)
 
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
@@ -184,7 +191,7 @@ def test_cross_wiki_offline_degradation(live_wikis):
         assert "live-target" in result.get("cross_wiki_offline", [])
     finally:
         # Restart target for subsequent tests
-        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
+        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"], **_POPEN_HIDDEN)
         _wait_for_server(_TARGET_PORT)
 
 def test_serve_all_and_status_all(live_wikis, tmp_path_factory):
