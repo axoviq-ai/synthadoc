@@ -151,16 +151,17 @@ def live_wikis(tmp_path_factory):
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
 
-    # Ingest pages now that servers are up
-    _run(["synthadoc", "ingest", str(coord_dir / "wiki"), "-w", "live-coord", "--batch"])
-    _run(["synthadoc", "ingest", str(target_dir / "wiki"), "-w", "live-target", "--batch"])
+    # Ingest pages now that servers are up.  Capture job IDs so we can poll
+    # each job to terminal state rather than blindly polling /retrieve (which
+    # stays empty if jobs fail and never tells us why).
+    coord_job_ids = _ingest_directory(coord_dir / "wiki", "live-coord")
+    target_job_ids = _ingest_directory(target_dir / "wiki", "live-target")
 
-    # Wait until ingest jobs complete and content is retrievable.  The ingest
-    # commands only enqueue the work; the LLM processes it asynchronously.
-    # Poll the /retrieve endpoint with a sentinel query for each wiki until
-    # at least one result comes back, or until the timeout expires.
-    _wait_for_content(_COORDINATOR_PORT, "EBITDA", timeout=300)
-    _wait_for_content(_TARGET_PORT, "Kubernetes deployment rollback", timeout=300)
+    # Block until every ingest job reaches a terminal state.  A FAILED or DEAD
+    # job raises immediately with the server-side error message so the test
+    # output shows the root cause instead of a 300s timeout.
+    _wait_for_jobs(_COORDINATOR_PORT, coord_job_ids, timeout=300)
+    _wait_for_jobs(_TARGET_PORT, target_job_ids, timeout=300)
 
     yield {
         "coord_dir": coord_dir,
@@ -257,27 +258,68 @@ def _write_page(wiki_dir: Path, slug: str, content: str) -> None:
     (page_dir / f"{slug}.md").write_text(content, encoding="utf-8")
 
 
-def _wait_for_content(port: int, query: str, timeout: int = 120) -> None:
-    """Poll /retrieve until at least one result is returned (ingest completed)."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            resp = httpx.post(
-                f"http://127.0.0.1:{port}/retrieve",
-                json={"question": query, "top_k": 1},
-                timeout=5.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get("results") or data.get("pages") or []
-                if results:
-                    return
-        except Exception:
-            pass
-        time.sleep(3)
-    raise TimeoutError(
-        f"Content for query '{query}' not available on port {port} within {timeout}s"
+def _ingest_directory(wiki_dir: Path, wiki_name: str) -> list[str]:
+    """Enqueue batch ingest for a directory; return the list of job IDs."""
+    result = subprocess.run(
+        ["synthadoc", "ingest", str(wiki_dir), "-w", wiki_name, "--batch"],
+        capture_output=True, text=True, check=True, encoding="utf-8",
     )
+    job_ids = []
+    for line in result.stdout.splitlines():
+        if "-> job " in line:
+            job_id = line.split("-> job ")[-1].strip()
+            if job_id:
+                job_ids.append(job_id)
+    return job_ids
+
+
+def _wait_for_jobs(port: int, job_ids: list[str], timeout: int = 300) -> None:
+    """Poll /jobs/<id> for each job until all reach a terminal state.
+
+    Raises RuntimeError immediately if any job is FAILED or DEAD (surfaces the
+    server-side error message).  Raises TimeoutError if the deadline expires
+    before all jobs complete.
+    """
+    if not job_ids:
+        return
+    from synthadoc.core.queue import JobStatus
+    deadline = time.time() + timeout
+    pending = list(job_ids)
+    while pending and time.time() < deadline:
+        still_pending = []
+        for job_id in pending:
+            try:
+                resp = httpx.get(
+                    f"http://127.0.0.1:{port}/jobs/{job_id}",
+                    timeout=5.0,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    try:
+                        status = JobStatus(data.get("status", ""))
+                    except ValueError:
+                        status = None
+                    if status is not None and status.is_terminal:
+                        if status in (JobStatus.FAILED, JobStatus.DEAD):
+                            err = data.get("error") or ""
+                            raise RuntimeError(
+                                f"Ingest job {job_id[:8]} on port {port} "
+                                f"reached {status.value}: {err[:400]}"
+                            )
+                        continue  # COMPLETED, SKIPPED, or CANCELLED
+                still_pending.append(job_id)
+            except RuntimeError:
+                raise
+            except Exception:
+                still_pending.append(job_id)
+        pending = still_pending
+        if pending:
+            time.sleep(3)
+    if pending:
+        raise TimeoutError(
+            f"{len(pending)} ingest job(s) on port {port} did not reach "
+            f"terminal state within {timeout}s"
+        )
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
