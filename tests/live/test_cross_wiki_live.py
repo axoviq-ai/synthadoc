@@ -54,16 +54,16 @@ def live_wikis(tmp_path_factory):
     _write_page(target_dir, "deployment-runbook", "Deployment Runbook\n\nTo deploy the application: (1) run `make build`, (2) push Docker image, (3) run `kubectl apply`.\n\nRollback: `kubectl rollout undo deployment/app`")
     _write_page(target_dir, "incident-response", "Incident Response\n\nSeverity levels: P1 (outage), P2 (degraded), P3 (minor). P1 requires response within 15 minutes.")
 
-    # Ingest pages
-    _run(["synthadoc", "ingest", str(coord_dir / "wiki"), "-w", "live-coord", "--batch"])
-    _run(["synthadoc", "ingest", str(target_dir / "wiki"), "-w", "live-target", "--batch"])
-
-    # Start servers in background
+    # Start servers first — ingest requires a running server
     subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"])
     subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
 
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
+
+    # Ingest pages now that servers are up
+    _run(["synthadoc", "ingest", str(coord_dir / "wiki"), "-w", "live-coord", "--batch"])
+    _run(["synthadoc", "ingest", str(target_dir / "wiki"), "-w", "live-target", "--batch"])
 
     yield {"coord_dir": coord_dir, "target_dir": target_dir}
 
