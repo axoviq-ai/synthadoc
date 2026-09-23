@@ -134,9 +134,19 @@ def live_wikis(tmp_path_factory):
         "Escalation: page the on-call engineer via PagerDuty for P1 and P2."
     ))
 
-    # Start servers
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"], **_POPEN_HIDDEN)
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"], **_POPEN_HIDDEN)
+    # Start servers in foreground (no --background) so we own the process
+    # directly — no grandchild pythonw.exe chain, no cmd.exe popup windows.
+    # Same pattern as live_template_install_test.py.
+    coord_proc = subprocess.Popen(
+        [sys.executable, "-m", "synthadoc", "serve", "-w", "live-coord"],
+        **_POPEN_HIDDEN,
+    )
+    # Use a mutable list so test_cross_wiki_offline_degradation can swap the
+    # reference when it terminates and restarts the target server.
+    target_proc_holder = [subprocess.Popen(
+        [sys.executable, "-m", "synthadoc", "serve", "-w", "live-target"],
+        **_POPEN_HIDDEN,
+    )]
 
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
@@ -149,15 +159,25 @@ def live_wikis(tmp_path_factory):
     # commands only enqueue the work; the LLM processes it asynchronously.
     # Poll the /retrieve endpoint with a sentinel query for each wiki until
     # at least one result comes back, or until the timeout expires.
-    _wait_for_content(_COORDINATOR_PORT, "EBITDA", timeout=120)
-    _wait_for_content(_TARGET_PORT, "Kubernetes deployment rollback", timeout=120)
+    _wait_for_content(_COORDINATOR_PORT, "EBITDA", timeout=300)
+    _wait_for_content(_TARGET_PORT, "Kubernetes deployment rollback", timeout=300)
 
-    yield {"coord_dir": coord_dir, "target_dir": target_dir}
+    yield {
+        "coord_dir": coord_dir,
+        "target_dir": target_dir,
+        "_target_proc": target_proc_holder,
+    }
 
-    # Teardown — stop servers and clean registry directly (uninstall requires
-    # interactive confirmation so we edit the JSON directly, same as pre-flight).
-    subprocess.run(["synthadoc", "stop", "-w", "live-coord"], capture_output=True)
-    subprocess.run(["synthadoc", "stop", "-w", "live-target"], capture_output=True)
+    # Teardown — terminate server processes then clean registry.
+    for proc in (coord_proc, target_proc_holder[0]):
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
     if _registry_path.exists():
         _reg = _json.loads(_registry_path.read_text(encoding="utf-8"))
         for _name in ("live-coord", "live-target"):
@@ -190,13 +210,23 @@ def test_cross_wiki_coordinator_only_found(live_wikis):
 
 def test_cross_wiki_offline_degradation(live_wikis):
     """Stop target wiki → query returns degradation response, offline list non-empty."""
-    _run(["synthadoc", "stop", "-w", "live-target"])
+    target_proc_holder = live_wikis["_target_proc"]
+    target_proc_holder[0].terminate()
+    try:
+        target_proc_holder[0].wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        target_proc_holder[0].kill()
     try:
         result = _query_cross_wiki("How do I deploy?")
         assert "live-target" in result.get("cross_wiki_offline", [])
     finally:
-        # Restart target for subsequent tests
-        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"], **_POPEN_HIDDEN)
+        # Restart target for subsequent tests; update holder so teardown
+        # terminates the new process.
+        new_proc = subprocess.Popen(
+            [sys.executable, "-m", "synthadoc", "serve", "-w", "live-target"],
+            **_POPEN_HIDDEN,
+        )
+        target_proc_holder[0] = new_proc
         _wait_for_server(_TARGET_PORT)
 
 def test_serve_all_and_status_all(live_wikis, tmp_path_factory):
