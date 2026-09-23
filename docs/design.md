@@ -1020,9 +1020,10 @@ synthadoc
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
-├── serve [-w wiki] [--port N] [--background] [--mcp-only] [--http-only] [--verbose]
+├── serve [-w wiki] [--port N] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+├── stop [-w wiki] [--all]                           — stop a running wiki server (sends /shutdown; falls back to PID file)
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
-├── query "<question>" [-w wiki] [--save] [--timeout N]
+├── query "<question>" [-w wiki] [--save] [--timeout N] [--cross-wiki]
 ├── lint
 │   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial] [--no-lifecycle] [--check-urls]
 │   └── report [-w wiki]
@@ -1046,7 +1047,7 @@ synthadoc
 ├── context
 │   └── build "<goal>" [-w wiki] [--tokens N] [--output <file>]
 ├── export -f <fmt> [-o <path>] [-s <state>] [-w wiki]    — llms.txt, llms-full.txt, graphml, json, okf
-├── status [-w wiki]
+├── status [-w wiki] [--all]                         — with --all: show running/stopped state for every registered wiki
 ├── lifecycle
 │   ├── activate <slug> [-w wiki] [--reason "<str>"]
 │   ├── archive  <slug> [-w wiki] [--reason "<str>"]
@@ -1085,6 +1086,13 @@ synthadoc
 ├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 ├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
+├── cross-wiki
+│   ├── query "<question>" [--timeout N]            — fan-out query across all relevant registered wikis
+│   ├── routing
+│   │   ├── init                                    — scaffold ~/.synthadoc/CROSS_WIKI_ROUTING.md from registry
+│   │   ├── show                                    — print current cross-wiki routing rules
+│   │   └── edit                                    — open routing file in $EDITOR
+│   └── status                                      — alias for `synthadoc status --all`
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
     ├── list [-w wiki]
