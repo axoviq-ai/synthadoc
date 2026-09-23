@@ -4454,12 +4454,6 @@ synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks
 
 The `-w` flag identifies the coordinator wiki (any registered wiki will do). The `--cross-wiki` flag fans the question out across all running registered wikis.
 
-You can also use the cross-wiki subcommand group:
-
-```bash
-synthadoc cross-wiki query "What are our M&A covenants and deployment runbooks?"
-```
-
 ### Step 4 — Understanding citation format
 
 Cross-wiki answers use a two-part citation format:

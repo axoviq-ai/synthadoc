@@ -4247,7 +4247,6 @@ synthadoc cross-wiki routing edit    # open in $EDITOR
 | `synthadoc stop` | Stop the active wiki server |
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
-| `synthadoc cross-wiki query "question"` | Alias for `synthadoc query --cross-wiki` |
 | `synthadoc cross-wiki routing init/show/edit` | Manage `CROSS_WIKI_ROUTING.md` |
 | `synthadoc cross-wiki status` | Alias for `synthadoc status --all` |
 

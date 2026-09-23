@@ -7,7 +7,6 @@ import os
 import typer
 
 from synthadoc.cli._wiki import read_registry_all, CROSS_WIKI_ROUTING_PATH  # shared constant
-from synthadoc.cli.query import print_cross_wiki_result  # shared output helper
 from synthadoc.cli.status import render_status_all       # shared table helper
 
 cross_wiki_app = typer.Typer(name="cross-wiki", help="Cross-wiki federation commands.")
@@ -15,19 +14,6 @@ routing_app = typer.Typer(name="routing", help="Manage CROSS_WIKI_ROUTING.md.")
 cross_wiki_app.add_typer(routing_app)
 
 # Use the imported CROSS_WIKI_ROUTING_PATH constant — do NOT redefine _ROUTING_PATH locally.
-
-
-@cross_wiki_app.command("query")
-def cross_wiki_query_cmd(
-    question: str = typer.Argument(...),
-    timeout: int = typer.Option(90, "--timeout"),
-):
-    """Fan-out query across all relevant registered wikis. Alias for `synthadoc query --cross-wiki`."""
-    from synthadoc.cli._wiki import resolve_wiki
-    from synthadoc.cli._http import post
-    wiki = resolve_wiki(None)
-    result = post(wiki, "/cross-wiki/query", {"question": question}, timeout=timeout, llm=True)
-    print_cross_wiki_result(result, wiki)  # shared helper — do NOT duplicate output logic here
 
 
 @cross_wiki_app.command("status")

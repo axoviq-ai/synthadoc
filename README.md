@@ -766,9 +766,6 @@ Fan-out a single question across all registered running wikis and receive one sy
 # Query across all running registered wikis
 synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?" -w my-wiki
 
-# Equivalent via the cross-wiki subcommand group
-synthadoc cross-wiki query "What are our M&A covenants and deployment runbooks?"
-
 # Check which wikis are running
 synthadoc status --all
 
