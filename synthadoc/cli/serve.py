@@ -13,7 +13,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._wiki import resolve_wiki_path
+from synthadoc.cli._wiki import resolve_wiki_path, read_registry_all
 from synthadoc import errors as E
 
 # Internal env var set on the detached child to suppress duplicate banner output.
@@ -212,6 +212,19 @@ def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
     )
 
 
+def _spawn_background_for_path(wiki_path: Path, wiki_name: str) -> None:
+    """Start a single wiki in background from its path. Used by --all."""
+    from synthadoc.config import load_config
+    try:
+        cfg = load_config(project_config=wiki_path / ".synthadoc" / "config.toml")
+    except Exception as exc:
+        typer.echo(f"  {wiki_name}: config error — {exc}", err=True)
+        return
+    port = cfg.server.port
+    log_path = wiki_path / ".synthadoc" / "logs" / "synthadoc.log"
+    _spawn_background(wiki_path, port, log_path)
+
+
 def _apply_provider_override(cfg, provider_name: str) -> None:
     """Override the provider field on all agent configs in cfg in-place."""
     from synthadoc.config import KNOWN_PROVIDERS
@@ -245,6 +258,8 @@ def serve_cmd(
         help="Override config.toml provider for all agents for this server session "
              "(e.g. anthropic, claude-code, opencode). Does not require editing config.toml.",
     ),
+    all_wikis: bool = typer.Option(False, "--all",
+        help="Start all registered wikis in background."),
 ):
     """Start MCP + HTTP API servers (localhost only).
 
@@ -256,6 +271,19 @@ def serve_cmd(
     Run one server per wiki on its own port, then set the matching
     Server URL in the Obsidian plugin settings for each vault.
     """
+    if all_wikis:
+        registry = read_registry_all()
+        for name, entry in registry.items():
+            port_val = entry.get("port")
+            path = Path(entry["path"])
+            from synthadoc.cli._wiki import probe_port as _probe_port
+            if port_val and _probe_port(port_val):
+                typer.echo(f"  {name}: already running on port {port_val}")
+                continue
+            _spawn_background_for_path(path, name)
+            typer.echo(f"  {name}: started in background")
+        return
+
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
 
