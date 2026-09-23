@@ -42,10 +42,22 @@ def live_wikis(tmp_path_factory):
     coord_dir = base / "coordinator-wiki"
     target_dir = base / "target-wiki"
 
-    # Pre-flight: remove any stale registrations from a previous crashed run
+    # Pre-flight: remove any stale registrations from a previous crashed run.
+    # `synthadoc uninstall` requires interactive confirmation so we edit the
+    # registry JSON directly instead.
+    import json as _json
+    _registry_path = Path.home() / ".synthadoc" / "wikis.json"
     for _name in ("live-coord", "live-target"):
         subprocess.run(["synthadoc", "stop", "-w", _name], capture_output=True)
-        subprocess.run(["synthadoc", "uninstall", _name], capture_output=True)
+    if _registry_path.exists():
+        _reg = _json.loads(_registry_path.read_text(encoding="utf-8"))
+        changed = False
+        for _name in ("live-coord", "live-target"):
+            if _name in _reg:
+                del _reg[_name]
+                changed = True
+        if changed:
+            _registry_path.write_text(_json.dumps(_reg, indent=2), encoding="utf-8")
 
     # Install wikis
     _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir), "--port", str(_COORDINATOR_PORT)])
