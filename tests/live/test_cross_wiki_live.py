@@ -63,6 +63,17 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir), "--port", str(_COORDINATOR_PORT)])
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir), "--port", str(_TARGET_PORT)])
 
+    # Patch config.toml to use opencode — the install default is gemini which
+    # requires GEMINI_API_KEY; opencode needs no separate key.
+    for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
+        _cfg_path = _wiki_dir / ".synthadoc" / "config.toml"
+        _cfg_text = _cfg_path.read_text(encoding="utf-8")
+        _cfg_text = _cfg_text.replace(
+            'default = { provider = "gemini", model = "gemini-2.5-flash-lite" }',
+            'default = { provider = "opencode", model = "opencode/big-pickle" }',
+        )
+        _cfg_path.write_text(_cfg_text, encoding="utf-8")
+
     # Seed content — coordinator: finance domain
     _write_page(coord_dir, "leverage", "Leverage\n\nLeverage is the ratio of debt to equity in a capital structure. High leverage amplifies returns but increases risk.\n\nFormula: Leverage = Total Debt / Total Equity")
     _write_page(coord_dir, "ebitda", "EBITDA\n\nEBITDA stands for Earnings Before Interest, Taxes, Depreciation, and Amortisation. It measures operating performance.\n\nTypical EBITDA multiples in M&A range from 6x to 12x depending on sector.")
@@ -71,11 +82,9 @@ def live_wikis(tmp_path_factory):
     _write_page(target_dir, "deployment-runbook", "Deployment Runbook\n\nTo deploy the application: (1) run `make build`, (2) push Docker image, (3) run `kubectl apply`.\n\nRollback: `kubectl rollout undo deployment/app`")
     _write_page(target_dir, "incident-response", "Incident Response\n\nSeverity levels: P1 (outage), P2 (degraded), P3 (minor). P1 requires response within 15 minutes.")
 
-    # Start servers first — ingest requires a running server.
-    # Use --provider opencode to avoid API-key checks on the freshly-installed
-    # wiki (whose config.toml defaults to gemini).
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--provider", "opencode", "--background"])
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--provider", "opencode", "--background"])
+    # Start servers
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"])
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
 
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
@@ -128,7 +137,7 @@ def test_cross_wiki_offline_degradation(live_wikis):
         assert "live-target" in result.get("cross_wiki_offline", [])
     finally:
         # Restart target for subsequent tests
-        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--provider", "opencode", "--background"])
+        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
         _wait_for_server(_TARGET_PORT)
 
 def test_serve_all_and_status_all(live_wikis, tmp_path_factory):
