@@ -988,6 +988,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "jobs_total": len(jobs),
         }
 
+    @app.get("/registry")
+    async def registry_endpoint():
+        """Return all registered wikis with their port and running state."""
+        from synthadoc.cli._wiki import read_registry_all, probe_port
+        reg = read_registry_all()
+        result = {}
+        for name, entry in reg.items():
+            port = entry.get("port")
+            result[name] = {"port": port, "running": probe_port(port) if port else False}
+        return JSONResponse(content={"wikis": result}, headers=_NO_STORE)
+
     @app.get("/config")
     async def config_info():
         return {
