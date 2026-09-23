@@ -411,6 +411,12 @@ class CitationFaithfulnessRequest(BaseModel):
     stale_only: bool = False  # only run for stale slugs (per cache)
 
 
+class RetrieveRequest(BaseModel):
+    question: str
+    sub_questions: list[str] = []
+    top_k: int = 10
+
+
 def _load_blocked_domains(wiki_root: Path) -> set[str]:
     """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
     import json as _json_mod
@@ -1065,6 +1071,52 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if result.get("cacheable", True):
             await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
         return JSONResponse(content=result, headers=_NO_STORE)
+
+    @app.post("/retrieve")
+    async def retrieve(req: RetrieveRequest):
+        """BM25-only retrieval — no LLM, no synthesis. Used by cross-wiki coordinators."""
+        from synthadoc.cli._wiki import extract_purpose_summary
+        from synthadoc.storage.wiki import LifecycleState
+        from synthadoc.storage.search import HybridSearch
+        from synthadoc.storage.wiki import WikiStorage
+        from typing import Any
+        if not req.question.strip():
+            raise HTTPException(status_code=400, detail="question must not be empty")
+        top_k = min(max(req.top_k, 1), 20)
+        orch = app.state.orch
+        search: HybridSearch = orch._search
+        store: WikiStorage = orch._store
+        wiki_root_path = orch._root
+        wiki_name = orch._root.name
+
+        queries = req.sub_questions if req.sub_questions else [req.question]
+        best: dict[str, Any] = {}
+        for q in queries:
+            results = await search.hybrid_search(q.split(), top_n=top_k)
+            for r in results:
+                if r.slug not in best or r.score > best[r.slug].score:
+                    best[r.slug] = r
+
+        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:top_k]
+        pages = []
+        for r in candidates:
+            page = store.read_page(r.slug)
+            if page and page.status == LifecycleState.ACTIVE:
+                pages.append({
+                    "slug": r.slug,
+                    "title": page.title,
+                    "score": r.score,
+                    "content": page.content[:8000],
+                })
+
+        purpose_summary = extract_purpose_summary(wiki_root_path) or None
+
+        return JSONResponse(content={
+            "wiki_name": wiki_name,
+            "pages": pages,
+            "purpose_summary": purpose_summary,
+            "routing_warning": "",
+        }, headers=_NO_STORE)
 
     @app.get("/query/stream")
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):
