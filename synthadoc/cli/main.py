@@ -145,3 +145,4 @@ from synthadoc.cli.workflow import workflow_app  # noqa: F401, E402
 app.add_typer(workflow_app)
 from synthadoc.cli.retract import retract_app  # noqa: F401, E402
 app.add_typer(retract_app)
+from synthadoc.cli import stop  # noqa: F401, E402
