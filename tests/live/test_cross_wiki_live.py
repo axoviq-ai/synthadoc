@@ -71,9 +71,11 @@ def live_wikis(tmp_path_factory):
     _write_page(target_dir, "deployment-runbook", "Deployment Runbook\n\nTo deploy the application: (1) run `make build`, (2) push Docker image, (3) run `kubectl apply`.\n\nRollback: `kubectl rollout undo deployment/app`")
     _write_page(target_dir, "incident-response", "Incident Response\n\nSeverity levels: P1 (outage), P2 (degraded), P3 (minor). P1 requires response within 15 minutes.")
 
-    # Start servers first — ingest requires a running server
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--background"])
-    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
+    # Start servers first — ingest requires a running server.
+    # Use --provider opencode to avoid API-key checks on the freshly-installed
+    # wiki (whose config.toml defaults to gemini).
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-coord", "--provider", "opencode", "--background"])
+    subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--provider", "opencode", "--background"])
 
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
@@ -84,11 +86,15 @@ def live_wikis(tmp_path_factory):
 
     yield {"coord_dir": coord_dir, "target_dir": target_dir}
 
-    # Teardown
-    _run(["synthadoc", "stop", "-w", "live-coord"])
-    _run(["synthadoc", "stop", "-w", "live-target"])
-    _run(["synthadoc", "uninstall", "live-coord"])
-    _run(["synthadoc", "uninstall", "live-target"])
+    # Teardown — stop servers and clean registry directly (uninstall requires
+    # interactive confirmation so we edit the JSON directly, same as pre-flight).
+    subprocess.run(["synthadoc", "stop", "-w", "live-coord"], capture_output=True)
+    subprocess.run(["synthadoc", "stop", "-w", "live-target"], capture_output=True)
+    if _registry_path.exists():
+        _reg = _json.loads(_registry_path.read_text(encoding="utf-8"))
+        for _name in ("live-coord", "live-target"):
+            _reg.pop(_name, None)
+        _registry_path.write_text(_json.dumps(_reg, indent=2), encoding="utf-8")
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -122,7 +128,7 @@ def test_cross_wiki_offline_degradation(live_wikis):
         assert "live-target" in result.get("cross_wiki_offline", [])
     finally:
         # Restart target for subsequent tests
-        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--background"])
+        subprocess.Popen(["synthadoc", "serve", "-w", "live-target", "--provider", "opencode", "--background"])
         _wait_for_server(_TARGET_PORT)
 
 def test_serve_all_and_status_all(live_wikis, tmp_path_factory):
