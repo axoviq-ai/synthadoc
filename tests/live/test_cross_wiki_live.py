@@ -30,10 +30,15 @@ _POPEN_HIDDEN: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNUL
 if sys.platform == "win32":
     _POPEN_HIDDEN["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SYNTHADOC_LIVE_TESTS") != "1",
-    reason="Set SYNTHADOC_LIVE_TESTS=1 to run live cross-wiki tests"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        os.environ.get("SYNTHADOC_LIVE_TESTS") != "1",
+        reason="Set SYNTHADOC_LIVE_TESTS=1 to run live cross-wiki tests",
+    ),
+    # Fixture spins up real servers and waits for async LLM ingest; 600 s gives
+    # enough headroom for the full setup even on a slow machine.
+    pytest.mark.timeout(600),
+]
 
 _COORDINATOR_PORT = 17070
 _TARGET_PORT = 17071

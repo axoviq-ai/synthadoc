@@ -124,7 +124,10 @@ def run_suite(name: str, script: Path, extra_args: list[str], env: dict) -> int:
     print(f"  Running suite: {name.upper()} — {script.name}")
     print(f"{'='*64}")
     if name in PYTEST_SUITES:
-        cmd = [sys.executable, "-X", "utf8", "-m", "pytest", str(script), "-v", "--timeout=120"] + extra_args
+        # cross_wiki spins up real servers and waits for async ingest — use a
+        # longer timeout than the default 120 s so fixture setup has room.
+        timeout_arg = "--timeout=600" if name == "cross_wiki" else "--timeout=120"
+        cmd = [sys.executable, "-X", "utf8", "-m", "pytest", str(script), "-v", timeout_arg] + extra_args
     else:
         cmd = [sys.executable, "-X", "utf8", str(script)] + extra_args
     r = subprocess.run(cmd, env=env)

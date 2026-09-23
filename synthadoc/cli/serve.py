@@ -172,7 +172,7 @@ def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             env=shared_env,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
         )
     else:
         cmd = [sys.argv[0]] + server_args
