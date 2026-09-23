@@ -42,6 +42,11 @@ def live_wikis(tmp_path_factory):
     coord_dir = base / "coordinator-wiki"
     target_dir = base / "target-wiki"
 
+    # Pre-flight: remove any stale registrations from a previous crashed run
+    for _name in ("live-coord", "live-target"):
+        subprocess.run(["synthadoc", "stop", "-w", _name], capture_output=True)
+        subprocess.run(["synthadoc", "uninstall", _name], capture_output=True)
+
     # Install wikis
     _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir), "--port", str(_COORDINATOR_PORT)])
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir), "--port", str(_TARGET_PORT)])
