@@ -202,6 +202,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Semantic re-ranking](docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback                                                      | **Yes** (optional) | Varies      | No         | No        |
 | **[Streaming output + query cache](docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change                                        | **Yes**            | Partial     | Partial    | Partial   |
 | **[Proportional context budget](docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap                         | **Yes**            | No          | No         | No        |
+| **[Cross-wiki federation](docs/design.md#40-cross-wiki-queries-v140)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
 
 ### Interfaces & Integration
 
@@ -210,6 +211,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | ---------- | --------- |
 | **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); **background vault monitoring** (auto-snapshot on every file save, 2 s debounce, dedup so unchanged saves are free); Reading View set as default on install so citation chips are visible immediately | **Yes**   | No          | No         | No        |
 | **[Web chat UI](docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab, **light/dark/system theme toggle**                                                                                                                                                                                                                                                                                                                                       | **Yes**   | No          | Yes        | Yes       |
+| **[Cross-wiki federation](docs/design.md#40-cross-wiki-queries-v140)** — fan-out across registered wikis; LLM routing; `[[wiki-name::PageTitle]]` citation pills; amber offline banner; operation-detection footnote | **Yes**   | No          | No         | No        |
 | **[MCP server](docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads                                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No          | No         | No        |
 | **[Context packs](docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context                                                                                                                                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
 | **[Export formats](docs/user-quick-start-guide.md#step-21--export-your-wiki)** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls                                                                                                                                                                                                                                                                                                                             | **Yes**   | No          | Partial    | No        |
@@ -662,6 +664,18 @@ synthadoc serve -w my-wiki --port 7071
 
 # Verbose debug logging to console
 synthadoc serve -w my-wiki --verbose
+
+# Start servers for all registered wikis in the background (cross-wiki queries)
+synthadoc serve --all --background
+
+# Stop the active wiki server
+synthadoc stop
+
+# Stop a named wiki server
+synthadoc stop -w my-wiki
+
+# Stop all running wiki servers
+synthadoc stop --all
 ```
 
 ### Ingesting sources
@@ -743,6 +757,30 @@ synthadoc query "What is Moore's Law?" --save -w my-wiki
 ```
 
 Query answers are **cached automatically** by question content and wiki version. Repeated identical questions return instantly from cache. The cache invalidates automatically when you ingest new content or change a page's lifecycle state.
+
+### Cross-wiki queries
+
+Fan-out a single question across all registered running wikis and receive one synthesised answer with per-wiki citations.
+
+```bash
+# Query across all running registered wikis
+synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?" -w my-wiki
+
+# Equivalent via the cross-wiki subcommand group
+synthadoc cross-wiki query "What are our M&A covenants and deployment runbooks?"
+
+# Check which wikis are running
+synthadoc status --all
+
+# Manage the optional CROSS_WIKI_ROUTING.md override
+synthadoc cross-wiki routing init    # generate from registry, then edit
+synthadoc cross-wiki routing show    # print current contents
+synthadoc cross-wiki status          # same as synthadoc status --all
+```
+
+Citations in cross-wiki answers use the format `[[wiki-name::PageTitle]]`. In the web UI these render as two-part pills; clicking opens the page in that wiki's server. When a target wiki is offline, an amber warning appears and the answer is synthesised from the available wikis only.
+
+For full architecture detail see [Cross-Wiki Queries in the design doc](docs/design.md#40-cross-wiki-queries-v140).
 
 ### Web Chat UI
 
@@ -856,6 +894,9 @@ synthadoc retract status --json -w my-wiki
 ```bash
 # Show page counts by lifecycle state
 synthadoc status -w my-wiki
+
+# Show running/stopped table for all registered wikis (for cross-wiki setup)
+synthadoc status --all
 
 # Promote a draft page to active after manual review
 synthadoc lifecycle activate <slug> -w my-wiki --reason "reviewed and verified"

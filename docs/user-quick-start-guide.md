@@ -56,6 +56,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
 - [Appendix J — Backup & Restore](#appendix-j--backup--restore)
 - [Appendix K — Domain Templates](#appendix-k--domain-templates)
+- [Appendix L — Cross-Wiki Queries](#appendix-l--cross-wiki-queries)
 
 ---
 
@@ -4402,3 +4403,132 @@ synthadoc templates sync my-wiki
 See [`synthadoc/templates/README.md`](../synthadoc/templates/README.md) for
 the complete listing of all 30 templates with install commands, the full
 directory structure each template ships, and instructions for authoring your own.
+
+---
+
+## Appendix L — Cross-Wiki Queries
+
+Cross-wiki queries let you ask a single question across multiple Synthadoc wikis and receive one unified, synthesised answer. The system automatically routes the question to the most relevant wikis and merges results.
+
+### Prerequisites
+
+You need at least two wikis registered in the global registry. Each wiki is registered when you run `synthadoc install`:
+
+```bash
+synthadoc install finance-wiki --target ~/wikis/finance
+synthadoc install legal-wiki --target ~/wikis/legal
+```
+
+### Step 1 — Start all servers
+
+Start background servers for every registered wiki in one command:
+
+```bash
+synthadoc serve --all --background
+```
+
+Each server starts on its registered port. The command skips any wiki whose port is already responding.
+
+### Step 2 — Check status
+
+```bash
+synthadoc status --all
+```
+
+Output:
+
+```
+wiki           port   status    pages   last-ingest
+finance-wiki   7070   running   142     2026-09-22
+legal-wiki     7071   running   38      2026-09-20
+ops-wiki       7072   stopped   —       —
+```
+
+Any wiki showing `stopped` will be excluded from cross-wiki queries. Start it with `synthadoc serve -w ops-wiki --background` to include it.
+
+### Step 3 — Run your first cross-wiki query
+
+```bash
+synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?" -w finance-wiki
+```
+
+The `-w` flag identifies the coordinator wiki (any registered wiki will do). The `--cross-wiki` flag fans the question out across all running registered wikis.
+
+You can also use the cross-wiki subcommand group:
+
+```bash
+synthadoc cross-wiki query "What are our M&A covenants and deployment runbooks?"
+```
+
+### Step 4 — Understanding citation format
+
+Cross-wiki answers use a two-part citation format:
+
+```
+[[wiki-name::PageTitle]]
+```
+
+For example:
+
+```
+[[finance-wiki::Valuation Methods]]
+[[legal-wiki::NDA Template]]
+```
+
+In the web UI (`synthadoc web`), these render as two-part pills: `[wiki-name]  Page Title`. Clicking a pill opens the page in that wiki's server in a new browser tab.
+
+### Step 5 — Configuring CROSS_WIKI_ROUTING.md
+
+By default the coordinator selects relevant wikis automatically using the LLM and each wiki's `purpose.md` summary. For predictable routing you can create an optional override file:
+
+```bash
+# Generate the file from your registry, then open for editing
+synthadoc cross-wiki routing init
+
+# Print current contents
+synthadoc cross-wiki routing show
+
+# Open in $EDITOR
+synthadoc cross-wiki routing edit
+```
+
+The file lives at `~/.synthadoc/CROSS_WIKI_ROUTING.md`. Edit it to pin topic areas to specific wikis. When the file is absent or cannot be parsed, the system falls back to LLM auto-routing and logs a warning.
+
+### Step 6 — Using the Web UI
+
+Open the chat interface for any registered wiki:
+
+```bash
+synthadoc web -w finance-wiki
+```
+
+In the chat input bar:
+
+- **Globe toggle (🌐)** — at the right end of the input bar. Click to enable cross-wiki mode. Default: OFF. Your choice persists between sessions.
+- **Context bar** — when the toggle is ON, a narrow strip above the conversation shows which wikis will be queried. After the response it shows which wikis responded and which (if any) were offline.
+- **Citation pills** — cross-wiki citations render as `[wiki-name]  Page Title`. Clicking opens the page in that wiki's server.
+
+### Step 7 — When a wiki is offline
+
+If a target wiki is offline when the query runs, the web UI shows an amber warning below the answer:
+
+```
+⚠  ops-wiki was offline — results are from finance-wiki and legal-wiki only.
+   Run `synthadoc serve ops-wiki --background` to include it.
+```
+
+The CLI prints the same warning. The answer is still synthesised from the available wikis.
+
+To restore a stopped wiki:
+
+```bash
+synthadoc stop -w ops-wiki      # (if the process is stuck)
+synthadoc serve -w ops-wiki --background
+synthadoc status --all          # confirm it is now running
+```
+
+Then re-run your query to include it.
+
+### Reference
+
+For full architecture detail, API reference, and graceful degradation behaviour see [§40 Cross-Wiki Queries in the design doc](design.md#40-cross-wiki-queries-v140).
