@@ -219,6 +219,75 @@ def test_build_context_truncates_long_content():
     assert len(ctx) <= _MAX_CONTEXT_CHARS + 200  # truncated
 
 
+@pytest.mark.asyncio
+async def test_fetch_retrieve_builds_correct_payload():
+    """_fetch_retrieve posts to /retrieve and returns a _RetrieveResponse (lines 259-273)."""
+    from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _RetrieveResponse
+    from unittest.mock import AsyncMock, MagicMock, patch
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = AsyncMock(return_value={
+        "wiki_name": "target",
+        "pages": [{"slug": "p", "title": "P", "score": 1.0, "content": "c"}],
+        "purpose_summary": "Legal",
+        "routing_warning": "",
+    })
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+    mock_session = AsyncMock()
+    mock_session.post = MagicMock(return_value=mock_resp)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await agent._fetch_retrieve("http://127.0.0.1:7071", "what is leverage?", ["what is leverage?"])
+
+    assert isinstance(result, _RetrieveResponse)
+    assert result.wiki_name == "target"
+    assert len(result.pages) == 1
+
+
+@pytest.mark.asyncio
+async def test_wiki_pick_invalid_llm_names_falls_back_to_all():
+    """LLM returns names not in registry → selected is empty → falls back to all (line 252)."""
+    provider = _make_provider()
+    resp = MagicMock()
+    resp.text = '["nonexistent-wiki-x", "nonexistent-wiki-y"]'
+    resp.total_tokens = 10
+    provider.complete = AsyncMock(return_value=resp)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="not-in-registry")
+    picked = await agent._wiki_pick("anything?", ["anything?"])
+    picked_names = [name for name, _ in picked]
+    # Fallback: all wikis returned since selected was empty
+    assert len(picked_names) > 0
+
+
+@pytest.mark.asyncio
+async def test_wiki_pick_routing_parse_error_falls_back_to_llm(tmp_path):
+    """Routing file parse raises → logs warning and falls back to LLM (lines 214-215)."""
+    from synthadoc.agents.cross_wiki_query_agent import _parse_cross_wiki_routing
+    routing_file = tmp_path / "CROSS_WIKI_ROUTING.md"
+    routing_file.write_text("## finance\nwikis: coordinator\nkeywords: leverage\n")
+    provider = _make_provider()
+    resp = MagicMock()
+    resp.text = '["coordinator"]'
+    resp.total_tokens = 10
+    provider.complete = AsyncMock(return_value=resp)
+    agent = CrossWikiQueryAgent(
+        provider=provider, registry=REGISTRY, own_wiki_name="coordinator",
+        cross_wiki_routing_path=routing_file,
+    )
+    with patch("synthadoc.agents.cross_wiki_query_agent._parse_cross_wiki_routing",
+               side_effect=ValueError("bad format")):
+        picked = await agent._wiki_pick("what is leverage?", ["what is leverage?"])
+    # Falls back to LLM which picks coordinator
+    assert any(name == "coordinator" for name, _ in picked)
+
+
 def test_synthesis_prompt_includes_scope_block():
     """purpose_summaries → scope block in synthesis prompt (lines 334-335)."""
     provider = _make_provider()

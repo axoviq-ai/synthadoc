@@ -45,6 +45,19 @@ def test_routing_edit_no_file_exits(tmp_path):
         result = runner.invoke(app, ["cross-wiki", "routing", "edit"])
     assert result.exit_code != 0 or "No routing file" in result.output
 
+def test_routing_init_prompts_when_file_exists(tmp_path):
+    from synthadoc.cli.main import app
+    registry = {"a": {"path": "/x", "port": 7070, "purpose_summary": "finance"}}
+    routing_path = tmp_path / "CROSS_WIKI_ROUTING.md"
+    routing_path.write_text("## existing\n")
+    with patch("synthadoc.cli.cross_wiki.read_registry_all", return_value=registry):
+        with patch("synthadoc.cli.cross_wiki.CROSS_WIKI_ROUTING_PATH", routing_path):
+            # Answer 'y' to the overwrite prompt (line 34)
+            result = runner.invoke(app, ["cross-wiki", "routing", "init"], input="y\n")
+    assert result.exit_code == 0
+    assert "## default" in routing_path.read_text()
+
+
 def test_routing_edit_calls_execlp(tmp_path):
     from synthadoc.cli.main import app
     routing_path = tmp_path / "CROSS_WIKI_ROUTING.md"
