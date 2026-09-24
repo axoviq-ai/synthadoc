@@ -1089,11 +1089,10 @@ synthadoc
 ├── cache clear [-w wiki]
 ├── cross-wiki
 │   ├── query "<question>" [--timeout N]            — fan-out query across all relevant registered wikis
-│   ├── routing
-│   │   ├── init                                    — scaffold ~/.synthadoc/CROSS_WIKI_ROUTING.md from registry
-│   │   ├── show                                    — print current cross-wiki routing rules
-│   │   └── edit                                    — open routing file in $EDITOR
-│   └── status                                      — alias for `synthadoc status --all`
+│   └── routing
+│       ├── init                                    — scaffold ~/.synthadoc/CROSS_WIKI_ROUTING.md from registry
+│       ├── show                                    — print current cross-wiki routing rules
+│       └── edit                                    — open routing file in $EDITOR
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
     ├── list [-w wiki]
@@ -4256,7 +4255,6 @@ synthadoc cross-wiki routing edit    # open in $EDITOR
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
 | `synthadoc cross-wiki routing init/show/edit` | Manage `CROSS_WIKI_ROUTING.md` |
-| `synthadoc cross-wiki status` | Alias for `synthadoc status --all` |
 
 ### Web UI
 

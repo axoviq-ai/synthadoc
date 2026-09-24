@@ -202,7 +202,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Semantic re-ranking](docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback                                                      | **Yes** (optional) | Varies      | No         | No        |
 | **[Streaming output + query cache](docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change                                        | **Yes**            | Partial     | Partial    | Partial   |
 | **[Proportional context budget](docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap                         | **Yes**            | No          | No         | No        |
-| **[Cross-wiki federation](docs/design.md#40-cross-wiki-queries-v140)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
+| **[Cross-wiki federation](docs/design.md#40-cross-wiki-queries-v140)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; `[[wiki-name::PageTitle]]` citation pills; amber offline banner when a target wiki is unreachable; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
 
 ### Interfaces & Integration
 
@@ -211,7 +211,6 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | ---------- | --------- |
 | **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); **background vault monitoring** (auto-snapshot on every file save, 2 s debounce, dedup so unchanged saves are free); Reading View set as default on install so citation chips are visible immediately | **Yes**   | No          | No         | No        |
 | **[Web chat UI](docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab, **light/dark/system theme toggle**                                                                                                                                                                                                                                                                                                                                       | **Yes**   | No          | Yes        | Yes       |
-| **[Cross-wiki federation](docs/design.md#40-cross-wiki-queries-v140)** — fan-out across registered wikis; LLM routing; `[[wiki-name::PageTitle]]` citation pills; amber offline banner; operation-detection footnote | **Yes**   | No          | No         | No        |
 | **[MCP server](docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads                                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No          | No         | No        |
 | **[Context packs](docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context                                                                                                                                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
 | **[Export formats](docs/user-quick-start-guide.md#step-21--export-your-wiki)** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls                                                                                                                                                                                                                                                                                                                             | **Yes**   | No          | Partial    | No        |
@@ -408,14 +407,8 @@ To switch LLM provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` 
 To stop a background server:
 
 ```bash
-# Linux / macOS
-kill <PID>
-
-# Windows (cmd)
-taskkill /PID <PID> /F
+synthadoc stop -w history-of-computing
 ```
-
-The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
 **Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
@@ -772,7 +765,7 @@ synthadoc status --all
 # Manage the optional CROSS_WIKI_ROUTING.md override
 synthadoc cross-wiki routing init    # generate from registry, then edit
 synthadoc cross-wiki routing show    # print current contents
-synthadoc cross-wiki status          # same as synthadoc status --all
+synthadoc cross-wiki routing edit    # open in $EDITOR
 ```
 
 Citations in cross-wiki answers use the format `[[wiki-name::PageTitle]]`. In the web UI these render as two-part pills; clicking opens the page in that wiki's server. When a target wiki is offline, an amber warning appears and the answer is synthesised from the available wikis only.

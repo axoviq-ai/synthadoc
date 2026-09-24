@@ -7,22 +7,12 @@ import os
 import typer
 
 from synthadoc.cli._wiki import read_registry_all, CROSS_WIKI_ROUTING_PATH  # shared constant
-from synthadoc.cli.status import render_status_all       # shared table helper
 
 cross_wiki_app = typer.Typer(name="cross-wiki", help="Cross-wiki federation commands.")
 routing_app = typer.Typer(name="routing", help="Manage CROSS_WIKI_ROUTING.md.")
 cross_wiki_app.add_typer(routing_app)
 
 # Use the imported CROSS_WIKI_ROUTING_PATH constant — do NOT redefine _ROUTING_PATH locally.
-
-
-@cross_wiki_app.command("status")
-def cross_wiki_status_cmd():
-    """Show status for all registered wikis. Alias for `synthadoc status --all`."""
-    render_status_all(read_registry_all())  # shared helper — do NOT reimplement the table
-
-
-# NO _status_all() function here — that logic lives in status.py as render_status_all().
 
 
 @routing_app.command("init")
