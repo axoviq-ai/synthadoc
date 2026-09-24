@@ -1191,7 +1191,7 @@ Stop the server for that wiki before uninstalling — the serve process must not
 when the directory is deleted.
 
 ```bash
-# Stop the background server
+# Stop the wiki server (background or foreground)
 synthadoc stop -w my-wiki
 
 # Then uninstall — two-step confirmation required, no --yes escape
