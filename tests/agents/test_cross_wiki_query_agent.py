@@ -222,8 +222,9 @@ def test_build_context_truncates_long_content():
 @pytest.mark.asyncio
 async def test_fetch_retrieve_builds_correct_payload():
     """_fetch_retrieve posts to /retrieve and returns a _RetrieveResponse (lines 259-273)."""
+    import sys
     from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _RetrieveResponse
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import AsyncMock, MagicMock
     provider = _make_provider()
     agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
 
@@ -243,8 +244,20 @@ async def test_fetch_retrieve_builds_correct_payload():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    # aiohttp is imported inline inside _fetch_retrieve; inject a fake module so
+    # the test works even when aiohttp is not installed in the CI environment.
+    fake_aiohttp = MagicMock()
+    fake_aiohttp.ClientSession = MagicMock(return_value=mock_session)
+    fake_aiohttp.ClientTimeout = MagicMock(return_value=MagicMock())
+    original = sys.modules.get("aiohttp")
+    sys.modules["aiohttp"] = fake_aiohttp
+    try:
         result = await agent._fetch_retrieve("http://127.0.0.1:7071", "what is leverage?", ["what is leverage?"])
+    finally:
+        if original is None:
+            sys.modules.pop("aiohttp", None)
+        else:
+            sys.modules["aiohttp"] = original
 
     assert isinstance(result, _RetrieveResponse)
     assert result.wiki_name == "target"
