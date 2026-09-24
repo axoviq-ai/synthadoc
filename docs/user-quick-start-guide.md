@@ -4463,7 +4463,7 @@ legal-wiki     7071   running   38
 ops-wiki       7072   stopped   —
 ```
 
-Any wiki showing `stopped` will be excluded from cross-wiki queries. Start it with `synthadoc serve -w ops-wiki --background` to include it.
+Any wiki showing `stopped` cannot participate in cross-wiki queries. Start it with `synthadoc serve -w ops-wiki --background` to make it available. Whether it is actually queried then depends on your routing configuration — if `CROSS_WIKI_ROUTING.md` is in place it must appear in a matching rule; otherwise the LLM selects relevant wikis automatically based on each wiki's `purpose.md` summary.
 
 ### Step 3 — Run your first cross-wiki query
 
