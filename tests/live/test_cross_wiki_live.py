@@ -75,16 +75,16 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
-    # Patch config.toml to use anthropic — the install default is gemini which
-    # requires GEMINI_API_KEY; opencode is a subprocess provider that can be
-    # slow or rate-limited.  anthropic makes direct HTTPS calls using
-    # ANTHROPIC_API_KEY, which is always set wherever Claude Code runs.
+    # Patch config.toml to use claude-code — the install default is gemini which
+    # requires GEMINI_API_KEY; claude-code delegates to the Claude Code CLI
+    # (already authenticated, no separate API key required) and is always
+    # available wherever these tests run.
     for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
         _cfg_path = _wiki_dir / ".synthadoc" / "config.toml"
         _cfg_text = _cfg_path.read_text(encoding="utf-8")
         _cfg_text = _cfg_text.replace(
             'default = { provider = "gemini", model = "gemini-2.5-flash-lite" }',
-            'default = { provider = "anthropic", model = "claude-haiku-4-5-20251001" }',
+            'default = { provider = "claude-code" }',
         )
         _cfg_path.write_text(_cfg_text, encoding="utf-8")
 
