@@ -4166,7 +4166,7 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 
 ## 40. Cross-Wiki Queries (v1.4.0)
 
-Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic.
+Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic. For typical use cases (cross-domain analysis, aggregate reporting, incident response, policy synthesis) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
 ### Architecture
 

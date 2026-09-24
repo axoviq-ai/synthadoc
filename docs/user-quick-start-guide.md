@@ -4410,6 +4410,18 @@ directory structure each template ships, and instructions for authoring your own
 
 Cross-wiki queries let you ask a single question across multiple Synthadoc wikis and receive one unified, synthesised answer. The system automatically routes the question to the most relevant wikis and merges results.
 
+### When to use cross-wiki queries
+
+Use cross-wiki mode when the answer you need lives across more than one knowledge domain, and manually searching each wiki would be slow or error-prone. Common scenarios:
+
+- **Cross-domain analysis** — "How do our banking risk controls interact with our investment portfolio limits?" draws from both a banking-regulations wiki and an investment-policy wiki in one query.
+- **Aggregate reporting** — "Summarise Q3 compliance findings across all business units" fans out to each business-unit wiki and returns a merged summary.
+- **Incident response** — "What are the runbook steps and the relevant SLA commitments for a database outage?" pulls from an ops wiki and a contracts wiki simultaneously.
+- **Policy synthesis** — "What HR policies apply to a contractor who also holds a client-facing role?" merges results from an HR-policy wiki and a client-engagement wiki.
+- **Onboarding queries** — "Give me an overview of our tech stack, team structure, and coding standards" covers engineering, people, and handbook wikis in a single answer.
+
+Each answer includes `[[wiki-name::PageTitle]]` citations so you can trace every claim back to its source wiki.
+
 ### Prerequisites
 
 You need at least two wikis registered in the global registry. Each wiki is registered when you run `synthadoc install`:
