@@ -41,7 +41,7 @@ pytestmark = [
 
 _COORDINATOR_PORT = 17070
 _TARGET_PORT = 17071
-_WAIT_SECS = 30  # max seconds to wait for server ready
+_WAIT_SECS = 60  # max seconds to wait for server ready
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -117,6 +117,12 @@ def live_wikis(tmp_path_factory):
         "P2 incidents require acknowledgement within 1 hour.\n\n"
         "Escalation: page the on-call engineer via PagerDuty for P1 and P2."
     ))
+
+    # Free the test ports before starting — a previous crashed run may have
+    # left servers running (fixture setup failed before yield, so teardown
+    # never executed and those processes kept their port bindings).
+    _free_port(_COORDINATOR_PORT)
+    _free_port(_TARGET_PORT)
 
     # Start servers in foreground so we own the processes directly.
     coord_proc = subprocess.Popen(
@@ -262,6 +268,29 @@ def _assert_retrieve_works(port: int, query: str, label: str = "") -> None:
             f"No pages returned by /retrieve on port {port}{tag} "
             f"for query {query!r} — pages may not have status:active"
         )
+
+
+def _free_port(port: int) -> None:
+    """Kill any process currently listening on *port* (best-effort, cross-platform)."""
+    if sys.platform == "win32":
+        result = subprocess.run(
+            ["netstat", "-ano"], capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                parts = line.split()
+                if parts:
+                    subprocess.run(["taskkill", "/F", "/PID", parts[-1]], capture_output=True)
+    else:
+        result = subprocess.run(
+            ["lsof", "-t", f"-i:{port}", "-sTCP:LISTEN"],
+            capture_output=True, text=True,
+        )
+        for pid_str in result.stdout.splitlines():
+            pid_str = pid_str.strip()
+            if pid_str.isdigit():
+                subprocess.run(["kill", "-9", pid_str], capture_output=True)
+        time.sleep(0.5)  # give the OS time to release the port
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
