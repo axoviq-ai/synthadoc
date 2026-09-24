@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import time
 import shutil
-import tempfile
 import subprocess
 from pathlib import Path
 
@@ -35,8 +34,8 @@ pytestmark = [
         os.environ.get("SYNTHADOC_LIVE_TESTS") != "1",
         reason="Set SYNTHADOC_LIVE_TESTS=1 to run live cross-wiki tests",
     ),
-    # Fixture spins up real servers and waits for async LLM ingest; 600 s gives
-    # enough headroom for the full setup even on a slow machine.
+    # Fixture spins up real servers and runs cross-wiki LLM queries; 600 s gives
+    # enough headroom for the full suite even on a slow machine.
     pytest.mark.timeout(600),
 ]
 
@@ -76,29 +75,7 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
-    # Clear purpose.md on both wikis so the ingest agent skips the LLM scope
-    # check entirely.  This test is about cross-wiki query routing, not scope
-    # filtering; an LLM scope check on controlled test pages introduces
-    # non-deterministic failures where all pages are silently rejected, leaving
-    # no ACTIVE pages for queries to find.
-    for _wiki_dir, _name in (
-        (coord_dir / "live-coord", "live-coord"),
-        (target_dir / "live-target", "live-target"),
-    ):
-        (_wiki_dir / "wiki" / "purpose.md").write_text("", encoding="utf-8")
-
-    # Patch config.toml to use opencode — the install default is gemini which
-    # requires GEMINI_API_KEY; opencode needs no separate key.
-    for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
-        _cfg_path = _wiki_dir / ".synthadoc" / "config.toml"
-        _cfg_text = _cfg_path.read_text(encoding="utf-8")
-        _cfg_text = _cfg_text.replace(
-            'default = { provider = "gemini", model = "gemini-2.5-flash-lite" }',
-            'default = { provider = "opencode", model = "opencode/big-pickle" }',
-        )
-        _cfg_path.write_text(_cfg_text, encoding="utf-8")
-
-    # Seed content — coordinator: finance domain
+    # Seed content with status:active frontmatter — coordinator: finance domain
     _write_page(coord_dir, "leverage", (
         "Leverage\n\n"
         "Leverage is the ratio of debt to equity in a capital structure. "
@@ -141,9 +118,7 @@ def live_wikis(tmp_path_factory):
         "Escalation: page the on-call engineer via PagerDuty for P1 and P2."
     ))
 
-    # Start servers in foreground (no --background) so we own the process
-    # directly — no grandchild pythonw.exe chain, no cmd.exe popup windows.
-    # Same pattern as live_template_install_test.py.
+    # Start servers in foreground so we own the processes directly.
     coord_proc = subprocess.Popen(
         [sys.executable, "-m", "synthadoc", "serve", "-w", "live-coord"],
         **_POPEN_HIDDEN,
@@ -158,28 +133,10 @@ def live_wikis(tmp_path_factory):
     _wait_for_server(_COORDINATOR_PORT)
     _wait_for_server(_TARGET_PORT)
 
-    # Ingest pages now that servers are up.  Capture job IDs so we can poll
-    # each job to terminal state rather than blindly polling /retrieve (which
-    # stays empty if jobs fail and never tells us why).
-    coord_job_ids = _ingest_directory(coord_dir / "wiki", "live-coord")
-    target_job_ids = _ingest_directory(target_dir / "wiki", "live-target")
-
-    # Block until every ingest job reaches a terminal state.  A FAILED or DEAD
-    # job raises immediately with the server-side error message so the test
-    # output shows the root cause instead of a 300s timeout.
-    _wait_for_jobs(_COORDINATOR_PORT, coord_job_ids, timeout=300)
-    _wait_for_jobs(_TARGET_PORT, target_job_ids, timeout=300)
-
-    # Ingest agent creates pages as DRAFT; /retrieve only returns ACTIVE pages.
-    # Promote every DRAFT page on both wikis so cross-wiki queries can find them.
-    _activate_draft_pages(_COORDINATOR_PORT)
-    _activate_draft_pages(_TARGET_PORT)
-
-    # Guard: if no ACTIVE pages exist after activation, the ingest silently
-    # produced nothing (e.g. scope-rejected despite cleared purpose.md).
-    # Fail now with a clear message rather than getting knowledge_gap failures.
-    _assert_active_pages(_COORDINATOR_PORT, min_count=1, label="live-coord")
-    _assert_active_pages(_TARGET_PORT, min_count=1, label="live-target")
+    # Guard: pages written with status:active frontmatter before server start
+    # are indexed from disk on the first BM25 query (cold cache).  Verify here.
+    _assert_retrieve_works(_COORDINATOR_PORT, "leverage ratio debt equity", label="live-coord")
+    _assert_retrieve_works(_TARGET_PORT, "kubernetes deployment rollback", label="live-target")
 
     yield {
         "coord_dir": coord_dir,
@@ -187,7 +144,7 @@ def live_wikis(tmp_path_factory):
         "_target_proc": target_proc_holder,
     }
 
-    # Teardown — terminate server processes then clean registry.
+    # Teardown — terminate server processes, clean registry, remove wiki dirs.
     for proc in (coord_proc, target_proc_holder[0]):
         try:
             proc.terminate()
@@ -202,6 +159,7 @@ def live_wikis(tmp_path_factory):
         for _name in ("live-coord", "live-target"):
             _reg.pop(_name, None)
         _registry_path.write_text(_json.dumps(_reg, indent=2), encoding="utf-8")
+    shutil.rmtree(base, ignore_errors=True)
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -271,107 +229,39 @@ def _run(cmd: list[str]) -> None:
 
 
 def _write_page(wiki_dir: Path, slug: str, content: str) -> None:
+    """Write a wiki page directly with status:active frontmatter.
+
+    Bypasses the ingest pipeline entirely — no LLM, no jobs.  The BM25
+    corpus is rebuilt from disk on the first query after server start (cold
+    cache), so pages written here are immediately searchable via /retrieve.
+    """
+    import yaml as _yaml
     page_dir = wiki_dir / "wiki"
     page_dir.mkdir(parents=True, exist_ok=True)
-    (page_dir / f"{slug}.md").write_text(content, encoding="utf-8")
-
-
-def _ingest_directory(wiki_dir: Path, wiki_name: str) -> list[str]:
-    """Enqueue batch ingest for a directory; return the list of job IDs."""
-    result = subprocess.run(
-        ["synthadoc", "ingest", str(wiki_dir), "-w", wiki_name, "--batch"],
-        capture_output=True, text=True, check=True, encoding="utf-8",
+    lines = [ln for ln in content.splitlines() if ln.strip()]
+    title = lines[0].strip() if lines else slug
+    fm = {"title": title, "status": "active"}
+    yaml_str = _yaml.dump(fm, default_flow_style=False, allow_unicode=True)
+    (page_dir / f"{slug}.md").write_text(
+        f"---\n{yaml_str}---\n\n{content}", encoding="utf-8"
     )
-    job_ids = []
-    for line in result.stdout.splitlines():
-        if "-> job " in line:
-            job_id = line.split("-> job ")[-1].strip()
-            if job_id:
-                job_ids.append(job_id)
-    return job_ids
 
 
-def _wait_for_jobs(port: int, job_ids: list[str], timeout: int = 300) -> None:
-    """Poll /jobs/<id> for each job until all reach a terminal state.
-
-    Raises RuntimeError immediately if any job is FAILED or DEAD (surfaces the
-    server-side error message).  Raises TimeoutError if the deadline expires
-    before all jobs complete.
-    """
-    if not job_ids:
-        return
-    from synthadoc.core.queue import JobStatus
-    deadline = time.time() + timeout
-    pending = list(job_ids)
-    while pending and time.time() < deadline:
-        still_pending = []
-        for job_id in pending:
-            try:
-                resp = httpx.get(
-                    f"http://127.0.0.1:{port}/jobs/{job_id}",
-                    timeout=5.0,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    try:
-                        status = JobStatus(data.get("status", ""))
-                    except ValueError:
-                        status = None
-                    if status is not None and status.is_terminal:
-                        if status in (JobStatus.FAILED, JobStatus.DEAD):
-                            err = data.get("error") or ""
-                            raise RuntimeError(
-                                f"Ingest job {job_id[:8]} on port {port} "
-                                f"reached {status.value}: {err[:400]}"
-                            )
-                        continue  # COMPLETED, SKIPPED, or CANCELLED
-                still_pending.append(job_id)
-            except RuntimeError:
-                raise
-            except Exception:
-                still_pending.append(job_id)
-        pending = still_pending
-        if pending:
-            time.sleep(3)
-    if pending:
-        raise TimeoutError(
-            f"{len(pending)} ingest job(s) on port {port} did not reach "
-            f"terminal state within {timeout}s"
-        )
-
-
-def _assert_active_pages(port: int, min_count: int = 1, label: str = "") -> None:
-    """Raise if fewer than min_count ACTIVE pages exist on the wiki at port."""
-    resp = httpx.get(f"http://127.0.0.1:{port}/lifecycle/pages", timeout=10.0)
+def _assert_retrieve_works(port: int, query: str, label: str = "") -> None:
+    """Raise if /retrieve returns no pages for the given query."""
+    resp = httpx.post(
+        f"http://127.0.0.1:{port}/retrieve",
+        json={"question": query, "top_k": 3},
+        timeout=10.0,
+    )
     resp.raise_for_status()
-    active = [p for p in resp.json().get("pages", []) if p.get("state") == "active"]
-    if len(active) < min_count:
+    pages = resp.json().get("pages", [])
+    if not pages:
         tag = f" ({label})" if label else ""
         raise RuntimeError(
-            f"Expected at least {min_count} active page(s) on port {port}{tag}, "
-            f"got {len(active)} — ingest may have scope-rejected all pages"
+            f"No pages returned by /retrieve on port {port}{tag} "
+            f"for query {query!r} — pages may not have status:active"
         )
-
-
-def _activate_draft_pages(port: int) -> None:
-    """Promote every DRAFT page on the wiki at *port* to ACTIVE.
-
-    The ingest agent creates pages as LifecycleState.DRAFT, but /retrieve
-    only serves LifecycleState.ACTIVE pages.  Calling this after all ingest
-    jobs complete makes the freshly created pages visible to cross-wiki queries.
-    """
-    resp = httpx.get(f"http://127.0.0.1:{port}/lifecycle/pages", timeout=10.0)
-    resp.raise_for_status()
-    draft_slugs = [
-        p["slug"] for p in resp.json().get("pages", []) if p.get("state") == "draft"
-    ]
-    for slug in draft_slugs:
-        r = httpx.post(
-            f"http://127.0.0.1:{port}/lifecycle/transition",
-            json={"slug": slug, "to_state": "active", "reason": "live-test activation"},
-            timeout=10.0,
-        )
-        r.raise_for_status()
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
