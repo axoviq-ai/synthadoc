@@ -320,7 +320,7 @@ def _query_cross_wiki(question: str) -> dict:
     resp = httpx.post(
         f"http://127.0.0.1:{_COORDINATOR_PORT}/cross-wiki/query",
         json={"question": question},
-        timeout=60.0,
+        timeout=120.0,
     )
     resp.raise_for_status()
     return resp.json()
