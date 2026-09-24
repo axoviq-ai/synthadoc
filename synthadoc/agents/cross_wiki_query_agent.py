@@ -256,15 +256,12 @@ class CrossWikiQueryAgent(BaseAgent):
     async def _fetch_retrieve(
         self, base_url: str, question: str, sub_questions: list[str]
     ) -> _RetrieveResponse:
-        import aiohttp
+        import httpx
         payload = {"question": question, "sub_questions": sub_questions, "top_k": 10}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{base_url}/retrieve", json=payload,
-                timeout=aiohttp.ClientTimeout(total=self._http_timeout),
-            ) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+        async with httpx.AsyncClient(timeout=self._http_timeout) as client:
+            resp = await client.post(f"{base_url}/retrieve", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
         return _RetrieveResponse(
             wiki_name=data["wiki_name"],
             pages=data.get("pages", []),
