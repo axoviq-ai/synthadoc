@@ -4214,7 +4214,9 @@ For a step-by-step setup walkthrough see [Appendix L — Cross-Wiki Queries](use
 
 `~/.synthadoc/CROSS_WIKI_ROUTING.md` is an optional global routing override. When present, it maps topic areas to specific wikis, allowing you to pin certain question types to particular knowledge bases rather than relying on LLM auto-routing. When the file is absent or unparseable, the coordinator falls back to LLM auto-routing (selects wikis based on their `purpose.md` summaries) and logs a warning on parse error.
 
-For how to create and manage the file see [Step 5 — Configuring CROSS_WIKI_ROUTING.md](user-quick-start-guide.md#step-5--configuring-cross_wiki_routingmd) in the Quick-Start Guide.
+**File format:** Each `## section` defines a rule with a `wikis:` line (comma-separated registry names) and a `keywords:` line (comma-separated trigger words). The first section whose keywords appear in the query is selected; the section with an empty `keywords:` line is the default fallback. Matching is case-insensitive substring.
+
+For how to create and manage the file, with a full annotated example, see [Step 5 — Configuring CROSS_WIKI_ROUTING.md](user-quick-start-guide.md#step-5--configuring-cross_wiki_routingmd) in the Quick-Start Guide.
 
 ### CLI Reference
 
