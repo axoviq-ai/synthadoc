@@ -46,7 +46,13 @@ def _install_win32_conn_reset_filter() -> None:  # pragma: no cover
         if isinstance(exc, ConnectionResetError) and "_call_connection_lost" in context.get("message", ""):
             logger.debug("win32 socket closed by remote host (WinError 10054) — harmless")
             return
-        (_prev or loop.default_exception_handler)(loop, context)
+        if isinstance(exc, SystemExit) and exc.code == 0:
+            # Clean shutdown via POST /shutdown — not an error
+            return
+        if _prev:
+            _prev(loop, context)
+        else:
+            loop.default_exception_handler(context)
 
     loop.set_exception_handler(_handler)
 
