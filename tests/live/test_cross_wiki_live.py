@@ -76,7 +76,7 @@ def live_wikis(tmp_path_factory):
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
     # Seed content with status:active frontmatter — coordinator: finance domain
-    _write_page(coord_dir, "leverage", (
+    _write_page(coord_dir / "live-coord", "leverage", (
         "Leverage\n\n"
         "Leverage is the ratio of debt to equity in a capital structure. "
         "High leverage amplifies returns but also increases financial risk. "
@@ -85,7 +85,7 @@ def live_wikis(tmp_path_factory):
         "Formula: Leverage Ratio = Total Debt / Total Equity\n\n"
         "A leverage ratio above 2x is considered high; below 1x is conservative."
     ))
-    _write_page(coord_dir, "ebitda", (
+    _write_page(coord_dir / "live-coord", "ebitda", (
         "EBITDA and M&A Valuation Multiples\n\n"
         "EBITDA stands for Earnings Before Interest, Taxes, Depreciation, and Amortisation. "
         "It is the primary metric used to value companies in mergers and acquisitions (M&A). "
@@ -96,7 +96,7 @@ def live_wikis(tmp_path_factory):
     ))
 
     # Seed content — target: operations domain
-    _write_page(target_dir, "deployment-runbook", (
+    _write_page(target_dir / "live-target", "deployment-runbook", (
         "Kubernetes Deployment Runbook\n\n"
         "This runbook covers deploying and rolling back applications on Kubernetes.\n\n"
         "## Deploy\n"
@@ -110,7 +110,7 @@ def live_wikis(tmp_path_factory):
         "  kubectl rollout undo deployment/app --to-revision=2\n\n"
         "To check Kubernetes rollout status: kubectl rollout status deployment/app"
     ))
-    _write_page(target_dir, "incident-response", (
+    _write_page(target_dir / "live-target", "incident-response", (
         "Incident Response\n\n"
         "Severity levels: P1 (complete outage), P2 (degraded service), P3 (minor issue). "
         "P1 incidents require a response within 15 minutes. "
