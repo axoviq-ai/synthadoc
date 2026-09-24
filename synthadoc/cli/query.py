@@ -21,6 +21,23 @@ _WORKFLOW_RE = _re.compile(
 _WORKFLOW_TIMEOUT = 3600  # seconds — contradiction resolver can run for up to 1 hour
 
 
+def print_cross_wiki_result(result: dict, wiki: str) -> None:
+    """Print a cross-wiki query result: answer, citations, offline warning, skip footnote."""
+    typer.echo(result["answer"])
+    if result.get("citations"):
+        typer.echo("\nSources: " + ", ".join(f"[[{c}]]" for c in result["citations"]))
+    if result.get("cross_wiki_offline"):
+        offline = ", ".join(result["cross_wiki_offline"])
+        typer.echo(f"\n⚠  {offline} offline — results from available wikis only.")
+        typer.echo(f"   Run `synthadoc serve --all --background` to include them.")
+    if result.get("cross_wiki_skipped"):
+        typer.echo(f"\n[Ran on {wiki} only — {result.get('cross_wiki_skip_reason', 'operation detected')}]")
+    if result.get("knowledge_gap"):
+        suggestions = result.get("suggested_searches") or []
+        if suggestions:
+            typer.echo("\nRelated: " + ", ".join(suggestions))
+
+
 def _format_gap_callout(suggested_searches: list[str], wiki: str) -> str:
     """Build the Obsidian [!tip] callout for a knowledge gap."""
     terminal_cmds = "\n".join(
@@ -89,6 +106,65 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
         typer.echo(_format_gap_callout(suggested, wiki))
 
 
+def _stream_cross_wiki_query(wiki: str, question: str, timeout: int) -> None:
+    """Stream a cross-wiki query via SSE, handling cross-wiki-specific events."""
+    citations: list[str] = []
+    cross_wiki_offline: list[str] = []
+    cross_wiki_skipped = False
+    cross_wiki_skip_reason = ""
+    knowledge_gap = False
+    suggested: list[str] = []
+    params: dict = {"q": question, "timeout_seconds": timeout}
+    try:
+        for event_name, data in get_stream(wiki, "/cross-wiki/query/stream", timeout=timeout, **params):
+            if event_name == "token":
+                typer.echo(data.get("text", ""), nl=False)
+            elif event_name == "wikis_querying":
+                wikis = data.get("wikis", [])
+                if wikis:
+                    typer.echo(f"Searching: {', '.join(wikis)}...", err=True)
+            elif event_name == "wikis_result":
+                responded = data.get("responded", [])
+                offline = data.get("offline", [])
+                if offline:
+                    typer.echo(
+                        f"Searched: {', '.join(responded)} · {', '.join(offline)} offline",
+                        err=True,
+                    )
+            elif event_name == "tool_progress":
+                msg = data.get("message", "")
+                if msg:
+                    typer.echo(f"  {msg}", err=True)
+            elif event_name == "citations":
+                citations = data.get("citations", [])
+            elif event_name == "gap":
+                knowledge_gap = True
+                suggested = data.get("suggested_searches", [])
+            elif event_name == "done":
+                cross_wiki_offline = data.get("cross_wiki_offline", [])
+                cross_wiki_skipped = data.get("cross_wiki_skipped", False)
+                cross_wiki_skip_reason = data.get("cross_wiki_skip_reason", "")
+            elif event_name == "error":
+                msg = data.get("message", "unknown error")
+                typer.echo(f"\nError: {msg}", err=True)
+                return
+    except (typer.Exit, SystemExit):
+        raise
+    except Exception as _exc:
+        typer.echo(f"\nError: stream interrupted ({type(_exc).__name__}: {_exc})", err=True)
+    typer.echo("")  # newline after streamed tokens
+    if citations:
+        typer.echo("\nSources: " + ", ".join(f"[[{c}]]" for c in citations))
+    if cross_wiki_offline:
+        offline_str = ", ".join(cross_wiki_offline)
+        typer.echo(f"\n⚠  {offline_str} offline — results from available wikis only.")
+        typer.echo(f"   Run `synthadoc serve --all --background` to include them.")
+    if cross_wiki_skipped:
+        typer.echo(f"\n[Ran on {wiki} only — {cross_wiki_skip_reason or 'operation detected'}]")
+    if knowledge_gap and suggested:
+        typer.echo("\nRelated: " + ", ".join(suggested))
+
+
 def _handle_confirm(wiki: str, data: dict) -> None:
     """Print a confirmation prompt and POST the user's response to /action/confirm.
 
@@ -124,6 +200,7 @@ def query_cmd(
     timeout: int = typer.Option(60, "--timeout", help="Seconds to wait for the LLM (default 60; increase for slow providers)"),
     no_stream: bool = typer.Option(False, "--no-stream", help="Use blocking endpoint (for scripts/pipes)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, always call LLM"),
+    cross_wiki: bool = typer.Option(False, "--cross-wiki", help="Query across all relevant registered wikis"),
 ):
     """Query the wiki. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
@@ -131,6 +208,10 @@ def query_cmd(
     if _WORKFLOW_RE.search(question) and timeout < _WORKFLOW_TIMEOUT:
         timeout = _WORKFLOW_TIMEOUT
     if no_stream:
+        if cross_wiki:
+            result = post(wiki, "/cross-wiki/query", {"question": question, "history": []}, timeout=timeout, llm=True)
+            print_cross_wiki_result(result, wiki)
+            return
         params = {"q": question, "timeout_seconds": timeout}
         if no_cache:
             params["no_cache"] = "true"
@@ -141,4 +222,7 @@ def query_cmd(
         if result.get("knowledge_gap") and result.get("suggested_searches"):
             typer.echo(_format_gap_callout(result["suggested_searches"], wiki))
     else:
+        if cross_wiki:
+            _stream_cross_wiki_query(wiki, question, timeout=timeout)
+            return
         _stream_query(wiki, question, no_cache=no_cache, timeout=timeout)

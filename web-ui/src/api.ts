@@ -157,7 +157,7 @@ export async function streamQuery(
     }
 }
 
-function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallbacks) {
+export function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallbacks) {
     switch (event) {
         case "token": {
             const text = typeof data.text === "string" ? data.text : "";
@@ -231,5 +231,103 @@ function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallba
             }
             break;
         }
+    }
+}
+
+// ─── Cross-wiki types and stream function ─────────────────────────────────────
+
+export interface WikiStatus {
+    port: number | null;
+    running: boolean;
+}
+
+export interface RegistryData {
+    wikis: Record<string, WikiStatus>;
+}
+
+export async function getRegistry(): Promise<RegistryData> {
+    const resp = await fetch("/registry", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+export interface CrossWikiCallbacks extends StreamCallbacks {
+    onWikisQuerying?: (wikis: string[]) => void;
+    onWikisResult?: (responded: string[], offline: string[]) => void;
+    onCrossWikiSkipped?: (reason: string) => void;
+}
+
+export async function streamCrossWikiQuery(
+    question: string,
+    sessionId: string,
+    callbacks: CrossWikiCallbacks,
+    signal?: AbortSignal,
+    timeoutSeconds?: number,
+): Promise<void> {
+    const params = new URLSearchParams({ q: question, session_id: sessionId });
+    if (timeoutSeconds != null) params.set("timeout_seconds", String(timeoutSeconds));
+    const resp = await fetch(`/cross-wiki/query/stream?${params}`, {
+        headers: { Accept: "text/event-stream" },
+        signal,
+    });
+    if (!resp.ok || !resp.body) {
+        callbacks.onError(`HTTP ${resp.status}`);
+        return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let evt = "message";
+    let terminated = false;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split(/\r?\n/);
+            buf = lines.pop() ?? "";
+            for (const line of lines) {
+                if (line.startsWith("event:")) {
+                    evt = line.slice(6).trim();
+                } else if (line.startsWith("data:")) {
+                    try {
+                        const data = JSON.parse(line.slice(5).trim());
+                        if (evt === "done" || evt === "error") terminated = true;
+                        dispatchCrossWiki(evt, data, callbacks);
+                    } catch { /* ignore */ }
+                } else if (line === "") {
+                    evt = "message";
+                }
+            }
+        }
+    } finally {
+        if (!terminated) callbacks.onError("Stream ended unexpectedly");
+        reader.cancel();
+    }
+}
+
+// dispatchCrossWiki handles ONLY the two new cross-wiki events.
+// Everything else is delegated to the existing exported `dispatch` — no duplication.
+function dispatchCrossWiki(event: string, data: Record<string, unknown>, cb: CrossWikiCallbacks) {
+    switch (event) {
+        case "wikis_querying":
+            cb.onWikisQuerying?.(Array.isArray(data.wikis) ? data.wikis as string[] : []);
+            break;
+        case "wikis_result":
+            cb.onWikisResult?.(
+                Array.isArray(data.responded) ? data.responded as string[] : [],
+                Array.isArray(data.offline) ? data.offline as string[] : [],
+            );
+            break;
+        case "done": {
+            // Handle cross-wiki-specific done fields, then delegate the rest
+            const skipped = typeof data.cross_wiki_skipped === "boolean" ? data.cross_wiki_skipped : false;
+            const skipReason = typeof data.cross_wiki_skip_reason === "string" ? data.cross_wiki_skip_reason : "";
+            if (skipped) cb.onCrossWikiSkipped?.(skipReason);
+            dispatch(event, data, cb);  // delegates onDone to the existing handler
+            break;
+        }
+        default:
+            dispatch(event, data, cb);  // reuse existing token/citations/gap/error handling
     }
 }

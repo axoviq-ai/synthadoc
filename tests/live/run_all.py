@@ -64,6 +64,10 @@ Examples:
 
     # Run template install live test (installs and tears down a fresh template wiki)
     python -X utf8 tests/live/run_all.py --suite template_install
+
+    # Run cross-wiki live tests (spins up two wikis, queries across them, tears down)
+    # No running server required — the suite manages its own servers on ports 17070/17071.
+    python -X utf8 tests/live/run_all.py --suite cross_wiki
 """
 import argparse
 import atexit
@@ -104,20 +108,29 @@ SUITES = {
     "orphan_resolver":          "test_orphan_resolver_live.py",
     "broken_citation_resolver": "test_broken_citation_resolver_live.py",
     "template_install":         "live_template_install_test.py",
+    "cross_wiki":               "test_cross_wiki_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
+
+# Suites whose test files use pytest conventions — run via `python -m pytest`
+# rather than direct script execution.
+PYTEST_SUITES = {"cross_wiki"}
 
 
 def run_suite(name: str, script: Path, extra_args: list[str], env: dict) -> int:
     print(f"\n{'='*64}")
     print(f"  Running suite: {name.upper()} — {script.name}")
     print(f"{'='*64}")
-    r = subprocess.run(
-        [sys.executable, "-X", "utf8", str(script)] + extra_args,
-        env=env,
-    )
+    if name in PYTEST_SUITES:
+        # cross_wiki spins up real servers and waits for async ingest — use a
+        # longer timeout than the default 120 s so fixture setup has room.
+        timeout_arg = "--timeout=600" if name == "cross_wiki" else "--timeout=120"
+        cmd = [sys.executable, "-X", "utf8", "-m", "pytest", str(script), "-v", timeout_arg] + extra_args
+    else:
+        cmd = [sys.executable, "-X", "utf8", str(script)] + extra_args
+    r = subprocess.run(cmd, env=env)
     return r.returncode
 
 
@@ -215,6 +228,7 @@ def main() -> None:
         "orphan_resolver":          [],
         "broken_citation_resolver": [],
         "template_install":         [],
+        "cross_wiki":               [],
     }
     # Per-suite environment
     suite_env = {
@@ -232,6 +246,7 @@ def main() -> None:
         "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_citation_resolver": {**os.environ, "SYNTHADOC_URL": base},
         "template_install":         {**os.environ},
+        "cross_wiki":               {**os.environ, "SYNTHADOC_LIVE_TESTS": "1"},
     }
 
     print(f"\n{'='*64}")

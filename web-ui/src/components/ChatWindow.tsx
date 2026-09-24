@@ -10,6 +10,10 @@ import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
 import ToolProgressBlock from "./ToolProgressBlock";
 import ConfirmCard from "./ConfirmCard";
+import { CrossWikiToggle } from "./CrossWikiToggle";
+import { CrossWikiBar } from "./CrossWikiBar";
+
+const _OPERATION_RE = /\b(run|lint|ingest|resolve|orphan|promote|discard|backup|fix|schedule|archive)\b/i;
 
 interface Props {
     sessionId: string | null;
@@ -35,7 +39,28 @@ export function ChatWindow({
     pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
     resolvedDark,
 }: Props) {
-    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(sessionId, onHints, initialMessages, onQuerySent);
+    // Cross-wiki state — must be declared before useQueryStream so setters are available
+    const [crossWikiEnabled, setCrossWikiEnabled] = useState(() => {
+        try { return localStorage.getItem("crossWikiEnabled") === "true"; }
+        catch { return false; }
+    });
+    const [crossWikiBarState, setCrossWikiBarState] = useState<"idle" | "searching" | "done">("idle");
+    const [crossWikiWikis, setCrossWikiWikis] = useState<string[]>([]);
+    const [crossWikiResponded, setCrossWikiResponded] = useState<string[]>([]);
+    const [crossWikiOffline, setCrossWikiOffline] = useState<string[]>([]);
+
+    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(
+        sessionId, onHints, initialMessages, onQuerySent,
+        {
+            onWikisQuerying: (wikis) => { setCrossWikiBarState("searching"); setCrossWikiWikis(wikis); },
+            onWikisResult: (responded, offline) => {
+                setCrossWikiBarState("done");
+                setCrossWikiResponded(responded);
+                setCrossWikiOffline(offline);
+            },
+            onCrossWikiSkipped: () => { setCrossWikiBarState("idle"); },
+        },
+    );
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
@@ -94,13 +119,19 @@ export function ChatWindow({
         if (!q) return;
         setInput("");
         onPendingPromptConsumed?.();
-        send(q, noCache, timeoutSeconds);
+        if (crossWikiEnabled) {
+            setCrossWikiBarState("idle");
+            setCrossWikiWikis([]);
+            setCrossWikiResponded([]);
+            setCrossWikiOffline([]);
+        }
+        send(q, noCache, timeoutSeconds, crossWikiEnabled);
     };
 
     const handleChipClick = useCallback((value: string) => {
         onPendingPromptConsumed?.();
-        send(value, noCache, timeoutSeconds);
-    }, [send, noCache, timeoutSeconds, onPendingPromptConsumed]);
+        send(value, noCache, timeoutSeconds, crossWikiEnabled);
+    }, [send, noCache, timeoutSeconds, onPendingPromptConsumed, crossWikiEnabled]);
 
     const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
@@ -119,6 +150,12 @@ export function ChatWindow({
 
     return (
         <div className="chat-window">
+            <CrossWikiBar
+                state={crossWikiBarState}
+                wikis={crossWikiWikis}
+                responded={crossWikiResponded}
+                offline={crossWikiOffline}
+            />
             <div className="messages" ref={messagesRef} aria-live="polite">
                 {messages.length === 0
                     ? <Hero mode={mode} resolvedDark={resolvedDark} />
@@ -207,6 +244,14 @@ export function ChatWindow({
                         disabled={streaming || !sessionId}
                         rows={2}
                     />
+                    <CrossWikiToggle
+                        enabled={crossWikiEnabled}
+                        onChange={(val) => {
+                            setCrossWikiEnabled(val);
+                            try { localStorage.setItem("crossWikiEnabled", String(val)); } catch { /* ignore */ }
+                            if (!val) setCrossWikiBarState("idle");
+                        }}
+                    />
                     <button
                         className="send-btn"
                         aria-label={streaming ? "Sending" : "Ask"}
@@ -216,6 +261,11 @@ export function ChatWindow({
                         {streaming ? "…" : "Ask"}
                     </button>
                 </div>
+                {crossWikiEnabled && _OPERATION_RE.test(input) && (
+                    <p className="cross-wiki-operation-hint">
+                        Note: Operation commands work on the current wiki only.
+                    </p>
+                )}
                 <p className="input-keyboard-hint">
                     Enter or click "Ask" to send · Shift+Enter or Ctrl+Enter for new line
                 </p>
