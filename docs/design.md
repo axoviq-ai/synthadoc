@@ -4211,13 +4211,13 @@ Each wiki is automatically registered in the global registry (`~/.synthadoc/wiki
 
 **Step 2 — Start servers.**
 
-Start all registered wikis at once, or each one individually if preferred:
+You can start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to wikis that are currently running, so starting a subset is a valid way to scope the results:
 
 ```bash
-# Start all at once
+# Start all registered wikis
 synthadoc serve --all --background
 
-# Or start each wiki individually
+# Or start only the wikis you need (e.g. 2 of 5 registered)
 synthadoc serve -w finance-wiki --background
 synthadoc serve -w legal-wiki --background
 ```
