@@ -1089,11 +1089,10 @@ synthadoc
 ├── cache clear [-w wiki]
 ├── cross-wiki
 │   ├── query "<question>" [--timeout N]            — fan-out query across all relevant registered wikis
-│   ├── routing
-│   │   ├── init                                    — scaffold ~/.synthadoc/CROSS_WIKI_ROUTING.md from registry
-│   │   ├── show                                    — print current cross-wiki routing rules
-│   │   └── edit                                    — open routing file in $EDITOR
-│   └── status                                      — alias for `synthadoc status --all`
+│   └── routing
+│       ├── init                                    — scaffold ~/.synthadoc/CROSS_WIKI_ROUTING.md from registry
+│       ├── show                                    — print current cross-wiki routing rules
+│       └── edit                                    — open routing file in $EDITOR
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
     ├── list [-w wiki]
@@ -4167,7 +4166,7 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 
 ## 40. Cross-Wiki Queries (v1.4.0)
 
-Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic.
+Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic. For typical use cases (cross-domain analysis, aggregate reporting, incident response, policy synthesis) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
 ### Architecture
 
@@ -4207,43 +4206,17 @@ CLI / Web UI
 
 ### Setup
 
-**Step 1 — Register wikis.**  
-Each wiki must be registered via `synthadoc install` so it appears in the global registry (`~/.synthadoc/wikis.json`).
+Each wiki is automatically registered in the global registry (`~/.synthadoc/wikis.json`) on `synthadoc install`. Cross-wiki queries fan out only to wikis that are currently running, so starting a subset of your registered wikis is a valid way to scope the results.
 
-**Step 2 — Start all servers.**
-
-```bash
-synthadoc serve --all --background
-```
-
-Iterates the registry and spawns a background server for every wiki not already running. Skips wikis whose port is already responding.
-
-**Step 3 — Verify all servers are up.**
-
-```bash
-synthadoc status --all
-```
-
-Example output:
-
-```
-wiki           port   status    pages
-finance-wiki   7070   running   142
-legal-wiki     7071   running   38
-ops-wiki       7072   stopped   —
-```
+For a step-by-step setup walkthrough see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
 ### CROSS_WIKI_ROUTING.md
 
 `~/.synthadoc/CROSS_WIKI_ROUTING.md` is an optional global routing override. When present, it maps topic areas to specific wikis, allowing you to pin certain question types to particular knowledge bases rather than relying on LLM auto-routing. When the file is absent or unparseable, the coordinator falls back to LLM auto-routing (selects wikis based on their `purpose.md` summaries) and logs a warning on parse error.
 
-Manage the file with the `synthadoc cross-wiki routing` commands:
+**File format:** Each `## section` defines a rule with a `wikis:` line (comma-separated registry names) and a `keywords:` line (comma-separated trigger words). The first section whose keywords appear in the query is selected; the section with an empty `keywords:` line is the default fallback. Matching is case-insensitive substring.
 
-```bash
-synthadoc cross-wiki routing init    # generate from registry and open for editing
-synthadoc cross-wiki routing show    # print current contents
-synthadoc cross-wiki routing edit    # open in $EDITOR
-```
+For how to create and manage the file, with a full annotated example, see [Step 5 — Configuring CROSS_WIKI_ROUTING.md](user-quick-start-guide.md#step-5--configuring-cross_wiki_routingmd) in the Quick-Start Guide.
 
 ### CLI Reference
 
@@ -4256,7 +4229,6 @@ synthadoc cross-wiki routing edit    # open in $EDITOR
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
 | `synthadoc cross-wiki routing init/show/edit` | Manage `CROSS_WIKI_ROUTING.md` |
-| `synthadoc cross-wiki status` | Alias for `synthadoc status --all` |
 
 ### Web UI
 

@@ -25,12 +25,6 @@ def test_cross_wiki_routing_show_prints_content(tmp_path):
         result = runner.invoke(app, ["cross-wiki", "routing", "show"])
     assert "default" in result.output
 
-def test_cross_wiki_status_delegates_to_status_all():
-    from synthadoc.cli.main import app
-    with patch("synthadoc.cli.cross_wiki.render_status_all") as mock_status:
-        runner.invoke(app, ["cross-wiki", "status"])
-    mock_status.assert_called_once()
-
 def test_routing_show_when_no_file(tmp_path):
     from synthadoc.cli.main import app
     routing_path = tmp_path / "MISSING.md"

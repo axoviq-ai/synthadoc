@@ -221,43 +221,26 @@ def test_build_context_truncates_long_content():
 
 @pytest.mark.asyncio
 async def test_fetch_retrieve_builds_correct_payload():
-    """_fetch_retrieve posts to /retrieve and returns a _RetrieveResponse (lines 259-273)."""
-    import sys
+    """_fetch_retrieve posts to /retrieve and returns a _RetrieveResponse."""
+    import httpx
+    import respx
     from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _RetrieveResponse
-    from unittest.mock import AsyncMock, MagicMock
     provider = _make_provider()
     agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
 
-    mock_resp = AsyncMock()
-    mock_resp.raise_for_status = MagicMock()
-    mock_resp.json = AsyncMock(return_value={
+    response_data = {
         "wiki_name": "target",
         "pages": [{"slug": "p", "title": "P", "score": 1.0, "content": "c"}],
         "purpose_summary": "Legal",
         "routing_warning": "",
-    })
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-    mock_session = AsyncMock()
-    mock_session.post = MagicMock(return_value=mock_resp)
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-
-    # aiohttp is imported inline inside _fetch_retrieve; inject a fake module so
-    # the test works even when aiohttp is not installed in the CI environment.
-    fake_aiohttp = MagicMock()
-    fake_aiohttp.ClientSession = MagicMock(return_value=mock_session)
-    fake_aiohttp.ClientTimeout = MagicMock(return_value=MagicMock())
-    original = sys.modules.get("aiohttp")
-    sys.modules["aiohttp"] = fake_aiohttp
-    try:
-        result = await agent._fetch_retrieve("http://127.0.0.1:7071", "what is leverage?", ["what is leverage?"])
-    finally:
-        if original is None:
-            sys.modules.pop("aiohttp", None)
-        else:
-            sys.modules["aiohttp"] = original
+    }
+    with respx.mock:
+        respx.post("http://127.0.0.1:7071/retrieve").mock(
+            return_value=httpx.Response(200, json=response_data)
+        )
+        result = await agent._fetch_retrieve(
+            "http://127.0.0.1:7071", "what is leverage?", ["what is leverage?"]
+        )
 
     assert isinstance(result, _RetrieveResponse)
     assert result.wiki_name == "target"
