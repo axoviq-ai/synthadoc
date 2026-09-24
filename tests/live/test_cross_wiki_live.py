@@ -24,6 +24,11 @@ import sys
 import httpx
 import pytest
 
+# Provider for live tests — override with SYNTHADOC_LIVE_PROVIDER env var.
+# Allowed: "claude-code" (default), "opencode"
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+from live_helpers import patch_provider  # noqa: E402
+
 # Suppress console popup windows on Windows when spawning background processes.
 _POPEN_HIDDEN: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
 if sys.platform == "win32":
@@ -75,18 +80,10 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
-    # Patch config.toml to use claude-code — the install default is gemini which
-    # requires GEMINI_API_KEY; claude-code delegates to the Claude Code CLI
-    # (already authenticated, no separate API key required) and is always
-    # available wherever these tests run.
+    # Patch config.toml to use a coding-tool CLI provider (no API key needed).
+    # Defaults to "claude-code"; set SYNTHADOC_LIVE_PROVIDER=opencode to switch.
     for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
-        _cfg_path = _wiki_dir / ".synthadoc" / "config.toml"
-        _cfg_text = _cfg_path.read_text(encoding="utf-8")
-        _cfg_text = _cfg_text.replace(
-            'default = { provider = "gemini", model = "gemini-2.5-flash-lite" }',
-            'default = { provider = "claude-code" }',
-        )
-        _cfg_path.write_text(_cfg_text, encoding="utf-8")
+        patch_provider(_wiki_dir)
 
     # Seed content with status:active frontmatter — coordinator: finance domain
     _write_page(coord_dir / "live-coord", "leverage", (
