@@ -4431,15 +4431,20 @@ synthadoc install finance-wiki --target ~/wikis/finance
 synthadoc install legal-wiki --target ~/wikis/legal
 ```
 
-### Step 1 — Start all servers
+### Step 1 — Start servers
 
-Start background servers for every registered wiki in one command:
+Start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to running wikis, so starting a subset is a valid way to scope the results:
 
 ```bash
+# Start all registered wikis
 synthadoc serve --all --background
+
+# Or start only the wikis you need (e.g. 2 of 5 registered)
+synthadoc serve -w finance-wiki --background
+synthadoc serve -w legal-wiki --background
 ```
 
-Each server starts on its registered port. The command skips any wiki whose port is already responding.
+Each server starts on its registered port. `--all` skips any wiki whose port is already responding.
 
 ### Step 2 — Check status
 

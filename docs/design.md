@@ -4206,50 +4206,15 @@ CLI / Web UI
 
 ### Setup
 
-**Step 1 — Install your wikis.**  
-Each wiki is automatically registered in the global registry (`~/.synthadoc/wikis.json`) when you run `synthadoc install` — no separate registration step is needed.
+Each wiki is automatically registered in the global registry (`~/.synthadoc/wikis.json`) on `synthadoc install`. Cross-wiki queries fan out only to wikis that are currently running, so starting a subset of your registered wikis is a valid way to scope the results.
 
-**Step 2 — Start servers.**
-
-You can start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to wikis that are currently running, so starting a subset is a valid way to scope the results:
-
-```bash
-# Start all registered wikis
-synthadoc serve --all --background
-
-# Or start only the wikis you need (e.g. 2 of 5 registered)
-synthadoc serve -w finance-wiki --background
-synthadoc serve -w legal-wiki --background
-```
-
-`--all` iterates the registry and spawns a background server for every wiki not already running, skipping wikis whose port is already responding.
-
-**Step 3 — Verify all servers are up.**
-
-```bash
-synthadoc status --all
-```
-
-Example output:
-
-```
-wiki           port   status    pages
-finance-wiki   7070   running   142
-legal-wiki     7071   running   38
-ops-wiki       7072   stopped   —
-```
+For a step-by-step setup walkthrough see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
 ### CROSS_WIKI_ROUTING.md
 
 `~/.synthadoc/CROSS_WIKI_ROUTING.md` is an optional global routing override. When present, it maps topic areas to specific wikis, allowing you to pin certain question types to particular knowledge bases rather than relying on LLM auto-routing. When the file is absent or unparseable, the coordinator falls back to LLM auto-routing (selects wikis based on their `purpose.md` summaries) and logs a warning on parse error.
 
-Manage the file with the `synthadoc cross-wiki routing` commands:
-
-```bash
-synthadoc cross-wiki routing init    # generate from registry and open for editing
-synthadoc cross-wiki routing show    # print current contents
-synthadoc cross-wiki routing edit    # open in $EDITOR
-```
+For how to create and manage the file see [Step 5 — Configuring CROSS_WIKI_ROUTING.md](user-quick-start-guide.md#step-5--configuring-cross_wiki_routingmd) in the Quick-Start Guide.
 
 ### CLI Reference
 
