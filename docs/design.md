@@ -4209,13 +4209,20 @@ CLI / Web UI
 **Step 1 — Install your wikis.**  
 Each wiki is automatically registered in the global registry (`~/.synthadoc/wikis.json`) when you run `synthadoc install` — no separate registration step is needed.
 
-**Step 2 — Start all servers.**
+**Step 2 — Start servers.**
+
+Start all registered wikis at once, or each one individually if preferred:
 
 ```bash
+# Start all at once
 synthadoc serve --all --background
+
+# Or start each wiki individually
+synthadoc serve -w finance-wiki --background
+synthadoc serve -w legal-wiki --background
 ```
 
-Iterates the registry and spawns a background server for every wiki not already running. Skips wikis whose port is already responding.
+`--all` iterates the registry and spawns a background server for every wiki not already running, skipping wikis whose port is already responding.
 
 **Step 3 — Verify all servers are up.**
 
