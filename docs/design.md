@@ -4206,8 +4206,8 @@ CLI / Web UI
 
 ### Setup
 
-**Step 1 — Register wikis.**  
-Each wiki must be registered via `synthadoc install` so it appears in the global registry (`~/.synthadoc/wikis.json`).
+**Step 1 — Install your wikis.**  
+Each wiki is automatically registered in the global registry (`~/.synthadoc/wikis.json`) when you run `synthadoc install` — no separate registration step is needed.
 
 **Step 2 — Start all servers.**
 
