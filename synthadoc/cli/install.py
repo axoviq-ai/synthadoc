@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli._port import assign_wiki_port as _assign_wiki_port, _DEFAULT_PORT
-from synthadoc.cli._wiki import _normalise_wiki_name
+from synthadoc.cli._wiki import _normalise_wiki_name, extract_purpose_summary
 from synthadoc import errors as E
 
 _REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
@@ -284,6 +284,7 @@ def install_cmd(
         "demo": name if demo else None,
         "installed": date.today().isoformat(),
         "port": effective_port,
+        "purpose_summary": extract_purpose_summary(dest),
         **({"category": template.split("/")[0], "template": template.split("/")[1]}
            if template else {}),
     }

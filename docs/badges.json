@@ -1,11 +1,11 @@
 {
-  "cli_commands": 58,
+  "cli_commands": 63,
   "obsidian_commands": 15,
   "skills": 10,
   "hooks": 1,
   "coverage": 91,
   "coverage_color": "brightgreen",
   "mcp_tools": 12,
-  "agents": 11,
+  "agents": 12,
   "maintenance_workflows": 7
 }

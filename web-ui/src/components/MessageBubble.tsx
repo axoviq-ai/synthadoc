@@ -398,7 +398,23 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
             }
             {msg.citations && msg.citations.length > 0 && (
                 <p className="bubble-citations">
-                    Sources: {msg.citations.map((c) => `[[${c}]]`).join(", ")}
+                    Sources:{" "}
+                    {msg.citations.map((c, i) => {
+                        const sep = i < msg.citations!.length - 1 ? ", " : "";
+                        const m = /^([^:]+)::(.+)$/.exec(c);
+                        if (m) {
+                            return (
+                                <span key={c}>
+                                    <span className="citation-pill">
+                                        <span className="citation-pill__wiki">{m[1]}</span>{" "}
+                                        <span className="citation-pill__page">{m[2]}</span>
+                                    </span>
+                                    {sep}
+                                </span>
+                            );
+                        }
+                        return <span key={c}>{`[[${c}]]`}{sep}</span>;
+                    })}
                 </p>
             )}
             {msg.gapSuggestions && msg.gapSuggestions.length > 0 && (
