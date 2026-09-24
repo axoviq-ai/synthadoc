@@ -4424,12 +4424,14 @@ Each answer includes `[[wiki-name::PageTitle]]` citations so you can trace every
 
 ### Prerequisites
 
-You need at least two wikis registered in the global registry. Each wiki is registered when you run `synthadoc install`:
+You need at least two wikis installed. Each wiki is automatically registered in the global registry when you run `synthadoc install`. Use `--template` to apply a domain-specific starter (pre-built seeds, routing, and guidelines):
 
 ```bash
-synthadoc install finance-wiki --target ~/wikis/finance
-synthadoc install legal-wiki --target ~/wikis/legal
+synthadoc install finance-wiki --target ~/wikis --template finance/investment
+synthadoc install legal-wiki   --target ~/wikis --template legal/compliance
 ```
+
+`--target` is the parent directory; each wiki is created as `<target>/<name>/`. Run `synthadoc templates list` to see all available templates.
 
 ### Step 1 — Start servers
 
