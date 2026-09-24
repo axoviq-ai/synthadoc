@@ -71,14 +71,21 @@ def live_wikis(tmp_path_factory):
         if changed:
             _registry_path.write_text(_json.dumps(_reg, indent=2), encoding="utf-8")
 
-    # Install wikis — set domains that match seeded content so the ingest agent
-    # does not reject the pages as out-of-scope (default domain is derived from
-    # the wiki name, e.g. "Live Coord", which caused finance/ops content to be
-    # skipped).
     _run(["synthadoc", "install", "live-coord", "--target", str(coord_dir),
           "--port", str(_COORDINATOR_PORT), "--domain", "Finance and Corporate Strategy"])
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
+
+    # Clear purpose.md on both wikis so the ingest agent skips the LLM scope
+    # check entirely.  This test is about cross-wiki query routing, not scope
+    # filtering; an LLM scope check on controlled test pages introduces
+    # non-deterministic failures where all pages are silently rejected, leaving
+    # no ACTIVE pages for queries to find.
+    for _wiki_dir, _name in (
+        (coord_dir / "live-coord", "live-coord"),
+        (target_dir / "live-target", "live-target"),
+    ):
+        (_wiki_dir / "wiki" / "purpose.md").write_text("", encoding="utf-8")
 
     # Patch config.toml to use opencode — the install default is gemini which
     # requires GEMINI_API_KEY; opencode needs no separate key.
@@ -167,6 +174,12 @@ def live_wikis(tmp_path_factory):
     # Promote every DRAFT page on both wikis so cross-wiki queries can find them.
     _activate_draft_pages(_COORDINATOR_PORT)
     _activate_draft_pages(_TARGET_PORT)
+
+    # Guard: if no ACTIVE pages exist after activation, the ingest silently
+    # produced nothing (e.g. scope-rejected despite cleared purpose.md).
+    # Fail now with a clear message rather than getting knowledge_gap failures.
+    _assert_active_pages(_COORDINATOR_PORT, min_count=1, label="live-coord")
+    _assert_active_pages(_TARGET_PORT, min_count=1, label="live-target")
 
     yield {
         "coord_dir": coord_dir,
@@ -324,6 +337,19 @@ def _wait_for_jobs(port: int, job_ids: list[str], timeout: int = 300) -> None:
         raise TimeoutError(
             f"{len(pending)} ingest job(s) on port {port} did not reach "
             f"terminal state within {timeout}s"
+        )
+
+
+def _assert_active_pages(port: int, min_count: int = 1, label: str = "") -> None:
+    """Raise if fewer than min_count ACTIVE pages exist on the wiki at port."""
+    resp = httpx.get(f"http://127.0.0.1:{port}/lifecycle/pages", timeout=10.0)
+    resp.raise_for_status()
+    active = [p for p in resp.json().get("pages", []) if p.get("state") == "active"]
+    if len(active) < min_count:
+        tag = f" ({label})" if label else ""
+        raise RuntimeError(
+            f"Expected at least {min_count} active page(s) on port {port}{tag}, "
+            f"got {len(active)} — ingest may have scope-rejected all pages"
         )
 
 
