@@ -1168,9 +1168,8 @@ Stop the server for that wiki before uninstalling — the serve process must not
 when the directory is deleted.
 
 ```bash
-# Stop the background server (PID is in <wiki-root>/.synthadoc/server.pid)
-kill $(cat ~/wikis/my-wiki/.synthadoc/server.pid)          # Linux / macOS
-taskkill /PID <pid> /F                                      # Windows
+# Stop the background server
+synthadoc stop -w my-wiki
 
 # Then uninstall — two-step confirmation required, no --yes escape
 synthadoc uninstall my-wiki
