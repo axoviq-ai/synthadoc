@@ -1086,11 +1086,11 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
     border-radius: 6px;
     padding: 5px 12px;
     margin: 0 0 4px;
-    animation: cw-toast-fade 3.2s forwards;
+    animation: cw-toast-fade 5.2s forwards;
 }
 @keyframes cw-toast-fade {
     0%   { opacity: 0; transform: translateY(3px); }
-    12%  { opacity: 1; transform: translateY(0); }
-    72%  { opacity: 1; }
+    8%   { opacity: 1; transform: translateY(0); }
+    80%  { opacity: 1; }
     100% { opacity: 0; }
 }

@@ -75,7 +75,7 @@ export function ChatWindow({
     useEffect(() => {
         if (crossWikiEnabled) {
             setCrossWikiToast(true);
-            const t = setTimeout(() => setCrossWikiToast(false), 3200);
+            const t = setTimeout(() => setCrossWikiToast(false), 5200);
             return () => clearTimeout(t);
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
