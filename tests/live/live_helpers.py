@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 """Shared helpers for Synthadoc live test scripts."""
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -9,6 +10,86 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Live-test provider selection
+# ---------------------------------------------------------------------------
+# Live tests use coding-tool CLI providers (no API key required).
+# Set SYNTHADOC_LIVE_PROVIDER to switch; default is "claude-code".
+#
+#   set SYNTHADOC_LIVE_PROVIDER=opencode     (Windows)
+#   export SYNTHADOC_LIVE_PROVIDER=opencode  (Unix/macOS)
+#
+# Allowed values: "claude-code" (default), "opencode"
+# ---------------------------------------------------------------------------
+
+_LIVE_PROVIDER_ENV = "SYNTHADOC_LIVE_PROVIDER"
+_ALLOWED_PROVIDERS = ("claude-code", "opencode")
+
+# Providers known to need longer timeouts than the config.toml defaults.
+SLOW_PROVIDER_TIMEOUTS: dict[str, dict[str, int]] = {
+    "opencode":    {"job_timeout_seconds": 1200, "client_llm_timeout_seconds": 600},
+    "claude-code": {"job_timeout_seconds":  900, "client_llm_timeout_seconds": 360},
+}
+
+
+def get_live_provider() -> str:
+    """Return the coding-tool provider for live tests.
+
+    Reads SYNTHADOC_LIVE_PROVIDER; falls back to 'claude-code'.
+    Raises ValueError for unsupported values so misconfiguration is caught early.
+    """
+    name = os.environ.get(_LIVE_PROVIDER_ENV, "claude-code").strip()
+    if name not in _ALLOWED_PROVIDERS:
+        raise ValueError(
+            f"SYNTHADOC_LIVE_PROVIDER={name!r} is not supported. "
+            f"Choose one of: {', '.join(_ALLOWED_PROVIDERS)}"
+        )
+    return name
+
+
+def patch_provider(wiki_root: Path, provider_name: str | None = None) -> str:
+    """Replace the [agents] default provider line in config.toml.
+
+    Uses *provider_name* when given, otherwise reads SYNTHADOC_LIVE_PROVIDER.
+    Returns the provider name that was written.
+    """
+    if provider_name is None:
+        provider_name = get_live_provider()
+    config_path = wiki_root / ".synthadoc" / "config.toml"
+    text = config_path.read_text(encoding="utf-8")
+    text = re.sub(
+        r"^(default\s*=\s*\{)[^}]*(})",
+        f'default = {{ provider = "{provider_name}" }}',
+        text,
+        flags=re.MULTILINE,
+    )
+    config_path.write_text(text, encoding="utf-8")
+    return provider_name
+
+
+def patch_slow_provider_timeouts(wiki_root: Path, provider_name: str | None = None) -> int:
+    """Raise job/LLM timeouts in config.toml for providers slower than defaults.
+
+    Returns the effective job_timeout_seconds so callers can set their poll
+    deadline to match.
+    """
+    if provider_name is None:
+        provider_name = get_live_provider()
+    overrides = SLOW_PROVIDER_TIMEOUTS.get(provider_name, {})
+    if not overrides:
+        return 600  # server default — no patch needed
+    config_path = wiki_root / ".synthadoc" / "config.toml"
+    text = config_path.read_text(encoding="utf-8")
+    for key, value in overrides.items():
+        text = re.sub(
+            rf"^({re.escape(key)}\s*=\s*)\d+",
+            rf"\g<1>{value}",
+            text,
+            flags=re.MULTILINE,
+        )
+    config_path.write_text(text, encoding="utf-8")
+    return overrides.get("job_timeout_seconds", 600)
 
 
 def register_sigterm_handler() -> None:
