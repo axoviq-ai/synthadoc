@@ -28,3 +28,41 @@ def test_status_all_shows_stopped_for_offline_wiki():
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
             result = runner.invoke(app, ["status", "--all"])
     assert "stopped" in result.output.lower() or "finance" in result.output
+
+
+def test_port_from_config_reads_toml(tmp_path):
+    """_port_from_config returns port from config.toml when registry lacks it."""
+    from synthadoc.cli.status import _port_from_config
+    cfg_dir = tmp_path / ".synthadoc"
+    cfg_dir.mkdir()
+    (cfg_dir / "config.toml").write_text("[server]\nport = 7099\n")
+    assert _port_from_config(str(tmp_path), "any-name") == 7099
+
+
+def test_port_from_config_returns_none_when_missing(tmp_path):
+    """_port_from_config returns None when no config.toml exists."""
+    from synthadoc.cli.status import _port_from_config
+    assert _port_from_config(str(tmp_path), "any-name") is None
+
+
+def test_port_from_config_returns_none_on_malformed_toml(tmp_path):
+    """_port_from_config returns None when config.toml is unreadable."""
+    from synthadoc.cli.status import _port_from_config
+    cfg_dir = tmp_path / ".synthadoc"
+    cfg_dir.mkdir()
+    (cfg_dir / "config.toml").write_text("not valid toml ][[[")
+    assert _port_from_config(str(tmp_path), "any-name") is None
+
+
+def test_status_all_uses_config_fallback_when_port_missing(tmp_path):
+    """render_status_all shows port read from config.toml when registry entry lacks port."""
+    from synthadoc.cli.main import app
+    cfg_dir = tmp_path / ".synthadoc"
+    cfg_dir.mkdir()
+    (cfg_dir / "config.toml").write_text("[server]\nport = 7088\n")
+    registry = {"garden-wiki": {"path": str(tmp_path)}}  # no 'port' key
+    with patch("synthadoc.cli.status.read_registry_all", return_value=registry):
+        with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
+            result = runner.invoke(app, ["status", "--all"])
+    assert "7088" in result.output
+    assert "?" not in result.output

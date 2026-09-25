@@ -12,6 +12,25 @@ from synthadoc.cli._wiki import read_registry_all
 from synthadoc.storage.wiki import LifecycleState
 
 
+def _port_from_config(wiki_path: str, wiki_name: str) -> int | None:
+    """Read port from config.toml when the registry entry lacks one."""
+    if not wiki_path:
+        return None
+    from pathlib import Path
+    import tomllib
+    for candidate in (
+        Path(wiki_path) / wiki_name / ".synthadoc" / "config.toml",
+        Path(wiki_path) / ".synthadoc" / "config.toml",
+    ):
+        if candidate.exists():
+            try:
+                with open(candidate, "rb") as f:
+                    return tomllib.load(f).get("server", {}).get("port")
+            except Exception:
+                pass
+    return None
+
+
 def render_status_all(registry: dict) -> None:
     """Print a running/stopped table for all registered wikis."""
     from synthadoc.cli._wiki import probe_port
@@ -21,7 +40,7 @@ def render_status_all(registry: dict) -> None:
     typer.echo(f"{'wiki':<20} {'port':<8} {'status':<10} {'pages':<8} {'last-ingest'}")
     typer.echo("-" * 60)
     for name, entry in registry.items():
-        port = entry.get("port")
+        port = entry.get("port") or _port_from_config(entry.get("path", ""), name)
         if port and probe_port(port):
             try:
                 import httpx

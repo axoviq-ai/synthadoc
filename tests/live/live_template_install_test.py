@@ -56,6 +56,14 @@ import urllib.request
 
 from synthadoc.core.queue import JobStatus
 
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from live_helpers import (  # noqa: E402
+    get_live_provider,
+    patch_provider,
+    patch_slow_provider_timeouts,
+    SLOW_PROVIDER_TIMEOUTS,
+)
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 PY        = sys.executable
@@ -178,148 +186,6 @@ def check(
             return r
     ok(label, (contains or [""])[0])
     return r
-
-
-# ── Coding-tool provider helpers ──────────────────────────────────────────────
-
-
-def _validate_coding_provider(provider_name: str, binary: str) -> bool:
-    """Smoke-test a coding-tool CLI binary with a trivial prompt.
-
-    Runs a one-token inference call and inspects the output for permanent
-    error markers (isRetryable: false, 4xx statusCode).  If a permanent
-    error is detected the provider is broken for its current configuration
-    (e.g. a speech model set as default) and will permanently fail every
-    job — skip it.
-
-    Any transient failure (timeout, network error, non-zero exit without
-    permanent markers) is treated as "probably fine" — the provider stays
-    in the candidate list.
-
-    Returns True if the provider appears functional or if we cannot tell.
-    Returns False only on a confirmed permanent configuration error.
-    """
-    import re
-
-    # Build the minimal command matching each provider's calling convention.
-    # Both accept the prompt via stdin.
-    if provider_name == "opencode":
-        cmd = [binary, "run", "--format", "json"]
-    else:
-        # claude-code
-        cmd = [binary, "-p", "--output-format", "json", "--dangerously-skip-permissions"]
-
-    # On Windows, .cmd/.bat wrappers need cmd /c
-    if sys.platform == "win32" and binary.lower().endswith((".cmd", ".bat")):
-        cmd = ["cmd", "/c"] + cmd
-
-    try:
-        result = subprocess.run(
-            cmd,
-            input="Say the single word: ok",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        # Timeout or binary not runnable — assume transient, keep provider
-        return True
-
-    if result.returncode == 0:
-        return True  # successful inference
-
-    all_output = (result.stderr or "") + " " + (result.stdout or "")
-    lower = all_output.lower()
-
-    # Permanent-error heuristics (mirrors _is_permanent_provider_error in providers)
-    if re.search(r'"isretryable"\s*:\s*false', lower):
-        info(f"  provider validation: {provider_name} rejected — isRetryable: false detected")
-        return False
-    m = re.search(r'"statuscode"\s*:\s*(\d+)', lower)
-    if m:
-        code = int(m.group(1))
-        if 400 <= code < 500 and code != 429:
-            info(f"  provider validation: {provider_name} rejected — statusCode {code} detected")
-            return False
-
-    # Non-zero exit but no permanent markers — transient failure, keep provider
-    return True
-
-
-def _find_coding_provider() -> tuple[str, str] | None:
-    """Return (provider_name, binary) for the first available and functional coding-tool CLI.
-
-    Preference order: Opencode ("opencode", free) → Claude Code ("claude").
-    Each candidate is smoke-tested with a tiny inference call to detect permanent
-    configuration errors (e.g. a speech model set as the default model) before
-    committing to it.  A provider that always returns isRetryable: false is skipped.
-    Returns None when no functional binary is found in PATH.
-    """
-    for provider_name, binary in (("opencode", "opencode"), ("claude-code", "claude")):
-        found = shutil.which(binary)
-        if not found:
-            continue
-        info(f"  provider detection: found {provider_name} ({found}) — validating…")
-        if _validate_coding_provider(provider_name, found):
-            return provider_name, found
-        info(f"  provider detection: {provider_name} has a permanent config error — skipping")
-    return None
-
-
-def _patch_provider(wiki_root: pathlib.Path, provider_name: str) -> None:
-    """Replace the [agents] default provider line in config.toml.
-
-    Rewrites only the uncommented ``default = { ... }`` line so that the
-    server subprocess uses a keyless coding-tool CLI instead of the gemini
-    default written by `synthadoc install`.
-    """
-    import re
-    config_path = wiki_root / ".synthadoc" / "config.toml"
-    text = config_path.read_text(encoding="utf-8")
-    text = re.sub(
-        r"^(default\s*=\s*\{)[^}]*(})",
-        f'default = {{ provider = "{provider_name}" }}',
-        text,
-        flags=re.MULTILINE,
-    )
-    config_path.write_text(text, encoding="utf-8")
-
-
-# Providers known to need longer timeouts than the config.toml defaults.
-# job_timeout_seconds     — how long the SERVER lets a single job run.
-# client_llm_timeout_seconds — how long the CLI waits for /analyse, /context/build.
-_SLOW_PROVIDER_TIMEOUTS: dict[str, dict[str, int]] = {
-    "opencode":   {"job_timeout_seconds": 1200, "client_llm_timeout_seconds": 600},
-    "claude-code": {"job_timeout_seconds":  900, "client_llm_timeout_seconds": 360},
-}
-
-
-def _patch_slow_provider_timeouts(wiki_root: pathlib.Path, provider_name: str) -> int:
-    """Raise job_timeout_seconds and client_llm_timeout_seconds in config.toml
-    for providers known to be slower than the defaults.
-
-    Returns the effective job_timeout_seconds so callers can set their poll
-    deadline to match (avoids timing out before the server kills the job).
-    """
-    import re
-
-    overrides = _SLOW_PROVIDER_TIMEOUTS.get(provider_name, {})
-    if not overrides:
-        return 600  # server default — no patch needed
-
-    config_path = wiki_root / ".synthadoc" / "config.toml"
-    text = config_path.read_text(encoding="utf-8")
-    for key, value in overrides.items():
-        text = re.sub(
-            rf"^({re.escape(key)}\s*=\s*)\d+",
-            rf"\g<1>{value}",
-            text,
-            flags=re.MULTILINE,
-        )
-    config_path.write_text(text, encoding="utf-8")
-    return overrides.get("job_timeout_seconds", 600)
 
 
 # ── Server helpers ────────────────────────────────────────────────────────────
@@ -555,23 +421,15 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
         warn("Tier 2 skipped", "[1] install failed — wiki files not present")
         return
 
-    # ── [8a] provider detection & config patch ────────────────────────────────
-    print("\n[8a] provider detection")
-    coding = _find_coding_provider()
-    job_timeout_seconds = 600  # server default; raised below for slow providers
-    if coding:
-        provider_name, binary = coding
-        _patch_provider(wiki_root, provider_name)
-        job_timeout_seconds = _patch_slow_provider_timeouts(wiki_root, provider_name)
-        ok("provider patched",
-           f"config.toml → provider = {provider_name!r} (binary: {binary})"
-           + (f", job_timeout={job_timeout_seconds}s"
-              if job_timeout_seconds != 600 else ""))
-    else:
-        warn("provider detection",
-             "neither 'claude' nor 'opencode' found in PATH — "
-             "ingest/scaffold will use the default gemini provider "
-             "(set GEMINI_API_KEY if you want LLM calls to succeed)")
+    # ── [8a] provider config patch ────────────────────────────────────────────
+    print("\n[8a] provider config patch")
+    provider_name = get_live_provider()
+    patch_provider(wiki_root, provider_name)
+    job_timeout_seconds = patch_slow_provider_timeouts(wiki_root, provider_name)
+    ok("provider patched",
+       f"config.toml → provider = {provider_name!r}"
+       + (f", job_timeout={job_timeout_seconds}s" if job_timeout_seconds != 600 else ""))
+    info(f"  (set SYNTHADOC_LIVE_PROVIDER=opencode to switch to opencode)")
 
     # ── [8] start server ──────────────────────────────────────────────────────
     print("\n[8] start server")
