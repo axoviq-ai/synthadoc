@@ -87,7 +87,11 @@ export function useQueryStream(
         let crossWikiSkipReason: string | null = null;
 
         // Strip [GAP] sentinel the LLM may prepend when guard B fires (post-synthesis gap).
-        const stripGap = (s: string) => s.startsWith("[GAP]") ? s.slice(5).replace(/^\n/, "") : s;
+        // Also strip outer <answer>...</answer> wrapper emitted by some providers (e.g. MiniMax).
+        const stripGap = (s: string) => {
+            if (s.startsWith("[GAP]")) s = s.slice(5).replace(/^\n/, "");
+            return s.replace(/^\s*<answer>\s*/i, "").replace(/\s*<\/answer>\s*$/i, "");
+        };
 
         // Coalesce rapid token callbacks into one React state update per animation frame.
         // Without this, every token triggers setMessages → full re-render + layout flush.

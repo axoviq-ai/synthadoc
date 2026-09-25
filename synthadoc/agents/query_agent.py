@@ -16,6 +16,7 @@ from synthadoc.agents._query_utils import (
     filter_history_by_language,
     history_block,
     build_synthesis_system,
+    strip_answer_tags,
     trim_history,
     decompose_question,
     STOPWORDS,
@@ -1141,8 +1142,8 @@ class QueryAgent(BaseAgent):
         # Post-synthesis gap override: the sentinel [GAP] in the answer means the LLM
         # could not find enough in the wiki pages despite pre-synthesis gap detection
         # saying no gap (Guard B false negative). Strip the marker before displaying.
-        answer_text = resp2.text
-        if not _gap and resp2.text.startswith("[GAP]"):
+        answer_text = strip_answer_tags(resp2.text)
+        if not _gap and answer_text.startswith("[GAP]"):
             _gap = True
             answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
             _suggested = await SearchDecomposeAgent(self._provider).run(
@@ -1496,6 +1497,9 @@ class QueryAgent(BaseAgent):
         _missing_slugs, full_answer = _extract_missing_slugs(full_answer)
         if not _missing_slugs and _last_line_buf:
             yield {"event": "token", "data": {"text": _last_line_buf}}
+
+        # Strip outer <answer>...</answer> wrapper that some providers (e.g. MiniMax) emit.
+        full_answer = strip_answer_tags(full_answer)
 
         # Guard B: post-synthesis gap detection — same logic as run().
         # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
