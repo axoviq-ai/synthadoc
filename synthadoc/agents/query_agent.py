@@ -338,7 +338,7 @@ _STALE_SLUG_RE = re.compile(
     #   - **slug** (stale...)        ← bold
     #   - slug: stale since...       ← colon, "stale" follows on same line
     #   - slug — stale               ← em-dash, "stale" follows
-    r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*|]?\s*)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?'
+    r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*|]\s+)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?'
     r'\s*(?:'
     r'\([^)\n]{0,120}stale[^)\n]{0,120}\)'  # (... stale ...)
     r'|:\s*stale\b'                          # : stale since ...
