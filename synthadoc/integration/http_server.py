@@ -1184,7 +1184,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
 
+        _orch = app.state.orch
+
         async def generate():
+            # Load conversation history for multi-turn support
+            _history: list[dict] = []
+            if session_id:
+                try:
+                    _history = await _orch._audit.get_all_messages(session_id)
+                except Exception:
+                    pass
+
             registry = read_registry_all()
             wiki_names = list(registry.keys())
             # Emit early so the UI shows a spinner; actual queried wikis arrive in wikis_result
@@ -1193,7 +1203,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             agent = _make_cross_wiki_agent(app)
             try:
                 result = await _asyncio.wait_for(
-                    agent.run(q),
+                    agent.run(q, history=_history or None),
                     timeout=timeout_seconds,
                 )
             except _asyncio.TimeoutError:
@@ -1209,6 +1219,18 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 yield f"event: citations\ndata: {_json.dumps({'citations': result.citations})}\n\n"
             if result.knowledge_gap:
                 yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+            # Persist before done so the client's sidebar refresh sees fresh data
+            if session_id and result.answer:
+                try:
+                    await _orch._audit.append_message(session_id, "user", q)
+                    await _orch._audit.append_message(
+                        session_id, "assistant", result.answer,
+                        citations=result.citations or None,
+                    )
+                except _asyncio.CancelledError:
+                    return
+                except Exception as _ae:
+                    logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
             yield f"event: done\ndata: {_json.dumps({'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
 
         return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})

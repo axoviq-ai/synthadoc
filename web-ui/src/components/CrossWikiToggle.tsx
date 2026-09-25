@@ -8,7 +8,9 @@ interface Props {
 export function CrossWikiToggle({ enabled, onChange }: Props) {
     return (
         <button
-            title={enabled ? "Cross-wiki search ON — click to search this wiki only" : "Search this wiki only — click to search all wikis"}
+            title={enabled
+                ? "Cross-wiki search is ON — deselect to search this wiki only"
+                : "Cross-wiki search is OFF — select to search across all wikis"}
             aria-pressed={enabled}
             onClick={() => onChange(!enabled)}
             className={`cross-wiki-toggle${enabled ? " cross-wiki-toggle--on" : ""}`}
