@@ -198,6 +198,17 @@ def history_block(history: list[dict], question: str = "") -> str:
     return f"\n[Conversation so far]\n{lines}\n"
 
 
+_ANSWER_TAG_RE = __import__("re").compile(
+    r"^\s*<answer>\s*(.*?)\s*</answer>\s*$", __import__("re").DOTALL | __import__("re").IGNORECASE
+)
+
+
+def strip_answer_tags(text: str) -> str:
+    """Strip outer <answer>...</answer> wrapper that some providers (e.g. MiniMax) emit."""
+    m = _ANSWER_TAG_RE.match(text)
+    return m.group(1) if m else text
+
+
 def build_synthesis_system(question: str) -> str:
     """Return the language-enforcement system prompt for synthesis.
 

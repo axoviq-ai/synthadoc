@@ -13,6 +13,7 @@ from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents._query_utils import (
     build_synthesis_system, decompose_question, history_block, trim_history,
+    strip_answer_tags,
 )
 from synthadoc.agents.query_agent import QueryResult
 from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH   # single source of truth
@@ -180,7 +181,7 @@ class CrossWikiQueryAgent(BaseAgent):
         ]
         return QueryResult(
             question=question,
-            answer=resp.text,
+            answer=strip_answer_tags(resp.text),
             citations=cited_slugs,
             tokens_used=resp.total_tokens,
             input_tokens=resp.input_tokens,
