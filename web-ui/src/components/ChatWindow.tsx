@@ -44,6 +44,7 @@ export function ChatWindow({
         try { return localStorage.getItem("crossWikiEnabled") === "true"; }
         catch { return false; }
     });
+    const [crossWikiToast, setCrossWikiToast] = useState(false);
     const [crossWikiBarState, setCrossWikiBarState] = useState<"idle" | "searching" | "done">("idle");
     const [crossWikiWikis, setCrossWikiWikis] = useState<string[]>([]);
     const [crossWikiResponded, setCrossWikiResponded] = useState<string[]>([]);
@@ -68,6 +69,16 @@ export function ChatWindow({
     const [showSettings, setShowSettings] = useState(false);
     const messagesRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Show a brief reminder toast when landing on Chat with cross-wiki already enabled.
+    // ChatWindow unmounts/remounts on every tab switch so this fires on each return to Chat.
+    useEffect(() => {
+        if (crossWikiEnabled) {
+            setCrossWikiToast(true);
+            const t = setTimeout(() => setCrossWikiToast(false), 3200);
+            return () => clearTimeout(t);
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Focus textarea when the session becomes ready (initial load, new run, session resume)
     useEffect(() => {
@@ -227,6 +238,11 @@ export function ChatWindow({
                         )}
                     </div>
                 </div>
+                {crossWikiToast && (
+                    <div className="cross-wiki-landing-toast">
+                        🌐 Cross-wiki search is ON — your queries will search across all wikis
+                    </div>
+                )}
                 <div className="input-row">
                     <textarea
                         ref={inputRef}
