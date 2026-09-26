@@ -59,6 +59,9 @@ def export_cmd(
             typer.echo("Error: --output <directory> is required for --format okf.", err=True)
             raise typer.Exit(1)
         from pathlib import Path
+        # Strip a stray trailing quote that Windows cmd.exe injects when a
+        # backslash-terminated path is double-quoted: "C:\path\" → C:\path"
+        output = output.rstrip('"')
         manifest: dict = resp.json()
         out_dir = Path(output)
         for rel_path, content in manifest.items():
