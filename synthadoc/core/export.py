@@ -60,25 +60,33 @@ class ExportAgent:
         self._routing_path = Path(routing_path)
         self._url_staleness_days = url_staleness_days
 
-    def count_exportable(self, status_filter: str = "all") -> int:
-        """Count pages that would pass the generic export filter (mirrors run() logic).
+    def _filter_pages(self, status_filter: str = "all") -> "dict[str, WikiPage]":
+        """Return pages that pass the generic export filter.
 
         Excludes SYSTEM_PAGE_SLUGS unconditionally.  When status_filter is 'all',
-        counts every remaining page; otherwise counts only pages whose status
+        includes every remaining page; otherwise includes only pages whose status
         matches exactly.  Does NOT apply the OKF-specific active+contradicted
-        restriction — use the wiki/ key count from run() for OKF.
+        restriction — that lives in run().
         """
-        count = 0
+        result: dict[str, WikiPage] = {}
         for slug in self._store.list_pages():
             if slug in _SKIP_SLUGS:
                 continue
-            if status_filter == "all":
-                count += 1
-            else:
-                page = self._store.read_page(slug)
-                if page is not None and page.status == status_filter:
-                    count += 1
-        return count
+            page = self._store.read_page(slug)
+            if page is None:  # pragma: no cover
+                continue
+            if status_filter != "all" and page.status != status_filter:
+                continue
+            result[slug] = page
+        return result
+
+    def count_exportable(self, status_filter: str = "all") -> int:
+        """Count pages that would pass the generic export filter.
+
+        Does NOT apply the OKF-specific active+contradicted restriction;
+        use the wiki/ key count from run() for OKF.
+        """
+        return len(self._filter_pages(status_filter))
 
     async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
         """Serialise the wiki.
@@ -91,17 +99,7 @@ class ExportAgent:
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"
             )
 
-        slugs = self._store.list_pages()
-        pages: dict[str, WikiPage] = {}
-        for slug in slugs:
-            if slug in _SKIP_SLUGS:
-                continue
-            page = self._store.read_page(slug)
-            if page is None:  # pragma: no cover
-                continue
-            if opts.status_filter != "all" and page.status != opts.status_filter:
-                continue
-            pages[slug] = page
+        pages = self._filter_pages(opts.status_filter)
 
         if opts.format == "llms.txt":
             return self._render_llms_txt(pages)
