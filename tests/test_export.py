@@ -522,7 +522,7 @@ async def test_okf_generated_uses_updated_when_present(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["generated"]["at"] == "2026-05-15"
+    assert fm["generated"]["at"] == "2026-05-15T00:00:00Z"
     assert "timestamp" not in fm
 
 
@@ -535,7 +535,7 @@ async def test_okf_generated_falls_back_to_created(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["generated"]["at"] == "2026-01-01"
+    assert fm["generated"]["at"] == "2026-01-01T00:00:00Z"
     assert "timestamp" not in fm
 
 
@@ -904,7 +904,7 @@ def test_okf_generated_field_has_by_and_at(tmp_path):
     fm = _parse_frontmatter(result["wiki/p.md"])
     assert isinstance(fm["generated"], dict)
     assert fm["generated"]["by"] == "synthadoc/ingest-pipeline"
-    assert fm["generated"]["at"] == "2026-06-15"
+    assert fm["generated"]["at"] == "2026-06-15T00:00:00Z"
 
 
 def test_okf_sources_list_emitted_for_url_page(tmp_path):

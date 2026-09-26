@@ -31,6 +31,36 @@ def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
         return ts[:16] if ts else "—"
 
 
+def normalise_ts(ts: str) -> str:
+    """Normalise *ts* to a full ISO 8601 datetime with an explicit UTC offset.
+
+    Accepts the same inputs as :func:`fmt_ts` plus date-only strings:
+
+    * ``"2026-07-12"``                    → ``"2026-07-12T00:00:00Z"``
+    * ``"2026-09-19T00:20:23"``           → ``"2026-09-19T00:20:23Z"``
+    * ``"2026-09-19T00:20:23+00:00"``     → ``"2026-09-19T00:20:23Z"``
+    * ``"2026-09-19T00:20:23Z"``          → ``"2026-09-19T00:20:23Z"``
+
+    Returns *ts* unchanged when it cannot be parsed.
+    """
+    if not ts:
+        return ts
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        # Last chance: bare date YYYY-MM-DD (fromisoformat won't accept it on
+        # Python <3.11 as a datetime; try it as a date and promote to midnight UTC)
+        from datetime import date as _date
+        try:
+            d = _date.fromisoformat(ts[:10])
+            dt = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return ts  # unparseable; pass through unchanged
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def atomic_write_text(
     path: Path,
     text: str,

@@ -4,7 +4,7 @@
 import pathlib
 from unittest.mock import patch, call
 
-from synthadoc.utils import atomic_write_text, _replace_windows
+from synthadoc.utils import atomic_write_text, _replace_windows, normalise_ts
 
 
 def test_atomic_write_text_creates_file(tmp_path):
@@ -135,6 +135,39 @@ def test_atomic_write_text_uses_os_replace_on_posix(tmp_path):
          patch("synthadoc.utils.os.replace") as mock_replace:
         atomic_write_text(target, "body\n")
     mock_replace.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# normalise_ts — OKF-compliant ISO 8601 UTC normalisation
+# ---------------------------------------------------------------------------
+
+def test_normalise_ts_date_only():
+    assert normalise_ts("2026-07-12") == "2026-07-12T00:00:00Z"
+
+
+def test_normalise_ts_naive_datetime():
+    assert normalise_ts("2026-09-19T00:20:23") == "2026-09-19T00:20:23Z"
+
+
+def test_normalise_ts_already_utc_plus_offset():
+    assert normalise_ts("2026-09-22T20:06:38+00:00") == "2026-09-22T20:06:38Z"
+
+
+def test_normalise_ts_already_z_suffix():
+    assert normalise_ts("2026-09-22T20:06:38Z") == "2026-09-22T20:06:38Z"
+
+
+def test_normalise_ts_empty_string_passthrough():
+    assert normalise_ts("") == ""
+
+
+def test_normalise_ts_unparseable_passthrough():
+    assert normalise_ts("not-a-date") == "not-a-date"
+
+
+def test_normalise_ts_drops_microseconds():
+    # Microseconds are not needed in OKF export timestamps
+    assert normalise_ts("2026-09-22T20:06:38.633310+00:00") == "2026-09-22T20:06:38Z"
 
 
 # ---------------------------------------------------------------------------

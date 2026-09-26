@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState, SYSTEM_PAGE_SLUGS
+from synthadoc.utils import normalise_ts
 
 _SKIP_SLUGS = SYSTEM_PAGE_SLUGS
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -368,7 +369,7 @@ class ExportAgent:
         files: dict[str, str] = {}
 
         for slug, page in sorted(pages.items()):
-            _ts = page.updated or (str(page.created) if page.created else "")
+            _ts = normalise_ts(page.updated or (str(page.created) if page.created else ""))
             fm: dict = {
                 "type": page.type or "concept",
                 "title": page.title,
@@ -389,7 +390,7 @@ class ExportAgent:
             if url_sources:
                 fm["sources"] = [
                     {"id": f"src-{i}", "resource": s.file,
-                     **({"last_modified": str(s.ingested)} if s.ingested else {})}
+                     **({"last_modified": normalise_ts(str(s.ingested))} if s.ingested else {})}
                     for i, s in enumerate(url_sources)
                 ]
 
