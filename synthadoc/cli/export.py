@@ -18,14 +18,22 @@ def export_cmd(
     format: str = typer.Option(..., "--format", "-f",
         help="Output format: llms.txt, llms-full.txt, graphml, json, okf"),
     output: Optional[str] = typer.Option(None, "--output", "-o",
-        help="Write to file (or directory for --format okf). Defaults to stdout."),
+        help=(
+            "Destination path. For --format okf: required — must be a directory path "
+            "(created if absent). For all other formats: optional file path; "
+            "omit to print to stdout."
+        )),
     status: str = typer.Option("all", "--status", "-s",
         help="Filter pages by lifecycle state: all, active, draft, stale, contradicted, archived"),
     context_pack: Optional[str] = typer.Option(None, "--context-pack", "-c",
         help="Export only pages in named context pack"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
-    """Export wiki as llms.txt, llms-full.txt, graphml, json, or okf bundle directory."""
+    """Export wiki as llms.txt, llms-full.txt, graphml, json, or OKF v0.2 bundle directory.
+
+    For --format okf, --output <directory> is required. All other formats
+    print to stdout when --output is omitted.
+    """
     wiki_name = resolve_wiki(wiki)
     url = server_url(wiki_name)
     body: dict = {"format": format, "status_filter": status}
