@@ -8,15 +8,51 @@ Reads an OKF v0.2 bundle directory and answers domain questions using only
 the OKF contract. Zero Synthadoc imports — proves any OKF-aware agent
 works against a Synthadoc-exported bundle without modification.
 
-Usage:
+Providers
+---------
+Default (Anthropic):
+    Requires ANTHROPIC_API_KEY in the environment.
+
+OpenAI-compatible (e.g. MiniMax):
+    Requires MINIMAX_API_KEY (or OPENAI_API_KEY / API_KEY) in the environment.
+    Pass --base-url and --model.
+
+OpenCode CLI:
+    Requires `opencode` installed and authenticated.
+    Pass --provider opencode and optionally --model.
+
+Example commands — history-of-computing bundle
+-----------------------------------------------
+Anthropic (default):
     python tests/integration/okf_consumer_agent.py \\
-        --bundle exports/history-okf \\
-        --question "Who pioneered compiler development and what did they build?"
+        --bundle "C:\\Users\\ladmin\\exports\\history-of-computing-okf-2026-09-26" \\
+        --question "Who pioneered compiler development?"
+
+MiniMax via OpenAI-compatible API:
+    python tests/integration/okf_consumer_agent.py \\
+        --bundle "C:\\Users\\ladmin\\exports\\history-of-computing-okf-2026-09-26" \\
+        --question "Who pioneered compiler development?" \\
+        --base-url https://api.minimax.io/v1 \\
+        --model MiniMax-M3
 
     python tests/integration/okf_consumer_agent.py \\
-        --bundle exports/history-okf \\
+        --bundle "C:\\Users\\ladmin\\exports\\history-of-computing-okf-2026-09-26" \\
         --question "List all computing pioneers" \\
-        --type person
+        --base-url https://api.minimax.io/v1 \\
+        --model MiniMax-M3
+
+OpenCode CLI:
+    python tests/integration/okf_consumer_agent.py \\
+        --bundle "C:\\Users\\ladmin\\exports\\history-of-computing-okf-2026-09-26" \\
+        --question "Who pioneered compiler development?" \\
+        --provider opencode \\
+        --model opencode/big-pickle
+
+    python tests/integration/okf_consumer_agent.py \\
+        --bundle "C:\\Users\\ladmin\\exports\\history-of-computing-okf-2026-09-26" \\
+        --question "List all computing pioneers" \\
+        --provider opencode \\
+        --model opencode/big-pickle
 """
 from __future__ import annotations
 
