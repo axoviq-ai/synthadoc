@@ -958,7 +958,7 @@ def test_okf_verified_field_from_active_lc_event(tmp_path):
     fm = _parse_frontmatter(result["wiki/p.md"])
     assert "verified" in fm
     assert fm["verified"]["by"] == "process:synthadoc-lint"
-    assert fm["verified"]["at"] == "2026-05-01T10:00:00"
+    assert fm["verified"]["at"] == "2026-05-01T10:00:00Z"
 
 
 def test_okf_verified_uses_latest_active_transition(tmp_path):
@@ -974,7 +974,21 @@ def test_okf_verified_uses_latest_active_transition(tmp_path):
     ]
     result = agent._render_okf({"p": store.read_page("p")}, events)
     fm = _parse_frontmatter(result["wiki/p.md"])
-    assert fm["verified"]["at"] == "2026-06-01T12:00:00"
+    assert fm["verified"]["at"] == "2026-06-01T12:00:00Z"
+
+
+def test_okf_verified_at_normalised_from_audit_db_format(tmp_path):
+    """verified.at must be normalised: microseconds dropped, +00:00 converted to Z."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "p", "from_state": "draft", "to_state": "active",
+         "reason": "lint passed", "timestamp": "2026-09-22T20:06:38.633310+00:00"},
+    ]
+    result = agent._render_okf({"p": store.read_page("p")}, events)
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert fm["verified"]["at"] == "2026-09-22T20:06:38Z"
 
 
 def test_okf_verified_absent_when_no_active_transition(tmp_path):

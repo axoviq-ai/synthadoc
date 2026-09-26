@@ -396,7 +396,7 @@ class ExportAgent:
 
             verified_ts = _verified_at.get(slug)
             if verified_ts:
-                fm["verified"] = {"by": "process:synthadoc-lint", "at": verified_ts}
+                fm["verified"] = {"by": "process:synthadoc-lint", "at": normalise_ts(verified_ts)}
 
             if url_staleness_days > 0 and url_sources and url_sources[0].ingested:
                 from datetime import timedelta
