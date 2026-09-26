@@ -4316,6 +4316,61 @@ SSE stream with new event types emitted before the token stream:
 | `gap` | `{"gap": true, "suggested_searches": []}` | Knowledge gap detected (omitted when `knowledge_gap` is false) |
 | `done` | `{"knowledge_gap": false, "cross_wiki_offline": ["ops-wiki"], "cross_wiki_skipped": false, "cross_wiki_skip_reason": ""}` | Stream complete |
 
+### Cross-Wiki Cache Key Design {#cross-wiki-cache-key-design}
+
+Cross-wiki query results are cached in the coordinator's `cache.db`. Because the answer depends on content from **all participating wikis**, a single wiki's epoch is not sufficient — every registered wiki's name and epoch must be part of the cache key so that any ingest anywhere produces an automatic cache miss.
+
+#### `GET /epoch` endpoint
+
+Each wiki server exposes a lightweight epoch endpoint:
+
+```
+GET /epoch
+→ {"epoch": 42, "wiki_name": "finance-wiki"}
+```
+
+`epoch` is a monotonically increasing integer incremented on every ingest. The coordinator reads its own epoch directly and calls this endpoint in parallel on all peer wikis, collecting a `{wiki_name: epoch}` dict.
+
+#### Cache key construction
+
+```
+SHA-256("cross-wiki|{normalized_q}|{wiki_epochs_json}|{model}")[:32]
+```
+
+| Component | Value |
+|---|---|
+| `normalized_q` | Question lowercased and collapsed to single-space tokens |
+| `wiki_epochs_json` | `json.dumps({"finance-wiki": 1, "legal-wiki": 5, …}, sort_keys=True)` — each registered wiki's **name** is a key, its epoch is the value |
+| `model` | Provider + model string, e.g. `"minimax/MiniMax-Text-01"` |
+
+Because the wiki names are the keys of `wiki_epochs_json`, two different registry configurations with identical epoch numbers always produce different keys — there is no collision between different wiki domains that happen to share the same epoch values. `sort_keys=True` makes the key stable regardless of the order wikis appear in the registry.
+
+#### Offline peer handling
+
+When a peer wiki does not respond within the fetch timeout (default 5 s), its epoch is recorded as **-1**:
+
+```python
+peer_epochs = {"finance-wiki": 3, "offline-wiki": -1, "legal-wiki": 7}
+# wiki_epochs_json → '{"finance-wiki": 3, "legal-wiki": 7, "offline-wiki": -1}'
+```
+
+Epoch `-1` is never returned by a live server, so the offline state is cached as a distinct key from the online state. When the offline wiki comes back online, its epoch is positive and the key changes immediately.
+
+#### Multi-turn handling
+
+The cache is **always read**, even in multi-turn sessions. A cached standalone answer is valid for the same question regardless of session history — genuine follow-ups have different question text and thus a different key anyway.
+
+Cache **writes** are restricted to first-turn queries (`_history` empty). If an answer was synthesised with prior conversation context, caching it would serve that context-coloured answer to future sessions that ask the same question fresh.
+
+#### Cache write policy
+
+Results are written to cache only when:
+1. `QueryResult.cacheable` is `True` (operation-detected queries are marked non-cacheable).
+2. A non-empty answer was produced.
+3. The request is a first turn (no prior history).
+
+The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
+
 ### Graceful Degradation
 
 | Scenario | Behaviour |

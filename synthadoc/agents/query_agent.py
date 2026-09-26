@@ -940,34 +940,9 @@ class QueryAgent(BaseAgent):
         return await decompose_question(self._provider, question, self._DECOMPOSE_TIMEOUT_SECS)
 
     async def _translate_for_retrieval(self, question: str) -> str:
-        """Translate a CJK query to English so BM25 can match English wiki content.
-
-        Only called when *question* contains CJK characters.  The original question
-        is preserved by the caller for answer synthesis, so the user still receives
-        a response in their language.
-        """
-        try:
-            resp = await asyncio.wait_for(
-                self._provider.complete(
-                    messages=[Message(
-                        role="user",
-                        content=(
-                            "Translate the following question to English for a knowledge-base search. "
-                            "Return only the English translation — no explanation, no quotes.\n\n"
-                            f"Question: {question}"
-                        ),
-                    )],
-                    max_tokens=200,
-                ),
-                timeout=20.0,
-            )
-            translated = (resp.text or "").strip()
-            if translated:
-                logger.info("cjk-translate: %r → %r", question, translated)
-                return translated
-        except Exception:
-            logger.warning("cjk-translate failed — using original question for retrieval", exc_info=True)
-        return question
+        """Delegate to the shared translate_for_retrieval helper in _query_utils."""
+        from synthadoc.agents._query_utils import translate_for_retrieval
+        return await translate_for_retrieval(self._provider, question)
 
     async def _run_search(
         self, question: str
