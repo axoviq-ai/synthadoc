@@ -2657,32 +2657,74 @@ All edges carry `edge_type="wikilink"`. Self-links are suppressed. The file also
 
 Wiki-level fields: `total_compilation_cost_usd`, `routing.branch_memberships`, `exported_at`, `page_count`.
 
-**`okf`** — [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
+**`okf`** — [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
 
 Bundle layout:
 
 ```
 <output-dir>/
-  index.md        # OKF index — pages grouped by knowledge type
-  log.md          # lifecycle change history, newest first
+  index.md        # OKF v0.2 index — okf_version: "0.2" frontmatter + pages grouped by type
+  log.md          # lifecycle change history, newest first (plain markdown, no frontmatter)
   wiki/
     <slug>.md     # one OKF concept file per wiki page
 ```
 
-Each concept file carries a conformant frontmatter block:
+Each concept file carries a conformant v0.2 frontmatter block:
 
 ```yaml
-type: person                  # from WikiPage.type; fallback "concept" for old pages
+type: person
 title: Alan Turing
 description: Father of theoretical computer science and pioneer of the Turing machine.
+generated:
+  by: synthadoc/ingest-pipeline    # OKF v0.2 actor convention (tool/model)
+  at: '2026-04-22'                 # WikiPage.updated ?? WikiPage.created
+status: stable                     # OKF v0.2 values: draft | stable | deprecated
+synthadoc_lifecycle: active        # Synthadoc extension — original lifecycle state
+confidence: high                   # Synthadoc extension
 resource: https://example.com/turing-bio   # omitted for local-file sources
-tags: mathematics, computation, cryptography
-timestamp: '2026-04-22'       # WikiPage.updated ?? WikiPage.created
-status: active                # Synthadoc extension — OKF consumers tolerate unknown fields
-confidence: high              # Synthadoc extension
+tags:
+  - mathematics
+  - computation
+sources:                           # present when page has URL ingest sources
+  - id: src-0
+    resource: https://example.com/turing-bio
+    last_modified: '2026-04-20T10:00:00'
+verified:                          # present when page has a recorded "→ active" lint event
+  by: process:synthadoc-lint
+  at: '2026-04-22T09:15:00'
+stale_after: '2026-07-21T10:00:00Z'  # present when url_staleness_days > 0
 ```
 
-OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) every frontmatter has a non-empty `type`; (3) reserved filenames follow spec structure. Synthadoc-specific fields (`status`, `confidence`) are preserved as extensions — the spec requires consumers to tolerate unknown keys.
+**Breaking changes from v0.1:**
+
+| Field | v0.1 | v0.2 |
+|-------|------|------|
+| `timestamp` | present | removed — replaced by `generated.at` |
+| `status` | Synthadoc lifecycle value (e.g. `active`) | OKF spec value (`draft`/`stable`/`deprecated`) |
+| `index.md` frontmatter | `type: index`, `title`, `description`, `timestamp` | `okf_version: "0.2"` only |
+| `log.md` frontmatter | `type: log`, `title`, `timestamp` | none (plain markdown) |
+
+**Status mapping (Synthadoc → OKF v0.2):**
+
+| Synthadoc lifecycle | OKF `status` | Note |
+|---------------------|--------------|------|
+| `active` | `stable` | verified knowledge |
+| `draft` | `draft` | unverified |
+| `stale` | `draft` | source may have changed |
+| `contradicted` | `draft` | conflicting claims present |
+| `archived` | `deprecated` | retired |
+
+The original Synthadoc lifecycle state is always preserved in the `synthadoc_lifecycle` extension field.
+
+**New fields in v0.2:**
+
+- **`generated`** — object `{by, at}` replacing `timestamp`. `by` uses the OKF actor convention: `tool/model` for automated processes.
+- **`synthadoc_lifecycle`** — Synthadoc extension preserving the exact lifecycle state so consumers that understand Synthadoc semantics do not lose information.
+- **`sources`** — list of `{id, resource, last_modified?}` objects for pages ingested from URL sources.
+- **`verified`** — object `{by, at}` recording the latest lint pass that promoted the page to `active`. Absent for pages with no recorded `→ active` event.
+- **`stale_after`** — ISO-8601 UTC timestamp for URL-sourced pages when `url_staleness_days > 0` is configured. Absent by default (disabled).
+
+OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) every frontmatter has a non-empty `type`; (3) reserved filenames follow v0.2 spec structure.
 
 `[[wikilinks]]` in page bodies are rewritten to OKF-style relative paths (`[Title](slug.md)`) so cross-links are valid within the bundle.
 

@@ -592,6 +592,36 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     _okf_dir = tempfile.mkdtemp(prefix="synthadoc_okf_")
     try:
         check("export okf", ["export", "-f", "okf", "--output", _okf_dir] + w)
+        # OKF v0.2 structure validation
+        import yaml as _yaml
+        _okf_path = Path(_okf_dir)
+        _index = _okf_path / "index.md"
+        if _index.exists():
+            _idx_text = _index.read_text(encoding="utf-8")
+            if _idx_text.startswith("---"):
+                _parts = _idx_text.split("---", 2)
+                _idx_fm = _yaml.safe_load(_parts[1]) or {}
+                assert _idx_fm.get("okf_version") == "0.2", \
+                    f"index.md okf_version mismatch: {_idx_fm}"
+                assert "type" not in _idx_fm, \
+                    f"index.md must not have 'type' in OKF v0.2, got: {_idx_fm}"
+        _log = _okf_path / "log.md"
+        if _log.exists():
+            _log_text = _log.read_text(encoding="utf-8")
+            assert not _log_text.startswith("---"), \
+                "log.md must have no frontmatter in OKF v0.2"
+        for _wf in (_okf_path / "wiki").glob("*.md"):
+            _wf_text = _wf.read_text(encoding="utf-8")
+            if _wf_text.startswith("---"):
+                _parts = _wf_text.split("---", 2)
+                _wf_fm = _yaml.safe_load(_parts[1]) or {}
+                assert "generated" in _wf_fm, \
+                    f"{_wf.name}: missing 'generated' field (OKF v0.2)"
+                assert "timestamp" not in _wf_fm, \
+                    f"{_wf.name}: legacy 'timestamp' field must not appear in OKF v0.2"
+                assert "synthadoc_lifecycle" in _wf_fm, \
+                    f"{_wf.name}: missing 'synthadoc_lifecycle' extension field"
+            break  # check first wiki file only
     finally:
         shutil.rmtree(_okf_dir, ignore_errors=True)
 

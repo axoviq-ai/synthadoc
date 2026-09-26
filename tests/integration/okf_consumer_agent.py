@@ -4,7 +4,7 @@
 """
 OKF Consumer Agent — standalone demo.
 
-Reads an OKF v0.1 bundle directory and answers domain questions using only
+Reads an OKF v0.2 bundle directory and answers domain questions using only
 the OKF contract. Zero Synthadoc imports — proves any OKF-aware agent
 works against a Synthadoc-exported bundle without modification.
 
