@@ -35,6 +35,38 @@ def has_cjk(text: str) -> bool:
     return any(any(lo <= ord(ch) <= hi for lo, hi in _CJK_RANGES) for ch in text)
 
 
+async def translate_for_retrieval(provider: "LLMProvider", question: str) -> str:
+    """Translate a CJK query to English so BM25 can match English wiki content.
+
+    Only call when *question* contains CJK characters.  The caller preserves the
+    original question for synthesis so the user still receives a response in their
+    language.  Falls back to the original question on any error.
+    """
+    from synthadoc.providers.base import Message
+    try:
+        resp = await asyncio.wait_for(
+            provider.complete(
+                messages=[Message(
+                    role="user",
+                    content=(
+                        "Translate the following question to English for a knowledge-base search. "
+                        "Return only the English translation — no explanation, no quotes.\n\n"
+                        f"Question: {question}"
+                    ),
+                )],
+                max_tokens=200,
+            ),
+            timeout=20.0,
+        )
+        translated = (resp.text or "").strip()
+        if translated:
+            logger.info("cjk-translate: %r → %r", question, translated)
+            return translated
+    except Exception:
+        logger.warning("cjk-translate failed — using original question for retrieval", exc_info=True)
+    return question
+
+
 def detect_cjk_language(text: str) -> str:
     """Return the display language name for the dominant script in *text*.
 

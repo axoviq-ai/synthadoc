@@ -12,8 +12,8 @@ from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents._query_utils import (
-    build_synthesis_system, decompose_question, history_block, trim_history,
-    strip_answer_tags,
+    build_synthesis_system, decompose_question, has_cjk,
+    history_block, translate_for_retrieval, trim_history, strip_answer_tags,
 )
 from synthadoc.agents.query_agent import QueryResult
 from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH   # single source of truth
@@ -118,7 +118,14 @@ class CrossWikiQueryAgent(BaseAgent):
                     cross_wiki_skip_reason="operation detected",
                 )
 
-        sub_questions = await decompose_question(self._provider, question)
+        # Translate CJK queries to English so BM25 on peer wikis can match
+        # English page content.  The original question is preserved for synthesis
+        # so the user still receives a response in their language.
+        retrieval_question = question
+        if has_cjk(question):
+            retrieval_question = await translate_for_retrieval(self._provider, question)
+
+        sub_questions = await decompose_question(self._provider, retrieval_question)
         target_wikis = await self._wiki_pick(question, sub_questions)
 
         raw_results: list[Any] = list(await asyncio.gather(
