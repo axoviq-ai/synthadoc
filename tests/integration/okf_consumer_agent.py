@@ -330,7 +330,7 @@ def main() -> None:
         help=(
             "Use 'opencode' to delegate to the opencode CLI instead of calling an API directly. "
             "opencode must be installed and authenticated. "
-            "Combine with --model to select the model (e.g. --model anthropic/claude-sonnet-4-5)."
+            "Combine with --model to select the model (e.g. --model opencode/big-pickle)."
         ),
     )
     args = parser.parse_args()
