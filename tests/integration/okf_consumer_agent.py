@@ -147,7 +147,15 @@ def _call_openai_compat(
         import openai
     except ImportError:
         sys.exit("openai SDK is required for --base-url: pip install openai")
-    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY") or "placeholder"
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY")
+    if not api_key:
+        sys.exit(
+            "Error: no API key found for OpenAI-compatible endpoint.\n"
+            "Set one of these environment variables:\n"
+            "  Windows:     set OPENAI_API_KEY=your-key\n"
+            "               set API_KEY=your-key\n"
+            "  macOS/Linux: export OPENAI_API_KEY='your-key'"
+        )
     client = openai.OpenAI(api_key=api_key, base_url=base_url)
     response = client.chat.completions.create(
         model=model,
