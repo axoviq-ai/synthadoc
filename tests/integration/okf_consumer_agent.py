@@ -230,7 +230,7 @@ def _call_opencode(system_prompt: str, user_prompt: str, model: str | None) -> s
     # On Windows, .cmd/.bat wrappers need to be launched via cmd /c.
     if sys.platform == "win32" and binary.lower().endswith((".cmd", ".bat")):
         cmd = ["cmd", "/c"]
-    cmd += [binary, "run", "--output-format", "json"]
+    cmd += [binary, "run", "--format", "json"]
     if model:
         cmd += ["--model", model]
 
