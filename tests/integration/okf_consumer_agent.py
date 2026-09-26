@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -115,6 +116,11 @@ def build_context(concepts: list[dict], max_chars: int = _MAX_CONTEXT_CHARS) -> 
     return "\n\n---\n\n".join(sections)
 
 
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> reasoning blocks emitted by some models."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 _DEFAULT_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
 _DEFAULT_MODEL_OPENAI    = "gpt-4o-mini"
 
@@ -137,7 +143,7 @@ def _call_anthropic(system_prompt: str, user_prompt: str, model: str) -> str:
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return message.content[0].text
+    return _strip_think_tags(message.content[0].text)
 
 
 def _call_openai_compat(
@@ -170,7 +176,7 @@ def _call_openai_compat(
             {"role": "user",   "content": user_prompt},
         ],
     )
-    return response.choices[0].message.content or ""
+    return _strip_think_tags(response.choices[0].message.content or "")
 
 
 def run(
