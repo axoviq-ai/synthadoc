@@ -1280,38 +1280,39 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _qcfg = _orch._cfg.agents.resolve("query")
             _cw_model = f"{_qcfg.provider}/{_qcfg.model}"
 
-            # Cache read — skip for multi-turn (context-dependent answers must run live)
-            _cache_key: str | None = None
-            if not _history:
-                _peer_epochs = await _cw_fetch_peer_epochs(
-                    registry, _orch._root.name, _orch._wiki_epoch)
-                _cache_key = _cw_cache_key(q, _peer_epochs, _cw_model)
-                _cached = await _cw_cache_read(_cache_key, _orch)
-                if _cached is not None:
-                    _responded = [w for w in _cached.get("cross_wiki_searched", [])
-                                  if w not in _cached.get("cross_wiki_offline", [])]
-                    yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
-                    yield f"event: wikis_result\ndata: {_json.dumps({'responded': _responded, 'offline': _cached.get('cross_wiki_offline', [])})}\n\n"
-                    yield f"event: token\ndata: {_json.dumps({'text': _cached['answer']})}\n\n"
-                    if _cached.get("citations"):
-                        yield f"event: citations\ndata: {_json.dumps({'citations': _cached['citations']})}\n\n"
-                    if _cached.get("knowledge_gap"):
-                        yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
-                    if session_id and _cached.get("answer"):
-                        try:
-                            await _orch._audit.append_message(session_id, "user", q)
-                            await _orch._audit.append_message(
-                                session_id, "assistant", _cached["answer"],
-                                citations=_cached.get("citations") or None,
-                            )
-                        except _asyncio.CancelledError:
-                            return
-                        except Exception as _ae:
-                            logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
-                    yield f"event: done\ndata: {_json.dumps({'knowledge_gap': _cached.get('knowledge_gap', False), 'cross_wiki_offline': _cached.get('cross_wiki_offline', []), 'cross_wiki_skipped': _cached.get('cross_wiki_skipped', False), 'cross_wiki_skip_reason': _cached.get('cross_wiki_skip_reason', '')})}\n\n"
-                    return
+            # Always compute the cache key and check for a hit, even in multi-turn sessions.
+            # A cached standalone answer is valid for the same question regardless of session
+            # history — history only matters for genuine follow-ups, which have different
+            # question text and thus a different key anyway.
+            _peer_epochs = await _cw_fetch_peer_epochs(
+                registry, _orch._root.name, _orch._wiki_epoch)
+            _cache_key = _cw_cache_key(q, _peer_epochs, _cw_model)
+            _cached = await _cw_cache_read(_cache_key, _orch)
+            if _cached is not None:
+                _responded = [w for w in _cached.get("cross_wiki_searched", [])
+                              if w not in _cached.get("cross_wiki_offline", [])]
+                yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
+                yield f"event: wikis_result\ndata: {_json.dumps({'responded': _responded, 'offline': _cached.get('cross_wiki_offline', [])})}\n\n"
+                yield f"event: token\ndata: {_json.dumps({'text': _cached['answer']})}\n\n"
+                if _cached.get("citations"):
+                    yield f"event: citations\ndata: {_json.dumps({'citations': _cached['citations']})}\n\n"
+                if _cached.get("knowledge_gap"):
+                    yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+                if session_id and _cached.get("answer"):
+                    try:
+                        await _orch._audit.append_message(session_id, "user", q)
+                        await _orch._audit.append_message(
+                            session_id, "assistant", _cached["answer"],
+                            citations=_cached.get("citations") or None,
+                        )
+                    except _asyncio.CancelledError:
+                        return
+                    except Exception as _ae:
+                        logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
+                yield f"event: done\ndata: {_json.dumps({'knowledge_gap': _cached.get('knowledge_gap', False), 'cross_wiki_offline': _cached.get('cross_wiki_offline', []), 'cross_wiki_skipped': _cached.get('cross_wiki_skipped', False), 'cross_wiki_skip_reason': _cached.get('cross_wiki_skip_reason', '')})}\n\n"
+                return
 
-            # Live query
+            # Live query — pass history for genuine multi-turn follow-ups
             yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
 
             agent = _make_cross_wiki_agent(app)
@@ -1345,9 +1346,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     return
                 except Exception as _ae:
                     logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
-            # Cache write — first-turn cacheable results only; _cache_key is always set here
-            # because _history is empty when we reach this path (multi-turn skips the key compute)
-            if result.cacheable and result.answer and _cache_key:
+            # Cache write — only for first-turn queries (no prior history) to avoid caching
+            # context-dependent follow-up answers that are only valid within that conversation.
+            if result.cacheable and result.answer and not _history:
                 await _cw_cache_write(_cache_key, _orch, result)
             yield f"event: done\ndata: {_json.dumps({'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
 

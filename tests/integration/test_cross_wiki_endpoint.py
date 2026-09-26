@@ -300,12 +300,13 @@ def test_cross_wiki_stream_cache_hit_emits_sse_events(tmp_wiki):
     assert "event: done" in body
 
 
-def test_cross_wiki_stream_multi_turn_bypasses_cache(tmp_wiki):
-    """Stream endpoint skips cache key computation when conversation history exists."""
+def test_cross_wiki_stream_multi_turn_reads_cache_but_skips_write(tmp_wiki):
+    """In a multi-turn session the cache is still checked (read), but not written to."""
     mock_agent = MagicMock()
-    mock_agent.run = AsyncMock(return_value=_mock_result())
+    mock_agent.run = AsyncMock(return_value=_mock_result(cacheable=True))
 
-    mock_cache_read = AsyncMock(return_value=None)
+    mock_cache_read = AsyncMock(return_value=None)   # cache miss → falls through to agent
+    mock_cache_write = AsyncMock()
 
     prior_history = [
         {"role": "user", "content": "prior question"},
@@ -313,21 +314,26 @@ def test_cross_wiki_stream_multi_turn_bypasses_cache(tmp_wiki):
     ]
 
     with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
-        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {}}):
-            with patch("synthadoc.integration.http_server._cw_cache_read", new=mock_cache_read):
-                app = _make_app(tmp_wiki)
-                with TestClient(app) as client:
-                    # Inject history so the endpoint sees a multi-turn session
-                    app.state.orch._audit.get_all_messages = AsyncMock(return_value=prior_history)
-                    resp = client.get(
-                        "/cross-wiki/query/stream",
-                        params={"q": "follow-up question", "session_id": "sess-123"},
-                    )
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {"port": 7070}}):
+            with patch("synthadoc.integration.http_server._cw_fetch_peer_epochs",
+                       new=AsyncMock(return_value={"wiki-a": 1})):
+                with patch("synthadoc.integration.http_server._cw_cache_read", new=mock_cache_read):
+                    with patch("synthadoc.integration.http_server._cw_cache_write", new=mock_cache_write):
+                        app = _make_app(tmp_wiki)
+                        with TestClient(app) as client:
+                            app.state.orch._audit.get_all_messages = AsyncMock(return_value=prior_history)
+                            resp = client.get(
+                                "/cross-wiki/query/stream",
+                                params={"q": "follow-up question", "session_id": "sess-123"},
+                            )
 
     assert resp.status_code == 200
-    # Cache must NOT have been consulted — history was non-empty
-    mock_cache_read.assert_not_called()
+    # Cache read IS called — same standalone question in multi-turn still benefits from cache
+    mock_cache_read.assert_called_once()
+    # Agent runs (cache was a miss)
     mock_agent.run.assert_called_once()
+    # Cache write is NOT called — context-dependent answers must not be cached
+    mock_cache_write.assert_not_called()
 
 
 def test_cross_wiki_stream_writes_cache_after_live_query(tmp_wiki):

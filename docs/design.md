@@ -4356,9 +4356,11 @@ peer_epochs = {"finance-wiki": 3, "offline-wiki": -1, "legal-wiki": 7}
 
 Epoch `-1` is never returned by a live server, so the offline state is cached as a distinct key from the online state. When the offline wiki comes back online, its epoch is positive and the key changes immediately.
 
-#### Multi-turn bypass
+#### Multi-turn handling
 
-Cross-wiki cache is skipped for any request that carries conversation history (a follow-up turn). Context-dependent answers must always run live. The coordinator checks `_history` before computing the key: if `_history` is non-empty, no cache key is computed and neither `get_query` nor `set_query` is called.
+The cache is **always read**, even in multi-turn sessions. A cached standalone answer is valid for the same question regardless of session history — genuine follow-ups have different question text and thus a different key anyway.
+
+Cache **writes** are restricted to first-turn queries (`_history` empty). If an answer was synthesised with prior conversation context, caching it would serve that context-coloured answer to future sessions that ask the same question fresh.
 
 #### Cache write policy
 
