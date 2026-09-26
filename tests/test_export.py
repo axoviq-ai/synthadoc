@@ -665,6 +665,41 @@ async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     assert "wiki/old-page.md" in result
 
 
+@pytest.mark.asyncio
+async def test_okf_pages_count_excludes_system_and_non_eligible_pages(tmp_path):
+    """pages in the result dict equals exactly the wiki/ keys written.
+
+    System pages (index, dashboard, …) are skipped unconditionally.
+    Archived pages are excluded from the default OKF filter (active+contradicted).
+    The result dict must contain only the two eligible wiki pages plus index.md
+    and log.md, so sum(1 for k in result if k.startswith('wiki/')) == 2.
+    """
+    from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
+    store = _make_store(tmp_path)
+    # two active pages — should appear in the bundle
+    _write_okf_page(store, "page-a", "Page A", LifecycleState.ACTIVE,
+                    content="Content A.", type_="concept")
+    _write_okf_page(store, "page-b", "Page B", LifecycleState.ACTIVE,
+                    content="Content B.", type_="concept")
+    # one archived page — excluded by the OKF default filter
+    _write_okf_page(store, "retired", "Retired", LifecycleState.ARCHIVED,
+                    content="Old content.", type_="concept")
+    # one system-slug page — excluded by SYSTEM_PAGE_SLUGS regardless of status
+    system_slug = next(iter(SYSTEM_PAGE_SLUGS))
+    _write_okf_page(store, system_slug, system_slug.title(), LifecycleState.ACTIVE,
+                    content="System page.", type_="concept")
+
+    agent = _agent(tmp_path, store)
+    result = await agent.run(ExportOptions(format="okf"))
+
+    wiki_keys = [k for k in result if k.startswith("wiki/")]
+    assert len(wiki_keys) == 2, f"expected 2 wiki pages, got {wiki_keys}"
+    assert "wiki/page-a.md" in result
+    assert "wiki/page-b.md" in result
+    assert "wiki/retired.md" not in result
+    assert f"wiki/{system_slug}.md" not in result
+
+
 # ── OKF helper unit tests ──────────────────────────────────────────────────────
 
 from synthadoc.core.export import _first_sentence, _rewrite_wikilinks

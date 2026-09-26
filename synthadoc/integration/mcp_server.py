@@ -65,12 +65,15 @@ def create_mcp_server(orchestrator):
                 <wiki_root>/exports/<wiki_name>-okf-<date>/ and other formats
                 return content inline in the response.
         status_filter: "all" (default) exports active+contradicted pages for OKF
-                (the standard shareable subset). Pass a specific lifecycle state
-                such as "draft" to export only pages in that state instead.
+                (the standard shareable subset — draft, stale, and archived are
+                excluded). Pass a specific lifecycle state such as "archived" to
+                export only pages in that state instead.
+                System pages (index, dashboard, overview, purpose) are always
+                excluded from every OKF export regardless of status_filter.
 
         OKF returns: {"format", "output_path",
                       "files_written": total files (wiki pages + index.md + log.md),
-                      "pages": wiki page count only}
+                      "pages": wiki page count only (excludes index.md and log.md)}
         Other formats with output_path: {"format", "output_path", "pages": N}
         Other formats without output_path: {"format", "content": str, "pages": N}
         """
