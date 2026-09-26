@@ -353,6 +353,32 @@ async def test_mcp_export_tool_llms_txt_inline(mock_orch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_export_tool_raises_when_exportable_count_not_set(mock_orch):
+    """MCP guard must raise RuntimeError when run() returns without setting exportable_count.
+
+    This covers the case where a new format branch is added to ExportAgent.run()
+    but its author forgets to assign self.exportable_count.
+    """
+    import pytest as _pytest
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.core.export import ExportAgent as _EA
+
+    mcp = create_mcp_server(mock_orch)
+
+    async def _mock_run_no_count(self, opts):
+        # Deliberately omits self.exportable_count — simulates a missing assignment
+        return "# Wiki\nForgot to set count."
+
+    # FastMCP wraps RuntimeError in ToolError — catch the common base and match the message
+    with patch.object(_EA, "run", new=_mock_run_no_count):
+        with _pytest.raises(Exception, match="did not set exportable_count"):
+            await mcp._tool_manager.call_tool(
+                "synthadoc_export", {"format": "llms.txt"},
+                convert_result=False
+            )
+
+
+@pytest.mark.asyncio
 async def test_mcp_export_tool_non_okf_pages_excludes_system_pages(mock_orch):
     """pages for non-OKF formats must count only non-system pages, not the full store.
 

@@ -700,21 +700,30 @@ async def test_okf_pages_count_excludes_system_and_non_eligible_pages(tmp_path):
     assert f"wiki/{system_slug}.md" not in result
 
 
+def _exportable_count_cases():
+    """Derive parametrize cases from EXPORT_FORMATS so new formats are covered automatically.
+
+    Store fixture: 4 non-system pages (2 active, 1 contradicted, 1 archived).
+    OKF active+contradicted filter reduces the count to 3; all other formats keep 4.
+    """
+    from synthadoc.core.export import EXPORT_FORMATS
+    _OKF_COUNT = 3  # archived excluded by OKF active+contradicted filter
+    _DEFAULT_COUNT = 4
+    return [
+        pytest.param(fmt, _OKF_COUNT if fmt == "okf" else _DEFAULT_COUNT, id=fmt)
+        for fmt in sorted(EXPORT_FORMATS)
+    ]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fmt,expected_count", [
-    ("llms.txt",      4),
-    ("llms-full.txt", 4),
-    ("graphml",       4),
-    ("json",          4),
-    ("okf",           3),  # archived excluded by OKF active+contradicted filter
-])
+@pytest.mark.parametrize("fmt,expected_count", _exportable_count_cases())
 async def test_exportable_count_set_correctly_for_all_formats(tmp_path, fmt, expected_count):
     """exportable_count must be set to the actual exported page count by every format branch.
 
     Store has 4 non-system pages: 2 active, 1 contradicted, 1 archived.
     Non-OKF formats export all 4; OKF with status_filter='all' exports 3
-    (active+contradicted only).  A new format that forgets to set
-    exportable_count will leave it as None and this test will catch it.
+    (active+contradicted only).  The parametrize list is built from EXPORT_FORMATS,
+    so a new format that forgets to set exportable_count is caught automatically.
     """
     store = _make_store(tmp_path)
     _write_okf_page(store, "page-a", "Page A", LifecycleState.ACTIVE,
