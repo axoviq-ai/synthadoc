@@ -321,7 +321,7 @@ def _submit_job(path: str, body: dict | None = None, max_wait: int = 1800) -> tu
 
 
 def _okf_validate(bundle: dict) -> None:
-    """Validate an OKF bundle dict against the OKF v0.1 spec.
+    """Validate an OKF bundle dict against the OKF v0.2 spec.
 
     Checks: index.md present, concept files have required `type`, tags are a
     list (not a string), description has no newlines, wikilinks are rewritten.

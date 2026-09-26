@@ -5427,7 +5427,7 @@ class ExportModal extends Modal {
             "<li><b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)</li>",
             "<li><b>llms-full.txt</b> — full page content with provenance footnotes inline</li>",
             "<li><b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b></li>",
-            "<li><b>okf</b> — OKF v0.1 bundle (active + contradicted pages) written <em>outside</em> the vault — readable by any OKF-aware agent without code changes</li>",
+            "<li><b>okf</b> — OKF v0.2 bundle (active + contradicted pages) written <em>outside</em> the vault — readable by any OKF-aware agent without code changes</li>",
             "</ul>",
         ].join("");
 
