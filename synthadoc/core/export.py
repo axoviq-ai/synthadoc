@@ -59,7 +59,7 @@ class ExportAgent:
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
         self._url_staleness_days = url_staleness_days
-        self.exportable_count: int = 0  # set by run(); safe default before first call
+        self.exportable_count: "int | None" = None  # set by run(); None until run() completes
 
     def _filter_pages(self, status_filter: str = "all") -> "dict[str, WikiPage]":
         """Return pages that pass the generic export filter.

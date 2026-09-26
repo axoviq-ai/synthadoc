@@ -700,6 +700,39 @@ async def test_okf_pages_count_excludes_system_and_non_eligible_pages(tmp_path):
     assert f"wiki/{system_slug}.md" not in result
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt,expected_count", [
+    ("llms.txt",      4),
+    ("llms-full.txt", 4),
+    ("graphml",       4),
+    ("json",          4),
+    ("okf",           3),  # archived excluded by OKF active+contradicted filter
+])
+async def test_exportable_count_set_correctly_for_all_formats(tmp_path, fmt, expected_count):
+    """exportable_count must be set to the actual exported page count by every format branch.
+
+    Store has 4 non-system pages: 2 active, 1 contradicted, 1 archived.
+    Non-OKF formats export all 4; OKF with status_filter='all' exports 3
+    (active+contradicted only).  A new format that forgets to set
+    exportable_count will leave it as None and this test will catch it.
+    """
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "page-a", "Page A", LifecycleState.ACTIVE,
+                    content="Content A.", type_="concept")
+    _write_okf_page(store, "page-b", "Page B", LifecycleState.ACTIVE,
+                    content="Content B.", type_="concept")
+    _write_okf_page(store, "page-c", "Page C", LifecycleState.CONTRADICTED,
+                    content="Content C.", type_="concept")
+    _write_okf_page(store, "page-d", "Page D", LifecycleState.ARCHIVED,
+                    content="Content D.", type_="concept")
+    agent = _agent(tmp_path, store)
+    await agent.run(ExportOptions(format=fmt))
+    assert agent.exportable_count is not None, (
+        f"exportable_count was not set by the {fmt!r} branch"
+    )
+    assert agent.exportable_count == expected_count
+
+
 # ── OKF helper unit tests ──────────────────────────────────────────────────────
 
 from synthadoc.core.export import _first_sentence, _rewrite_wikilinks

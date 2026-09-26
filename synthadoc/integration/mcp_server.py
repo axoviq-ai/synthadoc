@@ -105,6 +105,10 @@ def create_mcp_server(orchestrator):
             return {"format": format, "output_path": str(out), "files_written": len(content), "pages": wiki_pages}
 
         # Non-OKF: run() already filtered pages and cached the count
+        if agent.exportable_count is None:
+            raise RuntimeError(
+                f"ExportAgent.run() did not set exportable_count for format {format!r}"
+            )
         page_count = agent.exportable_count
 
         if output_path:

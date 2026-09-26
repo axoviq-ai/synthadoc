@@ -334,9 +334,15 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
 @pytest.mark.asyncio
 async def test_mcp_export_tool_llms_txt_inline(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.core.export import ExportAgent as _EA
+
     mcp = create_mcp_server(mock_orch)
-    with patch("synthadoc.core.export.ExportAgent.run",
-               new=AsyncMock(return_value="# Wiki\nPage content.")):
+
+    async def _mock_run(self, opts):
+        self.exportable_count = 1
+        return "# Wiki\nPage content."
+
+    with patch.object(_EA, "run", new=_mock_run):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "llms.txt"},
             convert_result=False
