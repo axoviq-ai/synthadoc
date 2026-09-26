@@ -594,7 +594,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         check("export okf", ["export", "-f", "okf", "--output", _okf_dir] + w)
         # OKF v0.2 structure validation
         import yaml as _yaml
-        _okf_path = Path(_okf_dir)
+        _okf_path = pathlib.Path(_okf_dir)
         _index = _okf_path / "index.md"
         if _index.exists():
             _idx_text = _index.read_text(encoding="utf-8")

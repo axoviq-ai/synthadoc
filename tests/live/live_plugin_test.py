@@ -343,13 +343,15 @@ def _okf_validate(bundle: dict) -> None:
                 return _yaml.safe_load(parts[1]) or {}
         return {}
 
-    # index.md present with type: index
+    # index.md present with okf_version: "0.2" (OKF v0.2 — no type field on index)
     if "index.md" in bundle:
         fm = _fm(bundle["index.md"])
-        if fm.get("type") == "index":
-            ok("POST /export (okf) spec: index.md type=index")
+        if fm.get("okf_version") == "0.2":
+            ok("POST /export (okf) spec: index.md okf_version=0.2")
         else:
-            warn("POST /export (okf) spec: index.md", f"expected type=index, got {fm.get('type')!r}")
+            warn("POST /export (okf) spec: index.md", f"expected okf_version='0.2', got {fm.get('okf_version')!r}")
+        if "type" in fm:
+            warn("POST /export (okf) spec: index.md", f"OKF v0.2 index.md must not carry 'type', got {fm['type']!r}")
     else:
         warn("POST /export (okf) spec: index.md", "missing from bundle")
 
