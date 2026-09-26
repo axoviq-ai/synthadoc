@@ -33,7 +33,7 @@ except ImportError:
 try:
     import anthropic
 except ImportError:
-    sys.exit("anthropic SDK is required: pip install anthropic")
+    anthropic = None  # type: ignore[assignment]
 
 
 def parse_okf_file(path: Path) -> tuple[dict, str]:
@@ -115,7 +115,59 @@ def build_context(concepts: list[dict], max_chars: int = _MAX_CONTEXT_CHARS) -> 
     return "\n\n---\n\n".join(sections)
 
 
-def run(bundle_dir: Path, question: str, type_filter: str | None) -> str:
+_DEFAULT_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
+_DEFAULT_MODEL_OPENAI    = "gpt-4o-mini"
+
+
+def _call_anthropic(system_prompt: str, user_prompt: str, model: str) -> str:
+    if anthropic is None:
+        sys.exit("anthropic SDK is required: pip install anthropic")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        sys.exit(
+            "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
+            "Set it with:\n"
+            "  Windows:     set ANTHROPIC_API_KEY=your-key\n"
+            "  macOS/Linux: export ANTHROPIC_API_KEY='your-key'"
+        )
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    return message.content[0].text
+
+
+def _call_openai_compat(
+    system_prompt: str, user_prompt: str, model: str, base_url: str
+) -> str:
+    try:
+        import openai
+    except ImportError:
+        sys.exit("openai SDK is required for --base-url: pip install openai")
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY") or "placeholder"
+    client = openai.OpenAI(api_key=api_key, base_url=base_url)
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=1024,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+    )
+    return response.choices[0].message.content or ""
+
+
+def run(
+    bundle_dir: Path,
+    question: str,
+    type_filter: str | None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+) -> str:
     """Run the OKF consumer agent and return the answer."""
     available_types = discover_types(bundle_dir)
     type_info = (
@@ -142,33 +194,40 @@ def run(bundle_dir: Path, question: str, type_filter: str | None) -> str:
         f"---\n\nQuestion: {question}"
     )
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit(
-            "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
-            "Set it with:\n"
-            "  Windows:     set ANTHROPIC_API_KEY=your-key\n"
-            "  macOS/Linux: export ANTHROPIC_API_KEY='your-key'"
-        )
+    if base_url:
+        resolved_model = model or _DEFAULT_MODEL_OPENAI
+        print(f"[consumer-agent] OpenAI-compatible endpoint: {base_url} | model: {resolved_model}", file=sys.stderr)
+        return _call_openai_compat(system_prompt, user_prompt, resolved_model, base_url)
 
-    client = anthropic.Anthropic()
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    return message.content[0].text
+    resolved_model = model or _DEFAULT_MODEL_ANTHROPIC
+    print(f"[consumer-agent] Anthropic | model: {resolved_model}", file=sys.stderr)
+    return _call_anthropic(system_prompt, user_prompt, resolved_model)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="OKF Consumer Agent — reads an OKF bundle and answers questions."
     )
-    parser.add_argument("--bundle", required=True, help="Path to OKF bundle directory")
+    parser.add_argument("--bundle",   required=True, help="Path to OKF bundle directory")
     parser.add_argument("--question", required=True, help="Question to answer from the bundle")
     parser.add_argument(
         "--type", dest="type_filter", default=None,
         help="Filter to pages of this OKF type (e.g. person, technology)",
+    )
+    parser.add_argument(
+        "--base-url", dest="base_url", default=None,
+        help=(
+            "OpenAI-compatible base URL (e.g. https://api.minimax.chat/v1). "
+            "When set, uses the openai SDK instead of anthropic. "
+            "Set OPENAI_API_KEY (or API_KEY) in the environment for the key."
+        ),
+    )
+    parser.add_argument(
+        "--model", default=None,
+        help=(
+            f"Model name to use. Defaults to {_DEFAULT_MODEL_ANTHROPIC!r} for Anthropic "
+            f"and {_DEFAULT_MODEL_OPENAI!r} for OpenAI-compatible endpoints."
+        ),
     )
     args = parser.parse_args()
 
@@ -176,7 +235,10 @@ def main() -> None:
     if not bundle_dir.exists():
         sys.exit(f"Bundle directory not found: {bundle_dir}")
 
-    answer = run(bundle_dir, args.question, args.type_filter)
+    answer = run(
+        bundle_dir, args.question, args.type_filter,
+        base_url=args.base_url, model=args.model,
+    )
     print(answer)
 
 
