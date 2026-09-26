@@ -64,9 +64,13 @@ def create_mcp_server(orchestrator):
                 Optional — if omitted, okf defaults to
                 <wiki_root>/exports/<wiki_name>-okf-<date>/ and other formats
                 return content inline in the response.
-        status_filter: "all" (default), or a lifecycle state such as "active".
+        status_filter: "all" (default) exports active+contradicted pages for OKF
+                (the standard shareable subset). Pass a specific lifecycle state
+                such as "draft" to export only pages in that state instead.
 
-        OKF returns: {"format", "output_path", "files_written": N, "pages": N}
+        OKF returns: {"format", "output_path",
+                      "files_written": total files (wiki pages + index.md + log.md),
+                      "pages": wiki page count only}
         Other formats with output_path: {"format", "output_path", "pages": N}
         Other formats without output_path: {"format", "content": str, "pages": N}
         """
@@ -95,7 +99,8 @@ def create_mcp_server(orchestrator):
                 target = out / rel_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
-            return {"format": format, "output_path": str(out), "files_written": len(content), "pages": page_count}
+            wiki_pages = sum(1 for k in content if k.startswith("wiki/"))
+            return {"format": format, "output_path": str(out), "files_written": len(content), "pages": wiki_pages}
 
         if output_path:
             out = Path(output_path)

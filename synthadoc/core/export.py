@@ -89,10 +89,12 @@ class ExportAgent:
             return self._render_llms_full_txt(pages)
 
         if opts.format == "okf":
-            # Default: active + contradicted only — draft/stale/archived excluded
+            # OKF bundles are shareable artifacts — restrict to active+contradicted by default.
+            # status_filter="all" means "all OKF-eligible pages", not literally all store pages.
+            # Pass a specific lifecycle state (e.g. "draft") to export only those pages instead.
             if opts.status_filter == "all":
-                _OKF_DEFAULT = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
-                pages = {s: p for s, p in pages.items() if p.status in _OKF_DEFAULT}
+                _OKF_ELIGIBLE = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
+                pages = {s: p for s, p in pages.items() if p.status in _OKF_ELIGIBLE}
             from synthadoc.storage.log import AuditDB
             audit = AuditDB(self._audit_db_path)
             await audit.init()
