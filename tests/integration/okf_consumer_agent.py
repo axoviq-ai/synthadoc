@@ -21,8 +21,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json as _json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -179,6 +182,75 @@ def _call_openai_compat(
     return _strip_think_tags(response.choices[0].message.content or "")
 
 
+def _call_opencode(system_prompt: str, user_prompt: str, model: str | None) -> str:
+    binary = shutil.which("opencode")
+    if binary is None:
+        sys.exit(
+            "Error: 'opencode' not found in PATH.\n"
+            "Install it with: npm install -g opencode-ai\n"
+            "Then authenticate before running."
+        )
+    cmd: list[str] = []
+    # On Windows, .cmd/.bat wrappers need to be launched via cmd /c.
+    if sys.platform == "win32" and binary.lower().endswith((".cmd", ".bat")):
+        cmd = ["cmd", "/c"]
+    cmd += [binary, "run", "--output-format", "json"]
+    if model:
+        cmd += ["--model", model]
+
+    prompt = system_prompt + "\n\n" + user_prompt
+    try:
+        result = subprocess.run(
+            cmd, input=prompt.encode(), capture_output=True, timeout=300
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit("Error: opencode timed out after 300 s.")
+
+    raw = result.stdout.decode(errors="replace")
+    if result.returncode != 0:
+        err = result.stderr.decode(errors="replace").strip()
+        sys.exit(f"Error: opencode exited {result.returncode}.\n{err or raw[:500]}")
+
+    # Parse JSONL — multiple event layouts across opencode versions.
+    text_parts: list[str] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        etype = event.get("type", "")
+        if etype == "text":
+            chunk = (
+                event.get("data")
+                or event.get("text")
+                or (event.get("part") or {}).get("text")
+                or ""
+            )
+        elif etype == "PartTextEvent":
+            part = (event.get("properties") or {}).get("part") or {}
+            chunk = part.get("text") or part.get("data") or ""
+        elif etype == "assistant":
+            chunk = ""
+            for block in (event.get("message") or event).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    chunk += block.get("text") or ""
+        elif etype in ("content_block_delta", "text_delta"):
+            delta = event.get("delta") or event
+            chunk = delta.get("text") or delta.get("data") or ""
+        else:
+            part = event.get("part") or {}
+            chunk = part.get("text") or "" if isinstance(part, dict) and part.get("type") == "text" else ""
+        if chunk:
+            text_parts.append(chunk)
+
+    if not text_parts:
+        sys.exit(f"Error: opencode returned no text content.\nRaw output:\n{raw[:1000]}")
+    return _strip_think_tags("".join(text_parts))
+
+
 def run(
     bundle_dir: Path,
     question: str,
@@ -186,6 +258,7 @@ def run(
     *,
     base_url: str | None = None,
     model: str | None = None,
+    provider: str | None = None,
 ) -> str:
     """Run the OKF consumer agent and return the answer."""
     available_types = discover_types(bundle_dir)
@@ -212,6 +285,10 @@ def run(
         f"Knowledge bundle context:\n\n{context}\n\n"
         f"---\n\nQuestion: {question}"
     )
+
+    if provider == "opencode":
+        print(f"[consumer-agent] opencode CLI | model: {model or 'default'}", file=sys.stderr)
+        return _call_opencode(system_prompt, user_prompt, model)
 
     if base_url:
         resolved_model = model or _DEFAULT_MODEL_OPENAI
@@ -244,8 +321,16 @@ def main() -> None:
     parser.add_argument(
         "--model", default=None,
         help=(
-            f"Model name to use. Defaults to {_DEFAULT_MODEL_ANTHROPIC!r} for Anthropic "
-            f"and {_DEFAULT_MODEL_OPENAI!r} for OpenAI-compatible endpoints."
+            f"Model name to use. Defaults to {_DEFAULT_MODEL_ANTHROPIC!r} for Anthropic, "
+            f"{_DEFAULT_MODEL_OPENAI!r} for OpenAI-compatible, or opencode's own default."
+        ),
+    )
+    parser.add_argument(
+        "--provider", default=None, choices=["opencode"],
+        help=(
+            "Use 'opencode' to delegate to the opencode CLI instead of calling an API directly. "
+            "opencode must be installed and authenticated. "
+            "Combine with --model to select the model (e.g. --model anthropic/claude-sonnet-4-5)."
         ),
     )
     args = parser.parse_args()
@@ -256,7 +341,7 @@ def main() -> None:
 
     answer = run(
         bundle_dir, args.question, args.type_filter,
-        base_url=args.base_url, model=args.model,
+        base_url=args.base_url, model=args.model, provider=args.provider,
     )
     print(answer)
 
