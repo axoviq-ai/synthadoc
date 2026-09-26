@@ -104,8 +104,8 @@ def create_mcp_server(orchestrator):
             wiki_pages = sum(1 for k in content if k.startswith("wiki/"))
             return {"format": format, "output_path": str(out), "files_written": len(content), "pages": wiki_pages}
 
-        # Non-OKF: delegate to ExportAgent so the filter stays in one place
-        page_count = agent.count_exportable(status_filter)
+        # Non-OKF: run() already filtered pages and cached the count
+        page_count = agent.exportable_count
 
         if output_path:
             out = Path(output_path)

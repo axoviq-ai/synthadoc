@@ -59,6 +59,7 @@ class ExportAgent:
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
         self._url_staleness_days = url_staleness_days
+        self.exportable_count: int = 0  # set by run(); safe default before first call
 
     def _filter_pages(self, status_filter: str = "all") -> "dict[str, WikiPage]":
         """Return pages that pass the generic export filter.
@@ -85,6 +86,10 @@ class ExportAgent:
 
         Does NOT apply the OKF-specific active+contradicted restriction;
         use the wiki/ key count from run() for OKF.
+
+        Prefer reading self.exportable_count after run() rather than calling
+        this separately — run() already calls _filter_pages() and stores the
+        count so callers avoid a second disk pass.
         """
         return len(self._filter_pages(status_filter))
 
@@ -93,6 +98,11 @@ class ExportAgent:
 
         Errors propagate — callers write the result to disk or return it as
         an HTTP body and must handle failures themselves.
+
+        After a successful call, self.exportable_count holds the number of
+        pages that passed the generic filter (before any OKF-specific
+        restriction).  Non-OKF callers can read it directly instead of
+        calling count_exportable() a second time.
         """
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
@@ -100,6 +110,7 @@ class ExportAgent:
             )
 
         pages = self._filter_pages(opts.status_filter)
+        self.exportable_count = len(pages)  # cached for callers; avoids a second filter pass
 
         if opts.format == "llms.txt":
             return self._render_llms_txt(pages)

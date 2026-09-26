@@ -352,6 +352,8 @@ async def test_mcp_export_tool_non_okf_pages_excludes_system_pages(mock_orch):
 
     The store has 4 slugs: 2 real pages and 2 system slugs (index, dashboard).
     status_filter='all' with a non-OKF format should report pages=2.
+    run() is NOT mocked — it executes for real against the mocked store so that
+    exportable_count is set from the actual filter pass, not a separate call.
     """
     from synthadoc.integration.mcp_server import create_mcp_server
     from synthadoc.storage.wiki import WikiPage, LifecycleState
@@ -364,9 +366,7 @@ async def test_mcp_export_tool_non_okf_pages_excludes_system_pages(mock_orch):
 
     pages_by_slug = {"perceptron": _make_page(), "transistor": _make_page()}
     with patch.object(mock_orch._store, "list_pages", return_value=store_slugs), \
-         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get), \
-         patch("synthadoc.core.export.ExportAgent.run",
-               new=AsyncMock(return_value="# Wiki\nSome content.")):
+         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "llms.txt"},
             convert_result=False
@@ -380,6 +380,7 @@ async def test_mcp_export_tool_non_okf_pages_with_specific_status_filter(mock_or
 
     Store has 4 slugs: 2 active, 1 archived, 1 system.  status_filter='active'
     should produce pages=2, not 3 (all non-system) or 4 (all).
+    run() is NOT mocked so exportable_count is set from the actual filter pass.
     """
     from synthadoc.integration.mcp_server import create_mcp_server
     from synthadoc.storage.wiki import WikiPage, LifecycleState
@@ -397,9 +398,7 @@ async def test_mcp_export_tool_non_okf_pages_with_specific_status_filter(mock_or
         "index":          _make_page(LifecycleState.ACTIVE),
     }
     with patch.object(mock_orch._store, "list_pages", return_value=store_slugs), \
-         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get), \
-         patch("synthadoc.core.export.ExportAgent.run",
-               new=AsyncMock(return_value="# Wiki\nActive content.")):
+         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "llms.txt", "status_filter": "active"},
             convert_result=False
