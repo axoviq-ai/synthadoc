@@ -446,6 +446,82 @@ def _make_cross_wiki_agent(app: FastAPI) -> "CrossWikiQueryAgent":
     )
 
 
+async def _cw_fetch_peer_epochs(
+    registry: dict,
+    own_wiki_name: str,
+    own_epoch: int,
+    http_timeout: float = 5.0,
+) -> dict[str, int]:
+    """Return {wiki_name: epoch} for all registered wikis.
+
+    The coordinator's epoch is read directly (no HTTP).  All peer epochs are
+    fetched in parallel via GET /epoch.  Any offline peer gets epoch -1, which
+    produces a distinct cache key so its offline state is itself cached and a
+    returning-online peer immediately gets a fresh key.
+    """
+    import asyncio as _asyncio
+    import httpx as _httpx
+
+    epochs: dict[str, int] = {own_wiki_name: own_epoch}
+
+    async def _fetch_one(name: str, base_url: str) -> tuple[str, int]:
+        try:
+            async with _httpx.AsyncClient(timeout=http_timeout) as client:
+                resp = await client.get(f"{base_url}/epoch")
+                resp.raise_for_status()
+                return name, int(resp.json().get("epoch", -1))
+        except Exception:
+            return name, -1
+
+    peers = [
+        (name, f"http://127.0.0.1:{entry['port']}")
+        for name, entry in registry.items()
+        if "port" in entry and name != own_wiki_name
+    ]
+    if peers:
+        for name, ep in await _asyncio.gather(*[_fetch_one(n, u) for n, u in peers]):
+            epochs[name] = ep
+    return epochs
+
+
+def _cw_cache_key(q: str, peer_epochs: dict[str, int], model: str) -> str:
+    """Stable cache key incorporating every participating wiki's epoch.
+
+    Any ingest on any registered wiki changes at least one epoch value →
+    different key → automatic cache miss.  Offline peers contribute epoch -1,
+    which is distinct from any valid epoch, so their offline state is cached
+    separately from their online state.
+    """
+    import hashlib as _hashlib
+    import json as _json
+    normalized = " ".join(q.lower().split())
+    epoch_part = _json.dumps(peer_epochs, sort_keys=True)
+    payload = f"cross-wiki|{normalized}|{epoch_part}|{model}"
+    return _hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
+async def _cw_cache_read(key: str, orch) -> dict | None:
+    try:
+        return await orch._cache.get_query(key)
+    except Exception:
+        return None
+
+
+async def _cw_cache_write(key: str, orch, result) -> None:
+    try:
+        await orch._cache.set_query(key, orch._wiki_epoch, {
+            "answer": result.answer,
+            "citations": result.citations,
+            "knowledge_gap": result.knowledge_gap,
+            "cross_wiki_searched": result.cross_wiki_searched,
+            "cross_wiki_offline": result.cross_wiki_offline,
+            "cross_wiki_skipped": result.cross_wiki_skipped,
+            "cross_wiki_skip_reason": result.cross_wiki_skip_reason,
+        })
+    except Exception:
+        pass  # non-fatal
+
+
 def _load_blocked_domains(wiki_root: Path) -> set[str]:
     """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
     import json as _json_mod
@@ -1009,6 +1085,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def health():
         return {"status": "ok"}
 
+    @app.get("/epoch")
+    async def epoch_endpoint():
+        """Return this wiki's current content epoch. Used by peer wikis to build cross-wiki cache keys."""
+        return {"epoch": app.state.orch._wiki_epoch, "wiki_name": wiki_root.name}
+
     @app.post("/shutdown")
     async def shutdown():
         """Gracefully stop this wiki server. Used by `synthadoc stop`."""
@@ -1196,8 +1277,41 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     pass
 
             registry = read_registry_all()
-            wiki_names = list(registry.keys())
-            # Emit early so the UI shows a spinner; actual queried wikis arrive in wikis_result
+            _qcfg = _orch._cfg.agents.resolve("query")
+            _cw_model = f"{_qcfg.provider}/{_qcfg.model}"
+
+            # Cache read — skip for multi-turn (context-dependent answers must run live)
+            _cache_key: str | None = None
+            if not _history:
+                _peer_epochs = await _cw_fetch_peer_epochs(
+                    registry, _orch._root.name, _orch._wiki_epoch)
+                _cache_key = _cw_cache_key(q, _peer_epochs, _cw_model)
+                _cached = await _cw_cache_read(_cache_key, _orch)
+                if _cached is not None:
+                    _responded = [w for w in _cached.get("cross_wiki_searched", [])
+                                  if w not in _cached.get("cross_wiki_offline", [])]
+                    yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
+                    yield f"event: wikis_result\ndata: {_json.dumps({'responded': _responded, 'offline': _cached.get('cross_wiki_offline', [])})}\n\n"
+                    yield f"event: token\ndata: {_json.dumps({'text': _cached['answer']})}\n\n"
+                    if _cached.get("citations"):
+                        yield f"event: citations\ndata: {_json.dumps({'citations': _cached['citations']})}\n\n"
+                    if _cached.get("knowledge_gap"):
+                        yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+                    if session_id and _cached.get("answer"):
+                        try:
+                            await _orch._audit.append_message(session_id, "user", q)
+                            await _orch._audit.append_message(
+                                session_id, "assistant", _cached["answer"],
+                                citations=_cached.get("citations") or None,
+                            )
+                        except _asyncio.CancelledError:
+                            return
+                        except Exception as _ae:
+                            logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
+                    yield f"event: done\ndata: {_json.dumps({'knowledge_gap': _cached.get('knowledge_gap', False), 'cross_wiki_offline': _cached.get('cross_wiki_offline', []), 'cross_wiki_skipped': _cached.get('cross_wiki_skipped', False), 'cross_wiki_skip_reason': _cached.get('cross_wiki_skip_reason', '')})}\n\n"
+                    return
+
+            # Live query
             yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
 
             agent = _make_cross_wiki_agent(app)
@@ -1231,6 +1345,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     return
                 except Exception as _ae:
                     logger.warning("cross-wiki audit save failed for session %s: %s", session_id, _ae)
+            # Cache write — first-turn cacheable results only; _cache_key is always set here
+            # because _history is empty when we reach this path (multi-turn skips the key compute)
+            if result.cacheable and result.answer and _cache_key:
+                await _cw_cache_write(_cache_key, _orch, result)
             yield f"event: done\ndata: {_json.dumps({'knowledge_gap': result.knowledge_gap, 'cross_wiki_offline': result.cross_wiki_offline, 'cross_wiki_skipped': result.cross_wiki_skipped, 'cross_wiki_skip_reason': result.cross_wiki_skip_reason})}\n\n"
 
         return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
