@@ -60,6 +60,26 @@ class ExportAgent:
         self._routing_path = Path(routing_path)
         self._url_staleness_days = url_staleness_days
 
+    def count_exportable(self, status_filter: str = "all") -> int:
+        """Count pages that would pass the generic export filter (mirrors run() logic).
+
+        Excludes SYSTEM_PAGE_SLUGS unconditionally.  When status_filter is 'all',
+        counts every remaining page; otherwise counts only pages whose status
+        matches exactly.  Does NOT apply the OKF-specific active+contradicted
+        restriction — use the wiki/ key count from run() for OKF.
+        """
+        count = 0
+        for slug in self._store.list_pages():
+            if slug in _SKIP_SLUGS:
+                continue
+            if status_filter == "all":
+                count += 1
+            else:
+                page = self._store.read_page(slug)
+                if page is not None and page.status == status_filter:
+                    count += 1
+        return count
+
     async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
         """Serialise the wiki.
 

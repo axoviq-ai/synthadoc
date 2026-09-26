@@ -90,7 +90,6 @@ def create_mcp_server(orchestrator):
         )
         opts = ExportOptions(format=format, status_filter=status_filter)
         content = await agent.run(opts)
-        page_count = len(orchestrator._store.list_pages())
 
         if format == "okf":
             if output_path:
@@ -104,6 +103,9 @@ def create_mcp_server(orchestrator):
                 target.write_text(text, encoding="utf-8")
             wiki_pages = sum(1 for k in content if k.startswith("wiki/"))
             return {"format": format, "output_path": str(out), "files_written": len(content), "pages": wiki_pages}
+
+        # Non-OKF: delegate to ExportAgent so the filter stays in one place
+        page_count = agent.count_exportable(status_filter)
 
         if output_path:
             out = Path(output_path)
