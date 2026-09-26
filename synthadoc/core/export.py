@@ -81,18 +81,6 @@ class ExportAgent:
             result[slug] = page
         return result
 
-    def count_exportable(self, status_filter: str = "all") -> int:
-        """Count pages that would pass the generic export filter.
-
-        Does NOT apply the OKF-specific active+contradicted restriction;
-        use the wiki/ key count from run() for OKF.
-
-        Prefer reading self.exportable_count after run() rather than calling
-        this separately — run() already calls _filter_pages() and stores the
-        count so callers avoid a second disk pass.
-        """
-        return len(self._filter_pages(status_filter))
-
     async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
         """Serialise the wiki.
 
@@ -100,9 +88,7 @@ class ExportAgent:
         an HTTP body and must handle failures themselves.
 
         After a successful call, self.exportable_count holds the number of
-        pages that passed the generic filter (before any OKF-specific
-        restriction).  Non-OKF callers can read it directly instead of
-        calling count_exportable() a second time.
+        pages actually exported (after all format-specific filters).
         """
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
@@ -110,11 +96,12 @@ class ExportAgent:
             )
 
         pages = self._filter_pages(opts.status_filter)
-        self.exportable_count = len(pages)  # cached for callers; avoids a second filter pass
 
         if opts.format == "llms.txt":
+            self.exportable_count = len(pages)
             return self._render_llms_txt(pages)
         if opts.format == "llms-full.txt":
+            self.exportable_count = len(pages)
             return self._render_llms_full_txt(pages)
 
         if opts.format == "okf":
@@ -124,13 +111,15 @@ class ExportAgent:
             if opts.status_filter == "all":
                 _OKF_ELIGIBLE = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
                 pages = {s: p for s, p in pages.items() if p.status in _OKF_ELIGIBLE}
+            self.exportable_count = len(pages)
             from synthadoc.storage.log import AuditDB
             audit = AuditDB(self._audit_db_path)
             await audit.init()
             lc_events, _ = await audit.get_lifecycle_events(limit=100_000)
             return self._render_okf(pages, lc_events, url_staleness_days=self._url_staleness_days)
 
-        # graphml and json both need routing
+        # graphml and json both need routing; exportable_count is the same for both
+        self.exportable_count = len(pages)
         from synthadoc.core.routing import RoutingIndex
         routing = RoutingIndex.parse(self._routing_path)
 
