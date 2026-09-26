@@ -207,6 +207,12 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
         await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"FAIL {label}: timed out"})
     else:
         await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"FAIL {label}: failed"})
+    # Enforce run_lint as the mandatory next step after each ingest.
+    # The loop only fires this when the LLM writes plain text (no tool call) — so
+    # mid-sequence ingests (where the LLM correctly calls the next ingest_source)
+    # are not affected.  This catches the failure mode where the LLM writes a
+    # summary after the LAST ingest, skipping the mandatory run_lint step.
+    result["_mandatory_next_tool"] = "run_lint"
     return result
 
 

@@ -298,3 +298,58 @@ def test_synthesis_prompt_includes_scope_block():
     )
     assert "Finance domain" in prompt
     assert "Wiki scopes:" in prompt
+
+
+# ---------------------------------------------------------------------------
+# CJK translation for cross-wiki retrieval
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cjk_query_triggers_translation_before_retrieve():
+    """A Chinese question is translated to English before fan-out to /retrieve."""
+    translate_calls = []
+
+    async def _fake_translate(provider, question):
+        translate_calls.append(question)
+        return "How does von Neumann architecture influence LLM training?"
+
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    retrieve_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "von-neumann", "title": "Von Neumann", "score": 3.0, "content": "vn content"}],
+        "purpose_summary": "Computing history",
+        "routing_warning": "",
+    }
+
+    chinese_q = "冯·诺依曼架构对当今大型语言模型的大规模训练和运行有什么影响？"
+
+    with patch("synthadoc.agents.cross_wiki_query_agent.translate_for_retrieval", side_effect=_fake_translate):
+        with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)) as mock_fetch:
+            result = await agent.run(chinese_q)
+
+    assert translate_calls == [chinese_q], "translate_for_retrieval must be called with the original CJK question"
+    # The translated English question was passed to decompose / fetch
+    fetch_question = mock_fetch.call_args[0][1]  # positional arg: question
+    assert fetch_question == chinese_q  # original preserved for synthesis
+
+
+@pytest.mark.asyncio
+async def test_ascii_query_skips_translation():
+    """An ASCII question bypasses translation entirely."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    retrieve_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "p1", "title": "P1", "score": 2.0, "content": "content"}],
+        "purpose_summary": "",
+        "routing_warning": "",
+    }
+
+    with patch("synthadoc.agents.cross_wiki_query_agent.translate_for_retrieval") as mock_tr:
+        with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+            await agent.run("what is leverage?")
+
+    mock_tr.assert_not_called()
