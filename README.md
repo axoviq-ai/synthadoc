@@ -152,7 +152,7 @@ RAG retrieves document chunks at query time. Synthadoc **compiles** knowledge at
 | **Claims lack source traceability**       | `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint                      |
 | **Knowledge lifecycle invisible**         | 5-state machine (`draft → active → contradicted / stale → archived`); auto-transitions via lint; immutable event log          |
 | **Repeat ingest is expensive**            | 3-layer cache (embedding, LLM, provider prompt) — repeat lint on unchanged pages costs near-zero tokens                         |
-| **Knowledge locked in proprietary tools** | Plain Markdown + YAML frontmatter; OKF v0.2 compatible; fully offline-readable in any editor                                     |
+| **Knowledge locked in proprietary tools** | Plain Markdown + YAML frontmatter; [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) compatible; fully offline-readable in any editor                                     |
 | **Wiki structure drifts with growth**     | `scaffold` regenerates index, AGENTS.md, and purpose.md from current wiki state without touching linked pages                    |
 | **Migration requires full re-ingestion**  | Single-zip backup + restore with port/domain rewriting; no re-ingestion needed                                                   |
 | **Cost and compliance exposure**          | Localhost-only; per-job token+cost log; configurable soft-warn and hard-gate thresholds                                          |
@@ -1159,7 +1159,7 @@ synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 
 **Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (file path, or directory for `okf`; omit for stdout), `--status/-s` (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`).
 
-> **OKF export requires `--output`** — the bundle is a directory tree, not a single file.
+> **[OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) export requires `--output`** — the bundle is a directory tree, not a single file.
 
 > **OKF default pages:** `--format okf` with `--status all` (the default) includes only `active` and `contradicted` pages. Draft and stale are excluded — they carry unverified content. Contradicted pages appear with `status: draft` and `synthadoc_lifecycle: contradicted` in their frontmatter and a `> **Contradiction:** …` blockquote in the body.
 
