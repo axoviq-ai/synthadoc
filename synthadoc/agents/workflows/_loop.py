@@ -122,26 +122,27 @@ async def run_tool_call_loop(
         all_calls = _parse_all_tool_calls(text)
 
         # Retry when the response looks like a tool call attempt but didn't parse.
-        # Covers three failure modes:
+        # Covers four failure modes:
         #   (a) text starts with "{" but JSON is malformed or uses wrong wrapper
         #   (b) text has prose BEFORE an attempted {"tool_call": ...} that was
         #       truncated mid-JSON by the token limit — finditer finds nothing
         #   (c) model outputs a nonsense short stub like "[]", "{}", or "null"
         #       instead of a proper tool call (e.g. MiniMax-M2.5 initialising
         #       an internal list variable and emitting it as the response)
+        #   (d) model uses an alternate tag format: [TOOL_CALL]...[/TOOL_CALL]
+        #       or <invoke name="...">...</invoke> (Anthropic-style XML)
         _STUB_RESPONSES = {"[]", "{}", "null", "none", "true", "false", ""}
         _text_lower = text.lower()
         _looks_like_tool_attempt = (
             text.startswith("{")
             or '{"tool_call"' in text
             or _text_lower in _STUB_RESPONSES
-            # Some models (e.g. MiniMax-M2.5) emit tool calls as [TOOL_CALL]...[/TOOL_CALL]
-            # XML-style tags instead of the required JSON wire format.
             or "[tool_call]" in _text_lower
+            or "<invoke name=" in _text_lower   # Anthropic-style XML invoke format
         )
         if not all_calls and _looks_like_tool_attempt and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
-            _used_tag_format = "[tool_call]" in _text_lower
+            _used_tag_format = "[tool_call]" in _text_lower or "<invoke name=" in _text_lower
             _reason = (
                 "used an unsupported tag/XML format instead of JSON"
                 if _used_tag_format
@@ -164,7 +165,7 @@ async def run_tool_call_loop(
                         "Your previous response could not be parsed as a valid tool call "
                         f"({_reason}). "
                         "Respond with ONLY a single JSON object — no prose, no explanation, "
-                        "no [TOOL_CALL] tags, no XML, no markdown fences:\n"
+                        "no [TOOL_CALL] tags, no <invoke> tags, no XML, no markdown fences:\n"
                         '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
                     ),
                 )
@@ -285,14 +286,16 @@ async def run_tool_call_loop(
                 or '{"tool_call"' in text
                 or _text_lower_else in _STUB_RESPONSES_ELSE
                 or "[tool_call]" in _text_lower_else
+                or "<invoke name=" in _text_lower_else
             )
             if _looks_like_tool_attempt:
                 recommended = max_tokens * 2
                 _STUB_RESPONSES_MSG = {"[]", "{}", "null", "none", "true", "false", ""}
-                if "[tool_call]" in _text_lower_else:
+                if "[tool_call]" in _text_lower_else or "<invoke name=" in _text_lower_else:
+                    _fmt = "`[TOOL_CALL]`" if "[tool_call]" in _text_lower_else else "`<invoke>`"
                     err = (
-                        "⚠ The workflow could not continue because the model used an "
-                        "unsupported tag format (`[TOOL_CALL]...`) for tool calls instead "
+                        f"⚠ The workflow could not continue because the model used an "
+                        f"unsupported tag format ({_fmt}) for tool calls instead "
                         "of the required JSON wire format.\n\n"
                         "This is a model-specific behaviour — some models (e.g. MiniMax-M2.5) "
                         "default to their own tool-call syntax rather than the JSON protocol "
