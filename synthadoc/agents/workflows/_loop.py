@@ -129,19 +129,29 @@ async def run_tool_call_loop(
         #       instead of a proper tool call (e.g. MiniMax-M2.5 initialising
         #       an internal list variable and emitting it as the response)
         _STUB_RESPONSES = {"[]", "{}", "null", "none", "true", "false", ""}
+        _text_lower = text.lower()
         _looks_like_tool_attempt = (
             text.startswith("{")
             or '{"tool_call"' in text
-            or text.lower() in _STUB_RESPONSES
+            or _text_lower in _STUB_RESPONSES
+            # Some models (e.g. MiniMax-M2.5) emit tool calls as [TOOL_CALL]...[/TOOL_CALL]
+            # XML-style tags instead of the required JSON wire format.
+            or "[tool_call]" in _text_lower
         )
         if not all_calls and _looks_like_tool_attempt and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
+            _used_tag_format = "[tool_call]" in _text_lower
+            _reason = (
+                "used an unsupported tag/XML format instead of JSON"
+                if _used_tag_format
+                else "may have been cut off by the token limit"
+            )
             await ctx.send_sse_event(
                 "tool_progress",
                 {"tool": "_parse_retry",
                  "message": (
                      f"⚠ Response could not be parsed (attempt {parse_retries}/{_MAX_PARSE_RETRIES}) "
-                     "— the model's response may have been cut off by the token limit. "
+                     f"— {_reason}. "
                      "Retrying with a reminder to use the correct format…"
                  )},
             )
@@ -151,8 +161,9 @@ async def run_tool_call_loop(
                     role="user",
                     content=(
                         "Your previous response could not be parsed as a valid tool call "
-                        "(it may have been cut off by the token limit). "
-                        "Respond with ONLY the tool call JSON — no prose, no explanation:\n"
+                        f"({_reason}). "
+                        "Respond with ONLY a single JSON object — no prose, no explanation, "
+                        "no [TOOL_CALL] tags, no XML, no markdown fences:\n"
                         '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
                     ),
                 )
@@ -263,15 +274,32 @@ async def run_tool_call_loop(
             # Check whether this looks like a failed tool call after retries were
             # exhausted — if so, emit a user-friendly error instead of raw JSON.
             _STUB_RESPONSES_ELSE = {"[]", "{}", "null", "none", "true", "false", ""}
+            _text_lower_else = text.lower()
             _looks_like_tool_attempt = (
                 text.startswith("{")
                 or '{"tool_call"' in text
-                or text.lower() in _STUB_RESPONSES_ELSE
+                or _text_lower_else in _STUB_RESPONSES_ELSE
+                or "[tool_call]" in _text_lower_else
             )
             if _looks_like_tool_attempt:
                 recommended = max_tokens * 2
                 _STUB_RESPONSES_MSG = {"[]", "{}", "null", "none", "true", "false", ""}
-                if text.lower() in _STUB_RESPONSES_MSG:
+                if "[tool_call]" in _text_lower_else:
+                    err = (
+                        "⚠ The workflow could not continue because the model used an "
+                        "unsupported tag format (`[TOOL_CALL]...`) for tool calls instead "
+                        "of the required JSON wire format.\n\n"
+                        "This is a model-specific behaviour — some models (e.g. MiniMax-M2.5) "
+                        "default to their own tool-call syntax rather than the JSON protocol "
+                        "required for agentic workflows.\n\n"
+                        "**Fix options:**\n"
+                        "1. Re-run the workflow (a fresh attempt sometimes succeeds — the "
+                        "format reminder is injected automatically after each failure).\n"
+                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
+                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
+                        "`[agents]` of your `config.toml`."
+                    )
+                elif _text_lower_else in _STUB_RESPONSES_MSG:
                     err = (
                         "⚠ The workflow could not continue because the model repeatedly "
                         f"returned an empty or stub response (`{text}`) instead of a tool call.\n\n"
