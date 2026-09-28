@@ -300,7 +300,17 @@ def _free_port(port: int) -> None:
             pid_str = pid_str.strip()
             if pid_str.isdigit():
                 subprocess.run(["kill", "-9", pid_str], capture_output=True)
-        time.sleep(0.5)  # give the OS time to release the port
+        # Wait until lsof confirms the port is free (up to 5s) rather than
+        # a fixed 0.5s sleep — macOS TIME_WAIT sockets can hold the port longer.
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            check = subprocess.run(
+                ["lsof", "-t", f"-i:{port}", "-sTCP:LISTEN"],
+                capture_output=True, text=True,
+            )
+            if not check.stdout.strip():
+                break
+            time.sleep(0.2)
 
 
 def _wait_for_server(port: int, timeout: int = _WAIT_SECS) -> None:
