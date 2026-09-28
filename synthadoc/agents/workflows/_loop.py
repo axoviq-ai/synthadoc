@@ -121,11 +121,19 @@ async def run_tool_call_loop(
         all_calls = _parse_all_tool_calls(text)
 
         # Retry when the response looks like a tool call attempt but didn't parse.
-        # Covers two failure modes:
+        # Covers three failure modes:
         #   (a) text starts with "{" but JSON is malformed or uses wrong wrapper
         #   (b) text has prose BEFORE an attempted {"tool_call": ...} that was
         #       truncated mid-JSON by the token limit — finditer finds nothing
-        _looks_like_tool_attempt = text.startswith("{") or '{"tool_call"' in text
+        #   (c) model outputs a nonsense short stub like "[]", "{}", or "null"
+        #       instead of a proper tool call (e.g. MiniMax-M2.5 initialising
+        #       an internal list variable and emitting it as the response)
+        _STUB_RESPONSES = {"[]", "{}", "null", "none", "true", "false", ""}
+        _looks_like_tool_attempt = (
+            text.startswith("{")
+            or '{"tool_call"' in text
+            or text.lower() in _STUB_RESPONSES
+        )
         if not all_calls and _looks_like_tool_attempt and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
             await ctx.send_sse_event(
@@ -254,19 +262,39 @@ async def run_tool_call_loop(
         else:
             # Check whether this looks like a failed tool call after retries were
             # exhausted — if so, emit a user-friendly error instead of raw JSON.
-            _looks_like_tool_attempt = text.startswith("{") or '{"tool_call"' in text
+            _STUB_RESPONSES_ELSE = {"[]", "{}", "null", "none", "true", "false", ""}
+            _looks_like_tool_attempt = (
+                text.startswith("{")
+                or '{"tool_call"' in text
+                or text.lower() in _STUB_RESPONSES_ELSE
+            )
             if _looks_like_tool_attempt:
                 recommended = max_tokens * 2
-                err = (
-                    "⚠ The workflow could not continue because the model's response was "
-                    "repeatedly truncated or malformed.\n\n"
-                    "**Likely cause:** the model hit its token limit while generating a "
-                    "large tool call (e.g. outputting a full page's content).\n\n"
-                    f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
-                    f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
-                    f"and re-run the workflow:\n\n"
-                    f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
-                )
+                _STUB_RESPONSES_MSG = {"[]", "{}", "null", "none", "true", "false", ""}
+                if text.lower() in _STUB_RESPONSES_MSG:
+                    err = (
+                        "⚠ The workflow could not continue because the model repeatedly "
+                        f"returned an empty or stub response (`{text}`) instead of a tool call.\n\n"
+                        "This is a model-specific behaviour — some reasoning models "
+                        "(e.g. MiniMax-M2.5) do not reliably follow the JSON wire-format "
+                        "tool-call protocol required for agentic workflows.\n\n"
+                        "**Fix options:**\n"
+                        "1. Re-run the workflow (a fresh attempt sometimes succeeds).\n"
+                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
+                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
+                        "`[agents]` of your `config.toml`."
+                    )
+                else:
+                    err = (
+                        "⚠ The workflow could not continue because the model's response was "
+                        "repeatedly truncated or malformed.\n\n"
+                        "**Likely cause:** the model hit its token limit while generating a "
+                        "large tool call (e.g. outputting a full page's content).\n\n"
+                        f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                        f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                        f"and re-run the workflow:\n\n"
+                        f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
+                    )
                 for i in range(0, max(len(err), 1), _CHUNK_SIZE):
                     yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
                 yield {"event": "final_text", "data": {"text": err}}

@@ -149,11 +149,19 @@ async def tool_estimate_and_confirm(
         f"\nProceed with orphan resolver?"
     )
     result = await tool_confirm(ctx, message, yes_label="Proceed", no_label="Cancel")
-    return {
+    out: dict = {
         **result,
         "orphan_count": orphan_count,
         "estimated_usd": round(estimated_usd, 4),
     }
+    # After confirmation the LLM must start the per-orphan loop immediately
+    # (STEP 4a: call tool_verify_orphan_resolved for the first orphan).
+    # Setting _mandatory_next_tool makes the tool-call loop enforce this — if
+    # the LLM produces plain text or an empty list instead of a tool call,
+    # the loop injects a one-time correction and retries.
+    if out.get("confirmed"):
+        out["_mandatory_next_tool"] = "tool_verify_orphan_resolved"
+    return out
 
 
 # ---------------------------------------------------------------------------
