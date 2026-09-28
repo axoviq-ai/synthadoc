@@ -75,7 +75,6 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # Alternatives (uncomment and restart to switch):
 # default = { provider = "gemini",    model = "gemini-2.5-flash" }         # free tier: 10 RPM / 250 RPD
 # default = { provider = "gemini",    model = "gemini-1.5-flash" }         # free tier: 15 RPM / 1,500 RPD
-# default = { provider = "minimax",   model = "MiniMax-M2.5" }             # paid, cheapest text-only ($0.15/M in)
 # default = { provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }  # paid, M3 with thinking off (faster, cheaper)
 # default = { provider = "groq",      model = "llama-3.3-70b-versatile" }  # free tier, 100K tokens/day
 # default = { provider = "anthropic", model = "claude-sonnet-4-6" }        # paid, high quality

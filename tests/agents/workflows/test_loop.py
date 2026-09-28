@@ -528,6 +528,78 @@ async def test_loop_enforces_mandatory_next_tool_when_llm_produces_plain_text():
     assert any(e["event"] == "final_text" for e in results)
 
 
+@pytest.mark.asyncio
+async def test_loop_stub_response_exhausted_emits_stub_error():
+    """After _MAX_PARSE_RETRIES of stub responses the loop emits the stub-error
+    message (covering line 311 — the elif for _STUB_RESPONSES_MSG)."""
+    ctx, _ = _make_ctx()
+    call_count = 0
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        return CompletionResponse(text="[]", input_tokens=5, output_tokens=5)
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="do something",
+        tool_fns={},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    final_events = [e for e in results if e["event"] == "final_text"]
+    token_events = [e for e in results if e["event"] == "token"]
+    assert len(final_events) == 1
+    full_text = "".join(e["data"]["text"] for e in token_events) + final_events[0]["data"]["text"]
+    assert "stub" in full_text.lower() or "empty" in full_text.lower()
+    assert "⚠" in full_text
+
+
+@pytest.mark.asyncio
+async def test_loop_invoke_xml_format_exhausted_emits_tag_error():
+    """After _MAX_PARSE_RETRIES of <invoke name=...> responses the loop emits
+    the tag-format terminal error (covering lines 295-296, 311)."""
+    ctx, _ = _make_ctx()
+    call_count = 0
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        return CompletionResponse(
+            text='<invoke name="tool_read_page_content"><arg name="slug">test</arg></invoke>',
+            input_tokens=5,
+            output_tokens=5,
+        )
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="do something",
+        tool_fns={},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    final_events = [e for e in results if e["event"] == "final_text"]
+    token_events = [e for e in results if e["event"] == "token"]
+    assert len(final_events) == 1
+    full_text = "".join(e["data"]["text"] for e in token_events) + final_events[0]["data"]["text"]
+    assert "<invoke>" in full_text or "invoke" in full_text.lower()
+    assert "unsupported" in full_text.lower() or "tag" in full_text.lower()
+    # Consumed initial + 2 retries + 1 exhausted = 4 calls total
+    assert call_count <= 4
+
+
 async def test_loop_mandatory_next_tool_exhausted_after_one_retry():
     """If the LLM still produces plain text after the enforcement injection,
     the loop exits to plain text (no infinite retry)."""

@@ -231,7 +231,6 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # Alternatives (uncomment and restart to switch):
 # default = {{ provider = "gemini",    model = "gemini-2.5-flash" }}         # free tier: 10 RPM / 250 RPD
 # default = {{ provider = "gemini",    model = "gemini-3.5-flash-lite" }}    # free tier: budget option ($0.30/$2.50)
-# default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}             # paid, cheapest text-only ($0.15/M in)
 # default = {{ provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }}  # paid, M3 with thinking off (faster, cheaper)
 # default = {{ provider = "groq",      model = "openai/gpt-oss-20b" }}  # paid, $0.075/$0.30 per 1M tokens
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
@@ -244,7 +243,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
-# LLM call timeout — useful for reasoning models (e.g. MiniMax-M2.5, MiniMax-M3 with thinking enabled) that can
+# LLM call timeout — useful for reasoning models (e.g. MiniMax-M3 with thinking enabled) that can
 # spend 2+ minutes on a single prompt and return an empty response instead of
 # raising an error.  Setting this causes synthadoc to fail fast with a clear
 # log message so you know to adjust the model or prompt size.
@@ -259,6 +258,13 @@ scaffold_max_tokens = 32768
 # Output token budget for query synthesis (the answer returned to the user).
 # Raise if answers are cut off mid-sentence with long-context reasoning models.
 query_max_tokens = 8192
+#
+# Output token budget for agentic workflow tool calls (orphan resolver,
+# contradiction resolver, broken-wikilinks resolver, etc.).
+# Raise if workflows exit early with a "response truncated" error — this
+# happens when a tool call must output a full page's content and the default
+# budget is too small.  32768 is recommended for wikis with large pages.
+workflow_max_tokens = 16384
 
 [ingest]
 max_pages_per_ingest = 15

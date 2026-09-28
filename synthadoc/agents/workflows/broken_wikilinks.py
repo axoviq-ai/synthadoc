@@ -182,6 +182,7 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
 
     NAME = "broken-wikilinks"
     DESCRIPTION = "Scan all pages for broken [[wikilinks]] and fix them interactively."
+    RERUN_HINT = "Fix broken wikilinks"
 
     MATCH_RE = re.compile(
         r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"

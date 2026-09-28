@@ -2397,6 +2397,950 @@ async def test_broken_wikilinks_cli_path_fix_error_shown_in_summary(tmp_path):
     assert "write permission denied" in token_text
 
 
+# ── _match_fast_path affirmative rerun ────────────────────────────────────────
+
+def test_match_fast_path_affirmative_with_rerun_hint_in_history(tmp_path):
+    """'yes' after an assistant message containing RERUN_HINT triggers that workflow."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "run orphan resolver"},
+        {
+            "role": "assistant",
+            "content": (
+                '⚠ The workflow reached its tool-call limit (300 calls) before completing. '
+                'Type **yes** or click the **"Run orphan resolver"** hint chip to continue.'
+            ),
+        },
+    ]
+    result = agent._match_fast_path("yes", history)
+    assert result is not None
+    wf, effective_q = result
+    assert isinstance(wf, OrphanResolverWorkflow)
+    assert effective_q == "Run orphan resolver"
+
+
+def test_match_fast_path_affirmative_without_history_returns_none(tmp_path):
+    """'yes' alone with no history must not match the affirmative path."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    result = agent._match_fast_path("yes", None)
+    assert result is None
+
+
+def test_match_fast_path_affirmative_history_no_rerun_hint_returns_none(tmp_path):
+    """'yes' when the last assistant message has no RERUN_HINT must not match."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "what is the meaning of life?"},
+        {"role": "assistant", "content": "42"},
+    ]
+    result = agent._match_fast_path("yes", history)
+    assert result is None
+
+
+def test_detect_affirmative_with_rerun_hint_returns_true(tmp_path):
+    """detect() returns True for 'yes' when history has RERUN_HINT."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "run contradiction resolver"},
+        {
+            "role": "assistant",
+            "content": (
+                "⚠ Reached tool-call limit. "
+                'Click "Run contradiction resolver" to continue.'
+            ),
+        },
+    ]
+    assert agent.detect("yes", history=history) is True
+
+
+def test_detect_affirmative_no_rerun_hint_break_path(tmp_path):
+    """detect() hits break (line 293) when 'yes' with history but no RERUN_HINT."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "what is AI?"},
+        {"role": "assistant", "content": "AI is artificial intelligence."},
+    ]
+    assert agent.detect("yes", history=history) is False
+
+
+def test_match_fast_path_match_re_on_question(tmp_path):
+    """_match_fast_path returns a workflow via MATCH_RE when no affirmative (line 365-366)."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    agent, _ = _make_agent(tmp_path, "{}")
+    result = agent._match_fast_path("run orphan resolver", None)
+    assert result is not None
+    wf, q = result
+    assert isinstance(wf, OrphanResolverWorkflow)
+
+
+# ── run_gen code paths ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_gen_extraction_none_returns_early(tmp_path):
+    """run_gen returns early (line 399) when JSON extraction fails."""
+    agent, _ = _make_agent(tmp_path, "not-json-at-all")
+    events = []
+    async for evt in agent.run_gen("what is the meaning of life?"):
+        events.append(evt)
+    assert all(e["event"] == "tool_progress" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_run_gen_orchestrate_action_calls_run_orchestrate(tmp_path):
+    """run_gen routes action=orchestrate to _run_orchestrate (lines 405-407)."""
+    agent, _ = _make_agent(tmp_path, '{"action": "orchestrate", "params": {}}')
+
+    async def _fake_orchestrate(question, session_id=None, session_mode=None):
+        yield {"event": "token", "data": {"text": "orchestrating!"}}
+
+    agent._run_orchestrate = _fake_orchestrate
+
+    events = []
+    async for evt in agent.run_gen("what is the meaning of life?"):
+        events.append(evt)
+
+    assert any(e.get("data", {}).get("text") == "orchestrating!" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_run_gen_dispatch_exception_handled(tmp_path):
+    """run_gen catches exception from _dispatch (lines 410-412) and returns error result."""
+    agent, _ = _make_agent(tmp_path, '{"action": "lint", "params": {}}')
+
+    with patch.object(agent, "_dispatch", side_effect=RuntimeError("kaboom")):
+        events = []
+        async for evt in agent.run_gen("what is the meaning of life?"):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "kaboom" in token_text
+
+
+@pytest.mark.asyncio
+async def test_run_gen_dispatch_returns_none(tmp_path):
+    """run_gen returns early (line 417) when _dispatch returns None."""
+    agent, _ = _make_agent(tmp_path, '{"action": "lint", "params": {}}')
+
+    with patch.object(agent, "_dispatch", new=AsyncMock(return_value=None)):
+        events = []
+        async for evt in agent.run_gen("what is the meaning of life?"):
+            events.append(evt)
+
+    event_types = [e["event"] for e in events]
+    assert "done" not in event_types
+    assert "token" not in event_types
+
+
+@pytest.mark.asyncio
+async def test_run_gen_needs_clarification_emits_clarify(tmp_path):
+    """run_gen emits clarify event (lines 419-425) when result.needs_clarification is True."""
+    from synthadoc.agents.action_agent import ActionResult
+    agent, _ = _make_agent(tmp_path, '{"action": "lint", "params": {}}')
+
+    clarify_result = ActionResult(
+        action_type="lint",
+        success=False,
+        message="",
+        needs_clarification=True,
+        clarify_prompt="Which scope?",
+        clarify_candidates=["all", "scope:ai"],
+    )
+
+    with patch.object(agent, "_dispatch", new=AsyncMock(return_value=clarify_result)):
+        events = []
+        async for evt in agent.run_gen("what is the meaning of life?"):
+            events.append(evt)
+
+    event_types = [e["event"] for e in events]
+    assert "clarify" in event_types
+    assert "done" in event_types
+
+
+@pytest.mark.asyncio
+async def test_run_gen_pre_prompt_included_when_present(tmp_path):
+    """run_gen adds pre_prompt to done data (line 438) when _build_pre_prompt returns something."""
+    from synthadoc.agents.action_agent import ActionResult
+    agent, _ = _make_agent(tmp_path, '{"action": "lint", "params": {}}')
+
+    lint_result = ActionResult(
+        action_type="lint",
+        success=True,
+        message="Found 2 orphan pages. Run the orphan resolver to fix them.",
+    )
+
+    with patch.object(agent, "_dispatch", new=AsyncMock(return_value=lint_result)):
+        with patch(
+            "synthadoc.agents.query_agent._build_pre_prompt",
+            return_value="pre-prompt-content",
+        ):
+            events = []
+            async for evt in agent.run_gen("what is the meaning of life?"):
+                events.append(evt)
+
+    done_event = next((e for e in events if e["event"] == "done"), None)
+    assert done_event is not None
+    assert done_event["data"].get("pre_prompt") == "pre-prompt-content"
+
+
+# ── _run_loop exception surfacing ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_orchestrate_surfaces_max_tokens_exception(tmp_path):
+    """When run_tool_call_loop raises an exception containing 'max_tokens',
+    _run_orchestrate must emit a user-visible token event with the fix hint."""
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    class _StubWorkflow(AgenticWorkflow):
+        NAME = "stub"
+        DESCRIPTION = "stub"
+        async def build_system_prompt(self) -> str:
+            return "sys"
+        def build_initial_message(self, user_input: str) -> str:
+            return user_input
+        def get_tool_fns(self, ctx) -> dict:
+            return {}
+
+    provider = MagicMock()
+
+    async def _bad_complete(messages, system=None, **_kw):
+        raise ValueError("max_tokens value 999999 exceeds model limit")
+
+    provider.complete = _bad_complete
+
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents = MagicMock()
+    orch._cfg.agents.workflow_max_tokens = 16384
+
+    agent = ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path)
+
+    events = []
+    async for evt in agent._run_orchestrate("do something", workflow=_StubWorkflow()):
+        events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "workflow_max_tokens" in token_text
+    assert "⚠" in token_text
+
+
+@pytest.mark.asyncio
+async def test_run_orchestrate_surfaces_generic_exception(tmp_path):
+    """When run_tool_call_loop raises a non-max_tokens exception, _run_orchestrate
+    emits a generic user-visible error token."""
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    class _StubWorkflow2(AgenticWorkflow):
+        NAME = "stub2"
+        DESCRIPTION = "stub2"
+        async def build_system_prompt(self) -> str:
+            return "sys"
+        def build_initial_message(self, user_input: str) -> str:
+            return user_input
+        def get_tool_fns(self, ctx) -> dict:
+            return {}
+
+    provider = MagicMock()
+
+    async def _failing_complete(messages, system=None, **_kw):
+        raise RuntimeError("something exploded")
+
+    provider.complete = _failing_complete
+
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents = MagicMock()
+    orch._cfg.agents.workflow_max_tokens = 16384
+
+    agent = ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path)
+
+    events = []
+    async for evt in agent._run_orchestrate("do something", workflow=_StubWorkflow2()):
+        events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "unexpected error" in token_text.lower() or "exploded" in token_text
+    assert "⚠" in token_text
+
+
+# ── broken_citation_resolver additional paths ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_cancelled(tmp_path):
+    """run_for_cli_provider emits cancellation message when user declines (lines 348-351)."""
+    from unittest.mock import AsyncMock as _AsyncMock, patch as _patch
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenCitationResolverWorkflow()
+
+    scan_result = {
+        "pages": [{"slug": "pg", "title": "Pg", "issues": [
+            {"citation": "^[bad]", "reason": "malformed"},
+        ], "page_sources": []}],
+        "total_issues": 1,
+        "scanned": 1,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
+            events.append(evt)
+
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("cancelled" in t.lower() for t in texts)
+    assert any(e["event"] == "final_text" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_no_close_match(tmp_path):
+    """broken_ref with no fuzzy match gets new_citation=None (line 318)."""
+    from unittest.mock import AsyncMock as _AsyncMock, patch as _patch
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenCitationResolverWorkflow()
+
+    scan_result = {
+        "pages": [{"slug": "pg", "title": "Pg", "issues": [
+            # broken_ref but the filename is completely different from any source
+            {"citation": "^[zzz-nonexistent-file.txt:1-5]", "reason": "broken_ref"},
+        ], "page_sources": ["other-source.txt"]}],
+        "total_issues": 1,
+        "scanned": 1,
+    }
+
+    applied_fixes: list[dict] = []
+
+    async def _fake_apply(ctx, page_slug, fixes):
+        applied_fixes.extend(fixes)
+        return {"status": "success", "changes": len(fixes), "page": page_slug}
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_apply_citation_fixes",
+        new=_fake_apply,
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_get_wiki_status",
+        new=_AsyncMock(return_value={"active": 1, "contradicted": 0, "stale": 0, "draft": 0, "archived": 0}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
+            events.append(evt)
+
+    assert any(applied_fixes), "Fixes should be applied even with null new_citation"
+    null_fix = next((f for f in applied_fixes if f["new_citation"] is None), None)
+    assert null_fix is not None
+
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_failed_apply(tmp_path):
+    """run_for_cli_provider handles a failed apply_citation_fixes (lines 367, 395-398)."""
+    from unittest.mock import AsyncMock as _AsyncMock, patch as _patch
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenCitationResolverWorkflow()
+
+    scan_result = {
+        "pages": [{"slug": "pg", "title": "Pg", "issues": [
+            {"citation": "^[bad]", "reason": "malformed"},
+        ], "page_sources": []}],
+        "total_issues": 1,
+        "scanned": 1,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_apply_citation_fixes",
+        new=_AsyncMock(return_value={"status": "error", "error": "write permission denied"}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_get_wiki_status",
+        new=_AsyncMock(return_value={"active": 1}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "⚠ Error" in token_text or "Failed" in token_text
+
+
+# ── contradiction_resolver additional paths ───────────────────────────────────
+
+def test_contradiction_resolver_get_tool_budget():
+    """get_tool_budget() returns the expected value (line 293)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf.get_tool_budget() == 250
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_slug_filter(tmp_path):
+    """A --slug flag filters pages to that slug (line 377)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [
+            {"slug": "page-a", "type": "gate"},
+            {"slug": "page-b", "type": "gate"},
+        ]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve --slug page-a", MagicMock()):
+            events.append(evt)
+
+    # Cost estimate was called with only 1 page (the slug filter left 1)
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("cancelled" in t.lower() for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_unknown_type_clean_lint(tmp_path):
+    """Unknown-type page with clean lint is transitioned to active (lines 410-424)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    mock_format_summary = _AsyncMock()
+    fake_provider = MagicMock()
+    from synthadoc.providers.base import CompletionResponse as _CR
+    fake_provider.complete = _AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-u", "type": "unknown"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_run_scoped_lint",
+        new=_AsyncMock(return_value={"pass": True, "warnings_count": 0}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_transition_lifecycle_state",
+        new=_AsyncMock(return_value={"status": "success"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-u", "content": "# Page", "lint_warnings": [], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    fixed_arg = call_args.args[1]
+    assert any(item.get("slug") == "page-u" for item in fixed_arg)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_rewrite_failed(tmp_path):
+    """When _cli_rewrite_page returns None, the page is added to unresolved (lines 443-448)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    mock_format_summary = _AsyncMock()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-r", "type": "gate"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-r", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_notify",
+        new=_AsyncMock(return_value={"status": "ok"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        with patch.object(wf, "_cli_rewrite_page", new=_AsyncMock(return_value=None)):
+            events = []
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()):
+                events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    unresolved_arg = call_args.args[2]
+    assert any(item.get("slug") == "page-r" for item in unresolved_arg)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_inter_page_confirm_cancel(tmp_path):
+    """After resolving page 1, declining inter-page confirm skips remaining (lines 497-506)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+
+    mock_format_summary = _AsyncMock()
+    confirm_calls: list[str] = []
+
+    async def _mock_confirm(ctx, message, yes_label="Yes", no_label="No"):
+        confirm_calls.append(message)
+        # Decline the inter-page confirm (which contains "Continue to next page")
+        if "Continue to next page" in message:
+            return {"confirmed": False}
+        return {"confirmed": True}
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [
+            {"slug": "page-1", "type": "gate"},
+            {"slug": "page-2", "type": "gate"},
+        ]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-1", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_run_scoped_lint",
+        new=_AsyncMock(return_value={"pass": True, "warnings_count": 0}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_transition_lifecycle_state",
+        new=_AsyncMock(return_value={"status": "success"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_confirm",
+        new=_mock_confirm,
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    skipped_arg = call_args.args[3]
+    assert "page-2" in skipped_arg, f"page-2 should be skipped; got: {skipped_arg}"
+    assert any("Continue to next page" in c for c in confirm_calls)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_conflict_type_reads_source(tmp_path):
+    """Conflict-type page triggers source content read (lines 434-435)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+
+    mock_format_summary = _AsyncMock()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-c", "type": "conflict"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-c", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_source_content",
+        new=_AsyncMock(return_value={"source_text": "The authoritative source text."}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_run_scoped_lint",
+        new=_AsyncMock(return_value={"pass": True, "warnings_count": 0}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_transition_lifecycle_state",
+        new=_AsyncMock(return_value={"status": "success"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    fixed_arg = call_args.args[1]
+    assert any(item.get("slug") == "page-c" for item in fixed_arg)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_apply_not_applied_skips(tmp_path):
+    """When tool_propose_and_apply returns applied=False, page goes to skipped (line 463)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+    mock_format_summary = _AsyncMock()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-s", "type": "gate"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-s", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": False}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    skipped_arg = call_args.args[3]
+    assert "page-s" in skipped_arg
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_lint_fails_after_apply(tmp_path):
+    """When lint fails after applying rewrite, page goes to unresolved (lines 480-490)."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+    mock_format_summary = _AsyncMock()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-f", "type": "gate"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-f", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_run_scoped_lint",
+        new=_AsyncMock(return_value={"pass": False, "warnings_count": 3}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_notify",
+        new=_AsyncMock(return_value={"status": "ok"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    unresolved_arg = call_args.args[2]
+    assert any(item.get("slug") == "page-f" for item in unresolved_arg)
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_cli_rewrite_contradiction_note(tmp_path):
+    """_cli_rewrite_page uses contradiction_note when provided (line 542)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    wf = ContradictionResolverWorkflow()
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+
+    result = await wf._cli_rewrite_page(
+        provider,
+        slug="page-x",
+        page_content={"slug": "page-x", "content": "# Page\nOriginal.", "lint_warnings": [], "contradiction_note": "contradicts source"},
+        source_text=None,
+        page_type="gate",
+    )
+    assert result is not None
+    assert "Revised" in result
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_cli_rewrite_no_signals(tmp_path):
+    """_cli_rewrite_page handles empty lint_warnings and no contradiction_note (lines 544-547)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    wf = ContradictionResolverWorkflow()
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=_CR(
+        text="# Revised\nHedged.", input_tokens=10, output_tokens=5,
+    ))
+
+    result = await wf._cli_rewrite_page(
+        provider,
+        slug="page-x",
+        page_content={"slug": "page-x", "content": "# Page\nOriginal.", "lint_warnings": [], "contradiction_note": None},
+        source_text=None,
+        page_type="gate",
+    )
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_cli_rewrite_source_text(tmp_path):
+    """_cli_rewrite_page includes source_text block when provided (line 551)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    wf = ContradictionResolverWorkflow()
+
+    captured_msgs = []
+
+    async def _fake_complete(messages, system=None, **_kw):
+        captured_msgs.extend(messages)
+        return _CR(text="# Revised\nHedged.", input_tokens=10, output_tokens=5)
+
+    provider = MagicMock()
+    provider.complete = _fake_complete
+
+    await wf._cli_rewrite_page(
+        provider,
+        slug="page-x",
+        page_content={"slug": "page-x", "content": "# Page", "lint_warnings": ["bad claim"], "contradiction_note": None},
+        source_text="The ground truth source.",
+        page_type="conflict",
+    )
+
+    user_content = captured_msgs[0].content if captured_msgs else ""
+    assert "ground truth source" in user_content
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_cli_rewrite_fenced_response(tmp_path):
+    """_cli_rewrite_page strips markdown fences from response (lines 579-583)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    wf = ContradictionResolverWorkflow()
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=_CR(
+        text="```markdown\n# Revised\nHedged.\n```",
+        input_tokens=10, output_tokens=5,
+    ))
+
+    result = await wf._cli_rewrite_page(
+        provider,
+        slug="page-x",
+        page_content={"slug": "page-x", "content": "# Page", "lint_warnings": ["claim"], "contradiction_note": None},
+        source_text=None,
+        page_type="gate",
+    )
+    assert result is not None
+    assert not result.startswith("```")
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_cli_rewrite_provider_exception(tmp_path):
+    """_cli_rewrite_page returns None when provider.complete raises (lines 585-587)."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+
+    wf = ContradictionResolverWorkflow()
+    provider = MagicMock()
+    provider.complete = AsyncMock(side_effect=RuntimeError("API error"))
+
+    result = await wf._cli_rewrite_page(
+        provider,
+        slug="page-x",
+        page_content={"slug": "page-x", "content": "# Page", "lint_warnings": ["claim"], "contradiction_note": None},
+        source_text=None,
+        page_type="gate",
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_unknown_type_dirty_lint(tmp_path):
+    """Line 427: page_type reassigned to 'gate' when unknown type fails scoped lint."""
+    from unittest.mock import AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse as _CR
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ContradictionResolverWorkflow()
+    mock_format_summary = _AsyncMock()
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_get_contradicted_pages",
+        new=_AsyncMock(return_value={"pages": [{"slug": "page-u", "type": "unknown"}]}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_cost_estimate",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_run_scoped_lint",
+        new=_AsyncMock(return_value={"pass": False, "warnings_count": 2}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "page-u", "content": "# Page", "lint_warnings": ["bad"], "contradiction_note": None}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_notify",
+        new=_AsyncMock(return_value={"status": "ok"}),
+    ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+        new=mock_format_summary,
+    ):
+        with patch.object(wf, "_cli_rewrite_page", new=_AsyncMock(return_value=None)):
+            events = []
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()):
+                events.append(evt)
+
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    unresolved_arg = call_args.args[2]
+    assert any(item.get("slug") == "page-u" for item in unresolved_arg)
+
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_no_changes_when_decisions_empty(tmp_path):
+    """Line 401: 'No changes were applied.' when user confirms but no fixes were computed."""
+    from unittest.mock import AsyncMock as _AsyncMock, patch as _patch
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenCitationResolverWorkflow()
+
+    # total_issues > 0 so we pass the early-exit, but no page has issues → decisions=[]
+    scan_result = {
+        "pages": [{"slug": "pg", "title": "Pg", "issues": [], "page_sources": []}],
+        "total_issues": 1,
+        "scanned": 1,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_get_wiki_status",
+        new=_AsyncMock(return_value={"active": 1, "contradicted": 0}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
+            events.append(evt)
+
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("No changes were applied" in t for t in texts)
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():

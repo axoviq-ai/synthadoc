@@ -110,6 +110,53 @@ _REPEAT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Short affirmatives that mean "yes, do what you just asked" in a multi-turn
+# workflow session — matched only when recent history contains a RERUN_HINT.
+_AFFIRMATIVE_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|yup|sure|ok|okay|continue|proceed|go\s+ahead|do\s+it|"
+    r"sounds\s+good|let(?:'s|\s+us)\s+(?:do\s+it|continue|proceed)|"
+    r"yes\s+(?:please|continue|proceed|do\s+it))\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+def _find_rerun_hint_in_history(
+    history: list[dict],
+) -> "tuple[type, str] | None":
+    """Scan the most recent assistant message in *history* for a workflow RERUN_HINT.
+
+    Returns ``(workflow_class, hint_text)`` when found, else ``None``.
+    Checks only the most recent assistant message within the last 8 entries.
+    """
+    for msg in reversed(history[-8:]):
+        if msg.get("role") == "assistant":
+            content_lower = msg.get("content", "").lower()
+            for wf_cls in ROUTED_WORKFLOWS:
+                hint = getattr(wf_cls, "RERUN_HINT", None)
+                if hint and hint.lower() in content_lower:
+                    return wf_cls, hint
+            break
+    return None
+
+
+def _format_workflow_error(exc: Exception, workflow_max_tokens: int) -> str:
+    """Return a user-visible error message for a workflow loop exception.
+
+    Distinguishes a ``workflow_max_tokens`` misconfiguration (the requested
+    token budget exceeds the model's hard limit) from any other provider error,
+    giving the user a concrete fix in the former case.
+    """
+    exc_str = str(exc)
+    if "max tokens" in exc_str.lower() or "max_tokens" in exc_str.lower():
+        return (
+            f"⚠ The workflow could not start because `workflow_max_tokens` "
+            f"({workflow_max_tokens:,}) exceeds this model's limit.\n\n"
+            f"**Fix:** lower `workflow_max_tokens` in `[agents]` of your "
+            f"`config.toml` to a value the model accepts, then re-run:\n\n"
+            f"```toml\n[agents]\nworkflow_max_tokens = 131072\n```"
+        )
+    return f"⚠ The workflow encountered an unexpected error: {exc_str}"
+
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -269,6 +316,9 @@ class ActionAgent(BaseAgent):
             # "run it again" / "repeat" / "again" — route to action agent so the
             # LLM can look at history and re-run the previous action.
             return True
+        if history and _AFFIRMATIVE_RE.match(question):
+            if _find_rerun_hint_in_history(history) is not None:
+                return True
         if history:
             lookback = (
                 self._orch._cfg.chat.clarify_lookback
@@ -316,6 +366,35 @@ class ActionAgent(BaseAgent):
         """Return None when _run raises (treated as 'not an action')."""
         return None
 
+    def _match_fast_path(
+        self,
+        question: str,
+        history: list[dict] | None,
+    ) -> "tuple[AgenticWorkflow | None, str] | None":
+        """Return (workflow_instance, effective_question) if a routing fast path matched.
+
+        Returns None when no fast path applies — caller should fall through to LLM
+        extraction.  A None workflow with a non-None return means slug-reingest
+        (``_run_orchestrate`` defaults to IngestLintWorkflow when workflow=None).
+        """
+        # 1. Short affirmative + recent RERUN_HINT in history → re-trigger that workflow.
+        if history and _AFFIRMATIVE_RE.match(question):
+            match = _find_rerun_hint_in_history(history)
+            if match is not None:
+                wf_cls, hint = match
+                return wf_cls(), hint
+
+        # 2. Workflow MATCH_RE on the question itself.
+        for wf_cls in ROUTED_WORKFLOWS:
+            if wf_cls.MATCH_RE and wf_cls.MATCH_RE.search(question):
+                return wf_cls(), question
+
+        # 3. Slug-based reingest (no specific workflow — defaults to IngestLintWorkflow).
+        if _SLUG_REINGEST_RE.search(question):
+            return None, question
+
+        return None
+
     async def run_gen(
         self,
         question: str,
@@ -331,17 +410,11 @@ class ActionAgent(BaseAgent):
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
 
-        # Fast-path: registry-based workflow routing (no LLM extraction).
-        # Each workflow declares its own MATCH_RE; first match wins.
-        for _wf_cls in ROUTED_WORKFLOWS:
-            if _wf_cls.MATCH_RE and _wf_cls.MATCH_RE.search(question):
-                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls(), session_mode=session_mode):
-                    yield evt
-                return
-
-        # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
-        if _SLUG_REINGEST_RE.search(question):
-            async for evt in self._run_orchestrate(question, session_id=session_id, session_mode=session_mode):
+        # Fast-path routing: affirmative-rerun, MATCH_RE, and slug-reingest.
+        _fast = self._match_fast_path(question, history)
+        if _fast is not None:
+            _wf, _q = _fast
+            async for evt in self._run_orchestrate(_q, session_id=session_id, workflow=_wf, session_mode=session_mode):
                 yield evt
             return
 
@@ -454,6 +527,11 @@ class ActionAgent(BaseAgent):
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
 
+        _agents_cfg = getattr(_cfg, "agents", None)
+        _workflow_max_tokens = int(
+            getattr(_agents_cfg, "workflow_max_tokens", 16384) or 16384
+        )
+
         # ── Provider compatibility guard ──────────────────────────────────────
         # Coding-tool CLI providers (claude-code, opencode) are themselves full
         # agents with their own identity, tool-calling mechanism, and safety
@@ -513,8 +591,17 @@ class ActionAgent(BaseAgent):
                         provider=self._provider,
                         ctx=ctx,
                         budget=budget,
+                        max_tokens=_workflow_max_tokens,
+                        rerun_hint=getattr(wf, "RERUN_HINT", None),
                     ):
                         await sse_queue.put(evt)
+                except Exception as _exc:
+                    # Surface provider-level errors as user-visible messages
+                    # instead of silent task failure.
+                    _err = _format_workflow_error(_exc, _workflow_max_tokens)
+                    logger.error("workflow loop error (%s): %s", wf.NAME, _exc)
+                    await sse_queue.put({"event": "token", "data": {"text": _err}})
+                    await sse_queue.put({"event": "final_text", "data": {"text": _err}})
                 finally:
                     await sse_queue.put(_SENTINEL)
 
@@ -540,6 +627,32 @@ class ActionAgent(BaseAgent):
                         "next_hints": HintEngine.after_response(_final_text, session_mode),
                         "cacheable": False,
                     }
+                    # When the workflow loop emitted a token-limit error, replace
+                    # the generic hints with actionable config guidance.
+                    if "workflow_max_tokens" in _final_text:
+                        _recommended = _workflow_max_tokens * 2
+                        _done_data["next_hints"] = [
+                            f"Increase workflow_max_tokens to {_recommended}",
+                            "Run lint and report",
+                            "Run orphan resolver",
+                        ]
+                    # When the workflow hit its tool-call budget or ended with
+                    # incomplete work (skipped / unresolved items), inject the
+                    # workflow's own RERUN_HINT chip so the user can continue
+                    # with one click instead of having to type the command.
+                    _rerun_hint = getattr(wf, "RERUN_HINT", None)
+                    if _rerun_hint:
+                        _incomplete = (
+                            "tool-call limit" in _final_text       # budget exhausted
+                            or "Skipped (" in _final_text           # orphan-resolver skipped list
+                            or "⏭ Skipped" in _final_text
+                            or "Unresolved (" in _final_text        # any workflow unresolved list
+                            or "⚠ Unresolved" in _final_text
+                        )
+                        if _incomplete and _rerun_hint not in _done_data.get("next_hints", []):
+                            _done_data["next_hints"] = [_rerun_hint] + list(
+                                _done_data.get("next_hints", [])[:2]
+                            )
                     _wf_pre_prompt = _build_pre_prompt(_final_text)
                     if _wf_pre_prompt:
                         _done_data["pre_prompt"] = _wf_pre_prompt
