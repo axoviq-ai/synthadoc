@@ -267,6 +267,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     NAME = "contradiction-resolver"
     DESCRIPTION = "Interactively resolve pages in 'contradicted' state (diff-before-write approval)."
     CLI_ARGS = "[--slug SLUG]  [--type adversarial|source-conflict]"
+    RERUN_HINT = "Run contradiction resolver"
 
     MATCH_RE: re.Pattern = re.compile(
         r"\bcontradiction.{0,30}\bresolv"
