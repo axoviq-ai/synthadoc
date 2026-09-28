@@ -46,6 +46,27 @@ _TOOL_LABELS: dict[str, str] = {
     "tool_cost_estimate":              "Estimating cost",
 }
 
+# Short stub responses some models emit instead of a proper tool call
+# (e.g. MiniMax-M2.5 initialising an internal variable and emitting it).
+_STUB_RESPONSES: frozenset[str] = frozenset({"[]", "{}", "null", "none", "true", "false", ""})
+
+
+def _looks_like_tool_attempt(text: str) -> bool:
+    """Return True when *text* looks like a failed tool call attempt.
+
+    Covers four failure modes: malformed JSON starting with ``{``, truncated
+    JSON with ``{"tool_call"`` prefix, a short stub response (``[]``, ``null``,
+    etc.), and an unsupported tag format (``[TOOL_CALL]`` or ``<invoke name=``).
+    """
+    t = text.lower()
+    return (
+        text.startswith("{")
+        or '{"tool_call"' in text
+        or t in _STUB_RESPONSES
+        or "[tool_call]" in t
+        or "<invoke name=" in t
+    )
+
 
 def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     """Return ``(tool_name, tool_input_dict)`` when *text* contains a tool call, else ``None``."""
@@ -122,26 +143,10 @@ async def run_tool_call_loop(
         all_calls = _parse_all_tool_calls(text)
 
         # Retry when the response looks like a tool call attempt but didn't parse.
-        # Covers four failure modes:
-        #   (a) text starts with "{" but JSON is malformed or uses wrong wrapper
-        #   (b) text has prose BEFORE an attempted {"tool_call": ...} that was
-        #       truncated mid-JSON by the token limit — finditer finds nothing
-        #   (c) model outputs a nonsense short stub like "[]", "{}", or "null"
-        #       instead of a proper tool call (e.g. MiniMax-M2.5 initialising
-        #       an internal list variable and emitting it as the response)
-        #   (d) model uses an alternate tag format: [TOOL_CALL]...[/TOOL_CALL]
-        #       or <invoke name="...">...</invoke> (Anthropic-style XML)
-        _STUB_RESPONSES = {"[]", "{}", "null", "none", "true", "false", ""}
-        _text_lower = text.lower()
-        _looks_like_tool_attempt = (
-            text.startswith("{")
-            or '{"tool_call"' in text
-            or _text_lower in _STUB_RESPONSES
-            or "[tool_call]" in _text_lower
-            or "<invoke name=" in _text_lower   # Anthropic-style XML invoke format
-        )
-        if not all_calls and _looks_like_tool_attempt and parse_retries < _MAX_PARSE_RETRIES:
+        # See _looks_like_tool_attempt for the four failure modes it detects.
+        if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
+            _text_lower = text.lower()
             _used_tag_format = "[tool_call]" in _text_lower or "<invoke name=" in _text_lower
             _reason = (
                 "used an unsupported tag/XML format instead of JSON"
@@ -277,22 +282,13 @@ async def run_tool_call_loop(
                 ))
 
         else:
-            # Check whether this looks like a failed tool call after retries were
-            # exhausted — if so, emit a user-friendly error instead of raw JSON.
-            _STUB_RESPONSES_ELSE = {"[]", "{}", "null", "none", "true", "false", ""}
-            _text_lower_else = text.lower()
-            _looks_like_tool_attempt = (
-                text.startswith("{")
-                or '{"tool_call"' in text
-                or _text_lower_else in _STUB_RESPONSES_ELSE
-                or "[tool_call]" in _text_lower_else
-                or "<invoke name=" in _text_lower_else
-            )
-            if _looks_like_tool_attempt:
+            # Retries exhausted — if this still looks like a failed tool call,
+            # emit a user-friendly error instead of raw JSON.
+            if _looks_like_tool_attempt(text):
                 recommended = max_tokens * 2
-                _STUB_RESPONSES_MSG = {"[]", "{}", "null", "none", "true", "false", ""}
-                if "[tool_call]" in _text_lower_else or "<invoke name=" in _text_lower_else:
-                    _fmt = "`[TOOL_CALL]`" if "[tool_call]" in _text_lower_else else "`<invoke>`"
+                _text_lower = text.lower()
+                if "[tool_call]" in _text_lower or "<invoke name=" in _text_lower:
+                    _fmt = "`[TOOL_CALL]`" if "[tool_call]" in _text_lower else "`<invoke>`"
                     err = (
                         f"⚠ The workflow could not continue because the model used an "
                         f"unsupported tag format ({_fmt}) for tool calls instead "
@@ -307,7 +303,7 @@ async def run_tool_call_loop(
                         "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
                         "`[agents]` of your `config.toml`."
                     )
-                elif _text_lower_else in _STUB_RESPONSES_MSG:
+                elif _text_lower in _STUB_RESPONSES:
                     err = (
                         "⚠ The workflow could not continue because the model repeatedly "
                         f"returned an empty or stub response (`{text}`) instead of a tool call.\n\n"
