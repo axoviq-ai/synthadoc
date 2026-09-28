@@ -119,6 +119,25 @@ _AFFIRMATIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+def _find_rerun_hint_in_history(
+    history: list[dict],
+) -> "tuple[type, str] | None":
+    """Scan the most recent assistant message in *history* for a workflow RERUN_HINT.
+
+    Returns ``(workflow_class, hint_text)`` when found, else ``None``.
+    Checks only the most recent assistant message within the last 8 entries.
+    """
+    for msg in reversed(history[-8:]):
+        if msg.get("role") == "assistant":
+            content_lower = msg.get("content", "").lower()
+            for wf_cls in ROUTED_WORKFLOWS:
+                hint = getattr(wf_cls, "RERUN_HINT", None)
+                if hint and hint.lower() in content_lower:
+                    return wf_cls, hint
+            break
+    return None
+
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -279,18 +298,8 @@ class ActionAgent(BaseAgent):
             # LLM can look at history and re-run the previous action.
             return True
         if history and _AFFIRMATIVE_RE.match(question):
-            # Short "yes"/"continue" — check if a recent assistant turn contains
-            # a RERUN_HINT so we can re-trigger that workflow.
-            for _msg in reversed(history[-8:]):
-                if _msg.get("role") == "assistant":
-                    _c = _msg.get("content", "").lower()
-                    if any(
-                        getattr(_wf, "RERUN_HINT", None)
-                        and getattr(_wf, "RERUN_HINT").lower() in _c
-                        for _wf in ROUTED_WORKFLOWS
-                    ):
-                        return True
-                    break
+            if _find_rerun_hint_in_history(history) is not None:
+                return True
         if history:
             lookback = (
                 self._orch._cfg.chat.clarify_lookback
@@ -351,14 +360,10 @@ class ActionAgent(BaseAgent):
         """
         # 1. Short affirmative + recent RERUN_HINT in history → re-trigger that workflow.
         if history and _AFFIRMATIVE_RE.match(question):
-            for msg in reversed(history[-8:]):
-                if msg.get("role") == "assistant":
-                    hist_lower = msg.get("content", "").lower()
-                    for wf_cls in ROUTED_WORKFLOWS:
-                        hint = getattr(wf_cls, "RERUN_HINT", None)
-                        if hint and hint.lower() in hist_lower:
-                            return wf_cls(), hint
-                    break  # only check the most recent assistant message
+            match = _find_rerun_hint_in_history(history)
+            if match is not None:
+                wf_cls, hint = match
+                return wf_cls(), hint
 
         # 2. Workflow MATCH_RE on the question itself.
         for wf_cls in ROUTED_WORKFLOWS:
