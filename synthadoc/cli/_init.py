@@ -259,6 +259,13 @@ scaffold_max_tokens = 32768
 # Output token budget for query synthesis (the answer returned to the user).
 # Raise if answers are cut off mid-sentence with long-context reasoning models.
 query_max_tokens = 8192
+#
+# Output token budget for agentic workflow tool calls (orphan resolver,
+# contradiction resolver, broken-wikilinks resolver, etc.).
+# Raise if workflows exit early with a "response truncated" error — this
+# happens when a tool call must output a full page's content and the default
+# budget is too small.  32768 is recommended for wikis with large pages.
+workflow_max_tokens = 16384
 
 [ingest]
 max_pages_per_ingest = 15
