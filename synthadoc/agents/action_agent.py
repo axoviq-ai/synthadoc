@@ -110,6 +110,15 @@ _REPEAT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Short affirmatives that mean "yes, do what you just asked" in a multi-turn
+# workflow session — matched only when recent history contains a RERUN_HINT.
+_AFFIRMATIVE_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|yup|sure|ok|okay|continue|proceed|go\s+ahead|do\s+it|"
+    r"sounds\s+good|let(?:'s|\s+us)\s+(?:do\s+it|continue|proceed)|"
+    r"yes\s+(?:please|continue|proceed|do\s+it))\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -269,6 +278,19 @@ class ActionAgent(BaseAgent):
             # "run it again" / "repeat" / "again" — route to action agent so the
             # LLM can look at history and re-run the previous action.
             return True
+        if history and _AFFIRMATIVE_RE.match(question):
+            # Short "yes"/"continue" — check if a recent assistant turn contains
+            # a RERUN_HINT so we can re-trigger that workflow.
+            for _msg in reversed(history[-8:]):
+                if _msg.get("role") == "assistant":
+                    _c = _msg.get("content", "").lower()
+                    if any(
+                        getattr(_wf, "RERUN_HINT", None)
+                        and getattr(_wf, "RERUN_HINT").lower() in _c
+                        for _wf in ROUTED_WORKFLOWS
+                    ):
+                        return True
+                    break
         if history:
             lookback = (
                 self._orch._cfg.chat.clarify_lookback
@@ -330,6 +352,27 @@ class ActionAgent(BaseAgent):
         """
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
+
+        # Fast-path: short affirmative ("yes", "continue", …) + recent workflow context.
+        # If the last assistant message in history contains a known RERUN_HINT, re-run
+        # that workflow — this lets the user answer "yes" to a "continue?" prompt and
+        # have it trigger the same workflow again automatically.
+        if history and _AFFIRMATIVE_RE.match(question):
+            for _msg in reversed(history[-8:]):
+                if _msg.get("role") == "assistant":
+                    _hist_lower = _msg.get("content", "").lower()
+                    for _wf_cls in ROUTED_WORKFLOWS:
+                        _hint = getattr(_wf_cls, "RERUN_HINT", None)
+                        if _hint and _hint.lower() in _hist_lower:
+                            async for evt in self._run_orchestrate(
+                                _hint,  # use the hint text as the question so MATCH_RE matches cleanly
+                                session_id=session_id,
+                                workflow=_wf_cls(),
+                                session_mode=session_mode,
+                            ):
+                                yield evt
+                            return
+                    break  # only check the most recent assistant message
 
         # Fast-path: registry-based workflow routing (no LLM extraction).
         # Each workflow declares its own MATCH_RE; first match wins.
@@ -519,6 +562,7 @@ class ActionAgent(BaseAgent):
                         ctx=ctx,
                         budget=budget,
                         max_tokens=_workflow_max_tokens,
+                        rerun_hint=getattr(wf, "RERUN_HINT", None),
                     ):
                         await sse_queue.put(evt)
                 finally:

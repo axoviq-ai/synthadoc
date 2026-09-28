@@ -80,6 +80,7 @@ async def run_tool_call_loop(
     *,
     budget: int = 30,
     max_tokens: int = 4096,
+    rerun_hint: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Drive an LLM tool-call loop and yield SSE event dicts.
 
@@ -221,10 +222,14 @@ async def run_tool_call_loop(
             for tool_name, tool_input in active_calls:
                 tool_count += 1
                 if tool_count > budget:
+                    _continue = (
+                        f" Type **{rerun_hint}** or click the button to continue."
+                        if rerun_hint
+                        else " Re-run the workflow to continue where it left off."
+                    )
                     msg = (
                         f"⚠ The workflow reached its tool-call limit ({budget} calls) "
-                        f"before completing all tasks. "
-                        f"You can re-run the workflow to continue where it left off."
+                        f"before completing all tasks.{_continue}"
                     )
                     for i in range(0, max(len(msg), 1), _CHUNK_SIZE):
                         yield {"event": "token", "data": {"text": msg[i : i + _CHUNK_SIZE]}}
