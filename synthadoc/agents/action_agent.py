@@ -138,6 +138,25 @@ def _find_rerun_hint_in_history(
     return None
 
 
+def _format_workflow_error(exc: Exception, workflow_max_tokens: int) -> str:
+    """Return a user-visible error message for a workflow loop exception.
+
+    Distinguishes a ``workflow_max_tokens`` misconfiguration (the requested
+    token budget exceeds the model's hard limit) from any other provider error,
+    giving the user a concrete fix in the former case.
+    """
+    exc_str = str(exc)
+    if "max tokens" in exc_str.lower() or "max_tokens" in exc_str.lower():
+        return (
+            f"⚠ The workflow could not start because `workflow_max_tokens` "
+            f"({workflow_max_tokens:,}) exceeds this model's limit.\n\n"
+            f"**Fix:** lower `workflow_max_tokens` in `[agents]` of your "
+            f"`config.toml` to a value the model accepts, then re-run:\n\n"
+            f"```toml\n[agents]\nworkflow_max_tokens = 131072\n```"
+        )
+    return f"⚠ The workflow encountered an unexpected error: {exc_str}"
+
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -577,24 +596,10 @@ class ActionAgent(BaseAgent):
                     ):
                         await sse_queue.put(evt)
                 except Exception as _exc:
-                    # Surface provider-level errors (e.g. max_tokens exceeds model
-                    # limit) as user-visible messages instead of silent task failure.
-                    _exc_str = str(_exc)
-                    _is_tokens_err = (
-                        "max tokens" in _exc_str.lower()
-                        or "max_tokens" in _exc_str.lower()
-                    )
-                    if _is_tokens_err:
-                        _err = (
-                            f"⚠ The workflow could not start because `workflow_max_tokens` "
-                            f"({_workflow_max_tokens:,}) exceeds this model's limit.\n\n"
-                            f"**Fix:** lower `workflow_max_tokens` in `[agents]` of your "
-                            f"`config.toml` to a value the model accepts, then re-run:\n\n"
-                            f"```toml\n[agents]\nworkflow_max_tokens = 131072\n```"
-                        )
-                    else:
-                        _err = f"⚠ The workflow encountered an unexpected error: {_exc_str}"
-                    logger.error("workflow loop error (%s): %s", wf.NAME, _exc_str)
+                    # Surface provider-level errors as user-visible messages
+                    # instead of silent task failure.
+                    _err = _format_workflow_error(_exc, _workflow_max_tokens)
+                    logger.error("workflow loop error (%s): %s", wf.NAME, _exc)
                     await sse_queue.put({"event": "token", "data": {"text": _err}})
                     await sse_queue.put({"event": "final_text", "data": {"text": _err}})
                 finally:
