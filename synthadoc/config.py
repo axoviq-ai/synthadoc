@@ -55,8 +55,9 @@ class AgentsConfig:
     adversarial: Optional[AgentConfig] = None
     skill: Optional[AgentConfig] = None
     llm_timeout_seconds: int = 0      # 0 = no limit (provider default)
-    scaffold_max_tokens: int = 32768  # increase for reasoning models on large wikis
-    query_max_tokens: int = 8192      # increase if reasoning model exhausts budget before answer
+    scaffold_max_tokens: int = 32768   # increase for reasoning models on large wikis
+    query_max_tokens: int = 8192       # increase if reasoning model exhausts budget before answer
+    workflow_max_tokens: int = 16384   # increase if agentic workflows truncate on large pages
 
     def resolve(self, agent_name: str) -> AgentConfig:
         """Return the effective AgentConfig for *agent_name*.
@@ -366,6 +367,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         llm_timeout_seconds=int(a.get("llm_timeout_seconds", 0)),
         scaffold_max_tokens=int(a.get("scaffold_max_tokens", 32768)),
         query_max_tokens=int(a.get("query_max_tokens", 8192)),
+        workflow_max_tokens=int(a.get("workflow_max_tokens", 16384)),
     )
 
     for name in ("ingest", "query", "lint", "adversarial", "skill"):

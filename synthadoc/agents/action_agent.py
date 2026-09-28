@@ -454,6 +454,11 @@ class ActionAgent(BaseAgent):
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
 
+        _agents_cfg = getattr(_cfg, "agents", None)
+        _workflow_max_tokens = int(
+            getattr(_agents_cfg, "workflow_max_tokens", 16384) or 16384
+        )
+
         # ── Provider compatibility guard ──────────────────────────────────────
         # Coding-tool CLI providers (claude-code, opencode) are themselves full
         # agents with their own identity, tool-calling mechanism, and safety
@@ -513,6 +518,7 @@ class ActionAgent(BaseAgent):
                         provider=self._provider,
                         ctx=ctx,
                         budget=budget,
+                        max_tokens=_workflow_max_tokens,
                     ):
                         await sse_queue.put(evt)
                 finally:
@@ -540,6 +546,15 @@ class ActionAgent(BaseAgent):
                         "next_hints": HintEngine.after_response(_final_text, session_mode),
                         "cacheable": False,
                     }
+                    # When the workflow loop emitted a token-limit error, replace
+                    # the generic hints with actionable config guidance.
+                    if "workflow_max_tokens" in _final_text:
+                        _recommended = _workflow_max_tokens * 2
+                        _done_data["next_hints"] = [
+                            f"Increase workflow_max_tokens to {_recommended}",
+                            "Run lint and report",
+                            "Run orphan resolver",
+                        ]
                     _wf_pre_prompt = _build_pre_prompt(_final_text)
                     if _wf_pre_prompt:
                         _done_data["pre_prompt"] = _wf_pre_prompt

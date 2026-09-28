@@ -79,6 +79,7 @@ async def run_tool_call_loop(
     ctx: "WorkflowContext",
     *,
     budget: int = 30,
+    max_tokens: int = 4096,
 ) -> AsyncGenerator[dict, None]:
     """Drive an LLM tool-call loop and yield SSE event dicts.
 
@@ -114,20 +115,38 @@ async def run_tool_call_loop(
     await ctx.send_sse_event("tool_progress", {"tool": "_init", "message": "Working on your request..."})
 
     while True:
-        response = await provider.complete(messages, system=system_prompt)
+        response = await provider.complete(messages, system=system_prompt, max_tokens=max_tokens)
         text = response.text.strip()
 
         all_calls = _parse_all_tool_calls(text)
 
-        # If the response looks like JSON but no tool call parsed, retry up to the limit.
-        if not all_calls and text.startswith("{") and parse_retries < _MAX_PARSE_RETRIES:
+        # Retry when the response looks like a tool call attempt but didn't parse.
+        # Covers two failure modes:
+        #   (a) text starts with "{" but JSON is malformed or uses wrong wrapper
+        #   (b) text has prose BEFORE an attempted {"tool_call": ...} that was
+        #       truncated mid-JSON by the token limit — finditer finds nothing
+        _looks_like_tool_attempt = text.startswith("{") or '{"tool_call"' in text
+        if not all_calls and _looks_like_tool_attempt and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_parse_retry",
+                 "message": (
+                     f"⚠ Response could not be parsed (attempt {parse_retries}/{_MAX_PARSE_RETRIES}) "
+                     "— the model's response may have been cut off by the token limit. "
+                     "Retrying with a reminder to use the correct format…"
+                 )},
+            )
             messages.append(Message(role="assistant", content=text))
             messages.append(
                 Message(
                     role="user",
-                    content="Please format the tool call as valid JSON: "
-                    '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}',
+                    content=(
+                        "Your previous response could not be parsed as a valid tool call "
+                        "(it may have been cut off by the token limit). "
+                        "Respond with ONLY the tool call JSON — no prose, no explanation:\n"
+                        '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
+                    ),
                 )
             )
             continue
@@ -233,6 +252,25 @@ async def run_tool_call_loop(
                 ))
 
         else:
+            # Check whether this looks like a failed tool call after retries were
+            # exhausted — if so, emit a user-friendly error instead of raw JSON.
+            _looks_like_tool_attempt = text.startswith("{") or '{"tool_call"' in text
+            if _looks_like_tool_attempt:
+                recommended = max_tokens * 2
+                err = (
+                    "⚠ The workflow could not continue because the model's response was "
+                    "repeatedly truncated or malformed.\n\n"
+                    "**Likely cause:** the model hit its token limit while generating a "
+                    "large tool call (e.g. outputting a full page's content).\n\n"
+                    f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                    f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                    f"and re-run the workflow:\n\n"
+                    f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
+                )
+                for i in range(0, max(len(err), 1), _CHUNK_SIZE):
+                    yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
+                yield {"event": "final_text", "data": {"text": err}}
+                return
             # Plain-text response — stream as token chunks, then emit final_text.
             for i in range(0, max(len(text), 1), _CHUNK_SIZE):
                 yield {"event": "token", "data": {"text": text[i : i + _CHUNK_SIZE]}}
