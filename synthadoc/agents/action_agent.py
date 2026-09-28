@@ -338,6 +338,39 @@ class ActionAgent(BaseAgent):
         """Return None when _run raises (treated as 'not an action')."""
         return None
 
+    def _match_fast_path(
+        self,
+        question: str,
+        history: list[dict] | None,
+    ) -> "tuple[AgenticWorkflow | None, str] | None":
+        """Return (workflow_instance, effective_question) if a routing fast path matched.
+
+        Returns None when no fast path applies — caller should fall through to LLM
+        extraction.  A None workflow with a non-None return means slug-reingest
+        (``_run_orchestrate`` defaults to IngestLintWorkflow when workflow=None).
+        """
+        # 1. Short affirmative + recent RERUN_HINT in history → re-trigger that workflow.
+        if history and _AFFIRMATIVE_RE.match(question):
+            for msg in reversed(history[-8:]):
+                if msg.get("role") == "assistant":
+                    hist_lower = msg.get("content", "").lower()
+                    for wf_cls in ROUTED_WORKFLOWS:
+                        hint = getattr(wf_cls, "RERUN_HINT", None)
+                        if hint and hint.lower() in hist_lower:
+                            return wf_cls(), hint
+                    break  # only check the most recent assistant message
+
+        # 2. Workflow MATCH_RE on the question itself.
+        for wf_cls in ROUTED_WORKFLOWS:
+            if wf_cls.MATCH_RE and wf_cls.MATCH_RE.search(question):
+                return wf_cls(), question
+
+        # 3. Slug-based reingest (no specific workflow — defaults to IngestLintWorkflow).
+        if _SLUG_REINGEST_RE.search(question):
+            return None, question
+
+        return None
+
     async def run_gen(
         self,
         question: str,
@@ -353,38 +386,11 @@ class ActionAgent(BaseAgent):
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
 
-        # Fast-path: short affirmative ("yes", "continue", …) + recent workflow context.
-        # If the last assistant message in history contains a known RERUN_HINT, re-run
-        # that workflow — this lets the user answer "yes" to a "continue?" prompt and
-        # have it trigger the same workflow again automatically.
-        if history and _AFFIRMATIVE_RE.match(question):
-            for _msg in reversed(history[-8:]):
-                if _msg.get("role") == "assistant":
-                    _hist_lower = _msg.get("content", "").lower()
-                    for _wf_cls in ROUTED_WORKFLOWS:
-                        _hint = getattr(_wf_cls, "RERUN_HINT", None)
-                        if _hint and _hint.lower() in _hist_lower:
-                            async for evt in self._run_orchestrate(
-                                _hint,  # use the hint text as the question so MATCH_RE matches cleanly
-                                session_id=session_id,
-                                workflow=_wf_cls(),
-                                session_mode=session_mode,
-                            ):
-                                yield evt
-                            return
-                    break  # only check the most recent assistant message
-
-        # Fast-path: registry-based workflow routing (no LLM extraction).
-        # Each workflow declares its own MATCH_RE; first match wins.
-        for _wf_cls in ROUTED_WORKFLOWS:
-            if _wf_cls.MATCH_RE and _wf_cls.MATCH_RE.search(question):
-                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls(), session_mode=session_mode):
-                    yield evt
-                return
-
-        # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
-        if _SLUG_REINGEST_RE.search(question):
-            async for evt in self._run_orchestrate(question, session_id=session_id, session_mode=session_mode):
+        # Fast-path routing: affirmative-rerun, MATCH_RE, and slug-reingest.
+        _fast = self._match_fast_path(question, history)
+        if _fast is not None:
+            _wf, _q = _fast
+            async for evt in self._run_orchestrate(_q, session_id=session_id, workflow=_wf, session_mode=session_mode):
                 yield evt
             return
 
