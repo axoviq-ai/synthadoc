@@ -46,6 +46,27 @@ _TOOL_LABELS: dict[str, str] = {
     "tool_cost_estimate":              "Estimating cost",
 }
 
+# Short stub responses some models emit instead of a proper tool call
+# (e.g. MiniMax-M2.5 initialising an internal variable and emitting it).
+_STUB_RESPONSES: frozenset[str] = frozenset({"[]", "{}", "null", "none", "true", "false", ""})
+
+
+def _looks_like_tool_attempt(text: str) -> bool:
+    """Return True when *text* looks like a failed tool call attempt.
+
+    Covers four failure modes: malformed JSON starting with ``{``, truncated
+    JSON with ``{"tool_call"`` prefix, a short stub response (``[]``, ``null``,
+    etc.), and an unsupported tag format (``[TOOL_CALL]`` or ``<invoke name=``).
+    """
+    t = text.lower()
+    return (
+        text.startswith("{")
+        or '{"tool_call"' in text
+        or t in _STUB_RESPONSES
+        or "[tool_call]" in t
+        or "<invoke name=" in t
+    )
+
 
 def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     """Return ``(tool_name, tool_input_dict)`` when *text* contains a tool call, else ``None``."""
@@ -79,6 +100,8 @@ async def run_tool_call_loop(
     ctx: "WorkflowContext",
     *,
     budget: int = 30,
+    max_tokens: int = 4096,
+    rerun_hint: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Drive an LLM tool-call loop and yield SSE event dicts.
 
@@ -114,20 +137,42 @@ async def run_tool_call_loop(
     await ctx.send_sse_event("tool_progress", {"tool": "_init", "message": "Working on your request..."})
 
     while True:
-        response = await provider.complete(messages, system=system_prompt)
+        response = await provider.complete(messages, system=system_prompt, max_tokens=max_tokens)
         text = response.text.strip()
 
         all_calls = _parse_all_tool_calls(text)
 
-        # If the response looks like JSON but no tool call parsed, retry up to the limit.
-        if not all_calls and text.startswith("{") and parse_retries < _MAX_PARSE_RETRIES:
+        # Retry when the response looks like a tool call attempt but didn't parse.
+        # See _looks_like_tool_attempt for the four failure modes it detects.
+        if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
+            _text_lower = text.lower()
+            _used_tag_format = "[tool_call]" in _text_lower or "<invoke name=" in _text_lower
+            _reason = (
+                "used an unsupported tag/XML format instead of JSON"
+                if _used_tag_format
+                else "may have been cut off by the token limit"
+            )
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_parse_retry",
+                 "message": (
+                     f"⚠ Response could not be parsed (attempt {parse_retries}/{_MAX_PARSE_RETRIES}) "
+                     f"— {_reason}. "
+                     "Retrying with a reminder to use the correct format…"
+                 )},
+            )
             messages.append(Message(role="assistant", content=text))
             messages.append(
                 Message(
                     role="user",
-                    content="Please format the tool call as valid JSON: "
-                    '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}',
+                    content=(
+                        "Your previous response could not be parsed as a valid tool call "
+                        f"({_reason}). "
+                        "Respond with ONLY a single JSON object — no prose, no explanation, "
+                        "no [TOOL_CALL] tags, no <invoke> tags, no XML, no markdown fences:\n"
+                        '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
+                    ),
                 )
             )
             continue
@@ -183,10 +228,14 @@ async def run_tool_call_loop(
             for tool_name, tool_input in active_calls:
                 tool_count += 1
                 if tool_count > budget:
+                    _continue = (
+                        f' Type **yes** or click the **"{rerun_hint}"** hint chip to continue.'
+                        if rerun_hint
+                        else " Re-run the workflow to continue where it left off."
+                    )
                     msg = (
                         f"⚠ The workflow reached its tool-call limit ({budget} calls) "
-                        f"before completing all tasks. "
-                        f"You can re-run the workflow to continue where it left off."
+                        f"before completing all tasks.{_continue}"
                     )
                     for i in range(0, max(len(msg), 1), _CHUNK_SIZE):
                         yield {"event": "token", "data": {"text": msg[i : i + _CHUNK_SIZE]}}
@@ -233,6 +282,55 @@ async def run_tool_call_loop(
                 ))
 
         else:
+            # Retries exhausted — if this still looks like a failed tool call,
+            # emit a user-friendly error instead of raw JSON.
+            if _looks_like_tool_attempt(text):
+                recommended = max_tokens * 2
+                _text_lower = text.lower()
+                if "[tool_call]" in _text_lower or "<invoke name=" in _text_lower:
+                    _fmt = "`[TOOL_CALL]`" if "[tool_call]" in _text_lower else "`<invoke>`"
+                    err = (
+                        f"⚠ The workflow could not continue because the model used an "
+                        f"unsupported tag format ({_fmt}) for tool calls instead "
+                        "of the required JSON wire format.\n\n"
+                        "This is a model-specific behaviour — some models (e.g. MiniMax-M2.5) "
+                        "default to their own tool-call syntax rather than the JSON protocol "
+                        "required for agentic workflows.\n\n"
+                        "**Fix options:**\n"
+                        "1. Re-run the workflow (a fresh attempt sometimes succeeds — the "
+                        "format reminder is injected automatically after each failure).\n"
+                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
+                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
+                        "`[agents]` of your `config.toml`."
+                    )
+                elif _text_lower in _STUB_RESPONSES:
+                    err = (
+                        "⚠ The workflow could not continue because the model repeatedly "
+                        f"returned an empty or stub response (`{text}`) instead of a tool call.\n\n"
+                        "This is a model-specific behaviour — some reasoning models "
+                        "(e.g. MiniMax-M2.5) do not reliably follow the JSON wire-format "
+                        "tool-call protocol required for agentic workflows.\n\n"
+                        "**Fix options:**\n"
+                        "1. Re-run the workflow (a fresh attempt sometimes succeeds).\n"
+                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
+                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
+                        "`[agents]` of your `config.toml`."
+                    )
+                else:
+                    err = (
+                        "⚠ The workflow could not continue because the model's response was "
+                        "repeatedly truncated or malformed.\n\n"
+                        "**Likely cause:** the model hit its token limit while generating a "
+                        "large tool call (e.g. outputting a full page's content).\n\n"
+                        f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                        f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                        f"and re-run the workflow:\n\n"
+                        f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
+                    )
+                for i in range(0, max(len(err), 1), _CHUNK_SIZE):
+                    yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
+                yield {"event": "final_text", "data": {"text": err}}
+                return
             # Plain-text response — stream as token chunks, then emit final_text.
             for i in range(0, max(len(text), 1), _CHUNK_SIZE):
                 yield {"event": "token", "data": {"text": text[i : i + _CHUNK_SIZE]}}

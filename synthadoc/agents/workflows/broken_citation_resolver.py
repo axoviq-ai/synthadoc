@@ -202,6 +202,7 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         "Scan active wiki pages for broken ^[file:L-L] source citation markers "
         "(broken_ref / malformed / out_of_range) and fix them interactively."
     )
+    RERUN_HINT = "Run citation resolver"
 
     MATCH_RE = re.compile(
         r"\bbroken\b.{0,25}\bcitations?\b"
