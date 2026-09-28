@@ -18,14 +18,24 @@ def export_cmd(
     format: str = typer.Option(..., "--format", "-f",
         help="Output format: llms.txt, llms-full.txt, graphml, json, okf"),
     output: Optional[str] = typer.Option(None, "--output", "-o",
-        help="Write to file (or directory for --format okf). Defaults to stdout."),
+        help=(
+            "Destination path. For --format okf: required — a base directory; "
+            "the bundle is written into <base>/<wiki>-okf-<YYYY-MM-DD>/ "
+            "(created automatically). For all other formats: optional file path; "
+            "omit to print to stdout."
+        )),
     status: str = typer.Option("all", "--status", "-s",
         help="Filter pages by lifecycle state: all, active, draft, stale, contradicted, archived"),
     context_pack: Optional[str] = typer.Option(None, "--context-pack", "-c",
         help="Export only pages in named context pack"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
-    """Export wiki as llms.txt, llms-full.txt, graphml, json, or okf bundle directory."""
+    """Export wiki as llms.txt, llms-full.txt, graphml, json, or OKF v0.2 bundle directory.
+
+    For --format okf, --output <base-dir> is required. The bundle is written
+    into <base-dir>/<wiki>-okf-<YYYY-MM-DD>/ so each export gets its own
+    timestamped folder. All other formats print to stdout when --output is omitted.
+    """
     wiki_name = resolve_wiki(wiki)
     url = server_url(wiki_name)
     body: dict = {"format": format, "status_filter": status}
@@ -51,13 +61,18 @@ def export_cmd(
             typer.echo("Error: --output <directory> is required for --format okf.", err=True)
             raise typer.Exit(1)
         from pathlib import Path
+        from datetime import datetime, timezone
+        # Strip a stray trailing quote that Windows cmd.exe injects when a
+        # backslash-terminated path is double-quoted: "C:\path\" → C:\path"
+        output = output.rstrip('"')
         manifest: dict = resp.json()
-        out_dir = Path(output)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        out_dir = Path(output) / f"{wiki_name}-okf-{ts}"
         for rel_path, content in manifest.items():
             dest = out_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content, encoding="utf-8", newline="\n")
-        typer.echo(f"OKF bundle written to {output} ({len(manifest)} files)", err=True)
+        typer.echo(f"OKF bundle written to {out_dir} ({len(manifest)} files)", err=True)
         return
 
     content = resp.text

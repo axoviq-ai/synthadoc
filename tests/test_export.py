@@ -514,7 +514,7 @@ async def test_okf_tags_omitted_when_empty(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_okf_timestamp_uses_updated_when_present(tmp_path):
+async def test_okf_generated_uses_updated_when_present(tmp_path):
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person",
@@ -522,11 +522,12 @@ async def test_okf_timestamp_uses_updated_when_present(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["timestamp"] == "2026-05-15"
+    assert fm["generated"]["at"] == "2026-05-15T00:00:00Z"
+    assert "timestamp" not in fm
 
 
 @pytest.mark.asyncio
-async def test_okf_timestamp_falls_back_to_created(tmp_path):
+async def test_okf_generated_falls_back_to_created(tmp_path):
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person",
@@ -534,7 +535,8 @@ async def test_okf_timestamp_falls_back_to_created(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["timestamp"] == "2026-01-01"
+    assert fm["generated"]["at"] == "2026-01-01T00:00:00Z"
+    assert "timestamp" not in fm
 
 
 @pytest.mark.asyncio
@@ -601,7 +603,8 @@ async def test_okf_stale_excluded_by_default(tmp_path):
 
 @pytest.mark.asyncio
 async def test_okf_contradicted_included_by_default(tmp_path):
-    """Contradicted pages must appear in OKF bundle — consumers see status: contradicted."""
+    """Contradicted pages must appear in OKF bundle.
+    OKF v0.2 maps contradicted → status: draft; the original state is in synthadoc_lifecycle."""
     store = _make_store(tmp_path)
     _write_okf_page(store, "conflict-page", "Conflict Page", LifecycleState.CONTRADICTED,
                     content="Conflicting claim.", type_="concept")
@@ -609,7 +612,8 @@ async def test_okf_contradicted_included_by_default(tmp_path):
     result = await agent.run(ExportOptions(format="okf"))
     assert "wiki/conflict-page.md" in result
     fm = _parse_frontmatter(result["wiki/conflict-page.md"])
-    assert fm["status"] == "contradicted"
+    assert fm["status"] == "draft"
+    assert fm["synthadoc_lifecycle"] == "contradicted"
 
 
 @pytest.mark.asyncio
@@ -659,6 +663,83 @@ async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf", status_filter="archived"))
     assert "wiki/old-page.md" in result
+
+
+@pytest.mark.asyncio
+async def test_okf_pages_count_excludes_system_and_non_eligible_pages(tmp_path):
+    """pages in the result dict equals exactly the wiki/ keys written.
+
+    System pages (index, dashboard, …) are skipped unconditionally.
+    Archived pages are excluded from the default OKF filter (active+contradicted).
+    The result dict must contain only the two eligible wiki pages plus index.md
+    and log.md, so sum(1 for k in result if k.startswith('wiki/')) == 2.
+    """
+    from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
+    store = _make_store(tmp_path)
+    # two active pages — should appear in the bundle
+    _write_okf_page(store, "page-a", "Page A", LifecycleState.ACTIVE,
+                    content="Content A.", type_="concept")
+    _write_okf_page(store, "page-b", "Page B", LifecycleState.ACTIVE,
+                    content="Content B.", type_="concept")
+    # one archived page — excluded by the OKF default filter
+    _write_okf_page(store, "retired", "Retired", LifecycleState.ARCHIVED,
+                    content="Old content.", type_="concept")
+    # one system-slug page — excluded by SYSTEM_PAGE_SLUGS regardless of status
+    system_slug = next(iter(SYSTEM_PAGE_SLUGS))
+    _write_okf_page(store, system_slug, system_slug.title(), LifecycleState.ACTIVE,
+                    content="System page.", type_="concept")
+
+    agent = _agent(tmp_path, store)
+    result = await agent.run(ExportOptions(format="okf"))
+
+    wiki_keys = [k for k in result if k.startswith("wiki/")]
+    assert len(wiki_keys) == 2, f"expected 2 wiki pages, got {wiki_keys}"
+    assert "wiki/page-a.md" in result
+    assert "wiki/page-b.md" in result
+    assert "wiki/retired.md" not in result
+    assert f"wiki/{system_slug}.md" not in result
+
+
+def _exportable_count_cases():
+    """Derive parametrize cases from EXPORT_FORMATS so new formats are covered automatically.
+
+    Store fixture: 4 non-system pages (2 active, 1 contradicted, 1 archived).
+    OKF active+contradicted filter reduces the count to 3; all other formats keep 4.
+    """
+    from synthadoc.core.export import EXPORT_FORMATS
+    _OKF_COUNT = 3  # archived excluded by OKF active+contradicted filter
+    _DEFAULT_COUNT = 4
+    return [
+        pytest.param(fmt, _OKF_COUNT if fmt == "okf" else _DEFAULT_COUNT, id=fmt)
+        for fmt in sorted(EXPORT_FORMATS)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt,expected_count", _exportable_count_cases())
+async def test_exportable_count_set_correctly_for_all_formats(tmp_path, fmt, expected_count):
+    """exportable_count must be set to the actual exported page count by every format branch.
+
+    Store has 4 non-system pages: 2 active, 1 contradicted, 1 archived.
+    Non-OKF formats export all 4; OKF with status_filter='all' exports 3
+    (active+contradicted only).  The parametrize list is built from EXPORT_FORMATS,
+    so a new format that forgets to set exportable_count is caught automatically.
+    """
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "page-a", "Page A", LifecycleState.ACTIVE,
+                    content="Content A.", type_="concept")
+    _write_okf_page(store, "page-b", "Page B", LifecycleState.ACTIVE,
+                    content="Content B.", type_="concept")
+    _write_okf_page(store, "page-c", "Page C", LifecycleState.CONTRADICTED,
+                    content="Content C.", type_="concept")
+    _write_okf_page(store, "page-d", "Page D", LifecycleState.ARCHIVED,
+                    content="Content D.", type_="concept")
+    agent = _agent(tmp_path, store)
+    await agent.run(ExportOptions(format=fmt))
+    assert agent.exportable_count is not None, (
+        f"exportable_count was not set by the {fmt!r} branch"
+    )
+    assert agent.exportable_count == expected_count
 
 
 # ── OKF helper unit tests ──────────────────────────────────────────────────────
@@ -765,7 +846,7 @@ async def test_okf_spec_required_type_field_always_present(tmp_path):
 
 @pytest.mark.asyncio
 async def test_okf_spec_recommended_fields_present(tmp_path):
-    """OKF recommended fields (title, description, timestamp) must appear in concept files."""
+    """OKF v0.2 recommended fields (title, description, generated) must appear in concept files."""
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Father of computer science. Long description follows.",
@@ -775,7 +856,8 @@ async def test_okf_spec_recommended_fields_present(tmp_path):
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert "title" in fm
     assert "description" in fm
-    assert "timestamp" in fm
+    assert "generated" in fm
+    assert "timestamp" not in fm
 
 
 @pytest.mark.asyncio
@@ -793,20 +875,21 @@ async def test_okf_spec_description_is_single_line(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_okf_spec_index_has_type_index(tmp_path):
-    """index.md must have type: index in frontmatter — OKF reserved filename."""
+async def test_okf_spec_index_has_okf_version(tmp_path):
+    """OKF v0.2: index.md must carry okf_version: '0.2' as the sole frontmatter key."""
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person")
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["index.md"])
-    assert fm.get("type") == "index"
+    assert fm.get("okf_version") == "0.2"
+    assert "type" not in fm
 
 
 @pytest.mark.asyncio
-async def test_okf_spec_log_has_type_log(tmp_path):
-    """log.md must have type: log in frontmatter — OKF reserved filename."""
+async def test_okf_spec_log_has_no_frontmatter(tmp_path):
+    """OKF v0.2: log.md must be plain markdown — no frontmatter block."""
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person")
@@ -814,8 +897,8 @@ async def test_okf_spec_log_has_type_log(tmp_path):
     events = [{"slug": "alan-turing", "from_state": "draft", "to_state": "active",
                "reason": "ok", "timestamp": "2026-05-01T10:00:00"}]
     result = agent._render_okf({"alan-turing": store.read_page("alan-turing")}, events)
-    fm = _parse_frontmatter(result["log.md"])
-    assert fm.get("type") == "log"
+    assert not result["log.md"].startswith("---"), "log.md must have no frontmatter in OKF v0.2"
+    assert f"# {agent._wiki_name}" in result["log.md"]
 
 
 @pytest.mark.asyncio
@@ -846,3 +929,194 @@ async def test_okf_spec_wikilinks_resolved_to_markdown(tmp_path):
     body = _FM_SEP.split(result["wiki/ada.md"], 2)[2]
     assert "[[" not in body, "wikilinks must be rewritten to markdown links"
     assert "[Charles Babbage](babbage.md)" in body
+
+
+# ── OKF v0.2 new-field tests ───────────────────────────────────────────────────
+
+def test_okf_status_mapping_active_to_stable(tmp_path):
+    """LifecycleState.ACTIVE must map to OKF status 'stable'."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"p": store.read_page("p")}, [])
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert fm["status"] == "stable"
+    assert fm["synthadoc_lifecycle"] == LifecycleState.ACTIVE
+
+
+def test_okf_status_mapping_archived_to_deprecated(tmp_path):
+    """LifecycleState.ARCHIVED must map to OKF status 'deprecated'."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ARCHIVED, content="Content.")
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"p": store.read_page("p")}, [])
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert fm["status"] == "deprecated"
+    assert fm["synthadoc_lifecycle"] == LifecycleState.ARCHIVED
+
+
+def test_okf_status_mapping_draft_stale_contradicted_to_draft(tmp_path):
+    """draft, stale, and contradicted all map to OKF status 'draft'."""
+    store = _make_store(tmp_path)
+    for lc_state in (LifecycleState.DRAFT, LifecycleState.STALE, LifecycleState.CONTRADICTED):
+        _write_okf_page(store, f"p-{lc_state}", "P", lc_state, content="Content.")
+    agent = _agent(tmp_path, store)
+    pages = {slug: store.read_page(slug) for slug in (
+        f"p-{LifecycleState.DRAFT}", f"p-{LifecycleState.STALE}", f"p-{LifecycleState.CONTRADICTED}"
+    )}
+    result = agent._render_okf(pages, [])
+    for lc_state in (LifecycleState.DRAFT, LifecycleState.STALE, LifecycleState.CONTRADICTED):
+        fm = _parse_frontmatter(result[f"wiki/p-{lc_state}.md"])
+        assert fm["status"] == "draft", f"expected 'draft' for {lc_state}"
+        assert fm["synthadoc_lifecycle"] == lc_state
+
+
+def test_okf_generated_field_has_by_and_at(tmp_path):
+    """generated must be a mapping with 'by' (actor string) and 'at' (timestamp)."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.",
+                    created="2026-06-01", updated="2026-06-15")
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"p": store.read_page("p")}, [])
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert isinstance(fm["generated"], dict)
+    assert fm["generated"]["by"] == "synthadoc/ingest-pipeline"
+    assert fm["generated"]["at"] == "2026-06-15T00:00:00Z"
+
+
+def test_okf_sources_list_emitted_for_url_page(tmp_path):
+    """Pages with URL ingest sources must have a 'sources' list in frontmatter."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Web Page", tags=[], content="From a web source.",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="https://example.com/article",
+                           hash="abc123", size=1000,
+                           ingested="2026-05-01T10:00:00")],
+        created="2026-05-01", updated=None, orphan=False, type="concept",
+    )
+    store.write_page("web-page", page)
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"web-page": store.read_page("web-page")}, [])
+    fm = _parse_frontmatter(result["wiki/web-page.md"])
+    assert "sources" in fm
+    assert len(fm["sources"]) == 1
+    assert fm["sources"][0]["resource"] == "https://example.com/article"
+    assert fm["sources"][0]["id"] == "src-0"
+
+
+def test_okf_sources_omitted_for_local_file_page(tmp_path):
+    """Pages whose sources are local files (not URLs) must NOT have a 'sources' key."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Local Page", tags=[], content="From a local file.",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="docs/notes.md", hash="abc", size=100,
+                           ingested="2026-05-01T10:00:00")],
+        created="2026-05-01", updated=None, orphan=False, type="concept",
+    )
+    store.write_page("local-page", page)
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"local-page": store.read_page("local-page")}, [])
+    fm = _parse_frontmatter(result["wiki/local-page.md"])
+    assert "sources" not in fm
+
+
+def test_okf_verified_field_from_active_lc_event(tmp_path):
+    """verified must be emitted when lc_events contains a '→ active' transition for the slug."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "p", "from_state": "draft", "to_state": "active",
+         "reason": "lint passed", "timestamp": "2026-05-01T10:00:00"},
+    ]
+    result = agent._render_okf({"p": store.read_page("p")}, events)
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert "verified" in fm
+    assert fm["verified"]["by"] == "process:synthadoc-lint"
+    assert fm["verified"]["at"] == "2026-05-01T10:00:00Z"
+
+
+def test_okf_verified_uses_latest_active_transition(tmp_path):
+    """When multiple '→ active' events exist, verified.at must be the most recent."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "p", "from_state": "draft", "to_state": "active",
+         "reason": "first", "timestamp": "2026-04-01T08:00:00"},
+        {"slug": "p", "from_state": "stale", "to_state": "active",
+         "reason": "re-verified", "timestamp": "2026-06-01T12:00:00"},
+    ]
+    result = agent._render_okf({"p": store.read_page("p")}, events)
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert fm["verified"]["at"] == "2026-06-01T12:00:00Z"
+
+
+def test_okf_verified_at_normalised_from_audit_db_format(tmp_path):
+    """verified.at must be normalised: microseconds dropped, +00:00 converted to Z."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "p", "from_state": "draft", "to_state": "active",
+         "reason": "lint passed", "timestamp": "2026-09-22T20:06:38.633310+00:00"},
+    ]
+    result = agent._render_okf({"p": store.read_page("p")}, events)
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert fm["verified"]["at"] == "2026-09-22T20:06:38Z"
+
+
+def test_okf_verified_absent_when_no_active_transition(tmp_path):
+    """verified must not appear when no '→ active' event exists for the slug."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p", "P", LifecycleState.ACTIVE, content="Content.")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "p", "from_state": "active", "to_state": "stale",
+         "reason": "stale", "timestamp": "2026-05-01T10:00:00"},
+    ]
+    result = agent._render_okf({"p": store.read_page("p")}, events)
+    fm = _parse_frontmatter(result["wiki/p.md"])
+    assert "verified" not in fm
+
+
+def test_okf_stale_after_computed_when_staleness_configured(tmp_path):
+    """stale_after must be emitted when url_staleness_days > 0 and page has a URL source."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Web Page", tags=[], content="Content.",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="https://example.com/article",
+                           hash="abc123", size=1000,
+                           ingested="2026-05-01T10:00:00")],
+        created="2026-05-01", updated=None, orphan=False, type="concept",
+    )
+    store.write_page("web-page", page)
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf(
+        {"web-page": store.read_page("web-page")}, [],
+        url_staleness_days=90,
+    )
+    fm = _parse_frontmatter(result["wiki/web-page.md"])
+    assert "stale_after" in fm
+    assert fm["stale_after"] == "2026-07-30T10:00:00Z"
+
+
+def test_okf_stale_after_absent_when_staleness_zero(tmp_path):
+    """stale_after must not appear when url_staleness_days is 0 (disabled)."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Web Page", tags=[], content="Content.",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="https://example.com/article",
+                           hash="abc123", size=1000,
+                           ingested="2026-05-01T10:00:00")],
+        created="2026-05-01", updated=None, orphan=False, type="concept",
+    )
+    store.write_page("web-page", page)
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf({"web-page": store.read_page("web-page")}, [])
+    fm = _parse_frontmatter(result["wiki/web-page.md"])
+    assert "stale_after" not in fm

@@ -288,8 +288,12 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
 async def test_mcp_export_tool_okf_uses_default_path(mock_orch, tmp_path):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
+    # Store has 5 slugs (3 wiki + 2 system); export returns only 1 wiki page.
+    # pages must equal the wiki/ key count in the export, not the store total.
+    extra_slugs = ["perceptron", "transistor", "vacuum-tube", "index", "dashboard"]
     fake_files = {"index.md": "# Index", "wiki/page.md": "Content."}
-    with patch("synthadoc.core.export.ExportAgent.run",
+    with patch.object(mock_orch._store, "list_pages", return_value=extra_slugs), \
+         patch("synthadoc.core.export.ExportAgent.run",
                new=AsyncMock(return_value=fake_files)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "okf"},
@@ -299,6 +303,7 @@ async def test_mcp_export_tool_okf_uses_default_path(mock_orch, tmp_path):
     assert "output_path" in result
     assert "okf" in result["output_path"]
     assert result["files_written"] == 2
+    assert result["pages"] == 1  # one wiki/ key, not len(list_pages()) == 5
 
 
 @pytest.mark.asyncio
@@ -310,7 +315,10 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
         "wiki/perceptron.md": "---\ntitle: Perceptron\n---\nContent.",
     }
     out_dir = str(tmp_path / "okf-export")
-    with patch("synthadoc.core.export.ExportAgent.run",
+    # Store has extra slugs; pages must reflect the exported wiki/ count, not the store.
+    extra_slugs = ["perceptron", "transistor", "archived-page", "index"]
+    with patch.object(mock_orch._store, "list_pages", return_value=extra_slugs), \
+         patch("synthadoc.core.export.ExportAgent.run",
                new=AsyncMock(return_value=fake_files)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "okf", "output_path": out_dir},
@@ -318,6 +326,7 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
         )
     assert result["format"] == "okf"
     assert result["files_written"] == 2
+    assert result["pages"] == 1  # one wiki/ key
     assert (tmp_path / "okf-export" / "index.md").exists()
     assert (tmp_path / "okf-export" / "wiki" / "perceptron.md").exists()
 
@@ -325,9 +334,15 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
 @pytest.mark.asyncio
 async def test_mcp_export_tool_llms_txt_inline(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.core.export import ExportAgent as _EA
+
     mcp = create_mcp_server(mock_orch)
-    with patch("synthadoc.core.export.ExportAgent.run",
-               new=AsyncMock(return_value="# Wiki\nPage content.")):
+
+    async def _mock_run(self, opts):
+        self.exportable_count = 1
+        return "# Wiki\nPage content."
+
+    with patch.object(_EA, "run", new=_mock_run):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "llms.txt"},
             convert_result=False
@@ -335,6 +350,92 @@ async def test_mcp_export_tool_llms_txt_inline(mock_orch):
     assert result["format"] == "llms.txt"
     assert "content" in result
     assert "Wiki" in result["content"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_raises_when_exportable_count_not_set(mock_orch):
+    """MCP guard must raise RuntimeError when run() returns without setting exportable_count.
+
+    This covers the case where a new format branch is added to ExportAgent.run()
+    but its author forgets to assign self.exportable_count.
+    """
+    import pytest as _pytest
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.core.export import ExportAgent as _EA
+
+    mcp = create_mcp_server(mock_orch)
+
+    async def _mock_run_no_count(self, opts):
+        # Deliberately omits self.exportable_count — simulates a missing assignment
+        return "# Wiki\nForgot to set count."
+
+    # FastMCP wraps RuntimeError in ToolError — catch the common base and match the message
+    with patch.object(_EA, "run", new=_mock_run_no_count):
+        with _pytest.raises(Exception, match="did not set exportable_count"):
+            await mcp._tool_manager.call_tool(
+                "synthadoc_export", {"format": "llms.txt"},
+                convert_result=False
+            )
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_non_okf_pages_excludes_system_pages(mock_orch):
+    """pages for non-OKF formats must count only non-system pages, not the full store.
+
+    The store has 4 slugs: 2 real pages and 2 system slugs (index, dashboard).
+    status_filter='all' with a non-OKF format should report pages=2.
+    run() is NOT mocked — it executes for real against the mocked store so that
+    exportable_count is set from the actual filter pass, not a separate call.
+    """
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    mcp = create_mcp_server(mock_orch)
+    store_slugs = ["perceptron", "transistor", "index", "dashboard"]
+
+    def _make_page():
+        return WikiPage(title="T", tags=[], content=".", status=LifecycleState.ACTIVE,
+                        confidence="high", sources=[], created="2026-01-01", orphan=False)
+
+    pages_by_slug = {"perceptron": _make_page(), "transistor": _make_page()}
+    with patch.object(mock_orch._store, "list_pages", return_value=store_slugs), \
+         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "llms.txt"},
+            convert_result=False
+        )
+    assert result["pages"] == 2  # index and dashboard are system pages, excluded
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_non_okf_pages_with_specific_status_filter(mock_orch):
+    """pages for non-OKF with status_filter='active' counts only active non-system pages.
+
+    Store has 4 slugs: 2 active, 1 archived, 1 system.  status_filter='active'
+    should produce pages=2, not 3 (all non-system) or 4 (all).
+    run() is NOT mocked so exportable_count is set from the actual filter pass.
+    """
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    mcp = create_mcp_server(mock_orch)
+
+    def _make_page(status):
+        return WikiPage(title="T", tags=[], content=".", status=status,
+                        confidence="high", sources=[], created="2026-01-01", orphan=False)
+
+    store_slugs = ["page-active-1", "page-active-2", "page-archived", "index"]
+    pages_by_slug = {
+        "page-active-1": _make_page(LifecycleState.ACTIVE),
+        "page-active-2": _make_page(LifecycleState.ACTIVE),
+        "page-archived":  _make_page(LifecycleState.ARCHIVED),
+        "index":          _make_page(LifecycleState.ACTIVE),
+    }
+    with patch.object(mock_orch._store, "list_pages", return_value=store_slugs), \
+         patch.object(mock_orch._store, "read_page", side_effect=pages_by_slug.get):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "llms.txt", "status_filter": "active"},
+            convert_result=False
+        )
+    assert result["pages"] == 2  # active non-system: page-active-1, page-active-2
 
 
 @pytest.mark.asyncio

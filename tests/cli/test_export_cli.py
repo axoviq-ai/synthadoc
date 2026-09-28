@@ -141,7 +141,7 @@ def _patch_httpx_post_okf(files: dict):
 
 
 def test_export_okf_writes_directory(tmp_path):
-    """--format okf must write each file in the manifest into the output directory."""
+    """--format okf must write each file in the manifest into a timestamped subfolder."""
     out_dir = tmp_path / "bundle"
     manifest = {
         "index.md": "---\ntype: index\n---\n\n# Wiki\n",
@@ -153,8 +153,12 @@ def test_export_okf_writes_directory(tmp_path):
             "-o", str(out_dir),
         ])
     assert result.exit_code == 0
-    assert (out_dir / "index.md").read_text(encoding="utf-8") == manifest["index.md"]
-    assert (out_dir / "wiki" / "alan-turing.md").read_text(encoding="utf-8") == manifest["wiki/alan-turing.md"]
+    # CLI creates <base>/<wiki>-okf-<YYYY-MM-DD>/
+    subdirs = list(out_dir.glob("my-wiki-okf-*"))
+    assert len(subdirs) == 1, f"expected one timestamped subfolder, got {subdirs}"
+    bundle_dir = subdirs[0]
+    assert (bundle_dir / "index.md").read_text(encoding="utf-8") == manifest["index.md"]
+    assert (bundle_dir / "wiki" / "alan-turing.md").read_text(encoding="utf-8") == manifest["wiki/alan-turing.md"]
 
 
 def test_export_okf_requires_output_flag():
@@ -176,4 +180,6 @@ def test_export_okf_creates_nested_directories(tmp_path):
     }
     with _patch_resolve_wiki(), _patch_server_url(), _patch_httpx_post_okf(manifest):
         runner.invoke(app, ["export", "-f", "okf", "-w", "my-wiki", "-o", str(out_dir)])
-    assert (out_dir / "wiki" / "grace-hopper.md").exists()
+    subdirs = list(out_dir.glob("my-wiki-okf-*"))
+    assert len(subdirs) == 1
+    assert (subdirs[0] / "wiki" / "grace-hopper.md").exists()
