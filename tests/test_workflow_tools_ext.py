@@ -730,3 +730,25 @@ async def test_tool_notify_default_level_is_info(tmp_path):
     await tool_notify(ctx, message="status update")
     _, event_data = ctx.send_sse_event.call_args.args
     assert event_data["level"] == "info"
+
+
+@pytest.mark.asyncio
+async def test_transition_lifecycle_state_toctou_inside_apply(tmp_path):
+    """Line 1078: raise ValueError inside _apply when state changed to invalid between pre-check and lock."""
+    store = _make_store(tmp_path, {"p": _page(status=LifecycleState.CONTRADICTED)})
+    ctx = _ctx(tmp_path, store)
+
+    # Simulate a race: update_page calls fn with a page already at the target state.
+    # active → active is an invalid transition, so _apply raises ValueError (line 1078).
+    def _race_update(slug, fn):
+        race_page = _page(status=LifecycleState.ACTIVE)
+        fn(race_page)
+        return race_page
+
+    with patch.object(store, "update_page", side_effect=_race_update):
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        result = await tool_transition_lifecycle_state(
+            ctx, slug="p", to_state="active", reason="test"
+        )
+    assert result["success"] is False
+    assert "error" in result

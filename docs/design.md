@@ -1328,7 +1328,7 @@ Required environment variables per provider:
 | `openai`    | `OPENAI_API_KEY`    | No (pay-per-token)                                                                             | Yes                                   |
 | `gemini`    | `GEMINI_API_KEY`    | **Yes** — 15 RPM / 1M tokens/day on Flash                                                     | Yes                                   |
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
-| `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes (M2.7 natively multimodal; M3 text-only) |
+| `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes                                          |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
 | `qwen`      | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid DashScope                                      | Model-dependent                       |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
