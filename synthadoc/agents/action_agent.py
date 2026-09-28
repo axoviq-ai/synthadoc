@@ -571,6 +571,27 @@ class ActionAgent(BaseAgent):
                         rerun_hint=getattr(wf, "RERUN_HINT", None),
                     ):
                         await sse_queue.put(evt)
+                except Exception as _exc:
+                    # Surface provider-level errors (e.g. max_tokens exceeds model
+                    # limit) as user-visible messages instead of silent task failure.
+                    _exc_str = str(_exc)
+                    _is_tokens_err = (
+                        "max tokens" in _exc_str.lower()
+                        or "max_tokens" in _exc_str.lower()
+                    )
+                    if _is_tokens_err:
+                        _err = (
+                            f"⚠ The workflow could not start because `workflow_max_tokens` "
+                            f"({_workflow_max_tokens:,}) exceeds this model's limit.\n\n"
+                            f"**Fix:** lower `workflow_max_tokens` in `[agents]` of your "
+                            f"`config.toml` to a value the model accepts, then re-run:\n\n"
+                            f"```toml\n[agents]\nworkflow_max_tokens = 131072\n```"
+                        )
+                    else:
+                        _err = f"⚠ The workflow encountered an unexpected error: {_exc_str}"
+                    logger.error("workflow loop error (%s): %s", wf.NAME, _exc_str)
+                    await sse_queue.put({"event": "token", "data": {"text": _err}})
+                    await sse_queue.put({"event": "final_text", "data": {"text": _err}})
                 finally:
                     await sse_queue.put(_SENTINEL)
 
