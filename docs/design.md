@@ -1328,7 +1328,7 @@ Required environment variables per provider:
 | `openai`    | `OPENAI_API_KEY`    | No (pay-per-token)                                                                             | Yes                                   |
 | `gemini`    | `GEMINI_API_KEY`    | **Yes** — 15 RPM / 1M tokens/day on Flash                                                     | Yes                                   |
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
-| `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes (M2.5 / M2.7 natively multimodal) |
+| `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes (M2.7 natively multimodal; M3 text-only) |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
 | `qwen`      | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid DashScope                                      | Model-dependent                       |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
@@ -1449,7 +1449,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.lint.model`                      | str   | (inherits default)   | Model ID for the lint agent override.                                                                                                                                                                                                                                      |
 | `agents.adversarial.provider`            | str   | (inherits default)   | Dedicated LLM provider for adversarial lint review. Falls back to`agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently.                                                              |
 | `agents.adversarial.model`               | str   | (inherits default)   | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model.                                                                                                                                             |
-| `agents.llm_timeout_seconds`             | int   | `0`                  | Per-call LLM timeout in seconds;`0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required.                                                                      |
+| `agents.llm_timeout_seconds`             | int   | `0`                  | Per-call LLM timeout in seconds;`0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M3 with thinking enabled, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required.                                                   |
 | `agents.scaffold_max_tokens`             | int   | `32768`              | Max output tokens for the scaffold (page generation) agent. Increase to`65536`+ when using reasoning models on large wikis where the default budget is exhausted.                                                                                                          |
 | `agents.query_max_tokens`                | int   | `8192`               | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer.                                                                                                                                                     |
 | `agents.workflow_max_tokens`             | int   | `16384`              | Max output tokens for agentic workflow tool calls (orphan resolver, contradiction resolver, broken-wikilinks resolver). Increase to `32768`+ if workflows exit early with a "response truncated" error — this happens when `tool_propose_and_apply` must output a full page's content and the budget is too small. |
@@ -1683,7 +1683,6 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 | OpenAI    | gpt-4o-mini               | $0.00000015       | $0.0000006         |
 | Gemini    | gemini-2.5-flash          | $0.0000003        | $0.0000025         |
 | Groq      | llama-3.3-70b-versatile   | $0.00000059       | $0.00000079        |
-| MiniMax   | MiniMax-M2.5              | $0.00000015       | $0.0000012         |
 | MiniMax   | MiniMax-M2.7              | $0.0000003        | $0.0000012         |
 
 **Special cases:**
@@ -2246,7 +2245,7 @@ The field is absent when no warnings exist. Cleared automatically when `--no-adv
 ```toml
 # config.toml
 [agents]
-lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+lint        = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" }
 adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family
 
 [lint]
@@ -2814,7 +2813,7 @@ Streaming LLM responses do not return token counts in the same way as blocking c
 | Anthropic                                          | `message_start` event → `event.message.usage.input_tokens`; `message_delta` event → `event.usage.output_tokens`                                                                            | ✅           |
 | Ollama                                             | Final chunk with`done=True` → `prompt_eval_count` / `eval_count`                                                                                                                            | ✅           |
 | DeepSeek                                           | Same`OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options`                                                                                              | ✅           |
-| MiniMax (reasoning: M2.5+)                         | Detects`<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage`                                                                                 | ✅           |
+| MiniMax (reasoning: M3 with thinking enabled)      | Detects`<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage`                                                                                 | ✅           |
 | MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same`OpenAIProvider` path; MiniMax API silently ignores `stream_options`. Falls back to character-based estimate (÷ 3.5 chars/token) from prompt + answer lengths. Accuracy ±20%.          | ✅ estimated |
 | Gemini                                             | Same`OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; Google's compatibility layer honours `stream_options` — verified live (Gemini 2.5 Flash Lite, 50K tokens) | ✅           |
 | Groq                                               | Same`OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options`                                                                                                            | ✅           |

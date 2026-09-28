@@ -1384,7 +1384,7 @@ does not:
 ```toml
 # config.toml
 [agents]
-lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+lint        = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" }
 adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family, different inductive biases
 ```
 
@@ -3614,7 +3614,6 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
 # default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
 # default = { provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }       # DeepSeek thinking mode (chain-of-thought; replaces deepseek-reasoner)
-# default = { provider = "minimax",   model = "MiniMax-M2.5" }                      # MiniMax M2.5 (multimodal, cheapest paid)
 # default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
 # default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet (high quality)
 # default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus (highest quality)
@@ -3630,7 +3629,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 >
 > - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq or MiniMax.
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
-> - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. M2.5 and M2.7 are natively multimodal (text + image). MiniMax M3 supports a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
+> - **MiniMax:** no free tier. M2.7 is natively multimodal (text + image). M3 is text-only and supports a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
