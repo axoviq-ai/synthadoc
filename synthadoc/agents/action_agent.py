@@ -555,6 +555,23 @@ class ActionAgent(BaseAgent):
                             "Run lint and report",
                             "Run orphan resolver",
                         ]
+                    # When the workflow hit its tool-call budget or ended with
+                    # incomplete work (skipped / unresolved items), inject the
+                    # workflow's own RERUN_HINT chip so the user can continue
+                    # with one click instead of having to type the command.
+                    _rerun_hint = getattr(wf, "RERUN_HINT", None)
+                    if _rerun_hint:
+                        _incomplete = (
+                            "tool-call limit" in _final_text       # budget exhausted
+                            or "Skipped (" in _final_text           # orphan-resolver skipped list
+                            or "⏭ Skipped" in _final_text
+                            or "Unresolved (" in _final_text        # any workflow unresolved list
+                            or "⚠ Unresolved" in _final_text
+                        )
+                        if _incomplete and _rerun_hint not in _done_data.get("next_hints", []):
+                            _done_data["next_hints"] = [_rerun_hint] + list(
+                                _done_data.get("next_hints", [])[:2]
+                            )
                     _wf_pre_prompt = _build_pre_prompt(_final_text)
                     if _wf_pre_prompt:
                         _done_data["pre_prompt"] = _wf_pre_prompt

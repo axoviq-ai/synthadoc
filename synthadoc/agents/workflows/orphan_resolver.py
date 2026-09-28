@@ -219,6 +219,10 @@ STEP 5 — Final summary (markdown — ends the loop)
     **⏭ Skipped (<N>):**
     - <slug>
 
+  If skipped_list or unresolved_list is non-empty, append this line after the summary
+  (replace N with the actual count of remaining unprocessed orphans):
+    _To process the remaining N orphans, run the **orphan resolver** again._
+
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
 • Strategy transitions are SILENT: when advancing to the next strategy because no
@@ -246,6 +250,7 @@ class OrphanResolverWorkflow(AgenticWorkflow):
     NAME = "orphan-resolver"
     DESCRIPTION = "Find and resolve active orphan pages — active pages with no inbound [[wikilinks]] from other active pages."
     CLI_ARGS = "[--slug SLUG]  (omit to resolve all active orphaned pages)"
+    RERUN_HINT = "Run orphan resolver"
 
     MATCH_RE: re.Pattern = re.compile(
         r"\borphan.{0,20}\bresolv"

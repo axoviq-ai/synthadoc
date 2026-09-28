@@ -125,6 +125,12 @@ class AgenticWorkflow(ABC):
     DESCRIPTION: str | None = None
     CLI_ARGS: str | None = None
 
+    # Hint chip text shown to the user when the workflow ends with incomplete work
+    # (budget exhausted, or final summary has skipped / unresolved items).
+    # The chip text must match MATCH_RE so clicking it re-triggers the workflow.
+    # Leave None for workflows that do not need a "continue" chip.
+    RERUN_HINT: str | None = None
+
     # Declare the names of tools that must not run without prior user approval.
     #
     # ── When to use this (Pattern B) vs. embedding confirm in the tool (Pattern A) ──
