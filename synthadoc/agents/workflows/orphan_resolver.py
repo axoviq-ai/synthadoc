@@ -224,6 +224,10 @@ STEP 5 — Final summary (markdown — ends the loop)
 • Strategy transitions are SILENT: when advancing to the next strategy because no
   candidates matched, emit only the tool_call JSON — zero prose, zero explanation.
   Writing "(Note: …)" or any natural-language text at that point ends the workflow.
+• DO NOT STOP MID-TASK. Never write a progress summary mid-task. Never write
+  "Would you like me to continue?" or "Shall I proceed with the next batch?" —
+  that plain text EXITS THE WORKFLOW and the user cannot respond within the loop.
+  Process EVERY orphan from step 1 before writing any plain text.
 • Links must be contextually natural. Never add [[slug]] in an irrelevant location.
 • ALWAYS call tool_verify_orphan_resolved(orphan_slug) at the START of each orphan
   (step 4a pre-check) AND again after every successful apply (step 4b.vi).
@@ -295,7 +299,15 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             )
         return (
             "Run the orphan resolver workflow.\n"
-            "Process all orphaned pages found by tool_find_orphaned_pages."
+            "Process ALL orphaned pages found by tool_find_orphaned_pages — "
+            "WITHOUT STOPPING.\n"
+            "IMPORTANT: Do NOT pause mid-task to write a progress summary or ask "
+            "'Would you like me to continue?' — plain text exits the workflow permanently "
+            "and the user cannot respond within the loop.\n"
+            "Continue through every orphan until all are resolved, unresolved after 4 "
+            "strategies, or the user declines at the inter-orphan confirm gate.\n"
+            "Only produce plain text for the FINAL summary (STEP 5) after ALL orphans "
+            "have been processed."
         )
 
     def get_tool_fns(self, ctx: "WorkflowContext") -> dict:
