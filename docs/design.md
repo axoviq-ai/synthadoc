@@ -2657,32 +2657,74 @@ All edges carry `edge_type="wikilink"`. Self-links are suppressed. The file also
 
 Wiki-level fields: `total_compilation_cost_usd`, `routing.branch_memberships`, `exported_at`, `page_count`.
 
-**`okf`** — [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
+**`okf`** — [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
 
 Bundle layout:
 
 ```
 <output-dir>/
-  index.md        # OKF index — pages grouped by knowledge type
-  log.md          # lifecycle change history, newest first
+  index.md        # OKF v0.2 index — okf_version: "0.2" frontmatter + pages grouped by type
+  log.md          # lifecycle change history, newest first (plain markdown, no frontmatter)
   wiki/
     <slug>.md     # one OKF concept file per wiki page
 ```
 
-Each concept file carries a conformant frontmatter block:
+Each concept file carries a conformant v0.2 frontmatter block:
 
 ```yaml
-type: person                  # from WikiPage.type; fallback "concept" for old pages
+type: person
 title: Alan Turing
 description: Father of theoretical computer science and pioneer of the Turing machine.
+generated:
+  by: synthadoc/ingest-pipeline    # OKF v0.2 actor convention (tool/model)
+  at: '2026-04-22'                 # WikiPage.updated ?? WikiPage.created
+status: stable                     # OKF v0.2 values: draft | stable | deprecated
+synthadoc_lifecycle: active        # Synthadoc extension — original lifecycle state
+confidence: high                   # Synthadoc extension
 resource: https://example.com/turing-bio   # omitted for local-file sources
-tags: mathematics, computation, cryptography
-timestamp: '2026-04-22'       # WikiPage.updated ?? WikiPage.created
-status: active                # Synthadoc extension — OKF consumers tolerate unknown fields
-confidence: high              # Synthadoc extension
+tags:
+  - mathematics
+  - computation
+sources:                           # present when page has URL ingest sources
+  - id: src-0
+    resource: https://example.com/turing-bio
+    last_modified: '2026-04-20T10:00:00'
+verified:                          # present when page has a recorded "→ active" lint event
+  by: process:synthadoc-lint
+  at: '2026-04-22T09:15:00'
+stale_after: '2026-07-21T10:00:00Z'  # present when url_staleness_days > 0
 ```
 
-OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) every frontmatter has a non-empty `type`; (3) reserved filenames follow spec structure. Synthadoc-specific fields (`status`, `confidence`) are preserved as extensions — the spec requires consumers to tolerate unknown keys.
+**Breaking changes from v0.1:**
+
+| Field | v0.1 | v0.2 |
+|-------|------|------|
+| `timestamp` | present | removed — replaced by `generated.at` |
+| `status` | Synthadoc lifecycle value (e.g. `active`) | OKF spec value (`draft`/`stable`/`deprecated`) |
+| `index.md` frontmatter | `type: index`, `title`, `description`, `timestamp` | `okf_version: "0.2"` only |
+| `log.md` frontmatter | `type: log`, `title`, `timestamp` | none (plain markdown) |
+
+**Status mapping (Synthadoc → OKF v0.2):**
+
+| Synthadoc lifecycle | OKF `status` | Note |
+|---------------------|--------------|------|
+| `active` | `stable` | verified knowledge |
+| `draft` | `draft` | unverified |
+| `stale` | `draft` | source may have changed |
+| `contradicted` | `draft` | conflicting claims present |
+| `archived` | `deprecated` | retired |
+
+The original Synthadoc lifecycle state is always preserved in the `synthadoc_lifecycle` extension field.
+
+**New fields in v0.2:**
+
+- **`generated`** — object `{by, at}` replacing `timestamp`. `by` uses the OKF actor convention: `tool/model` for automated processes.
+- **`synthadoc_lifecycle`** — Synthadoc extension preserving the exact lifecycle state so consumers that understand Synthadoc semantics do not lose information.
+- **`sources`** — list of `{id, resource, last_modified?}` objects for pages ingested from URL sources.
+- **`verified`** — object `{by, at}` recording the latest lint pass that promoted the page to `active`. Absent for pages with no recorded `→ active` event.
+- **`stale_after`** — ISO-8601 UTC timestamp for URL-sourced pages when `url_staleness_days > 0` is configured. Absent by default (disabled).
+
+OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) every frontmatter has a non-empty `type`; (3) reserved filenames follow v0.2 spec structure.
 
 `[[wikilinks]]` in page bodies are rewritten to OKF-style relative paths (`[Title](slug.md)`) so cross-links are valid within the bundle.
 
@@ -2985,7 +3027,7 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 | `synthadoc_read_page`   | `slug: str`                                                                                                                                          | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}`                                                                                                                                                               | Claude only |
 | `synthadoc_list_pages`  | `status?: str` (default `"all"`)                                                                                                                     | `{pages: [{slug, title, status, type, has_sources}], total: int}`                                                                                                                                                                                     | Neither     |
 | `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}`                                                                                             | Neither     |
-| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | okf writes folder to disk →`{format, output_path, files_written, pages}`. Other formats: with `output_path` → `{format, output_path, pages}`; without → `{format, content, pages}`. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither     |
+| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | okf writes folder to disk → `{format, output_path, files_written, pages}`. Other formats: with `output_path` → `{format, output_path, pages}`; without → `{format, content, pages}`. `pages` = exported wiki pages only (system pages — index, dashboard, overview, purpose — are never exported). `files_written` (OKF only) includes index.md and log.md in addition to wiki pages. OKF with `status_filter="all"` exports active + contradicted pages only; draft, stale, and archived are excluded. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither     |
 | `synthadoc_write_page`  | `slug: str`, `content: str`, `title?: str`                                                                                                           | `{slug, title, status}` or `{error, slug}`                                                                                                                                                                                                            | Neither     |
 | `synthadoc_status`      | *(none)*                                                                                                                                             | `{pages: int, wiki: str}`                                                                                                                                                                                                                             | Neither     |
 | `synthadoc_jobs`        | `status?: str` (default `"all"`)                                                                                                                     | `{jobs: [{id, operation, status, created, source?, error?}]}`                                                                                                                                                                                         | Neither     |
@@ -4558,7 +4600,7 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 - **Transport support** — stdio (Claude Desktop), SSE via `--transport sse` (Claude Code CLI), HTTP/SSE direct connection (n8n, LangGraph, custom agents). Claude Desktop requires underscores in `mcpServers` key names (hyphens cause load failure).
 - **Brain/memory architecture** — Claude acts as the reasoning brain (editorial judgment, synthesis, tool chaining); Synthadoc MCP acts as persistent domain memory (BM25 search, 5-state lifecycle, immutable audit trail). `synthadoc_search` and `synthadoc_read_page` return raw data with no Synthadoc LLM call; only `synthadoc_ingest` and `synthadoc_lint` consume tokens from the configured provider.
 - **`--mcp-only` / `--http-only` serve flags** — deploy MCP-only (no web UI or REST API) or HTTP-only (no MCP mount) for constrained environments.
-- **OKF `type:` field** — IngestAgent now writes a `type:` frontmatter field on every compiled page (values: `concept`, `person`, `organization`, `technology`, `event`, `location`, `product`). The field is required by OKF v0.1 and enables type-grouped `index.md` in the export bundle. Pages ingested before v0.9.0 can be backfilled via `synthadoc demo sync` (demo wikis) or re-running `synthadoc ingest` (custom wikis).
+- **OKF `type:` field** — IngestAgent now writes a `type:` frontmatter field on every compiled page (values: `concept`, `person`, `organization`, `technology`, `event`, `location`, `product`). The field is required by OKF v0.2 and enables type-grouped `index.md` in the export bundle. Pages ingested before v0.9.0 can be backfilled via `synthadoc demo sync` (demo wikis) or re-running `synthadoc ingest` (custom wikis).
 - **`synthadoc demo sync` — optional wiki name** — running `synthadoc demo sync` without a wiki name argument syncs all registered demo wikis in one pass. The sync step also backfills `type:` on existing pages that were compiled before v0.9.0 without the field.
 - **SSE shutdown stability** — a log filter installed on `uvicorn.error` at startup suppresses three benign error classes that appear when the server exits while SSE connections are open: `asyncio.CancelledError`, `KeyboardInterrupt`, and the `RuntimeError("Expected ASGI message 'http.response.body'…")` that Starlette's error middleware raises after cancellation. Actual errors during normal operation are unaffected.
 
@@ -4596,7 +4638,7 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 - **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log/history/rollback`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
 - **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
-- **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
+- **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); for OKF, `--status all` exports active and contradicted pages only — draft, stale, and archived are excluded regardless (OKF bundles are shareable artifacts; only settled knowledge is included); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
 
 ### v0.5.0 (Community Edition)
 

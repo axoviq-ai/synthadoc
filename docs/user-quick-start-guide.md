@@ -376,7 +376,7 @@ an alias and one is a longer substring of the query, the longer one takes preced
 
 ### OKF compatibility fields
 
-Every page compiled by Synthadoc also carries two fields that align with Google's [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md):
+Every page compiled by Synthadoc also carries two fields that align with Google's [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md):
 
 
 | Field      | What it contains                                                                                          | Set by                                            |
@@ -2253,7 +2253,7 @@ Synthadoc exports your wiki in five machine-readable formats — all assembled s
 | `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                                                                                                                                                                                                                     | Large-context LLM prompts, RAG pipelines, offline reading        |
 | `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.                                                                                                                                                                                           | Visualising knowledge structure, detecting hub pages and orphans |
 | `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships.                                                                                                                                                                                        | Agent pipelines, programmatic processing, compliance audits      |
-| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool —**zero code changes needed**       |
+| `okf`           | [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`generated`, `status`, `synthadoc_lifecycle`, optional `sources`/`verified`/`stale_after`), an `index.md` with `okf_version: "0.2"`, and a plain-markdown `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry `status: draft`, `synthadoc_lifecycle: contradicted`, and a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool —**zero code changes needed**       |
 
 ### Status filter — export only what you trust
 
@@ -2288,7 +2288,7 @@ synthadoc export --format graphml --output exports/history.graphml
 # Agent-ready JSON — claims, lifecycle history, per-page cost, routing
 synthadoc export --format json --output exports/history.json
 
-# OKF v0.1 bundle — consumable by any OKF-aware agent without code changes
+# OKF v0.2 bundle — consumable by any OKF-aware agent without code changes
 synthadoc export --format okf --output ~/exports/history-okf/
 ```
 
@@ -2348,9 +2348,9 @@ The exported `.graphml` file can be loaded in any of these free tools:
 
 ### OKF bundle export — zero-code agent consumption
 
-The `okf` format produces a directory bundle that any [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-aware agent can read without knowing anything about Synthadoc. Every wiki page becomes a conformant Markdown file with YAML frontmatter; knowledge types, cross-links, and lifecycle history are all preserved.
+The `okf` format produces a directory bundle that any [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-aware agent can read without knowing anything about Synthadoc. Every wiki page becomes a conformant Markdown file with YAML frontmatter; knowledge types, cross-links, and lifecycle history are all preserved.
 
-By default the bundle includes **active and contradicted pages only** — draft and stale pages are excluded because they contain unverified or outdated content. Contradicted pages are included deliberately: they carry `status: contradicted` in their frontmatter so OKF consumers that read metadata can filter them, and a `> **Contradiction:** …` blockquote appended to the body so consumers that only read Markdown text still see the conflict note.
+By default the bundle includes **active and contradicted pages only** — draft and stale pages are excluded because they contain unverified or outdated content. Contradicted pages are included deliberately: they carry `status: draft` and `synthadoc_lifecycle: contradicted` in their frontmatter so OKF consumers that read metadata can distinguish them from unverified drafts, and a `> **Contradiction:** …` blockquote appended to the body so consumers that only read Markdown text still see the conflict note.
 
 **Export the demo wiki as an OKF bundle:**
 
@@ -2378,10 +2378,19 @@ Each concept file carries a conformant frontmatter block — here is `alan-turin
 type: person
 title: Alan Turing
 description: Father of theoretical computer science and pioneer of the Turing machine.
-tags: mathematics, computation, cryptography
-timestamp: '2026-04-22'
-status: active
+tags:
+  - mathematics
+  - computation
+  - cryptography
+generated:
+  by: synthadoc/ingest-pipeline
+  at: '2026-04-22'
+status: stable
+synthadoc_lifecycle: active
 confidence: high
+verified:
+  by: process:synthadoc-lint
+  at: '2026-04-22T09:15:00'
 ---
 
 Alan Turing (1912–1954) developed the theoretical basis of modern computation…
@@ -4173,7 +4182,7 @@ To request a tighter pack (forces prioritisation and shows omitted pages clearly
 | `synthadoc_lifecycle`   | `slug: str`, `to_state: str`, `reason: str`                                                                                                          | Transition a page's lifecycle state; writes an immutable audit record                                                                                                             | Neither        |
 | `synthadoc_lint_report` | *(none)*                                                                                                                                             | Instant wiki health read — contradicted pages, orphans, adversarial warning counts;**no job, no LLM**                                                                            | Neither        |
 | `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately                                                                | Neither        |
-| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk and tells you where; other formats return content inline or to a file. Formats:`okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither        |
+| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. `pages` in the response = exported wiki pages only (system pages are always excluded). `files_written` (OKF only) includes index.md and log.md in addition to wiki pages. OKF with `status_filter="all"` exports active + contradicted pages only; draft, stale, and archived are excluded. Other formats export all pages matching the filter. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither        |
 | `synthadoc_ingest`      | `source: str`                                                                                                                                        | Enqueue a URL or file for ingest — returns a job ID                                                                                                                              | Synthadoc      |
 | `synthadoc_lint`        | `scope?: str` (default `"all"`)                                                                                                                      | Enqueue a full LLM lint analysis — returns a job ID; use`synthadoc_jobs` to poll                                                                                                 | Synthadoc      |
 

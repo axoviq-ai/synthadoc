@@ -64,9 +64,16 @@ def create_mcp_server(orchestrator):
                 Optional — if omitted, okf defaults to
                 <wiki_root>/exports/<wiki_name>-okf-<date>/ and other formats
                 return content inline in the response.
-        status_filter: "all" (default), or a lifecycle state such as "active".
+        status_filter: "all" (default) exports active+contradicted pages for OKF
+                (the standard shareable subset — draft, stale, and archived are
+                excluded). Pass a specific lifecycle state such as "archived" to
+                export only pages in that state instead.
+                System pages (index, dashboard, overview, purpose) are always
+                excluded from every OKF export regardless of status_filter.
 
-        OKF returns: {"format", "output_path", "files_written": N, "pages": N}
+        OKF returns: {"format", "output_path",
+                      "files_written": total files (wiki pages + index.md + log.md),
+                      "pages": wiki page count only (excludes index.md and log.md)}
         Other formats with output_path: {"format", "output_path", "pages": N}
         Other formats without output_path: {"format", "content": str, "pages": N}
         """
@@ -83,7 +90,6 @@ def create_mcp_server(orchestrator):
         )
         opts = ExportOptions(format=format, status_filter=status_filter)
         content = await agent.run(opts)
-        page_count = len(orchestrator._store.list_pages())
 
         if format == "okf":
             if output_path:
@@ -95,7 +101,15 @@ def create_mcp_server(orchestrator):
                 target = out / rel_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
-            return {"format": format, "output_path": str(out), "files_written": len(content), "pages": page_count}
+            wiki_pages = sum(1 for k in content if k.startswith("wiki/"))
+            return {"format": format, "output_path": str(out), "files_written": len(content), "pages": wiki_pages}
+
+        # Non-OKF: run() already filtered pages and cached the count
+        if agent.exportable_count is None:
+            raise RuntimeError(
+                f"ExportAgent.run() did not set exportable_count for format {format!r}"
+            )
+        page_count = agent.exportable_count
 
         if output_path:
             out = Path(output_path)

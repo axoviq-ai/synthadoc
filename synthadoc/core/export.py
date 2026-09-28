@@ -14,10 +14,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState, SYSTEM_PAGE_SLUGS
+from synthadoc.utils import normalise_ts
 
 _SKIP_SLUGS = SYSTEM_PAGE_SLUGS
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json", "okf"})
+
+# OKF v0.2 status mapping: Synthadoc lifecycle → OKF spec values (draft|stable|deprecated)
+_OKF_STATUS_MAP: dict[str, str] = {
+    LifecycleState.ACTIVE:       "stable",
+    LifecycleState.DRAFT:        "draft",
+    LifecycleState.STALE:        "draft",
+    LifecycleState.ARCHIVED:     "deprecated",
+    LifecycleState.CONTRADICTED: "draft",
+}
 
 
 @dataclass
@@ -42,52 +52,74 @@ class ExportAgent:
         wiki_name: str,
         audit_db_path: Path,
         routing_path: Path,
+        url_staleness_days: int = 0,
     ) -> None:
         self._store = store
         self._wiki_name = wiki_name
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
+        self._url_staleness_days = url_staleness_days
+        self.exportable_count: "int | None" = None  # set by run(); None until run() completes
+
+    def _filter_pages(self, status_filter: str = "all") -> "dict[str, WikiPage]":
+        """Return pages that pass the generic export filter.
+
+        Excludes SYSTEM_PAGE_SLUGS unconditionally.  When status_filter is 'all',
+        includes every remaining page; otherwise includes only pages whose status
+        matches exactly.  Does NOT apply the OKF-specific active+contradicted
+        restriction — that lives in run().
+        """
+        result: dict[str, WikiPage] = {}
+        for slug in self._store.list_pages():
+            if slug in _SKIP_SLUGS:
+                continue
+            page = self._store.read_page(slug)
+            if page is None:  # pragma: no cover
+                continue
+            if status_filter != "all" and page.status != status_filter:
+                continue
+            result[slug] = page
+        return result
 
     async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
         """Serialise the wiki.
 
         Errors propagate — callers write the result to disk or return it as
         an HTTP body and must handle failures themselves.
+
+        After a successful call, self.exportable_count holds the number of
+        pages actually exported (after all format-specific filters).
         """
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"
             )
 
-        slugs = self._store.list_pages()
-        pages: dict[str, WikiPage] = {}
-        for slug in slugs:
-            if slug in _SKIP_SLUGS:
-                continue
-            page = self._store.read_page(slug)
-            if page is None:  # pragma: no cover
-                continue
-            if opts.status_filter != "all" and page.status != opts.status_filter:
-                continue
-            pages[slug] = page
+        pages = self._filter_pages(opts.status_filter)
 
         if opts.format == "llms.txt":
+            self.exportable_count = len(pages)
             return self._render_llms_txt(pages)
         if opts.format == "llms-full.txt":
+            self.exportable_count = len(pages)
             return self._render_llms_full_txt(pages)
 
         if opts.format == "okf":
-            # Default: active + contradicted only — draft/stale/archived excluded
+            # OKF bundles are shareable artifacts — restrict to active+contradicted by default.
+            # status_filter="all" means "all OKF-eligible pages", not literally all store pages.
+            # Pass a specific lifecycle state (e.g. "draft") to export only those pages instead.
             if opts.status_filter == "all":
-                _OKF_DEFAULT = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
-                pages = {s: p for s, p in pages.items() if p.status in _OKF_DEFAULT}
+                _OKF_ELIGIBLE = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
+                pages = {s: p for s, p in pages.items() if p.status in _OKF_ELIGIBLE}
+            self.exportable_count = len(pages)
             from synthadoc.storage.log import AuditDB
             audit = AuditDB(self._audit_db_path)
             await audit.init()
             lc_events, _ = await audit.get_lifecycle_events(limit=100_000)
-            return self._render_okf(pages, lc_events)
+            return self._render_okf(pages, lc_events, url_staleness_days=self._url_staleness_days)
 
-        # graphml and json both need routing
+        # graphml and json both need routing; exportable_count is the same for both
+        self.exportable_count = len(pages)
         from synthadoc.core.routing import RoutingIndex
         routing = RoutingIndex.parse(self._routing_path)
 
@@ -332,37 +364,72 @@ class ExportAgent:
 
         return _json.dumps(output, ensure_ascii=False, indent=2)
 
-    # ── OKF v0.1 export ───────────────────────────────────────────────────────
+    # ── OKF v0.2 export ───────────────────────────────────────────────────────
 
     def _render_okf(
         self,
         pages: dict[str, WikiPage],
         lc_events: list[dict],
+        *,
+        url_staleness_days: int = 0,
     ) -> dict[str, str]:
         import yaml as _yaml
+        from synthadoc.storage.wiki import is_url
 
         slug_to_title = {slug: page.title for slug, page in pages.items()}
+
+        # slug → latest timestamp of a "→ active" transition (for the verified field)
+        _verified_at: dict[str, str] = {}
+        for e in lc_events:
+            if e.get("to_state") == LifecycleState.ACTIVE and e.get("timestamp"):
+                _slug = e.get("slug", "")
+                if e["timestamp"] > _verified_at.get(_slug, ""):
+                    _verified_at[_slug] = e["timestamp"]
 
         files: dict[str, str] = {}
 
         for slug, page in sorted(pages.items()):
+            _ts = normalise_ts(page.updated or (str(page.created) if page.created else ""))
             fm: dict = {
                 "type": page.type or "concept",
                 "title": page.title,
                 "description": _first_sentence(page.content or ""),
                 "tags": list(page.tags) if page.tags else [],
-                "timestamp": page.updated or (str(page.created) if page.created else ""),
-                "status": page.status,
-                "confidence": page.confidence or "",
             }
-            resource = page.resource
-            if not resource:
-                from synthadoc.storage.wiki import is_url
-                url_sources = [s.file for s in page.sources if is_url(s.file)]
-                if url_sources:
-                    resource = url_sources[0]
+            if _ts:
+                fm["generated"] = {"by": "synthadoc/ingest-pipeline", "at": _ts}
+            fm["status"] = _OKF_STATUS_MAP.get(page.status, "draft")
+            fm["synthadoc_lifecycle"] = page.status
+            fm["confidence"] = page.confidence or ""
+
+            url_sources = [s for s in (page.sources or []) if is_url(s.file)]
+            resource = page.resource or (url_sources[0].file if url_sources else None)
             if resource:
                 fm["resource"] = resource
+
+            if url_sources:
+                fm["sources"] = [
+                    {"id": f"src-{i}", "resource": s.file,
+                     **({"last_modified": normalise_ts(str(s.ingested))} if s.ingested else {})}
+                    for i, s in enumerate(url_sources)
+                ]
+
+            verified_ts = _verified_at.get(slug)
+            if verified_ts:
+                fm["verified"] = {"by": "process:synthadoc-lint", "at": normalise_ts(verified_ts)}
+
+            if url_staleness_days > 0 and url_sources and url_sources[0].ingested:
+                from datetime import timedelta
+                try:
+                    ingested_dt = datetime.fromisoformat(str(url_sources[0].ingested))
+                    if ingested_dt.tzinfo is None:
+                        ingested_dt = ingested_dt.replace(tzinfo=timezone.utc)
+                    fm["stale_after"] = (
+                        ingested_dt + timedelta(days=url_staleness_days)
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except (ValueError, TypeError):
+                    pass
+
             fm = {k: v for k, v in fm.items() if v not in ("", [], None)}
 
             body = _rewrite_wikilinks(page.content or "", slug_to_title)
@@ -382,13 +449,7 @@ class ExportAgent:
     def _render_okf_index(self, pages: dict[str, WikiPage]) -> str:
         import yaml as _yaml
 
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        fm = {
-            "type": "index",
-            "title": self._wiki_name,
-            "description": f"OKF bundle exported from Synthadoc wiki '{self._wiki_name}' on {ts}.",
-            "timestamp": ts,
-        }
+        fm = {"okf_version": "0.2"}
         lines = [
             "---",
             _yaml.dump(fm, default_flow_style=False, allow_unicode=True).rstrip(),
@@ -412,20 +473,9 @@ class ExportAgent:
         return "\n".join(lines)
 
     def _render_okf_log(self, lc_events: list[dict]) -> str:
-        import yaml as _yaml
         from collections import defaultdict
 
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        fm = {
-            "type": "log",
-            "title": f"{self._wiki_name} — Change Log",
-            "timestamp": ts,
-        }
         lines = [
-            "---",
-            _yaml.dump(fm, default_flow_style=False, allow_unicode=True).rstrip(),
-            "---",
-            "",
             f"# {self._wiki_name} — Change Log",
             "",
         ]
