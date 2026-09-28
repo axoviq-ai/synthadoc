@@ -224,7 +224,7 @@ async def run_tool_call_loop(
                 tool_count += 1
                 if tool_count > budget:
                     _continue = (
-                        f" Type **{rerun_hint}** or click the button to continue."
+                        f" Type **yes** or **{rerun_hint}**, or click the button to continue."
                         if rerun_hint
                         else " Re-run the workflow to continue where it left off."
                     )
