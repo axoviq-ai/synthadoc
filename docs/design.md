@@ -4219,32 +4219,7 @@ Every wiki server exposes two endpoints:
 
 Any server can act as the coordinator for a given request.
 
-```
-CLI / Web UI
-    │
-    │  synthadoc query --cross-wiki "question"
-    │  POST /cross-wiki/query  {question, history}
-    ▼
-┌──────────────────────────────────────────────┐
-│  Coordinator wiki server (any registered wiki)│
-│                                              │
-│  CrossWikiQueryAgent                         │
-│    1. decompose_question(provider, q)        │
-│    2. _wiki_pick(q) → [wiki_a, wiki_b]       │
-│    3. asyncio.gather(                        │
-│         POST wiki_a/retrieve {q, sub_qs},    │
-│         POST wiki_b/retrieve {q, sub_qs}     │
-│       )                                      │
-│    4. merge + prefix pages by wiki name      │
-│    5. LLM synthesis → QueryResult           │
-└──────────────────────────────────────────────┘
-         │                    │
-         ▼                    ▼
-  wiki_a server           wiki_b server
-  POST /retrieve          POST /retrieve
-  BM25 only, top-K        BM25 only, top-K
-  returns page text       returns page text
-```
+![Cross-Wiki Queries Architecture](png/cross-wiki-queries-architecture.png)
 
 ### Setup
 
