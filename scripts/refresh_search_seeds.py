@@ -287,18 +287,26 @@ class _Backend:
                 messages=[{"role": "user", "content": prompt}],
             )
             return (resp.content[0].text if resp.content else "").strip()
-        cmd = [*self._cli_cmd, prompt]
+        # Pass the prompt via stdin rather than as a CLI arg to avoid the
+        # Windows cmd.exe 8191-character command-line length limit.
+        # Both `claude -p` and `opencode run` read from stdin when no message
+        # positional arg is provided.
         proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            *self._cli_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90)
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=prompt.encode()), timeout=90
+            )
         except asyncio.TimeoutError:
             try:
                 proc.kill()
             except Exception:
                 pass
-            raise RuntimeError(f"{self._cli_cmd[0]} timed out")
+            raise RuntimeError(f"{self._label_for_error()} timed out")
         text = stdout.decode(errors="replace").strip()
         if not text and proc.returncode != 0:
             err_text = _ANSI_RE.sub("", stderr.decode(errors="replace")).strip()
