@@ -292,14 +292,25 @@ class _Backend:
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90)
         except asyncio.TimeoutError:
             try:
                 proc.kill()
             except Exception:
                 pass
             raise RuntimeError(f"{self._cli_cmd[0]} timed out")
-        return stdout.decode(errors="replace").strip()
+        text = stdout.decode(errors="replace").strip()
+        if not text and proc.returncode != 0:
+            err_text = _ANSI_RE.sub("", stderr.decode(errors="replace")).strip()
+            raise RuntimeError(
+                f"{self._label_for_error()} exited {proc.returncode}: {err_text[:300]}"
+            )
+        return text
+
+    def _label_for_error(self) -> str:
+        # Return a printable name for error messages (skip "cmd /c" prefix on Windows).
+        parts = [p for p in self._cli_cmd if p not in ("cmd", "/c")]
+        return " ".join(parts[:2]) if parts else self.label
 
 
 def _win_wrap(cmd: list) -> list:
@@ -336,7 +347,9 @@ def _detect_backend(
         if shutil.which("claude"):
             return _Backend(label="claude", cli_cmd=_win_wrap(["claude", "-p"]))
         return None
-    # auto: anthropic-sdk → opencode → claude
+    # auto: anthropic-sdk → claude CLI → opencode
+    # claude -p is preferred over opencode because it has a stable one-shot interface;
+    # opencode's default model varies by user config and may not support chat completions.
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if api_key:
         try:
@@ -346,7 +359,7 @@ def _detect_backend(
                             model=model)
         except ImportError:
             pass
-    for binary, cli_cmd in [("opencode", ["opencode", "run"]), ("claude", ["claude", "-p"])]:
+    for binary, cli_cmd in [("claude", ["claude", "-p"]), ("opencode", ["opencode", "run"])]:
         if shutil.which(binary):
             return _Backend(label=binary, cli_cmd=_win_wrap(cli_cmd))
     return None
@@ -363,10 +376,10 @@ async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asynci
         except Exception as exc:
             # Treat errors as pass to avoid false negatives, but log so the user
             # can see when the LLM backend failed rather than genuinely said "ingest".
-            print(
-                f"  scope-check error (treating as in-scope): {type(exc).__name__}: {exc}",
-                file=sys.stderr,
-            )
+            msg = f"  scope-check error (treating as in-scope): {type(exc).__name__}: {exc}"
+            if "does not support chat" in str(exc) or "UnknownError" in str(exc):
+                msg += "\n  Hint: try --backend claude (uses `claude -p`, reliable one-shot mode)"
+            print(msg, file=sys.stderr)
             return True
 
 
