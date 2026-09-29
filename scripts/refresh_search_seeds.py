@@ -481,6 +481,7 @@ async def refresh_template(
     max_per_query: int,
     max_refs: int,
     dry_run: bool,
+    force: bool = False,
     blocked: set[str],
     url_sem: asyncio.Semaphore,
     tav_sem: asyncio.Semaphore,
@@ -560,6 +561,9 @@ async def refresh_template(
     # ── Step 1: validate existing curated URLs (concurrent) ───────────────────
     # Only query Tavily for the slots that are missing or broken/out-of-scope.
     existing_curated = extract_curated_urls(seeds_text)
+    if force and existing_curated:
+        print(f"  [{template_name}] --force: discarding {len(existing_curated)} existing curated URL(s), re-querying Tavily")
+        existing_curated = []
 
     async def _check_existing(url: str) -> "str | None":
         ok, content = await _url_accessible(url, skill, url_sem)
@@ -822,6 +826,7 @@ async def async_main(args: argparse.Namespace) -> int:
             max_per_query=args.max_per_query,
             max_refs=args.max_refs,
             dry_run=args.dry_run,
+            force=args.force,
             blocked=blocked,
             url_sem=url_sem,
             tav_sem=tav_sem,
@@ -931,6 +936,10 @@ def main() -> None:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Print what would be written without modifying any file.",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Discard existing curated URLs and re-query Tavily even when all current URLs are still valid.",
     )
     parser.add_argument(
         "--max-per-query", type=int, default=3, metavar="N",
