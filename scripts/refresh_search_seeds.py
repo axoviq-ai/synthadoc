@@ -327,7 +327,13 @@ def _win_wrap(cmd: list) -> list:
 def _detect_backend(
     model: str = "claude-haiku-4-5-20251001",
     prefer: str = "auto",
+    opencode_model: str = "opencode/big-pickle",
 ) -> "_Backend | None":
+    def _opencode_cmd() -> list:
+        # Always pass -m so we don't inherit whatever default model opencode
+        # happens to have configured (it may not support chat completions).
+        return _win_wrap(["opencode", "run", "-m", opencode_model])
+
     if prefer == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if api_key:
@@ -341,7 +347,7 @@ def _detect_backend(
         return None
     if prefer == "opencode":
         if shutil.which("opencode"):
-            return _Backend(label="opencode", cli_cmd=_win_wrap(["opencode", "run"]))
+            return _Backend(label="opencode", cli_cmd=_opencode_cmd())
         return None
     if prefer == "claude":
         if shutil.which("claude"):
@@ -359,9 +365,12 @@ def _detect_backend(
                             model=model)
         except ImportError:
             pass
-    for binary, cli_cmd in [("claude", ["claude", "-p"]), ("opencode", ["opencode", "run"])]:
+    for binary, cli_cmd in [
+        ("claude", ["claude", "-p"]),
+        ("opencode", _opencode_cmd()),
+    ]:
         if shutil.which(binary):
-            return _Backend(label=binary, cli_cmd=_win_wrap(cli_cmd))
+            return _Backend(label=binary, cli_cmd=cli_cmd)
     return None
 
 
@@ -770,7 +779,7 @@ async def async_main(args: argparse.Namespace) -> int:
     tav_sem = asyncio.Semaphore(2)  # concurrent Tavily API calls
     llm_sem = asyncio.Semaphore(2)  # concurrent LLM scope checks
 
-    backend = _detect_backend(model=args.model, prefer=args.backend)
+    backend = _detect_backend(model=args.model, prefer=args.backend, opencode_model=args.opencode_model)
     scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
@@ -905,6 +914,11 @@ def main() -> None:
     parser.add_argument(
         "--model", metavar="MODEL_ID", default="claude-haiku-4-5-20251001",
         help="Model ID passed to the anthropic backend (default: claude-haiku-4-5-20251001).",
+    )
+    parser.add_argument(
+        "--opencode-model", metavar="MODEL_ID", default="opencode/big-pickle",
+        dest="opencode_model",
+        help="Model passed to opencode via -m (default: opencode/big-pickle).",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
