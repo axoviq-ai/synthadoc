@@ -4481,6 +4481,8 @@ synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks
 
 The `-w` flag identifies the coordinator wiki (any registered wiki will do). The `--cross-wiki` flag fans the question out across all running registered wikis.
 
+![Cross-wiki query — fan-out across multiple wiki domains](png/cross-wiki-queries.png)
+
 ### Step 4 — Understanding citation format
 
 Cross-wiki answers use a two-part citation format:
