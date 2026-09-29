@@ -302,6 +302,17 @@ class _Backend:
         return stdout.decode(errors="replace").strip()
 
 
+def _win_wrap(cmd: list) -> list:
+    # On Windows, asyncio.create_subprocess_exec cannot launch .cmd/.bat wrappers
+    # (common for Node.js CLIs like opencode) — wrap with "cmd /c" so the shell
+    # resolves the extension.
+    if sys.platform == "win32":
+        resolved = shutil.which(cmd[0])
+        if resolved and resolved.lower().endswith((".cmd", ".bat")):
+            return ["cmd", "/c"] + cmd
+    return cmd
+
+
 def _detect_backend(
     model: str = "claude-haiku-4-5-20251001",
     prefer: str = "auto",
@@ -319,11 +330,11 @@ def _detect_backend(
         return None
     if prefer == "opencode":
         if shutil.which("opencode"):
-            return _Backend(label="opencode", cli_cmd=["opencode", "run"])
+            return _Backend(label="opencode", cli_cmd=_win_wrap(["opencode", "run"]))
         return None
     if prefer == "claude":
         if shutil.which("claude"):
-            return _Backend(label="claude", cli_cmd=["claude", "-p"])
+            return _Backend(label="claude", cli_cmd=_win_wrap(["claude", "-p"]))
         return None
     # auto: anthropic-sdk → opencode → claude
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -337,7 +348,7 @@ def _detect_backend(
             pass
     for binary, cli_cmd in [("opencode", ["opencode", "run"]), ("claude", ["claude", "-p"])]:
         if shutil.which(binary):
-            return _Backend(label=binary, cli_cmd=cli_cmd)
+            return _Backend(label=binary, cli_cmd=_win_wrap(cli_cmd))
     return None
 
 
