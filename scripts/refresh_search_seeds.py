@@ -287,25 +287,61 @@ class _Backend:
                 messages=[{"role": "user", "content": prompt}],
             )
             return (resp.content[0].text if resp.content else "").strip()
-        cmd = [*self._cli_cmd, prompt]
+        # Pass the prompt via stdin rather than as a CLI arg to avoid the
+        # Windows cmd.exe 8191-character command-line length limit.
+        # Both `claude -p` and `opencode run` read from stdin when no message
+        # positional arg is provided.
         proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            *self._cli_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90)
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=prompt.encode()), timeout=90
+            )
         except asyncio.TimeoutError:
             try:
                 proc.kill()
             except Exception:
                 pass
-            raise RuntimeError(f"{self._cli_cmd[0]} timed out")
-        return stdout.decode(errors="replace").strip()
+            raise RuntimeError(f"{self._label_for_error()} timed out")
+        text = stdout.decode(errors="replace").strip()
+        if not text and proc.returncode != 0:
+            err_text = _ANSI_RE.sub("", stderr.decode(errors="replace")).strip()
+            raise RuntimeError(
+                f"{self._label_for_error()} exited {proc.returncode}: {err_text[:300]}"
+            )
+        return text
+
+    def _label_for_error(self) -> str:
+        # Return a printable name for error messages (skip "cmd /c" prefix on Windows).
+        parts = [p for p in self._cli_cmd if p not in ("cmd", "/c")]
+        return " ".join(parts[:2]) if parts else self.label
+
+
+def _win_wrap(cmd: list) -> list:
+    # On Windows, asyncio.create_subprocess_exec cannot launch .cmd/.bat wrappers
+    # (common for Node.js CLIs like opencode) — wrap with "cmd /c" so the shell
+    # resolves the extension.
+    if sys.platform == "win32":
+        resolved = shutil.which(cmd[0])
+        if resolved and resolved.lower().endswith((".cmd", ".bat")):
+            return ["cmd", "/c"] + cmd
+    return cmd
 
 
 def _detect_backend(
     model: str = "claude-haiku-4-5-20251001",
     prefer: str = "auto",
+    opencode_model: str = "opencode/big-pickle",
 ) -> "_Backend | None":
+    def _opencode_cmd() -> list:
+        # Always pass -m so we don't inherit whatever default model opencode
+        # happens to have configured (it may not support chat completions).
+        return _win_wrap(["opencode", "run", "-m", opencode_model])
+
     if prefer == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if api_key:
@@ -319,13 +355,15 @@ def _detect_backend(
         return None
     if prefer == "opencode":
         if shutil.which("opencode"):
-            return _Backend(label="opencode", cli_cmd=["opencode", "run"])
+            return _Backend(label="opencode", cli_cmd=_opencode_cmd())
         return None
     if prefer == "claude":
         if shutil.which("claude"):
-            return _Backend(label="claude", cli_cmd=["claude", "-p"])
+            return _Backend(label="claude", cli_cmd=_win_wrap(["claude", "-p"]))
         return None
-    # auto: anthropic-sdk → opencode → claude
+    # auto: anthropic-sdk → claude CLI → opencode
+    # claude -p is preferred over opencode because it has a stable one-shot interface;
+    # opencode's default model varies by user config and may not support chat completions.
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if api_key:
         try:
@@ -335,7 +373,10 @@ def _detect_backend(
                             model=model)
         except ImportError:
             pass
-    for binary, cli_cmd in [("opencode", ["opencode", "run"]), ("claude", ["claude", "-p"])]:
+    for binary, cli_cmd in [
+        ("claude", ["claude", "-p"]),
+        ("opencode", _opencode_cmd()),
+    ]:
         if shutil.which(binary):
             return _Backend(label=binary, cli_cmd=cli_cmd)
     return None
@@ -352,10 +393,10 @@ async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asynci
         except Exception as exc:
             # Treat errors as pass to avoid false negatives, but log so the user
             # can see when the LLM backend failed rather than genuinely said "ingest".
-            print(
-                f"  scope-check error (treating as in-scope): {type(exc).__name__}: {exc}",
-                file=sys.stderr,
-            )
+            msg = f"  scope-check error (treating as in-scope): {type(exc).__name__}: {exc}"
+            if "does not support chat" in str(exc) or "UnknownError" in str(exc):
+                msg += "\n  Hint: try --backend claude (uses `claude -p`, reliable one-shot mode)"
+            print(msg, file=sys.stderr)
             return True
 
 
@@ -440,6 +481,7 @@ async def refresh_template(
     max_per_query: int,
     max_refs: int,
     dry_run: bool,
+    force: bool = False,
     blocked: set[str],
     url_sem: asyncio.Semaphore,
     tav_sem: asyncio.Semaphore,
@@ -519,6 +561,9 @@ async def refresh_template(
     # ── Step 1: validate existing curated URLs (concurrent) ───────────────────
     # Only query Tavily for the slots that are missing or broken/out-of-scope.
     existing_curated = extract_curated_urls(seeds_text)
+    if force and existing_curated:
+        print(f"  [{template_name}] --force: discarding {len(existing_curated)} existing curated URL(s), re-querying Tavily")
+        existing_curated = []
 
     async def _check_existing(url: str) -> "str | None":
         ok, content = await _url_accessible(url, skill, url_sem)
@@ -746,7 +791,7 @@ async def async_main(args: argparse.Namespace) -> int:
     tav_sem = asyncio.Semaphore(2)  # concurrent Tavily API calls
     llm_sem = asyncio.Semaphore(2)  # concurrent LLM scope checks
 
-    backend = _detect_backend(model=args.model, prefer=args.backend)
+    backend = _detect_backend(model=args.model, prefer=args.backend, opencode_model=args.opencode_model)
     scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
@@ -781,6 +826,7 @@ async def async_main(args: argparse.Namespace) -> int:
             max_per_query=args.max_per_query,
             max_refs=args.max_refs,
             dry_run=args.dry_run,
+            force=args.force,
             blocked=blocked,
             url_sem=url_sem,
             tav_sem=tav_sem,
@@ -883,8 +929,17 @@ def main() -> None:
         help="Model ID passed to the anthropic backend (default: claude-haiku-4-5-20251001).",
     )
     parser.add_argument(
+        "--opencode-model", metavar="MODEL_ID", default="opencode/big-pickle",
+        dest="opencode_model",
+        help="Model passed to opencode via -m (default: opencode/big-pickle).",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print what would be written without modifying any file.",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Discard existing curated URLs and re-query Tavily even when all current URLs are still valid.",
     )
     parser.add_argument(
         "--max-per-query", type=int, default=3, metavar="N",

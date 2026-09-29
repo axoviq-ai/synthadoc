@@ -343,7 +343,7 @@ _STALE_SLUG_RE = re.compile(
     r'\s*(?:'
     r'\([^)\n]{0,120}stale[^)\n]{0,120}\)'  # (... stale ...)
     r'|:\s*stale\b'                          # : stale since ...
-    r'|\s+[—–]\s*stale\b'                   # — stale / – stale
+    r'|\s+[—–]\s*stale(?=\s*(?:since\b|\bfor\b|[,;()\n]|$))'  # — stale / — stale since (not "— Stale contradicted")
     r')',
     re.MULTILINE | re.IGNORECASE,
 )
@@ -364,6 +364,7 @@ _NO_STALE_RE = re.compile(
     r'\bno\s+stale\b'
     r'|0\s+stale'
     r'|\bzero\s+stale\b'
+    r'|\bstale:\s*0\b'                                   # inline status: "stale: 0"
     r'|\|\s*stale\s*\|\s*0\s*\|'                        # wiki-status table: | stale | 0 |
     r'|\bstale\b[^(\n]*\(0\)'                            # lint header: Stale pages (0)
     r'|\bno\s+pages?\s+(?:are\s+)?(?:currently\s+)?stale\b'   # "no pages are stale"
@@ -385,9 +386,14 @@ _CONTRADICTED_COUNT_RE = re.compile(
     r'\b([1-9]\d*)\s+contradicted\b',
     re.IGNORECASE,
 )
-# Additional patterns matching the two non-LLM output formats:
-#   Lint report:   "**Contradicted pages (4)** — resolve..."
-#   Wiki-status:   "| contradicted | 4 | conflicting..."
+# Additional patterns matching structured output formats:
+#   Lint summary line: "- Contradictions: 0 resolved, 4 flagged"  (LintReportWorkflow)
+#   LLM paraphrase:    "contradicted (4)"  or  "contradicted pages (4)"
+#   Wiki-status:       "| contradicted | 4 | conflicting..."
+_CONTRADICTED_LINT_SUMMARY_RE = re.compile(
+    r'\bContradictions:\s*\d+\s+resolved,\s*([1-9]\d*)\s+flagged\b',
+    re.IGNORECASE,
+)
 _CONTRADICTED_PARENS_RE = re.compile(
     r'\bcontradicted\b[^(\n]*\(([1-9]\d*)\)',
     re.IGNORECASE,
@@ -398,9 +404,11 @@ _CONTRADICTED_TABLE_RE = re.compile(
 )
 _NO_CONTRADICTED_RE = re.compile(
     r'\b0\s+contradicted\b|no\s+contradicted|zero\s+contradicted'
+    # lint summary with 0 flagged: "Contradictions: N resolved, 0 flagged"
+    r'|\bContradictions:\s*\d+\s+resolved,\s*0\s+flagged\b'
     # wiki-status table with 0:  "| contradicted | 0 |"
     r'|\|\s*contradicted\s*\|\s*0\s*\|'
-    # lint-report header with 0: "Contradicted pages (0)"
+    # LLM paraphrase with 0: "contradicted (0)"
     r'|\bcontradicted\b[^(\n]*\(0\)',
     re.IGNORECASE,
 )
@@ -497,7 +505,7 @@ def _build_pre_prompt(answer: str) -> str | None:
     # Checked before stale: contradicted pages serve actively conflicting
     # information and take precedence when both conditions are present.
     if not _NO_CONTRADICTED_RE.search(answer):
-        for pat in (_CONTRADICTED_COUNT_RE, _CONTRADICTED_PARENS_RE, _CONTRADICTED_TABLE_RE):
+        for pat in (_CONTRADICTED_LINT_SUMMARY_RE, _CONTRADICTED_COUNT_RE, _CONTRADICTED_PARENS_RE, _CONTRADICTED_TABLE_RE):
             m = pat.search(answer)
             if m:
                 n = int(m.group(1))
