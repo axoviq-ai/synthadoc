@@ -2400,19 +2400,47 @@ See also: [Von Neumann Architecture](von-neumann-architecture.md)
 
 **Run the OKF consumer agent demo:**
 
-Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_agent.py`. It imports nothing from Synthadoc — only `pathlib`, `yaml`, and the Anthropic SDK — proving that any OKF-aware tool works against the bundle without modification.
+Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_agent.py`. It imports nothing from Synthadoc — only standard-library modules, `pyyaml`, and whichever API client you choose — proving that any OKF-aware tool works against the bundle without modification.
+
+Three providers are supported: Anthropic (default), the opencode CLI, and any OpenAI-compatible endpoint.
 
 ```bash
-# Pattern A — grounded domain Q&A: answer questions from the bundle
-python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "Who pioneered compiler development and what did they build?"
+# Anthropic (default) — Pattern A: grounded domain Q&A
+python tests/integration/okf_consumer_agent.py \
+    --bundle ~/exports/history-okf \
+    --question "Who pioneered compiler development and what did they build?"
 
-# Pattern B — type-routed discovery: read index.md, filter by type, then answer
-python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "List all computing pioneers and their key contributions" --type person
+# opencode CLI — same question, delegated to the local opencode agent
+python tests/integration/okf_consumer_agent.py \
+    --bundle ~/exports/history-okf \
+    --question "Who pioneered compiler development and what did they build?" \
+    --provider opencode --model opencode/big-pickle
+
+# OpenAI-compatible endpoint (e.g. MiniMax)
+python tests/integration/okf_consumer_agent.py \
+    --bundle ~/exports/history-okf \
+    --question "Who pioneered compiler development and what did they build?" \
+    --base-url https://api.minimax.io/v1 --model MiniMax-M3
 ```
 
-The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (Pattern B), builds a grounded context, and asks Claude to answer using only the OKF bundle content — citing the source file path for every claim.
+Add `--type person` (Pattern B) to any of the above to filter the bundle by OKF type before building context:
 
-> **Requirements:** `pip install anthropic pyyaml` and `ANTHROPIC_API_KEY` set. The Synthadoc server does not need to be running — the agent reads the exported bundle directly from disk.
+```bash
+# Pattern B — type-routed discovery with opencode
+python tests/integration/okf_consumer_agent.py \
+    --bundle ~/exports/history-okf \
+    --question "List all computing pioneers and their key contributions" \
+    --type person --provider opencode --model opencode/big-pickle
+```
+
+The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (when `--type` is given), builds a grounded context, and asks the LLM to answer using only the OKF bundle content — citing the source file path for every claim.
+
+> **Requirements by provider:**
+> - **Anthropic (default):** `pip install anthropic pyyaml` and `ANTHROPIC_API_KEY` set.
+> - **opencode:** `npm install -g opencode-ai` (must be authenticated) and `pip install pyyaml`. No API key needed in the environment.
+> - **OpenAI-compatible:** `pip install openai pyyaml` and `OPENAI_API_KEY` (or `MINIMAX_API_KEY`) set.
+>
+> The Synthadoc server does not need to be running — the agent reads the exported bundle directly from disk.
 
 ---
 
