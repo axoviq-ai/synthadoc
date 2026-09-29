@@ -343,7 +343,7 @@ _STALE_SLUG_RE = re.compile(
     r'\s*(?:'
     r'\([^)\n]{0,120}stale[^)\n]{0,120}\)'  # (... stale ...)
     r'|:\s*stale\b'                          # : stale since ...
-    r'|\s+[—–]\s*stale\b'                   # — stale / – stale
+    r'|\s+[—–]\s*stale(?=\s*(?:since\b|\bfor\b|[,;()\n]|$))'  # — stale / — stale since (not "— Stale contradicted")
     r')',
     re.MULTILINE | re.IGNORECASE,
 )
@@ -364,6 +364,7 @@ _NO_STALE_RE = re.compile(
     r'\bno\s+stale\b'
     r'|0\s+stale'
     r'|\bzero\s+stale\b'
+    r'|\bstale:\s*0\b'                                   # inline status: "stale: 0"
     r'|\|\s*stale\s*\|\s*0\s*\|'                        # wiki-status table: | stale | 0 |
     r'|\bstale\b[^(\n]*\(0\)'                            # lint header: Stale pages (0)
     r'|\bno\s+pages?\s+(?:are\s+)?(?:currently\s+)?stale\b'   # "no pages are stale"
