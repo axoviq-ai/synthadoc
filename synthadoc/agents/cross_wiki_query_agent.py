@@ -301,7 +301,7 @@ class CrossWikiQueryAgent(BaseAgent):
                 pages.append({**page, "wiki_name": name})
             if result_routing_warning:
                 warnings.append(f"{name}: {result_routing_warning}")
-        pages.sort(key=lambda p: p["score"], reverse=True)
+        pages.sort(key=lambda p: p.get("score", 0), reverse=True)
         return pages, offline, warnings
 
     def _build_cross_wiki_context(self, pages: list[dict]) -> str:
