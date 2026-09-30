@@ -2716,6 +2716,21 @@ stale_after: '2026-07-21T10:00:00Z'  # present when url_staleness_days > 0
 
 The original Synthadoc lifecycle state is always preserved in the `synthadoc_lifecycle` extension field.
 
+**Type mapping (Synthadoc → OKF v0.2):**
+
+| Synthadoc `type` | OKF `type` | Note |
+|------------------|------------|------|
+| `concept` | `article` | knowledge article about an abstract idea |
+| `person` | `reference` | reference entry for an individual |
+| `organization` | `reference` | reference entry for a company or institution |
+| `technology` | `reference` | reference entry for a tool, system, or standard |
+| `event` | `article` | narrative article about an occurrence |
+| `location` | `reference` | reference entry for a place |
+| `product` | `reference` | reference entry for a commercial product |
+| `None` / unknown | `article` | generic fallback for pages with no type set |
+
+Synthadoc page types are set automatically by IngestAgent during the analysis pass (v0.9.0+). Pages ingested before v0.9.0 have no `type` and receive the `article` fallback in OKF bundles.
+
 **New fields in v0.2:**
 
 - **`generated`** — object `{by, at}` replacing `timestamp`. `by` uses the OKF actor convention: `tool/model` for automated processes.

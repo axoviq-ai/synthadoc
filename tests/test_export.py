@@ -426,18 +426,20 @@ async def test_okf_concept_file_has_required_type_field(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["type"] == "person"
+    # "person" maps to OKF canonical type "reference"
+    assert fm["type"] == "reference"
 
 
 @pytest.mark.asyncio
-async def test_okf_type_defaults_to_concept_when_none(tmp_path):
+async def test_okf_type_defaults_to_article_when_none(tmp_path):
     store = _make_store(tmp_path)
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ACTIVE,
                     content="Some content.", type_=None)
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/old-page.md"])
-    assert fm["type"] == "concept"
+    # None type falls back to OKF canonical type "article"
+    assert fm["type"] == "article"
 
 
 @pytest.mark.asyncio
