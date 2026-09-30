@@ -106,7 +106,14 @@ _SWITCH_PROVIDER_HINT = (
 
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
-    from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
+    from synthadoc.errors import (
+        DailyQuotaExhaustedException, CodingToolQuotaExhaustedException, MissingApiKeyError,
+    )
+    if isinstance(exc, MissingApiKeyError):
+        return HTTPException(
+            status_code=401,
+            detail=f"API key not configured: {exc}",
+        )
     # RuntimeError raised by CodingToolCLIProvider._parse_output (claude-code / opencode)
     # carries the tool's own error message — surface it without a stack trace.
     if isinstance(exc, RuntimeError):
