@@ -54,6 +54,26 @@ class ConfigError(Exception):
         self.code = code
         self.hint = hint
 
+
+class MissingApiKeyError(RuntimeError):
+    """Raised by ``make_provider`` when a required API key env var is not set.
+
+    Safe to raise from background job workers — carries a user-readable message
+    and is treated as a permanent failure (no retries). The CLI layer catches it
+    and formats it with ``cli_error``.
+    """
+
+    def __init__(self, var: str, provider: str, url: str) -> None:
+        self.var = var
+        self.provider = provider
+        self.url = url
+        super().__init__(
+            f"[{CFG_MISSING_API_KEY}] {var} is not set. "
+            f"synthadoc uses {provider} as its LLM provider. "
+            f"Set the env var before starting the server: "
+            f"export {var}=<your-key>  (get one at {url})"
+        )
+
 # ── Skills ────────────────────────────────────────────────────────────────────
 SKILL_NOT_FOUND   = "ERR-SKILL-001"  # No skill matched the source string
 SKILL_MISSING_DEP = "ERR-SKILL-002"  # Required pip package not installed

@@ -691,8 +691,12 @@ class Orchestrator:
         ``raise exc`` inside this helper would truncate it, which is why we use a bool
         return instead of raising here.
         """
-        from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
-        if isinstance(exc, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException)):
+        from synthadoc.errors import (
+            DailyQuotaExhaustedException, CodingToolQuotaExhaustedException,
+            MissingApiKeyError,
+        )
+        if isinstance(exc, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException,
+                            MissingApiKeyError)):
             await self._queue.fail_permanent(job_id, str(exc))
             return True
         await self._queue.fail(job_id, str(exc))
