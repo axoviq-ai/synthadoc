@@ -29,6 +29,17 @@ _OKF_STATUS_MAP: dict[str, str] = {
     LifecycleState.CONTRADICTED: "draft",
 }
 
+# OKF v0.2 type mapping: Synthadoc page type → OKF canonical type (article|reference|guide|tutorial)
+_OKF_TYPE_MAP: dict[str, str] = {
+    "concept":      "article",
+    "event":        "article",
+    "person":       "reference",
+    "organization": "reference",
+    "technology":   "reference",
+    "location":     "reference",
+    "product":      "reference",
+}
+
 
 @dataclass
 class ExportOptions:
@@ -391,7 +402,7 @@ class ExportAgent:
         for slug, page in sorted(pages.items()):
             _ts = normalise_ts(page.updated or (str(page.created) if page.created else ""))
             fm: dict = {
-                "type": page.type or "concept",
+                "type": _OKF_TYPE_MAP.get(page.type or "", "article"),
                 "title": page.title,
                 "description": _first_sentence(page.content or ""),
                 "tags": list(page.tags) if page.tags else [],

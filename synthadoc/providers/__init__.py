@@ -10,19 +10,7 @@ from synthadoc import errors as E
 def _require_env(var: str, provider: str, url: str) -> str:
     value = os.environ.get(var, "").strip()
     if not value:
-        E.cli_error(
-            E.CFG_MISSING_API_KEY,
-            f"{var} is not set. synthadoc uses {provider} as its LLM provider.",
-            f"  1. Get your API key at: {url}\n"
-            f"  2. Set it for the current session:\n"
-            f"       Linux / macOS:   export {var}=<your-key>\n"
-            f"       Windows cmd.exe: set {var}=<your-key>\n"
-            f"       PowerShell:      $env:{var}='<your-key>'\n"
-            f"  3. To persist across sessions:\n"
-            f"       Linux / macOS:  echo 'export {var}=<your-key>' >> ~/.bashrc\n"
-            f"       Windows:        [System.Environment]::SetEnvironmentVariable('{var}', '<your-key>', 'User')\n"
-            f"  Alternatively, set provider = \"ollama\" in .synthadoc/config.toml to use a local model.",
-        )
+        raise E.MissingApiKeyError(var, provider, url)
     return value
 
 
@@ -90,11 +78,8 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             )
             return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
         elif _is_dashscope and not key:
-            E.cli_error(
-                E.CFG_MISSING_API_KEY,
-                "QWEN_API_KEY is not set. synthadoc uses Qwen (DashScope) as its LLM provider.",
-                "Set the env var: export QWEN_API_KEY=your_key  "
-                "(get one at https://bailian.console.aliyun.com/)",
+            raise E.MissingApiKeyError(
+                "QWEN_API_KEY", "Qwen (DashScope)", "https://bailian.console.aliyun.com/"
             )
         else:
             from synthadoc.providers.ollama import OllamaProvider
