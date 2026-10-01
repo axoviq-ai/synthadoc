@@ -1264,7 +1264,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         }, headers=_NO_STORE)
 
     @app.get("/cross-wiki/query/stream")
-    async def cross_wiki_query_stream(q: str, session_id: str | None = None, timeout_seconds: int = 90):
+    async def cross_wiki_query_stream(q: str, session_id: str | None = None, timeout_seconds: int = 90, no_cache: bool = False):
         import asyncio as _asyncio
         import json as _json
         from fastapi.responses import StreamingResponse
@@ -1294,7 +1294,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _peer_epochs = await _cw_fetch_peer_epochs(
                 registry, _orch._root.name, _orch._wiki_epoch)
             _cache_key = _cw_cache_key(q, _peer_epochs, _cw_model)
-            _cached = await _cw_cache_read(_cache_key, _orch)
+            _cached = None if no_cache else await _cw_cache_read(_cache_key, _orch)
             if _cached is not None:
                 _responded = [w for w in _cached.get("cross_wiki_searched", [])
                               if w not in _cached.get("cross_wiki_offline", [])]
