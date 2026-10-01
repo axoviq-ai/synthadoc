@@ -218,7 +218,8 @@ def test_synthesis_prompt_non_cjk_language_instruction():
     assert "Do not use the language of the Pages or the conversation history" in prompt
     # Language rule is also enforced via the system prompt; verify the helper
     system = agent._build_synthesis_system("What is a Turing machine?")
-    assert "same language" in system
+    assert "English" in system
+    assert "MUST respond" in system
     assert "conversation history" in system
 
 

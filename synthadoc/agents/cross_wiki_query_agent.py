@@ -94,8 +94,13 @@ class CrossWikiQueryAgent(BaseAgent):
         self._max_tokens = max_tokens
         self._orchestrator = orchestrator
 
-    async def run(self, question: str, history: list[dict] | None = None) -> QueryResult:  # type: ignore[override]
-        return await self._run(question, history)
+    async def run(  # type: ignore[override]
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_wikis_selected: Callable[[list[str]], None] | None = None,
+    ) -> QueryResult:
+        return await self._run(question, history, on_wikis_selected=on_wikis_selected)
 
     async def _run(
         self,

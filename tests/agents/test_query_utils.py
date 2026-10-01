@@ -50,7 +50,8 @@ def test_history_block_formats():
 
 def test_build_synthesis_system_english():
     s = build_synthesis_system("what is leverage?")
-    assert "same language" in s.lower()
+    assert "English" in s
+    assert "MUST respond" in s
 
 def test_build_synthesis_system_cjk():
     s = build_synthesis_system("北京是什么?")
