@@ -353,3 +353,42 @@ async def test_ascii_query_skips_translation():
             await agent.run("what is leverage?")
 
     mock_tr.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_wikis_selected_called_with_wiki_names():
+    """on_wikis_selected callback receives actual wiki names after _wiki_pick."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    retrieve_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "p1", "title": "P1", "score": 2.0, "content": "content"}],
+        "purpose_summary": "",
+        "routing_warning": "",
+    }
+    received: list[list[str]] = []
+
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        await agent.run("what is leverage?", on_wikis_selected=received.append)
+
+    assert len(received) == 1
+    assert isinstance(received[0], list)
+    assert "coordinator" in received[0]
+
+
+@pytest.mark.asyncio
+async def test_on_wikis_selected_called_empty_on_action_detected():
+    """on_wikis_selected fires with [] when the action-detected fast path triggers."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    received: list[list[str]] = []
+    with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
+        action_inst = MagicMock()
+        action_inst.detect.return_value = True
+        action_inst.run = AsyncMock(return_value=MagicMock(message="Lint started", success=True))
+        MockAction.return_value = action_inst
+        await agent.run("run lint", on_wikis_selected=received.append)
+
+    assert received == [[]]

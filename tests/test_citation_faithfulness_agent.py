@@ -387,3 +387,50 @@ def test_faithfulness_audit_agent_cfg_defaults_to_none(tmp_path):
     store = MagicMock()
     agent = FaithfulnessAuditAgent(provider, tmp_path, store)
     assert agent._cfg is None
+
+
+# ── gather_pages_for_faithfulness coverage ─────────────────────────────────
+
+def test_gather_pages_skips_non_active_page(tmp_path):
+    """Pages with non-ACTIVE status are skipped — covers the continue branch."""
+    from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
+    from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("stale-page", WikiPage(
+        title="Stale", tags=[], content="Content with ^[source.txt:1-2]",
+        status=LifecycleState.STALE, confidence="high", sources=[],
+    ))
+    result = collect_checks_for_pages(tmp_path, store)
+    assert "stale-page" not in result
+
+
+def test_gather_pages_omits_active_page_with_no_checks(tmp_path):
+    """Active page with no citation markers produces no entry — covers the 'if checks' branch."""
+    from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
+    from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("no-cites", WikiPage(
+        title="No Citations", tags=[], content="Plain content with no citation markers.",
+        status=LifecycleState.ACTIVE, confidence="high", sources=[],
+    ))
+    result = collect_checks_for_pages(tmp_path, store)
+    assert "no-cites" not in result
+
+
+def test_gather_pages_includes_active_page_with_checks(tmp_path):
+    """Active page with citation markers and a present sidecar is included — covers line 271."""
+    from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
+    from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState, SourceRef
+    extracted = tmp_path / ".synthadoc" / "extracted"
+    extracted.mkdir(parents=True)
+    (extracted / "source.txt").write_text("Line one\nLine two\n", encoding="utf-8")
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("cited-page", WikiPage(
+        title="Cited", tags=[],
+        content="Some claim.^[source.txt:1-2]",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="source.txt", hash="", size=0, ingested="")],
+    ))
+    result = collect_checks_for_pages(tmp_path, store)
+    assert "cited-page" in result
+    assert len(result["cited-page"]) == 1
