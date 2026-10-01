@@ -211,7 +211,7 @@ export function useQueryStream(
                         }
                     },
                 };
-                await streamCrossWikiQuery(question, sessionId, cwCallbacks, controller.signal, timeoutSeconds);
+                await streamCrossWikiQuery(question, sessionId, cwCallbacks, controller.signal, noCache, timeoutSeconds);
             } else {
                 await streamQuery(question, sessionId, baseCallbacks, controller.signal, noCache, timeoutSeconds);
             }

@@ -66,3 +66,17 @@ def test_status_all_uses_config_fallback_when_port_missing(tmp_path):
             result = runner.invoke(app, ["status", "--all"])
     assert "7088" in result.output
     assert "?" not in result.output
+
+
+def test_status_all_empty_registry_shows_message():
+    """render_status_all with no registered wikis prints a 'No wikis' message."""
+    from synthadoc.cli.main import app
+    with patch("synthadoc.cli.status.read_registry_all", return_value={}):
+        result = runner.invoke(app, ["status", "--all"])
+    assert "No wikis registered" in result.output
+
+
+def test_port_from_config_empty_path_returns_none():
+    """_port_from_config returns None immediately when wiki_path is empty string."""
+    from synthadoc.cli.status import _port_from_config
+    assert _port_from_config("", "any-name") is None

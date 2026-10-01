@@ -262,9 +262,11 @@ export async function streamCrossWikiQuery(
     sessionId: string,
     callbacks: CrossWikiCallbacks,
     signal?: AbortSignal,
+    noCache?: boolean,
     timeoutSeconds?: number,
 ): Promise<void> {
     const params = new URLSearchParams({ q: question, session_id: sessionId });
+    if (noCache) params.set("no_cache", "true");
     if (timeoutSeconds != null) params.set("timeout_seconds", String(timeoutSeconds));
     const resp = await fetch(`/cross-wiki/query/stream?${params}`, {
         headers: { Accept: "text/event-stream" },
