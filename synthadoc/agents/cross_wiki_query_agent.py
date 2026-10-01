@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
@@ -94,10 +94,20 @@ class CrossWikiQueryAgent(BaseAgent):
         self._max_tokens = max_tokens
         self._orchestrator = orchestrator
 
-    async def run(self, question: str, history: list[dict] | None = None) -> QueryResult:  # type: ignore[override]
-        return await self._run(question, history)
+    async def run(  # type: ignore[override]
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_wikis_selected: Callable[[list[str]], None] | None = None,
+    ) -> QueryResult:
+        return await self._run(question, history, on_wikis_selected=on_wikis_selected)
 
-    async def _run(self, question: str, history: list[dict] | None = None) -> QueryResult:
+    async def _run(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        on_wikis_selected: Callable[[list[str]], None] | None = None,
+    ) -> QueryResult:
         # Pre-flight: detect operations → route to local wiki
         # ActionAgent.detect() is a fast regex check — always run, even without orchestrator.
         _action = ActionAgent(
@@ -108,6 +118,8 @@ class CrossWikiQueryAgent(BaseAgent):
         if _action.detect(question, history=None):
             _result = await _action.run(question)
             if _result is not None:
+                if on_wikis_selected is not None:
+                    on_wikis_selected([])
                 return QueryResult(
                     question=question,
                     answer=_result.message,
@@ -127,6 +139,8 @@ class CrossWikiQueryAgent(BaseAgent):
 
         sub_questions = await decompose_question(self._provider, retrieval_question)
         target_wikis = await self._wiki_pick(question, sub_questions)
+        if on_wikis_selected is not None:
+            on_wikis_selected([n for n, _ in target_wikis])
 
         raw_results: list[Any] = list(await asyncio.gather(
             *[self._fetch_retrieve(base_url, question, sub_questions)

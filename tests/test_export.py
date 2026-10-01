@@ -1122,3 +1122,42 @@ def test_okf_stale_after_absent_when_staleness_zero(tmp_path):
     result = agent._render_okf({"web-page": store.read_page("web-page")}, [])
     fm = _parse_frontmatter(result["wiki/web-page.md"])
     assert "stale_after" not in fm
+
+
+@pytest.mark.asyncio
+async def test_json_export_includes_branch_memberships(tmp_path):
+    """Routing branch memberships must appear in JSON export routing block."""
+    import json
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    routing_path = tmp_path / "ROUTING.md"
+    routing_path.write_text("## Pioneers\n- [[babbage]]\n", encoding="utf-8")
+    agent = ExportAgent(
+        store=store, wiki_name="test-wiki",
+        audit_db_path=tmp_path / ".synthadoc" / "audit.db",
+        routing_path=routing_path,
+    )
+    result = json.loads(await agent.run(ExportOptions(format="json")))
+    memberships = result["routing"]["branch_memberships"]
+    assert any(m["slug"] == "babbage" and m["branch"] == "Pioneers" for m in memberships)
+
+
+def test_okf_stale_after_skipped_on_bad_ingested_date(tmp_path):
+    """stale_after must be absent when the ingested date string cannot be parsed."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Web Page", tags=[], content="Content.",
+        status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="https://example.com/article",
+                           hash="abc123", size=1000,
+                           ingested="not-a-date")],
+        created="2026-05-01", updated=None, orphan=False, type="concept",
+    )
+    store.write_page("web-page", page)
+    agent = _agent(tmp_path, store)
+    result = agent._render_okf(
+        {"web-page": store.read_page("web-page")}, [],
+        url_staleness_days=90,
+    )
+    fm = _parse_frontmatter(result["wiki/web-page.md"])
+    assert "stale_after" not in fm

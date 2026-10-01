@@ -2,7 +2,8 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 import pytest
 from synthadoc.agents._query_utils import (
-    has_cjk, detect_cjk_language, filter_history_by_language,
+    has_cjk, detect_cjk_language, detect_latin_language,
+    filter_history_by_language,
     history_block, build_synthesis_system, trim_history, STOPWORDS,
 )
 
@@ -50,7 +51,8 @@ def test_history_block_formats():
 
 def test_build_synthesis_system_english():
     s = build_synthesis_system("what is leverage?")
-    assert "same language" in s.lower()
+    assert "English" in s
+    assert "MUST respond" in s
 
 def test_build_synthesis_system_cjk():
     s = build_synthesis_system("北京是什么?")
@@ -90,3 +92,44 @@ def test_stopwords_contains_common():
     assert "what" in STOPWORDS
     assert "how" in STOPWORDS
     assert "leverage" not in STOPWORDS  # content word
+
+
+def test_detect_latin_language_english():
+    assert detect_latin_language("what is the history of the computer") == "English"
+
+def test_detect_latin_language_french():
+    assert detect_latin_language("quel est le rôle des réseaux de neurones dans les systèmes") == "French"
+
+def test_detect_latin_language_empty():
+    assert detect_latin_language("") == ""
+
+def test_detect_latin_language_ambiguous_returns_empty():
+    # Single word with no stopword matches — score < 2, returns ""
+    assert detect_latin_language("Turing") == ""
+
+def test_detect_latin_language_ambiguous_scores_returns_empty():
+    # Construct text where two languages score within 75% of each other
+    # "le the la is" — French: le, la (2); English: the, is (2) → tie → ""
+    assert detect_latin_language("le the la is") == ""
+
+def test_filter_history_drops_latin_language_mismatch():
+    # French assistant response should be dropped when question is in English
+    history = [
+        {"role": "user", "content": "what is the history of computing"},
+        {"role": "assistant", "content": "le rôle des réseaux est fondamental dans les systèmes modernes"},
+    ]
+    result = filter_history_by_language(history, "what is the history of computing")
+    assert result == []
+
+def test_filter_history_keeps_same_latin_language():
+    history = [
+        {"role": "user", "content": "what is the history of computing"},
+        {"role": "assistant", "content": "the history of computing is a fascinating subject"},
+    ]
+    result = filter_history_by_language(history, "how did the internet develop")
+    assert result == history
+
+def test_build_synthesis_system_french():
+    s = build_synthesis_system("quel est le rôle des réseaux dans les systèmes")
+    assert "French" in s
+    assert "MUST respond" in s

@@ -81,6 +81,65 @@ def detect_cjk_language(text: str) -> str:
     return "Chinese (Mandarin)"
 
 
+# Stopword sets for common Latin-script languages used by detect_latin_language.
+_LATIN_STOPWORDS: dict[str, frozenset[str]] = {
+    "English": frozenset({
+        "the", "is", "are", "was", "were", "has", "have", "had",
+        "this", "that", "with", "from", "they", "what", "which",
+        "how", "when", "where", "did", "does", "and", "not", "for",
+        "been", "will", "its", "their", "than", "then",
+    }),
+    "French": frozenset({
+        "le", "la", "les", "de", "du", "des", "est", "son", "une",
+        "que", "qui", "avec", "pour", "sur", "par", "mais", "dans",
+        "je", "vous", "nous", "ce", "se", "en", "au", "aux",
+        "ont", "sont", "cette", "ces", "pas", "plus", "il", "elle",
+    }),
+    "Spanish": frozenset({
+        "el", "los", "las", "del", "en", "que", "con", "por",
+        "para", "una", "este", "esta", "han", "fue", "ser",
+        "como", "sobre", "entre", "también", "era", "es", "su",
+    }),
+    "German": frozenset({
+        "die", "der", "das", "und", "ist", "für", "mit", "von",
+        "den", "ich", "nicht", "ein", "eine", "haben", "wird",
+        "auch", "bei", "dem", "des", "aus", "sie", "auf",
+    }),
+    "Italian": frozenset({
+        "il", "dello", "degli", "alle", "che", "non", "con",
+        "per", "nel", "nella", "dei", "sono", "stato", "anche",
+        "ma", "poi", "della", "una", "gli", "questo", "dal",
+    }),
+    "Portuguese": frozenset({
+        "do", "da", "dos", "das", "em", "que", "com", "por",
+        "para", "uma", "esse", "esta", "tem", "são", "foi",
+        "como", "mais", "sobre", "entre", "não", "ser",
+    }),
+}
+
+_PUNCT_RE = __import__("re").compile(r"[^\w\s]")
+
+
+def detect_latin_language(text: str) -> str:
+    """Return the most likely language name for a Latin-script text.
+
+    Uses stopword frequency — requires at least 2 matching stopwords and a
+    clear winner over the next-best language.  Returns '' when uncertain.
+    Only call this on text that is not CJK (use has_cjk first).
+    """
+    words = set(_PUNCT_RE.sub(" ", text.lower()).split())
+    if not words:
+        return ""
+    counts = {lang: len(words & sw) for lang, sw in _LATIN_STOPWORDS.items()}
+    best_lang, best_count = max(counts.items(), key=lambda x: x[1])
+    if best_count < 2:
+        return ""
+    second_best = sorted(counts.values(), reverse=True)[1] if len(counts) > 1 else 0
+    if second_best >= best_count * 0.75:
+        return ""
+    return best_lang
+
+
 # ── STOPWORDS (verbatim from query_agent.py) ──────────────────────────────────
 # Stopwords excluded when extracting key terms for the content-overlap gap check.
 # Keep this list lean — a false positive (treating a content word as a stopword)
@@ -183,13 +242,14 @@ STOPWORDS: frozenset[str] = frozenset({
 def filter_history_by_language(
     history: list[dict], question: str
 ) -> list[dict]:
-    """Drop turn-pairs where the assistant response is in a different script than
+    """Drop turn-pairs where the assistant response is in a different language than
     the current question.
 
-    When a prior assistant turn was (incorrectly) produced in Chinese/Japanese/Korean
-    but the current question is in a Latin-script language, that turn biases the LLM
-    to repeat the wrong language even when the system prompt says otherwise.  Removing
-    the mismatched pair prevents the model from treating it as a precedent.
+    Guards two cases:
+    - CJK vs Latin-script mismatch (Chinese/Japanese/Korean vs English/French/etc.)
+    - Latin-script language mismatch (e.g. French history turns when the question
+      is in English) — detected via stopword frequency, dropped when both sides
+      are identified with confidence.
 
     Only removes *pairs* (the user turn that preceded the mismatched assistant turn is
     also dropped) so the history remains well-formed user/assistant alternation.
@@ -197,14 +257,20 @@ def filter_history_by_language(
     if not history:
         return history
     question_is_cjk = has_cjk(question)
+    question_latin_lang = detect_latin_language(question) if not question_is_cjk else ""
     filtered: list[dict] = []
     i = 0
     while i < len(history):
         msg = history[i]
         if msg["role"] == "assistant":
-            response_is_cjk = has_cjk(msg.get("content", ""))
-            if question_is_cjk != response_is_cjk:
-                # Language mismatch — drop this assistant turn AND its preceding user turn
+            content = msg.get("content", "")
+            response_is_cjk = has_cjk(content)
+            mismatch = question_is_cjk != response_is_cjk
+            if not mismatch and not question_is_cjk and question_latin_lang:
+                response_latin_lang = detect_latin_language(content)
+                if response_latin_lang and response_latin_lang != question_latin_lang:
+                    mismatch = True
+            if mismatch:
                 if filtered and filtered[-1]["role"] == "user":
                     filtered.pop()
                 i += 1
@@ -244,18 +310,25 @@ def strip_answer_tags(text: str) -> str:
 def build_synthesis_system(question: str) -> str:
     """Return the language-enforcement system prompt for synthesis.
 
-    Keeping the language rule in the system prompt (rather than only in the
-    user-content turn) makes it significantly harder for the LLM to drift
-    into the language of conversation-history turns when the current question
-    is in a different language.
+    Names the language explicitly when detectable — this is significantly more
+    effective than "respond in the same language" for models that otherwise
+    drift to the language of the conversation history or wiki page content.
     """
-    lang = detect_cjk_language(question) if has_cjk(question) else ""
-    if lang:
+    if has_cjk(question):
+        lang = detect_cjk_language(question)
         return (
             f"The user's question is in {lang}. "
             f"You MUST respond in {lang}. "
             f"Do not respond in English or any other language, "
             f"regardless of the conversation history."
+        )
+    lang = detect_latin_language(question)
+    if lang:
+        return (
+            f"The user's question is in {lang}. "
+            f"You MUST respond in {lang}. "
+            f"Do NOT use the language of the wiki pages or the conversation history — "
+            f"always respond in {lang} regardless of what language earlier turns used."
         )
     return (
         "Respond in the same language as the user's question. "

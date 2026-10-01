@@ -1298,7 +1298,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             if _cached is not None:
                 _responded = [w for w in _cached.get("cross_wiki_searched", [])
                               if w not in _cached.get("cross_wiki_offline", [])]
-                yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
+                yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': _cached.get('cross_wiki_searched', [])})}\n\n"
                 yield f"event: wikis_result\ndata: {_json.dumps({'responded': _responded, 'offline': _cached.get('cross_wiki_offline', [])})}\n\n"
                 yield f"event: token\ndata: {_json.dumps({'text': _cached['answer']})}\n\n"
                 if _cached.get("citations"):
@@ -1320,20 +1320,54 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 return
 
             # Live query — pass history for genuine multi-turn follow-ups
-            yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': []})}\n\n"
+            # Use a Future so _on_wikis_selected can fire wikis_querying with real
+            # wiki names as soon as _wiki_pick resolves, before the gather fan-out.
+            _wikis_future: _asyncio.Future = _asyncio.get_event_loop().create_future()
+
+            def _on_wikis_selected(names: list[str]) -> None:
+                if not _wikis_future.done():
+                    _wikis_future.set_result(names)
 
             agent = _make_cross_wiki_agent(app)
-            try:
-                result = await _asyncio.wait_for(
-                    agent.run(q, history=_history or None),
+            _agent_task = _asyncio.create_task(
+                _asyncio.wait_for(
+                    agent.run(q, history=_history or None, on_wikis_selected=_on_wikis_selected),
                     timeout=timeout_seconds,
                 )
-            except _asyncio.TimeoutError:
-                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
-                return
-            except Exception as exc:
-                yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
-                return
+            )
+
+            # Wait for wiki selection (fires before gather fan-out) or agent completion
+            # (action-detected fast path sets [] and returns before wiki pick).
+            _done, _ = await _asyncio.wait(
+                {_agent_task, _asyncio.ensure_future(_wikis_future)},
+                return_when=_asyncio.FIRST_COMPLETED,
+            )
+            _picked: list[str] = []
+            if _wikis_future.done() and not _wikis_future.cancelled():
+                try:
+                    _picked = _wikis_future.result()
+                except Exception:
+                    pass
+            yield f"event: wikis_querying\ndata: {_json.dumps({'wikis': _picked})}\n\n"
+
+            if _agent_task not in _done:
+                try:
+                    result = await _agent_task
+                except _asyncio.TimeoutError:
+                    yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
+                    return
+                except Exception as exc:
+                    yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+                    return
+            else:
+                try:
+                    result = _agent_task.result()
+                except _asyncio.TimeoutError:
+                    yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
+                    return
+                except Exception as exc:
+                    yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+                    return
 
             yield f"event: wikis_result\ndata: {_json.dumps({'responded': [w for w in result.cross_wiki_searched if w not in result.cross_wiki_offline], 'offline': result.cross_wiki_offline})}\n\n"
             yield f"event: token\ndata: {_json.dumps({'text': result.answer})}\n\n"
