@@ -468,6 +468,7 @@ async def _cw_fetch_peer_epochs(
     """
     import asyncio as _asyncio
     import httpx as _httpx
+    from synthadoc.cli._wiki import peer_base_url as _peer_base_url
 
     epochs: dict[str, int] = {own_wiki_name: own_epoch}
 
@@ -481,7 +482,7 @@ async def _cw_fetch_peer_epochs(
             return name, -1
 
     peers = [
-        (name, f"http://127.0.0.1:{entry['port']}")
+        (name, _peer_base_url(entry))
         for name, entry in registry.items()
         if "port" in entry and name != own_wiki_name
     ]
