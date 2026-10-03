@@ -13,6 +13,11 @@ ENV_VAR = "SYNTHADOC_WIKI"
 DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
 _REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
 
+# Canonical loopback address used for all CLI→server HTTP connections and for
+# the default peer host in the cross-wiki registry.  Change here to affect all
+# client-side URL constructors in the CLI.
+LOOPBACK_HOST = "127.0.0.1"
+
 CROSS_WIKI_ROUTING_PATH: Path = Path.home() / ".synthadoc" / "CROSS_WIKI_ROUTING.md"
 
 
@@ -44,11 +49,22 @@ def extract_purpose_summary(wiki_root: Path) -> str:
     return text[:500]
 
 
+def peer_base_url(entry: dict) -> str:
+    """Return the base URL for a registry entry, e.g. 'http://192.0.2.1:7071'.
+
+    Uses the optional ``host`` field (default ``127.0.0.1``) so remote peers
+    registered with an explicit host are reachable without code changes.
+    """
+    host = entry.get("host", LOOPBACK_HOST)
+    port = entry["port"]
+    return f"http://{host}:{port}"
+
+
 def probe_port(port: int, timeout: float = 1.0) -> bool:
     """Return True if the synthadoc server at the given port responds to /health."""
     try:
         import httpx
-        httpx.get(f"http://127.0.0.1:{port}/health", timeout=timeout)
+        httpx.get(f"http://{LOOPBACK_HOST}:{port}/health", timeout=timeout)
         return True
     except Exception:
         return False

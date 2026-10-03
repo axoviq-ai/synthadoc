@@ -9,7 +9,7 @@ import typer
 from typing import NoReturn
 
 from synthadoc.config import load_config, Config as _Config
-from synthadoc.cli._wiki import resolve_wiki_path
+from synthadoc.cli._wiki import resolve_wiki_path, LOOPBACK_HOST
 from synthadoc import errors as E
 
 
@@ -32,7 +32,7 @@ def _server_info(wiki: str) -> tuple[str, _Config]:
         cfg = load_config(project_config=config_path)
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
-    return f"http://127.0.0.1:{cfg.server.port}", cfg
+    return f"http://{LOOPBACK_HOST}:{cfg.server.port}", cfg
 
 
 def get(wiki: str, path: str, timeout: int | None = None, **params) -> dict:

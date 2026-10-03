@@ -1232,6 +1232,7 @@ def test_find_page_source_tool_rejects_unknown_slug():
         kw in full_text.lower()
         for kw in (
             "not found",
+            "not registered",
             "does not exist",
             "doesn't exist",
             "no page",

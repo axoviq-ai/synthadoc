@@ -16,7 +16,7 @@ from synthadoc.agents._query_utils import (
     history_block, translate_for_retrieval, trim_history, strip_answer_tags,
 )
 from synthadoc.agents.query_agent import QueryResult
-from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH   # single source of truth
+from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH, peer_base_url
 from synthadoc.providers.base import LLMProvider, Message
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ class CrossWikiQueryAgent(BaseAgent):
     ) -> list[tuple[str, str]]:
         """Return [(wiki_name, base_url)] for wikis to query. Always includes own_wiki."""
         all_wikis = {
-            name: f"http://127.0.0.1:{entry['port']}"
+            name: peer_base_url(entry)
             for name, entry in self._registry.items()
             if "port" in entry
         }
