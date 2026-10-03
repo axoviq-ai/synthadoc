@@ -11,7 +11,7 @@ import httpx
 import typer
 
 from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli._wiki import resolve_wiki_path, _read_registry
+from synthadoc.cli._wiki import resolve_wiki_path, _read_registry, LOOPBACK_HOST
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
 
 _PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
@@ -37,14 +37,14 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
     is updated - all other keys are preserved.
     """
     import tomllib
-    host = "127.0.0.1"
+    host = LOOPBACK_HOST
     port = 7070
     config_path = wiki_path / ".synthadoc" / "config.toml"
     if config_path.exists():
         try:
             cfg = tomllib.loads(config_path.read_text(encoding="utf-8"))
             srv = cfg.get("server", {})
-            host = srv.get("host", "127.0.0.1")
+            host = srv.get("host", LOOPBACK_HOST)
             port = srv.get("port", 7070)
         except Exception:
             pass
@@ -52,7 +52,7 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
     # Loopback and any-interface binds -> plugin connects via 127.0.0.1 locally.
     # Specific external address -> use it directly for remote vault support.
     if host in _LOOPBACK_ADDRS or host in _ANY_IFACE_ADDRS:
-        server_url = f"http://127.0.0.1:{port}"
+        server_url = f"http://{LOOPBACK_HOST}:{port}"
     else:
         server_url = f"http://{host}:{port}"
 
