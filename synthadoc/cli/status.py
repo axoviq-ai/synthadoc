@@ -8,7 +8,7 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get
-from synthadoc.cli._wiki import read_registry_all
+from synthadoc.cli._wiki import read_registry_all, LOOPBACK_HOST
 from synthadoc.storage.wiki import LifecycleState
 
 
@@ -44,7 +44,7 @@ def render_status_all(registry: dict) -> None:
         if port and probe_port(port):
             try:
                 import httpx
-                resp = httpx.get(f"http://127.0.0.1:{port}/status", timeout=2)
+                resp = httpx.get(f"http://{LOOPBACK_HOST}:{port}/status", timeout=2)
                 data = resp.json()
                 pages = data.get("pages", "?")
                 last = data.get("last_ingest", "—")

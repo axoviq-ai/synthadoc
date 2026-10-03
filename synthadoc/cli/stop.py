@@ -11,7 +11,7 @@ import httpx
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._wiki import read_registry_all, resolve_wiki_path
+from synthadoc.cli._wiki import read_registry_all, resolve_wiki_path, LOOPBACK_HOST
 
 
 def _stop_wiki(wiki_name: str) -> bool:
@@ -29,7 +29,7 @@ def _stop_wiki(wiki_name: str) -> bool:
         try:
             from synthadoc.config import load_config
             cfg = load_config(project_config=config_path)
-            resp = httpx.post(f"http://127.0.0.1:{cfg.server.port}/shutdown", timeout=5)
+            resp = httpx.post(f"http://{LOOPBACK_HOST}:{cfg.server.port}/shutdown", timeout=5)
             if resp.status_code in (200, 204):
                 typer.echo(f"  {wiki_name}: stopped")
                 if pid_file.exists():
