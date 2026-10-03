@@ -1101,9 +1101,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def shutdown():
         """Gracefully stop this wiki server. Used by `synthadoc stop`."""
         import asyncio as _asyncio
+        import os as _os
+        import signal as _signal
         async def _stop():
             await _asyncio.sleep(0.1)
-            raise SystemExit(0)
+            _os.kill(_os.getpid(), _signal.SIGTERM)
         _asyncio.create_task(_stop())
         return {"status": "stopping"}
 
