@@ -16,7 +16,7 @@ def test_hook_receives_json_context(tmp_path):
     executor.fire("on_ingest_complete", {"event": "on_ingest_complete", "wiki": "test"})
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
-        if output.exists():
+        if output.exists() and output.stat().st_size > 0:
             break
         time.sleep(0.1)
     assert output.exists()
@@ -65,7 +65,7 @@ def test_on_job_dead_hook_fires(tmp_path):
     executor.fire("on_dead_job", {"event": "on_dead_job", "job_id": "abc", "wiki": "test"})
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
-        if output.exists():
+        if output.exists() and output.stat().st_size > 0:
             break
         time.sleep(0.1)
     assert output.exists()
