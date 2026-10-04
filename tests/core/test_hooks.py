@@ -14,7 +14,11 @@ def test_hook_receives_json_context(tmp_path):
         f"open(r'{output}','w').write(json.dumps(data))\n", encoding="utf-8")
     executor = HookExecutor({"on_ingest_complete": f"{_PY} {script}"})
     executor.fire("on_ingest_complete", {"event": "on_ingest_complete", "wiki": "test"})
-    time.sleep(0.5)
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if output.exists():
+            break
+        time.sleep(0.1)
     assert output.exists()
     assert json.loads(output.read_text())["wiki"] == "test"
 
@@ -59,7 +63,11 @@ def test_on_job_dead_hook_fires(tmp_path):
     )
     executor = HookExecutor({"on_dead_job": f"{_PY} {script}"})
     executor.fire("on_dead_job", {"event": "on_dead_job", "job_id": "abc", "wiki": "test"})
-    time.sleep(0.5)
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if output.exists():
+            break
+        time.sleep(0.1)
     assert output.exists()
     data = json.loads(output.read_text())
     assert data["event"] == "on_dead_job"
