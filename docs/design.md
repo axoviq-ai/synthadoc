@@ -1683,7 +1683,7 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 | OpenAI    | gpt-4o-mini               | $0.00000015       | $0.0000006         |
 | Gemini    | gemini-2.5-flash          | $0.0000003        | $0.0000025         |
 | Groq      | llama-3.3-70b-versatile   | $0.00000059       | $0.00000079        |
-| MiniMax   | MiniMax-M2.7              | $0.0000003        | $0.0000012         |
+| MiniMax   | MiniMax-M3                | $0.0000003        | $0.0000012         |
 
 **Special cases:**
 
