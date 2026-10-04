@@ -1030,6 +1030,33 @@ async def test_openai_provider_deepseek_r1_think_tags_stripped():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_raises_when_content_empty_after_think_strip():
+    """Regression: content entirely inside <think> blocks must raise ValueError, not
+    fall back to reasoning_content (which would write chain-of-thought to the wiki)."""
+    cfg = AgentConfig(provider="deepseek", model="deepseek-v4-flash", thinking="enabled",
+                      base_url="https://api.deepseek.com/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    # Model put everything in <think> — no actual answer outside the think block.
+    mock_choice.message.content = "<think>We need answer only annotated section...</think>"
+    mock_choice.message.model_extra = {
+        "reasoning_content": "We need answer only annotated section..."
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        with pytest.raises(ValueError, match="empty content after stripping think blocks"):
+            await provider.complete(
+                messages=[Message(role="user", content="Summarise this page.")]
+            )
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_retries_on_503_then_succeeds():
     """A transient 503 InternalServerError is retried; second attempt succeeds."""
     import openai
@@ -1380,6 +1407,13 @@ def test_build_extra_body_qwen_empty_returns_no_extra():
 def test_build_extra_body_non_qwen_still_uses_thinking_type():
     from synthadoc.providers.openai import _build_extra_body
     assert _build_extra_body("disabled", "minimax") == {"thinking": {"type": "disabled"}}
+
+
+def test_build_extra_body_deepseek_uses_thinking_type_not_enable_thinking():
+    """DeepSeek must use thinking.type, not enable_thinking (which the API ignores)."""
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("disabled", "deepseek") == {"thinking": {"type": "disabled"}}
+    assert _build_extra_body("enabled", "deepseek") == {"thinking": {"type": "adaptive"}}
 
 
 def test_make_provider_qwen_dashscope(monkeypatch):

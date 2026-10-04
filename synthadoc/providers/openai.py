@@ -80,9 +80,9 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     """Return the provider extra_body dict for the given thinking setting.
 
     Empty string (unset) → no extra_body; provider default applies.
-    DashScope (qwen) and DeepSeek use enable_thinking; MiniMax/others use thinking.type.
+    DashScope (qwen) uses enable_thinking; DeepSeek and MiniMax/others use thinking.type.
     """
-    if provider in ("qwen", "deepseek"):
+    if provider == "qwen":
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
@@ -334,7 +334,15 @@ class OpenAIProvider(LLMProvider):
                     text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
                     text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
                     if not text:
-                        text = reasoning
+                        # Content was entirely inside <think> blocks — the model returned no
+                        # answer outside its reasoning pass.  Using reasoning_content as page
+                        # content would write chain-of-thought to the wiki.  Fail the call so
+                        # the job is retried or flagged rather than silently storing junk.
+                        raise ValueError(
+                            "Reasoning model returned empty content after stripping think "
+                            "blocks. Check that thinking is disabled for this provider "
+                            "(e.g. thinking = \"disabled\" in config.toml)."
+                        )
                     logger.debug("OpenAI provider: using think-stripped content as prose answer")
         elif not original_content:
             # content=null — some reasoning models (e.g. MiniMax M2.x) omit content
