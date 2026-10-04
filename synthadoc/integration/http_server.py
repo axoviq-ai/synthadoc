@@ -1104,7 +1104,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         import asyncio as _asyncio
         async def _stop():
             await _asyncio.sleep(0.1)
-            raise SystemExit(0)
+            app.state.uvicorn_server.should_exit = True
         _asyncio.create_task(_stop())
         return {"status": "stopping"}
 

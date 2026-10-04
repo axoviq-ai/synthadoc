@@ -572,3 +572,36 @@ def test_lint_report_skips_system_slugs_and_handles_bad_yaml(tmp_wiki):
     # The malformed-YAML page must not cause a 500 and must not appear as
     # contradicted (fm defaults to {} so status check is False).
     assert "bad-yaml" not in data["contradictions"]
+
+
+# ---------------------------------------------------------------------------
+# POST /shutdown — graceful shutdown via uvicorn should_exit
+# ---------------------------------------------------------------------------
+
+async def test_shutdown_sets_uvicorn_should_exit(tmp_wiki):
+    """POST /shutdown sets uvicorn_server.should_exit=True without raising in the task.
+
+    Regression: the previous implementation raised SystemExit(0) inside an
+    asyncio create_task() coroutine.  asyncio stores BaseException subclasses
+    raised in Tasks as unhandled exceptions and emits 'Task exception was
+    never retrieved' when the task is garbage-collected.  The fix stores the
+    uvicorn Server on app.state and sets should_exit=True instead.
+    """
+    import asyncio
+    import httpx
+
+    app = _make_app(tmp_wiki)
+    mock_server = MagicMock()
+    mock_server.should_exit = False
+    app.state.uvicorn_server = mock_server
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/shutdown")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "stopping"}
+
+    # Allow the background task (asyncio.sleep(0.1) → should_exit) to complete.
+    await asyncio.sleep(0.2)
+    assert mock_server.should_exit is True
