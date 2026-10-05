@@ -15,7 +15,7 @@
     "builtin-modules": "^3.3.0",
     "cytoscape": "^3.33.4",
     "esbuild": "^0.28.1",
-    "obsidian": "latest",
+    "obsidian": "1.13.1",
     "typescript": "^5.3",
     "vitest": "^4.1.11"
   }
