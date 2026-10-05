@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4418,6 +4418,29 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.4.1
+
+- **DeepSeek thinking config fix** — two provider bugs corrected: (1) `_build_extra_body()` was routing DeepSeek through the Qwen branch, sending `{enable_thinking: false}` which DeepSeek's API ignores; DeepSeek now uses `{thinking: {type: disabled}}` like all non-Qwen providers. (2) When a reasoning model returns content that is entirely `<think>...</think>` blocks, the previous code silently used raw `reasoning_content` as the wiki page body, writing chain-of-thought text into the knowledge base; for the DeepSeek provider this now raises `ValueError` so the ingest job fails visibly rather than storing junk. MiniMax's legitimate reasoning-as-answer path (where the prose answer is intentionally in the reasoning side-channel) is unaffected — the guard is scoped to `provider == "deepseek"` only.
+- **Cross-wiki peer base URL** — peer URLs in the cross-wiki coordinator hardcoded `127.0.0.1`, silently treating any remote peer as unreachable. Fixed to read an optional `host` field from the registry entry (`wikis.json`); entries without `host` continue to use loopback. A `LOOPBACK_HOST` constant introduced in `_wiki.py` consolidates all six client-side URL constructors so future changes apply in one place.
+- **Cross-wiki no_cache parameter** — the `no_cache` cache-bypass flag was accepted by the CLI but not forwarded through the stream endpoint or WebUI, so cache bypass had no effect for cross-wiki queries. The flag is now threaded through `GET /cross-wiki/query/stream` and the React `useQueryStream` hook.
+- **Real wiki names in wikis_querying SSE event** — the `wikis_querying` server-sent event was emitting placeholder identifiers instead of the registered display names of the wikis being queried; it now emits the actual names as registered in the routing table.
+- **MissingApiKeyError for missing provider API keys** — a missing API key previously called `cli_error()` which raises `typer.Exit(1)`; when raised inside a background job worker, `str(typer.Exit(1)) == "1"` produced the unhelpful "Lint dead: 1" message in the Obsidian UI. Replaced with `MissingApiKeyError(RuntimeError)` carrying the env-var name, provider name, and signup URL. The orchestrator treats `MissingApiKeyError` as a permanent failure (no retries — retrying a missing key never helps); direct HTTP endpoints return HTTP 401.
+- **OKF v0.2 type mapping** — the hardcoded `"concept"` fallback for all page types replaced with a proper `_OKF_TYPE_MAP`: `concept` / `event` → `article`; `person` / `organization` / `technology` / `location` / `product` → `reference`; unknown types fall back to `article`.
+- **Cross-wiki merge sort defensive access** — `_merge_results` raised `KeyError` when a peer wiki response omitted the `score` field (older peer versions or test stubs). Changed to `.get("score", 0)` so such results sort to the end rather than crashing the entire cross-wiki query.
+- **Hook subprocess race condition** — test polling loops waited for output file existence but not for non-empty content; on Windows the subprocess creates the file on `open(..., "w")` before writing, causing a `JSONDecodeError` on an empty file. Polling now checks `st_size > 0` in addition to existence.
+- **MiniMax pricing table updated** — model pricing table refreshed; `MiniMax-M2.7` entry replaced with `MiniMax-M3` as the current recommended MiniMax model.
+
+### v1.4.0
+
+- **OKF v0.2 Export** — `synthadoc export --format okf` produces a distributable bundle: one Markdown file per wiki page with v0.2 YAML frontmatter (`generated.{by,at}`, `sources`, `verified`, `stale_after`, `synthadoc_lifecycle`); `index.md` manifest grouped by knowledge type; `log.md` plain-text changelog; wikilinks converted to relative paths. Active and contradicted pages exported by default; drafts, stale, and archived excluded. Lifecycle states map to OKF status: `active` → `stable`, `contradicted`/`draft` → `draft`, `stale`/`archived` → `deprecated`. Any OKF-aware tool can consume the bundle without running Synthadoc.
+- **Cross-Wiki Queries** — `synthadoc query --cross-wiki` distributes a single question across all registered running wikis in parallel, synthesizes a unified answer, and qualifies citations as `[[wiki-name::PageTitle]]`. The coordinator wiki picks relevant peers via LLM routing against each wiki's `purpose.md`; results are merged with source-prefix normalization before synthesis. Configurable via an optional routing table (`synthadoc cross-wiki routing init`). Per-peer epoch cache for independent cache invalidation; CJK fan-out translation for cross-language retrieval; workflow lint enforcement for routing validation. Recent cross-wiki runs persist in the web UI history. See [§40 Cross-Wiki Queries](#40-cross-wiki-queries-v140).
+- **MiniMax-M3 compatibility** — corrected non-standard response envelope parsing that caused silent failures with MiniMax-M3.
+- **Orphan resolver robustness** — gracefully skips stale references when pages are deleted between list generation and execution, preventing mid-workflow crashes.
+- **Workflow status chips** — intermediate states (`confirming`, `ingesting`, `linting`) now reflected in real time in the web UI chip rather than staying blank until completion.
+- **Server shutdown noise** — `synthadoc stop --all` no longer logs a `Task exception was never retrieved` stack trace; shutdown uses `server.should_exit = True` via a deferred async task instead of `raise SystemExit(0)` inside a running coroutine.
+- **Status port fallback** — `synthadoc status --all` now scans well-known ports when the PID file is absent, recovering status for servers started outside the normal flow.
+- **Stale-slug regex tightened** — `_STALE_SLUG_RE` now requires a mandatory list marker (`- `) to prevent false-positive stale-page suggestions on prose that happens to match the slug pattern.
 
 ### v1.3.5
 
