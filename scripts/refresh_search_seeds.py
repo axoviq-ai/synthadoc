@@ -500,6 +500,7 @@ async def refresh_template(
     max_refs: int,
     dry_run: bool,
     force: bool = False,
+    fix_first_ingests: bool = False,
     blocked: set[str],
     url_sem: asyncio.Semaphore,
     tav_sem: asyncio.Semaphore,
@@ -522,50 +523,51 @@ async def refresh_template(
     # ── Step 0: repair blocked/broken/out-of-scope first-ingest URLs ─────────
     repairs: dict[str, str] = {}   # {old_url: new_url}
     no_replacement: list[str] = []
-    # Pre-compute all domains currently used in both sections so replacements
-    # don't duplicate a domain that's already covered elsewhere in the file.
-    _all_fi_domains = {_netloc(u) for _, u in extract_first_ingests(seeds_text)}
-    _all_curated_domains = {_netloc(u) for u in extract_curated_urls(seeds_text)}
-    _chosen_replacement_domains: set[str] = set()
-    for label, url in extract_first_ingests(seeds_text):
-        ok, content = await _url_accessible(url, skill, url_sem)
-        if ok:
-            # Accessible — also verify it is in scope when we have a backend.
-            if purpose and backend:
-                if await _in_scope(content, purpose, backend, llm_sem):
-                    continue  # accessible and in scope — nothing to do
-                # Accessible but out of scope — treat as needing replacement.
+    if fix_first_ingests:
+        # Pre-compute all domains currently used in both sections so replacements
+        # don't duplicate a domain that's already covered elsewhere in the file.
+        _all_fi_domains = {_netloc(u) for _, u in extract_first_ingests(seeds_text)}
+        _all_curated_domains = {_netloc(u) for u in extract_curated_urls(seeds_text)}
+        _chosen_replacement_domains: set[str] = set()
+        for label, url in extract_first_ingests(seeds_text):
+            ok, content = await _url_accessible(url, skill, url_sem)
+            if ok:
+                # Accessible — also verify it is in scope when we have a backend.
+                if purpose and backend:
+                    if await _in_scope(content, purpose, backend, llm_sem):
+                        continue  # accessible and in scope — nothing to do
+                    # Accessible but out of scope — treat as needing replacement.
+                    print(
+                        f"  [{template_name}] first-ingest out-of-scope, replacing: {url}",
+                        file=sys.stderr,
+                    )
+                else:
+                    continue  # no backend available — skip scope check
+            query = _label_to_query(label)
+            # Exclude all domains already used in either section plus any domain
+            # already chosen as a replacement earlier in this loop.
+            fi_skip = _all_fi_domains | _all_curated_domains | _chosen_replacement_domains
+            replacement = await _find_replacement_url(
+                query, blocked,
+                skip_domains=fi_skip,
+                skill=skill, url_sem=url_sem, tav_sem=tav_sem,
+                tavily_key=tavily_key, max_per_query=max_per_query,
+                purpose=purpose, backend=backend, llm_sem=llm_sem,
+                template_name=template_name,
+            )
+            if replacement:
+                repairs[url] = replacement
+                _chosen_replacement_domains.add(_netloc(replacement))
+            else:
+                no_replacement.append(url)
                 print(
-                    f"  [{template_name}] first-ingest out-of-scope, replacing: {url}",
+                    f"  [{template_name}] WARNING: no replacement found for {url} — removing entry",
                     file=sys.stderr,
                 )
-            else:
-                continue  # no backend available — skip scope check
-        query = _label_to_query(label)
-        # Exclude all domains already used in either section plus any domain
-        # already chosen as a replacement earlier in this loop.
-        fi_skip = _all_fi_domains | _all_curated_domains | _chosen_replacement_domains
-        replacement = await _find_replacement_url(
-            query, blocked,
-            skip_domains=fi_skip,
-            skill=skill, url_sem=url_sem, tav_sem=tav_sem,
-            tavily_key=tavily_key, max_per_query=max_per_query,
-            purpose=purpose, backend=backend, llm_sem=llm_sem,
-            template_name=template_name,
-        )
-        if replacement:
-            repairs[url] = replacement
-            _chosen_replacement_domains.add(_netloc(replacement))
-        else:
-            no_replacement.append(url)
-            print(
-                f"  [{template_name}] WARNING: no replacement found for {url} — removing entry",
-                file=sys.stderr,
-            )
-    for old, new in repairs.items():
-        seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
-    for url in no_replacement:
-        seeds_text = _remove_first_ingest_entry(seeds_text, url)
+        for old, new in repairs.items():
+            seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
+        for url in no_replacement:
+            seeds_text = _remove_first_ingest_entry(seeds_text, url)
 
     remaining_first_ingests = len(extract_first_ingests(seeds_text))
     first_ingest_changed = bool(repairs or no_replacement)
@@ -845,6 +847,7 @@ async def async_main(args: argparse.Namespace) -> int:
             max_refs=args.max_refs,
             dry_run=args.dry_run,
             force=args.force,
+            fix_first_ingests=args.fix_first_ingests,
             blocked=blocked,
             url_sem=url_sem,
             tav_sem=tav_sem,
@@ -975,6 +978,10 @@ def main() -> None:
     parser.add_argument(
         "--max-refs", type=int, default=6, metavar="N",
         help="Max total reference URLs written per template (default: 6).",
+    )
+    parser.add_argument(
+        "--fix-first-ingests", action="store_true", dest="fix_first_ingests",
+        help="Also check and repair blocked, unavailable, or out-of-scope 'Recommended first ingests' URLs.",
     )
     sys.exit(asyncio.run(async_main(parser.parse_args())))
 
