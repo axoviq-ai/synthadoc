@@ -447,11 +447,14 @@ def print_summary(all_results: list[dict], failures: list[dict], backend_label: 
         print(f"  {tmpl:<40} {tmpl_counts[tmpl]} failing")
 
     # Ready-to-run fix commands — include the same backend so scope decisions match.
+    # --fix-first-ingests is always included: validate_seeds checks URLs from both
+    # the curated section and the first-ingests section, so failures in either
+    # section need it to be repaired by the refresh script.
     backend_flag = f" --backend {backend_label}" if backend_label not in ("auto", "") else ""
     print(f"\nTo fix, re-run the refresh script for each failing template")
     print(f"(requires TAVILY_API_KEY — get a free key at https://tavily.com):")
     for tmpl in failing_templates:
-        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}{backend_flag}")
+        print(f"  python scripts/refresh_search_seeds.py --template {tmpl}{backend_flag} --fix-first-ingests")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
