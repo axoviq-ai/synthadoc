@@ -144,6 +144,17 @@ def extract_curated_urls(seeds_text: str) -> list[str]:
     return [m.group(1) for m in _INGEST_URL_RE.finditer(body)]
 
 
+def _first_ingest_section_has_entries(seeds_text: str) -> bool:
+    """True when 'Recommended first ingests' contains ANY synthadoc ingest command.
+
+    Counts both HTTP URLs and local-path ingests (e.g. ~/Documents/notes/).
+    Used to suppress the "no first ingests" warning for templates whose
+    recommended ingests are local files rather than web URLs.
+    """
+    body = _section_text(seeds_text, _FIRST_INGESTS_HEADER)
+    return bool(re.search(r"synthadoc\s+ingest\s+", body))
+
+
 def extract_first_ingests(seeds_text: str) -> list[tuple[str, str]]:
     """Return (label, url) pairs for every URL entry in 'Recommended first ingests'.
 
@@ -304,6 +315,13 @@ class _Backend:
         except asyncio.TimeoutError:
             try:
                 proc.kill()
+                # Drain I/O after kill so the ProactorEventLoop transport is closed
+                # cleanly before GC runs — prevents the "unclosed transport" /
+                # "I/O operation on closed pipe" ResourceWarning on Windows Python 3.14.
+                try:
+                    await asyncio.wait_for(proc.communicate(), timeout=5)
+                except Exception:
+                    pass
             except Exception:
                 pass
             raise RuntimeError(f"{self._label_for_error()} timed out")
@@ -871,9 +889,18 @@ async def async_main(args: argparse.Namespace) -> int:
             print(f"  [{r['template']}] first-ingest UNRESOLVED (update manually): {url}")
 
     total_skipped = sum(1 for r in results if r["status"] == "ok-no-change")
+    # Only warn when the first-ingest section is truly empty — i.e. has no
+    # synthadoc ingest entries of any kind (HTTP *or* local path).  Templates
+    # like personal-learning intentionally use local-file ingests (~/notes/,
+    # ~/kindle.csv) which are not HTTP URLs and therefore don't appear in
+    # remaining_first_ingests (which counts HTTP URLs only).  Reading the
+    # final seeds.md to check for any ingest command avoids the false alarm.
     empty_first_ingest = sorted(
         r["template"] for r in results
         if r.get("remaining_first_ingests", 1) == 0
+        and not _first_ingest_section_has_entries(
+            (TEMPLATES_DIR / r["template"] / "seeds.md").read_text(encoding="utf-8")
+        )
     )
 
     print(f"\n{'='*60}")
