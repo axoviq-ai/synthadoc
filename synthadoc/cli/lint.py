@@ -10,7 +10,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._http import post
+from synthadoc.cli._http import get, post
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS, suggested_reingest_cmd
@@ -78,6 +78,32 @@ def _sync_orphan_frontmatter(
         path.write_text(new_text, encoding="utf-8")
 
 
+def _poll_job_progress(wiki: str, job_id: str) -> str:
+    """Poll *job_id* every 2 s, printing phase messages as they change.
+
+    Returns the terminal status string (completed/failed/dead/cancelled).
+    """
+    import time
+    typer.echo("Waiting for lint to finish (Ctrl-C to stop waiting, lint continues in background)...")
+    last_msg = ""
+    status = ""
+    while True:
+        time.sleep(2)
+        try:
+            j = get(wiki, f"/jobs/{job_id}")
+        except Exception:
+            continue
+        status = j.get("status", "")
+        progress = j.get("progress") or {}
+        msg = progress.get("message", "")
+        if msg and msg != last_msg:
+            typer.echo(f"  {msg}")
+            last_msg = msg
+        if status in ("completed", "failed", "dead", "cancelled"):
+            break
+    return status
+
+
 lint_app = typer.Typer(help="Lint the wiki for contradictions and orphans.")
 app.add_typer(lint_app, name="lint")
 
@@ -92,6 +118,8 @@ def lint_cmd(
                                       help="Skip lifecycle checks (draft promotion, stale detection)."),
     check_urls: bool = typer.Option(False, "--check-urls",
                                     help="Check URL source availability via HTTP HEAD (adds network calls)"),
+    wait: bool = typer.Option(False, "--wait",
+                               help="Wait for the lint job to finish and stream progress."),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
     """Enqueue a lint job. Requires synthadoc serve to be running."""
@@ -106,12 +134,24 @@ def lint_cmd(
     if check_urls:
         payload["check_url_availability"] = True
     result = post(wiki, "/jobs/lint", payload)
-    typer.echo(f"Lint enqueued -> job {result['job_id']}")
+    job_id = result["job_id"]
     w_flag = f" -w {wiki}" if wiki != "." else ""
-    typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")
-    typer.echo(f"View results: synthadoc lint report{w_flag}")
+    typer.echo(f"Lint enqueued -> job {job_id}")
     if no_adversarial:
         typer.echo("Note: Adversarial pass skipped - lint_warnings cleared from all pages.")
+
+    if not wait:
+        typer.echo(f"Check status: synthadoc jobs status {job_id}{w_flag}")
+        typer.echo(f"View results: synthadoc lint report{w_flag}")
+        return
+
+    status = _poll_job_progress(wiki, job_id)
+    if status == "completed":
+        typer.echo("Lint complete.")
+        typer.echo(f"View results: synthadoc lint report{w_flag}")
+    else:
+        typer.echo(f"Lint job ended with status: {status}")
+        typer.echo(f"Details: synthadoc jobs status {job_id}{w_flag}")
 
 
 @lint_app.command("report")

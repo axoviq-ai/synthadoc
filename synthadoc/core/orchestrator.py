@@ -722,6 +722,9 @@ class Orchestrator:
                         "Adversarial pass: %s/%s (dedicated judge)",
                         adv_cfg.provider, adv_cfg.model,
                     )
+            async def _progress(data: dict) -> None:
+                await self._queue.update_progress(job_id, data)
+
             report = await LintAgent(
                 provider=make_provider("lint", self._cfg),
                 adversarial_provider=adv_provider,
@@ -732,6 +735,7 @@ class Orchestrator:
                 adversarial_concurrency=self._cfg.lint.adversarial_concurrency,
                 wiki_root=self._root,
                 cfg=self._cfg,
+                progress_cb=_progress,
             ).run(scope=scope, slug=slug, auto_resolve=auto_resolve,
                   adversarial=adversarial, lifecycle=lifecycle,
                   check_url_availability=check_url_availability, job_id=job_id)

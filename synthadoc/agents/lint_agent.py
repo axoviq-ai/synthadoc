@@ -556,7 +556,8 @@ class LintAgent(BaseAgent):
                  adversarial_max_per_page: int = 2,
                  adversarial_concurrency: int = 8,
                  wiki_root: "Path | str | None" = None,
-                 cfg: "Config | None" = None) -> None:
+                 cfg: "Config | None" = None,
+                 progress_cb: "Optional[object]" = None) -> None:
         super().__init__(provider, cfg)
         self._store = store
         self._log = log_writer
@@ -566,6 +567,14 @@ class LintAgent(BaseAgent):
         self._adversarial_max_per_page = adversarial_max_per_page
         self._adversarial_concurrency = adversarial_concurrency
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
+        self._progress_cb = progress_cb
+
+    async def _emit_progress(self, data: dict) -> None:
+        if self._progress_cb is not None:
+            try:
+                await self._progress_cb(data)
+            except Exception:
+                pass
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         # Only active pages (and pages with no explicit status) participate in the
@@ -797,10 +806,21 @@ class LintAgent(BaseAgent):
                 fresh_pairs.append((slug, page))
 
         sem = asyncio.Semaphore(self._adversarial_concurrency)
+        _adv_done = 0
+        _adv_total = len(fresh_pairs) + len(cached_pairs)
 
         async def _bounded(slug: str, content: str) -> tuple[list[dict], int]:
+            nonlocal _adv_done
             async with sem:
-                return await self._adversarial_single(slug, content)
+                result = await self._adversarial_single(slug, content)
+            _adv_done += 1
+            await self._emit_progress({
+                "phase": "adversarial",
+                "done": _adv_done,
+                "total": _adv_total,
+                "message": f"Adversarial review: {_adv_done}/{_adv_total} pages",
+            })
+            return result
 
         # Run LLM only for fresh pages.
         fresh_results: list[tuple[list[dict], int]] = (
@@ -1205,8 +1225,13 @@ class LintAgent(BaseAgent):
         # ── end scoped re-lint ────────────────────────────────────────────────────
 
         slugs = self._store.list_pages()
+        total_pages = len([s for s in slugs if s not in LINT_SKIP_SLUGS])
 
         if scope in ("all", "contradictions"):
+            await self._emit_progress({
+                "phase": "contradictions",
+                "message": f"Checking contradictions ({total_pages} pages)...",
+            })
             for slug in slugs:
                 if slug in LINT_SKIP_SLUGS:
                     continue
@@ -1276,6 +1301,7 @@ class LintAgent(BaseAgent):
                                     job_id, "auto_resolve_failed", {"slug": slug, "reason": reason})
 
         if scope in ("all", "orphans"):
+            await self._emit_progress({"phase": "orphans", "message": "Checking orphans and dangling links..."})
             report.dangling_links_removed = self._clean_dangling_links(slugs)
             slugs = self._store.list_pages()  # re-read after deletions
             report.orphan_slugs = self._find_orphans(slugs)
@@ -1288,6 +1314,7 @@ class LintAgent(BaseAgent):
 
         # Check 5: citation validation (pure regex + file-stat, no LLM)
         if scope == "all":
+            await self._emit_progress({"phase": "citations", "message": "Checking citations..."})
             wiki_root = self._store._root.parent
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
             for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:
@@ -1325,6 +1352,12 @@ class LintAgent(BaseAgent):
         # adversarial pass — runs only on full scope; default on
         if scope == "all":
             if adversarial:
+                await self._emit_progress({
+                    "phase": "adversarial",
+                    "done": 0,
+                    "total": total_pages,
+                    "message": f"Adversarial review: 0/{total_pages} pages",
+                })
                 # slugs was re-read after dangling-link cleanup — use the up-to-date list
                 adv_warnings, adv_tokens, adv_demotions = await self._run_adversarial_pass(slugs)
                 report.adversarial_warnings = adv_warnings
@@ -1339,6 +1372,7 @@ class LintAgent(BaseAgent):
                         self._store.write_page(slug, page)
 
         if scope in ("all", "stale") and lifecycle:
+            await self._emit_progress({"phase": "lifecycle", "message": "Running lifecycle checks..."})
             _check_urls = (
                 check_url_availability
                 if check_url_availability is not None
@@ -1351,6 +1385,7 @@ class LintAgent(BaseAgent):
             )
 
         if scope == "all" and self._audit:
+            await self._emit_progress({"phase": "graph", "message": "Building knowledge graph..."})
             try:
                 nodes, edges = self._build_graph()
                 await self._audit.write_graph(nodes, edges)

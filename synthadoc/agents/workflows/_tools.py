@@ -257,12 +257,15 @@ async def tool_poll_job(
                 "message": f"Job {job_id} ended with status {job.status.value!r}",
             }
 
+        progress_msg = (job.progress or {}).get("message") if job else None
+        sse_message = progress_msg if progress_msg else f"{job_label} running... ({int(elapsed)}s)"
         await ctx.send_sse_event(
             "tool_progress",
             {
                 "tool": "poll_job",
                 "job_id": job_id,
-                "message": f"{job_label} running... ({int(elapsed)}s)",
+                "message": sse_message,
+                "progress": job.progress if job else None,
             },
         )
         await asyncio.sleep(min(1 * (2**attempt), 30))
@@ -296,7 +299,7 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
 
-    return await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Lint")
+    return await tool_poll_job(ctx, job_id, timeout_seconds=600, job_label="Lint")
 
 
 async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
