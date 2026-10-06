@@ -111,6 +111,13 @@ path = "synthadoc/__init__.py"
 packages = ["synthadoc"]
 artifacts = ["VERSION", "synthadoc/data/obsidian-plugin/*", "synthadoc/data/web-ui/**/*"]
 
+[tool.coverage.run]
+omit = [
+    # HTTP and MCP server handlers require a live server — covered by tests/integration, not unit tests
+    "synthadoc/integration/http_server.py",
+    "synthadoc/integration/mcp_server.py",
+]
+
 [tool.coverage.report]
 fail_under = 91
 exclude_lines = [
