@@ -580,9 +580,9 @@ class OpencodeProvider(CodingToolCLIProvider):
                         text_parts.append(chunk)
 
         if not text_parts:
-            _logger.warning(
-                "opencode: no text content extracted. Event types seen: %s%s\n"
-                "Raw output (first 2000 chars):\n%s",
+            _logger.debug(
+                "opencode: no text content extracted (will retry if transient). "
+                "Event types seen: %s%s\nRaw output (first 2000 chars):\n%s",
                 sorted(set(seen_types)),
                 f" | session_id={session_id}" if session_id else "",
                 raw[:2000],

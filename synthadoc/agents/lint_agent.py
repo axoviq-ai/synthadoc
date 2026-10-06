@@ -807,18 +807,20 @@ class LintAgent(BaseAgent):
 
         sem = asyncio.Semaphore(self._adversarial_concurrency)
         _adv_done = 0
-        _adv_total = len(fresh_pairs) + len(cached_pairs)
+        _adv_total = len(fresh_pairs)   # only fresh pages go through the LLM
+        _cached_count = len(cached_pairs)
 
         async def _bounded(slug: str, content: str) -> tuple[list[dict], int]:
             nonlocal _adv_done
             async with sem:
                 result = await self._adversarial_single(slug, content)
             _adv_done += 1
+            cached_note = f", {_cached_count} cached" if _cached_count else ""
             await self._emit_progress({
                 "phase": "adversarial",
                 "done": _adv_done,
                 "total": _adv_total,
-                "message": f"Adversarial review: {_adv_done}/{_adv_total} pages",
+                "message": f"Adversarial review: {_adv_done}/{_adv_total} pages{cached_note}",
             })
             return result
 
