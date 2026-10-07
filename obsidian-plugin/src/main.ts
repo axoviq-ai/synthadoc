@@ -1624,7 +1624,11 @@ class LintRunModal extends Modal {
 
                         if (status === "in_progress" || status === "pending") {
                             out.empty();
-                            out.createEl("p", { text: `⏳ Lint ${status === "pending" ? "queued" : "running"}… (job ${jobId})` });
+                            const progressMsg: string | undefined = job.progress?.message;
+                            const displayText = progressMsg
+                                ? `⏳ ${progressMsg}`
+                                : `⏳ Lint ${status === "pending" ? "queued" : "running"}… (job ${jobId})`;
+                            out.createEl("p", { text: displayText });
                             return;
                         }
 
