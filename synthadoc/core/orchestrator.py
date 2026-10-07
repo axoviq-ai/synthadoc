@@ -228,9 +228,9 @@ class Orchestrator:
         if not source.startswith(("http://", "https://")):
             _src_name = Path(source).name
             if _src_name.startswith("template-") and _src_name.lower().endswith(".md"):
-                await self._queue.fail_permanent(
+                await self._queue.skip(
                     job_id,
-                    f"Skipped: '{_src_name}' is a domain-template intake form and must not be ingested. "
+                    f"'{_src_name}' is a domain-template intake form and must not be ingested. "
                     "Copy and rename the file, then ingest the renamed copy.",
                 )
                 return
