@@ -219,6 +219,22 @@ class Orchestrator:
         # auto_confirm is reserved for when user-facing confirmation prompts are added.
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
+
+        # Guard: template intake forms (raw_sources/template-*.md) are reference copies
+        # installed by `synthadoc install --template`.  They must never be ingested —
+        # not even when force=True — because they are blank form shells, not real content.
+        # This check runs before any other processing so it catches every code path:
+        # single-file CLI, --file manifest, Obsidian UI, WebUI, and direct API calls.
+        if not source.startswith(("http://", "https://")):
+            _src_name = Path(source).name
+            if _src_name.startswith("template-") and _src_name.lower().endswith(".md"):
+                await self._queue.fail_permanent(
+                    job_id,
+                    f"Skipped: '{_src_name}' is a domain-template intake form and must not be ingested. "
+                    "Copy and rename the file, then ingest the renamed copy.",
+                )
+                return
+
         try:
             # Reload config from disk so staging_policy and other runtime settings
             # take effect without a server restart.
