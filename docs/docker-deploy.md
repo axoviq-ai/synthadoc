@@ -15,7 +15,8 @@
 11. [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts)
 12. [Security](#security)
 13. [Maintenance](#maintenance)
-14. [Troubleshooting](#troubleshooting)
+14. [Local Build and Test (Windows)](#local-build-and-test-windows)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -383,6 +384,111 @@ For production deployments, pin to a specific release tag instead of `latest`:
 docker pull chenp/synthadoc:1.3.3
 docker run ... chenp/synthadoc:1.3.3
 ```
+
+---
+
+## Local Build and Test (Windows)
+
+Use this when you want to verify the Dockerfile works before publishing a release.
+Building images requires **Docker Desktop** — `wslc` is runtime-only and cannot build.
+
+### Step 1 — Install Docker Desktop
+
+1. Download from [docs.docker.com/desktop/install/windows-install](https://docs.docker.com/desktop/install/windows-install/)
+2. Run the installer — it uses your existing WSL2 backend automatically
+3. After install, open a new terminal and verify:
+
+```bash
+docker --version
+docker buildx version
+```
+
+### Step 2 — Build the image from source
+
+From the repo root (where `Dockerfile` lives):
+
+```bash
+docker build -t synthadoc:local .
+```
+
+The first build takes a few minutes (downloads `python:3.12-slim` and installs synthadoc from PyPI). Subsequent builds are faster due to layer caching.
+
+Expected output ends with:
+```
+Successfully built <image-id>
+Successfully tagged synthadoc:local
+```
+
+### Step 3 — Create a test wiki
+
+You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise create a minimal one:
+
+```bash
+synthadoc install test-docker-wiki --target ~/wikis
+```
+
+This creates `~/wikis/test-docker-wiki/` with the wiki structure.
+
+### Step 4 — Create a .env file
+
+```bash
+# ~/wikis/.env  (keep outside the wiki folder)
+ANTHROPIC_API_KEY=sk-ant-...
+# TAVILY_API_KEY=tvly-...   # optional
+```
+
+### Step 5 — Run the container
+
+```bash
+docker run -d \
+  --name synthadoc-test \
+  -v ~/wikis/test-docker-wiki:/wiki \
+  -p 7099:7070 \
+  --env-file ~/wikis/.env \
+  synthadoc:local
+```
+
+Using port `7099` (instead of `7070`) avoids conflicting with any locally running synthadoc instance.
+
+### Step 6 — Verify it started
+
+```bash
+# Check the container is running
+docker ps
+
+# Check startup logs
+docker logs synthadoc-test
+
+# Hit the health endpoint
+curl http://localhost:7099/health
+```
+
+Expected response:
+```json
+{"status": "ok", ...}
+```
+
+### Step 7 — Run a quick ingest test
+
+```bash
+# Drop a small test file into raw_sources on the host
+echo "Synthadoc Docker test document." > ~/wikis/test-docker-wiki/raw_sources/docker-test.txt
+
+# Ingest it from inside the container
+docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt -w /wiki
+
+# Check the job completed
+docker exec synthadoc-test synthadoc jobs list -w /wiki --limit 5
+```
+
+### Step 8 — Tear down
+
+```bash
+docker stop synthadoc-test
+docker rm synthadoc-test
+```
+
+The wiki files on the host (`~/wikis/test-docker-wiki/`) are untouched — only the container is removed.
 
 ---
 
