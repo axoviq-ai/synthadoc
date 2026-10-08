@@ -5,7 +5,7 @@ on:
     types: [published]   # fires on the same event as publish.yml (PyPI)
 
 env:
-  IMAGE: axoviq/synthadoc
+  IMAGE: chenp/synthadoc
 
 jobs:
   build-and-push:

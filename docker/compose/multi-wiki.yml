@@ -9,7 +9,7 @@
 
 services:
   sd-server-a:
-    image: axoviq/synthadoc:latest
+    image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-a
     restart: unless-stopped
     ports:
@@ -20,7 +20,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
   sd-server-b:
-    image: axoviq/synthadoc:latest
+    image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-b
     restart: unless-stopped
     ports:

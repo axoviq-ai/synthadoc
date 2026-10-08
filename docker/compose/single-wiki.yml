@@ -11,7 +11,7 @@
 
 services:
   sd-server:
-    image: axoviq/synthadoc:latest
+    image: chenp/synthadoc:latest
     # build: .   ← uncomment to build from local source instead
     container_name: synthadoc-wiki
     restart: unless-stopped
