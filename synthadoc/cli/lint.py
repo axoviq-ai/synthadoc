@@ -15,6 +15,33 @@ from synthadoc.cli._http import get, post
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS, suggested_reingest_cmd
 
+_POLL_MAX_STREAK = 10  # consecutive server errors before giving up
+
+
+class _StreakGuard:
+    """Tracks consecutive failures in a polling loop.
+
+    Call ``failure()`` on each exception and ``success()`` on each successful
+    poll.  After ``max_streak`` consecutive failures the guard prints
+    ``message`` to stderr and raises ``typer.Exit(1)``, producing a non-zero
+    exit code suitable for CI.
+    """
+
+    def __init__(self, max_streak: int = _POLL_MAX_STREAK,
+                 message: str = "Server unreachable — giving up.") -> None:
+        self._max = max_streak
+        self._message = message
+        self._count = 0
+
+    def success(self) -> None:
+        self._count = 0
+
+    def failure(self) -> None:
+        self._count += 1
+        if self._count >= self._max:
+            typer.echo(self._message, err=True)
+            raise typer.Exit(1)
+
 
 def _is_reingestable(file: str) -> bool:
     """True only for sources the CLI can actually re-ingest: absolute paths or URLs.
@@ -87,11 +114,14 @@ def _poll_job_progress(wiki: str, job_id: str) -> str:
     typer.echo("Waiting for lint to finish (Ctrl-C to stop waiting, lint continues in background)...")
     last_msg = ""
     status = ""
+    _streak = _StreakGuard()
     while True:
         time.sleep(2)
         try:
             j = get(wiki, f"/jobs/{job_id}")
+            _streak.success()
         except Exception:
+            _streak.failure()
             continue
         status = j.get("status", "")
         progress = j.get("progress") or {}
