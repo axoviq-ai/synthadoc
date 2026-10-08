@@ -32,7 +32,7 @@
 | **Reproducible deployments** | Pinned image tag guarantees the same runtime version across dev, staging, and production |
 | **Sidecar LLM (Ollama)** | Run Synthadoc alongside a local Ollama instance in one Compose stack — no cloud API key needed |
 
-Docker does **not** replace `pip install` for personal use — it adds no benefit there and adds operational overhead.
+For personal use, `pip install synthadoc` is the simpler path — but Docker still adds value: the container is fully isolated from your OS, Python environment, and system libraries. Only the mounted wiki folder is shared with the host. If isolation and a clean sandbox matter to you (especially on Windows, where Python environment conflicts are common), Docker is a reasonable personal choice too.
 
 ---
 
