@@ -18,7 +18,7 @@
 
 services:
   sd-server:
-    image: axoviq/synthadoc:latest
+    image: chenp/synthadoc:latest
     container_name: synthadoc-wiki
     restart: unless-stopped
     ports:
