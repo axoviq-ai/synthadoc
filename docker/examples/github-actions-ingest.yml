@@ -1,0 +1,45 @@
+# docker/examples/github-actions-ingest.yml
+#
+# GitHub Actions workflow: scheduled batch ingest into a running Synthadoc container.
+#
+# Prerequisites:
+# - A self-hosted runner with Docker installed and the synthadoc container running.
+# - The wiki raw_sources/ directory is accessible on the runner at WIKI_PATH.
+#
+# Copy this to .github/workflows/scheduled-ingest.yml and adjust the paths.
+
+name: Scheduled Synthadoc Ingest
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every day
+    - cron: "0 2 * * *"
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  ingest:
+    runs-on: self-hosted  # Requires Docker + running synthadoc container
+    steps:
+      - name: Trigger batch ingest
+        env:
+          CONTAINER: synthadoc-wiki   # Container name from your Compose file
+          WIKI_MOUNT: /wiki           # Path inside the container
+        run: |
+          docker exec "$CONTAINER" \
+            synthadoc ingest raw_sources/ --batch -w "$WIKI_MOUNT"
+
+      - name: Run lint
+        env:
+          CONTAINER: synthadoc-wiki
+          WIKI_MOUNT: /wiki
+        run: |
+          docker exec "$CONTAINER" \
+            synthadoc lint run -w "$WIKI_MOUNT" --wait
+
+      - name: Check job status
+        env:
+          CONTAINER: synthadoc-wiki
+          WIKI_MOUNT: /wiki
+        run: |
+          docker exec "$CONTAINER" \
+            synthadoc jobs list -w "$WIKI_MOUNT" --limit 10
