@@ -263,17 +263,27 @@ Both interfaces are available automatically the moment the container starts — 
 
 The HTTP server the container runs also serves the Web UI. Open it in any browser using the **host port** (the left side of `-p HOST:7070`):
 
-| docker run flag | Browser URL |
-|---|---|
-| `-p 7070:7070` | `http://localhost:7070/app` |
-| `-p 7099:7070` | `http://localhost:7099/app` |
-| `-p 8080:7070` | `http://localhost:8080/app` |
+The **host port** (the left side of `-p HOST:7070`) is the single point of contact for every client outside the container. The internal port `7070` is only used by processes inside the container itself (e.g. the HEALTHCHECK):
 
-The internal container port (`7070`) is never used from outside — always use the host port you mapped.
+| Client | URL pattern |
+|---|---|
+| Browser (Web UI) | `http://localhost:<host-port>/app` |
+| Obsidian plugin (Server URL) | `http://localhost:<host-port>` |
+| MCP client | `http://localhost:<host-port>/mcp` |
+| Health check / scripts | `http://localhost:<host-port>/health` |
+
+Examples with different port mappings:
+
+| docker run flag | All clients use |
+|---|---|
+| `-p 7070:7070` | `http://localhost:7070` |
+| `-p 7099:7070` | `http://localhost:7099` |
+| `-p 8080:7070` | `http://localhost:8080` |
 
 For a team or remote server, replace `localhost` with the server's IP or hostname:
 ```
-http://192.168.1.50:7070/app
+http://192.168.1.50:7070/app        # Web UI
+http://192.168.1.50:7070/mcp        # MCP client
 ```
 
 ### Obsidian Plugin
@@ -284,15 +294,25 @@ Obsidian makes two independent connections — one to the wiki files, one to the
 Open the wiki folder from the host filesystem (e.g. `~/wikis/my-wiki`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
 
 **2 — Point the plugin at the container**
-In Obsidian → Settings → Synthadoc plugin → Server URL, set it to:
+In Obsidian → Settings → Synthadoc plugin → Server URL, set it to the host port:
 ```
-http://localhost:<host-port>
+http://localhost:7070
 ```
-For example `http://localhost:7070` if you used `-p 7070:7070`. The plugin talks to the container's HTTP API exactly as it would to a locally running synthadoc process.
+The plugin talks to the container's HTTP API exactly as it would to a locally running synthadoc process.
+
+### MCP Client
+
+Point your MCP client (Claude Desktop, Claude Code, etc.) at the host port:
+```
+http://localhost:<host-port>/mcp
+```
+No change to how MCP is configured — just substitute the host port for whatever you would use locally.
+
+> **Note:** The Dockerfile CMD uses `--http-only`, which serves HTTP + Web UI but disables MCP stdio. MCP over HTTP (Streamable HTTP transport) is still available at `/mcp`. If you need MCP stdio, override the CMD to remove `--http-only`.
 
 ### Team deployments
 
-On a shared server, the Web UI (`http://<server>:7070/app`) becomes the primary interface for teammates who don't have Obsidian set up locally. The wiki owner can still use Obsidian locally by mounting the same wiki folder and pointing the plugin at the remote server URL.
+On a shared server, the Web UI (`http://<server>:<port>/app`) becomes the primary interface for teammates who don't have Obsidian set up locally. The wiki owner can still use Obsidian locally by mounting the same wiki folder and pointing the plugin at the remote server URL.
 
 ---
 
