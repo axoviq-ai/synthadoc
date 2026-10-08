@@ -308,7 +308,7 @@ http://localhost:<host-port>/mcp
 ```
 No change to how MCP is configured — just substitute the host port for whatever you would use locally.
 
-> **Note:** The Dockerfile CMD uses `--http-only`, which serves HTTP + Web UI but disables MCP stdio. MCP over HTTP (Streamable HTTP transport) is still available at `/mcp`. If you need MCP stdio, override the CMD to remove `--http-only`.
+> **Note:** The container serves HTTP, Web UI, and MCP over HTTP (`/mcp`) all on the same port — no extra configuration needed. MCP stdio is not used in Docker (it requires a direct process connection). If you want to disable the `/mcp` endpoint, override the CMD with `--http-only`.
 
 ### Team deployments
 
