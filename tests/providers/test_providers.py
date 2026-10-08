@@ -1031,8 +1031,9 @@ async def test_openai_provider_deepseek_r1_think_tags_stripped():
 
 @pytest.mark.asyncio
 async def test_openai_provider_raises_when_content_empty_after_think_strip():
-    """Regression: content entirely inside <think> blocks must raise ValueError, not
-    fall back to reasoning_content (which would write chain-of-thought to the wiki)."""
+    """Regression: content entirely inside <think> blocks must raise ProviderConfigurationError,
+    not fall back to reasoning_content (which would write chain-of-thought to the wiki)."""
+    from synthadoc.errors import ProviderConfigurationError
     cfg = AgentConfig(provider="deepseek", model="deepseek-v4-flash", thinking="enabled",
                       base_url="https://api.deepseek.com/v1")
     provider = OpenAIProvider(api_key="test-key", config=cfg)
@@ -1050,10 +1051,66 @@ async def test_openai_provider_raises_when_content_empty_after_think_strip():
 
     with patch.object(provider._client.chat.completions, "create",
                       new=AsyncMock(return_value=mock_resp)):
-        with pytest.raises(ValueError, match="empty content after stripping think blocks"):
+        with pytest.raises(ProviderConfigurationError, match="empty content after stripping think blocks"):
             await provider.complete(
                 messages=[Message(role="user", content="Summarise this page.")]
             )
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_non_deepseek_falls_back_to_reasoning_when_think_only():
+    """Non-DeepSeek providers (e.g. MiniMax) must NOT raise when content is think-only —
+    they legitimately carry the prose answer in reasoning_content."""
+    from synthadoc.errors import ProviderConfigurationError
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3", thinking="enabled",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "<think>The answer is 42.</think>"
+    mock_choice.message.model_extra = {"reasoning_content": "The answer is 42."}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="What is the answer?")]
+        )
+    assert result.text == "The answer is 42."
+
+
+def test_provider_configuration_error_carries_error_code():
+    """ProviderConfigurationError message must include the ERR-PROV-005 code."""
+    from synthadoc.errors import ProviderConfigurationError
+    err = ProviderConfigurationError("thinking not disabled")
+    assert "ERR-PROV-005" in str(err)
+    assert "thinking not disabled" in str(err)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_permanently_fails_job_on_provider_configuration_error():
+    """ProviderConfigurationError must permanently fail the job, not consume retry budget."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from synthadoc.errors import ProviderConfigurationError
+
+    # Minimal orchestrator setup with a mocked queue
+    with patch("synthadoc.core.orchestrator.Orchestrator.__init__", return_value=None):
+        from synthadoc.core.orchestrator import Orchestrator
+        orch = object.__new__(Orchestrator)
+        orch._queue = MagicMock()
+        orch._queue.fail_permanent = AsyncMock()
+        orch._queue.fail = AsyncMock()
+
+        # _fail_or_permanent should return True (permanent) and call fail_permanent
+        err = ProviderConfigurationError("thinking not disabled")
+        result = await orch._fail_or_permanent("job-123", err)
+
+    assert result is True, "ProviderConfigurationError must be handled as permanent"
+    orch._queue.fail_permanent.assert_called_once_with("job-123", str(err))
+    orch._queue.fail.assert_not_called()
 
 
 @pytest.mark.asyncio

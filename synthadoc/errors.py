@@ -90,6 +90,7 @@ from synthadoc.skills.base import DomainBlockedException  # noqa: F401
 PROVIDER_DAILY_QUOTA    = "ERR-PROV-001"  # Daily API quota exhausted for today
 CODING_TOOL_QUOTA       = "ERR-PROV-002"  # Coding tool CLI usage quota exhausted
 CODING_TOOL_PERMANENT   = "ERR-PROV-004"  # Coding tool returned a permanent non-retryable error
+PROVIDER_CONFIG         = "ERR-PROV-005"  # Provider misconfigured — retrying will never help
 
 
 class DailyQuotaExhaustedException(Exception):
@@ -135,6 +136,18 @@ class CodingToolPermanentError(Exception):
             f"[{CODING_TOOL_PERMANENT}] {tool_name} returned a permanent error "
             f"(retrying will not help): {detail}"
         )
+
+
+class ProviderConfigurationError(Exception):
+    """Raised when a provider is misconfigured in a way that retrying will not fix.
+
+    Examples: DeepSeek reasoning mode not disabled, model field set to an
+    incompatible value.  The orchestrator permanently fails the job so the
+    user sees the actionable message immediately rather than after all retries
+    are exhausted.
+    """
+    def __init__(self, detail: str) -> None:
+        super().__init__(f"[{PROVIDER_CONFIG}] Provider misconfigured: {detail}")
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────

@@ -363,6 +363,7 @@ class Orchestrator:
             from synthadoc.errors import (
                 DomainBlockedException, DailyQuotaExhaustedException,
                 CodingToolQuotaExhaustedException, CodingToolPermanentError,
+                ProviderConfigurationError,
             )
             # Check for LLM rate limits (openai SDK used by Groq/Gemini, and Anthropic SDK)
             _status = getattr(e, "status_code", None) or getattr(
@@ -373,6 +374,13 @@ class Orchestrator:
                 logging.getLogger(__name__).error(
                     "Daily quota exhausted — permanently failing job %s "
                     "(quota resets at midnight UTC)", job_id
+                )
+                await self._queue.fail_permanent(job_id, str(e))
+            elif isinstance(e, ProviderConfigurationError):
+                # Misconfiguration (e.g. DeepSeek thinking not disabled) — retrying will
+                # never help; surface the actionable message immediately.
+                logging.getLogger(__name__).error(
+                    "Provider misconfiguration — permanently failing job %s: %s", job_id, e
                 )
                 await self._queue.fail_permanent(job_id, str(e))
             elif isinstance(e, CodingToolPermanentError):
@@ -709,10 +717,10 @@ class Orchestrator:
         """
         from synthadoc.errors import (
             DailyQuotaExhaustedException, CodingToolQuotaExhaustedException,
-            MissingApiKeyError,
+            MissingApiKeyError, ProviderConfigurationError,
         )
         if isinstance(exc, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException,
-                            MissingApiKeyError)):
+                            MissingApiKeyError, ProviderConfigurationError)):
             await self._queue.fail_permanent(job_id, str(exc))
             return True
         await self._queue.fail(job_id, str(exc))

@@ -339,7 +339,8 @@ class OpenAIProvider(LLMProvider):
                             # answer.  Content was entirely inside <think> blocks, meaning
                             # thinking was not disabled as required.  Fail the call so the
                             # job is flagged rather than silently writing junk to the wiki.
-                            raise ValueError(
+                            from synthadoc.errors import ProviderConfigurationError
+                            raise ProviderConfigurationError(
                                 "Reasoning model returned empty content after stripping think "
                                 "blocks. Check that thinking is disabled for this provider "
                                 "(e.g. thinking = \"disabled\" in config.toml)."
