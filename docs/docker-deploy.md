@@ -105,7 +105,7 @@ For Docker Compose, place the `.env` file in the same directory as your Compose 
 
 ```bash
 # Pull the latest image
-docker pull axoviq/synthadoc:latest
+docker pull chenp/synthadoc:latest
 
 # Run a wiki
 docker run -d \
@@ -113,7 +113,7 @@ docker run -d \
   -v ~/wikis/my-wiki:/wiki \
   -p 7070:7070 \
   --env-file .env \
-  axoviq/synthadoc:latest
+  chenp/synthadoc:latest
 ```
 
 The server starts in HTTP-only mode. Point your Obsidian plugin at `http://localhost:7070`.
@@ -145,7 +145,7 @@ container run -d \
   -v ~/wikis/my-wiki:/wiki \
   -p 7070:7070 \
   --env-file .env \
-  axoviq/synthadoc:latest
+  chenp/synthadoc:latest
 ```
 
 > **Intel Macs (Mac Pro 2019, MacBook Air/Pro pre-2020):** Apple's `container` tool requires Apple Silicon. Use Docker Desktop on Intel hardware.
@@ -160,7 +160,7 @@ wslc run -d \
   -v ~/wikis/my-wiki:/wiki \
   -p 7070:7070 \
   --env-file .env \
-  axoviq/synthadoc:latest
+  chenp/synthadoc:latest
 ```
 
 > **Windows performance tip:** keep your wiki folder inside the WSL2 filesystem (e.g. `/home/yourname/wikis/my-wiki`) rather than on the Windows drive (`/mnt/c/Users/...`). Volume mounts from the Windows drive are significantly slower for file-heavy operations like ingest.
@@ -285,7 +285,7 @@ docker restart my-wiki
 Or pass `--provider` at runtime without editing the file:
 
 ```bash
-docker run ... axoviq/synthadoc:latest \
+docker run ... chenp/synthadoc:latest \
   synthadoc serve -w /wiki --host 0.0.0.0 --http-only --provider openai
 ```
 
@@ -303,7 +303,7 @@ docker run -d \
   -v ~/wikis/my-wiki:/wiki \
   -p 7070:7070 \
   --env-file .env \
-  axoviq/synthadoc:latest
+  chenp/synthadoc:latest
 ```
 
 Or pre-set the ownership on the host:
@@ -331,7 +331,7 @@ Synthadoc has **no built-in authentication**. For localhost-only use this is fin
 ### Updating the image
 
 ```bash
-docker pull axoviq/synthadoc:latest
+docker pull chenp/synthadoc:latest
 docker stop my-wiki && docker rm my-wiki
 # Re-run the same docker run command as before
 docker run -d --name my-wiki ...
@@ -380,8 +380,8 @@ docker inspect --format='{{.State.Health.Status}}' my-wiki
 For production deployments, pin to a specific release tag instead of `latest`:
 
 ```bash
-docker pull axoviq/synthadoc:1.3.3
-docker run ... axoviq/synthadoc:1.3.3
+docker pull chenp/synthadoc:1.3.3
+docker run ... chenp/synthadoc:1.3.3
 ```
 
 ---
