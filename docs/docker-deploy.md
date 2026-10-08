@@ -224,23 +224,33 @@ base_url = "http://ollama:11434"
 
 ## Running CLI Commands Inside the Container
 
-Any `synthadoc` CLI command can be run inside the container. The wiki is at `/wiki`.
+Any `synthadoc` CLI command can be run inside the container. The container sets
+`SYNTHADOC_WIKI=/wiki` automatically, so the `-w` flag is not needed — the CLI
+already knows the wiki is mounted at `/wiki`.
+
+**Using `docker run` (container name = whatever you passed to `--name`)**
 
 ```bash
 # Ingest a file from raw_sources/
-docker exec my-wiki synthadoc ingest raw_sources/report.pdf -w /wiki
+docker exec my-wiki synthadoc ingest raw_sources/report.pdf
 
 # Run lint on all pages
-docker exec my-wiki synthadoc lint run -w /wiki --wait
+docker exec my-wiki synthadoc lint run --wait
 
 # List recent jobs
-docker exec my-wiki synthadoc jobs list -w /wiki --limit 20
+docker exec my-wiki synthadoc jobs list --limit 20
 
 # Check server health
-docker exec my-wiki synthadoc status -w /wiki
+docker exec my-wiki synthadoc status
 ```
 
-For Compose deployments, use `docker compose exec sd-server` in place of `docker exec my-wiki`.
+**Using Docker Compose (use the service name `sd-server`, not the container name)**
+
+```bash
+docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
+docker compose exec sd-server synthadoc lint run --wait
+docker compose exec sd-server synthadoc jobs list --limit 20
+```
 
 ---
 
@@ -253,8 +263,8 @@ Key pattern:
 ```yaml
 - name: Trigger batch ingest
   run: |
-    docker exec synthadoc-wiki \
-      synthadoc ingest raw_sources/ --batch -w /wiki
+    # No -w needed — the container sets SYNTHADOC_WIKI=/wiki automatically
+    docker exec synthadoc-wiki synthadoc ingest raw_sources/ --batch
 ```
 
 The container must already be running on the runner host (started by your Compose stack or a systemd/launchd service).
@@ -474,11 +484,11 @@ Expected response:
 # Drop a small test file into raw_sources on the host
 echo "Synthadoc Docker test document." > ~/wikis/test-docker-wiki/raw_sources/docker-test.txt
 
-# Ingest it from inside the container
-docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt -w /wiki
+# Ingest it from inside the container (no -w needed — SYNTHADOC_WIKI=/wiki is set)
+docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt
 
 # Check the job completed
-docker exec synthadoc-test synthadoc jobs list -w /wiki --limit 5
+docker exec synthadoc-test synthadoc jobs list --limit 5
 ```
 
 ### Step 8 — Tear down
