@@ -23,23 +23,18 @@ jobs:
       - name: Trigger batch ingest
         env:
           CONTAINER: synthadoc-wiki   # Container name from your Compose file
-          WIKI_MOUNT: /wiki           # Path inside the container
         run: |
-          docker exec "$CONTAINER" \
-            synthadoc ingest raw_sources/ --batch -w "$WIKI_MOUNT"
+          # No -w flag needed — the container sets SYNTHADOC_WIKI=/wiki automatically
+          docker exec "$CONTAINER" synthadoc ingest raw_sources/ --batch
 
       - name: Run lint
         env:
           CONTAINER: synthadoc-wiki
-          WIKI_MOUNT: /wiki
         run: |
-          docker exec "$CONTAINER" \
-            synthadoc lint run -w "$WIKI_MOUNT" --wait
+          docker exec "$CONTAINER" synthadoc lint run --wait
 
       - name: Check job status
         env:
           CONTAINER: synthadoc-wiki
-          WIKI_MOUNT: /wiki
         run: |
-          docker exec "$CONTAINER" \
-            synthadoc jobs list -w "$WIKI_MOUNT" --limit 10
+          docker exec "$CONTAINER" synthadoc jobs list --limit 10
