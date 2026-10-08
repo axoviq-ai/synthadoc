@@ -10,13 +10,14 @@
 6. [Platform-Native Runtimes](#platform-native-runtimes)
 7. [Docker Compose](#docker-compose)
 8. [Running CLI Commands Inside the Container](#running-cli-commands-inside-the-container)
-9. [CI/CD — Scheduled Ingest](#cicd--scheduled-ingest)
-10. [Configuration](#configuration)
-11. [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts)
-12. [Security](#security)
-13. [Maintenance](#maintenance)
-14. [Local Build and Test (Windows)](#local-build-and-test-windows)
-15. [Troubleshooting](#troubleshooting)
+9. [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian)
+10. [CI/CD — Scheduled Ingest](#cicd--scheduled-ingest)
+11. [Configuration](#configuration)
+12. [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts)
+13. [Security](#security)
+14. [Maintenance](#maintenance)
+15. [Local Build and Test (Windows)](#local-build-and-test-windows)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -251,6 +252,47 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 docker compose exec sd-server synthadoc lint run --wait
 docker compose exec sd-server synthadoc jobs list --limit 20
 ```
+
+---
+
+## Accessing the Web UI and Obsidian
+
+Both interfaces are available automatically the moment the container starts — no extra steps or flags needed.
+
+### Web UI
+
+The HTTP server the container runs also serves the Web UI. Open it in any browser using the **host port** (the left side of `-p HOST:7070`):
+
+| docker run flag | Browser URL |
+|---|---|
+| `-p 7070:7070` | `http://localhost:7070/app` |
+| `-p 7099:7070` | `http://localhost:7099/app` |
+| `-p 8080:7070` | `http://localhost:8080/app` |
+
+The internal container port (`7070`) is never used from outside — always use the host port you mapped.
+
+For a team or remote server, replace `localhost` with the server's IP or hostname:
+```
+http://192.168.1.50:7070/app
+```
+
+### Obsidian Plugin
+
+Obsidian makes two independent connections — one to the wiki files, one to the server API:
+
+**1 — Open the wiki folder in Obsidian**
+Open the wiki folder from the host filesystem (e.g. `~/wikis/my-wiki`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
+
+**2 — Point the plugin at the container**
+In Obsidian → Settings → Synthadoc plugin → Server URL, set it to:
+```
+http://localhost:<host-port>
+```
+For example `http://localhost:7070` if you used `-p 7070:7070`. The plugin talks to the container's HTTP API exactly as it would to a locally running synthadoc process.
+
+### Team deployments
+
+On a shared server, the Web UI (`http://<server>:7070/app`) becomes the primary interface for teammates who don't have Obsidian set up locally. The wiki owner can still use Obsidian locally by mounting the same wiki folder and pointing the plugin at the remote server URL.
 
 ---
 
