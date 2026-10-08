@@ -8,6 +8,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "coverage": "vitest run --coverage"
   },
+  "overrides": {
+    "moment": ">=2.31.0"
+  },
   "devDependencies": {
     "@types/cytoscape": "^3.21.9",
     "@types/node": "^20",
