@@ -42,4 +42,6 @@ ENV PATH="/home/synthadoc/.local/bin:$PATH"
 # Start the server bound to all interfaces so the mapped port is reachable.
 # -w /wiki bypasses the registry (not used inside the container).
 # --host 0.0.0.0 overrides the config default of 127.0.0.1.
-CMD ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--http-only"]
+# Default mode (no --http-only) enables the /mcp HTTP endpoint alongside the
+# HTTP API and Web UI — all three are served on the same port.
+CMD ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0"]
