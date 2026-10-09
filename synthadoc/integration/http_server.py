@@ -1323,7 +1323,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             # Live query — pass history for genuine multi-turn follow-ups
             # Use a Future so _on_wikis_selected can fire wikis_querying with real
             # wiki names as soon as _wiki_pick resolves, before the gather fan-out.
-            _wikis_future: _asyncio.Future = _asyncio.get_event_loop().create_future()
+            _wikis_future: _asyncio.Future = _asyncio.get_running_loop().create_future()
 
             def _on_wikis_selected(names: list[str]) -> None:
                 if not _wikis_future.done():
