@@ -849,7 +849,7 @@ old container, rebuild the image from the repo root, then re-run Step 5:
 **cmd.exe:**
 ```
 docker rm -f synthadoc-test
-cd C:\Users\ladmin\Documents\my_workspace\synthadoc
+cd path\to\synthadoc
 docker build -t synthadoc:local .
 ```
 
