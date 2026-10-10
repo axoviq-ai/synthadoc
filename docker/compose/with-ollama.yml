@@ -22,6 +22,7 @@ services:
     container_name: synthadoc-wiki
     restart: unless-stopped
     ports:
+      # HOST_PORT:7070 — 7070 is fixed inside the container; change the left side to avoid conflicts.
       - "7070:7070"
     volumes:
       - ${WIKI_PATH:-./my-wiki}:/wiki
