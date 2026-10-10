@@ -14,10 +14,11 @@
 10. [CI/CD — Scheduled Ingest](#cicd--scheduled-ingest)
 11. [Configuration](#configuration)
 12. [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts)
-13. [Security](#security)
-14. [Maintenance](#maintenance)
-15. [Local Build and Test (Windows)](#local-build-and-test-windows)
-16. [Troubleshooting](#troubleshooting)
+13. [Export, Backup, and Restore Paths](#export-backup-and-restore-paths)
+14. [Security](#security)
+15. [Maintenance](#maintenance)
+16. [Local Build and Test (Windows)](#local-build-and-test-windows)
+17. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -190,7 +191,7 @@ Access at `http://localhost:7070`.
 Run a CLI command inside the running container:
 
 ```bash
-docker compose exec sd-server synthadoc ingest raw_sources/report.pdf -w /wiki
+docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 ```
 
 ### Multiple wikis
@@ -229,8 +230,6 @@ Then configure the wiki's `config.toml`:
 [agents.default]
 provider = "ollama"
 model = "llama3.2"
-
-[agents.ollama]
 base_url = "http://ollama:11434"
 ```
 
@@ -238,32 +237,161 @@ base_url = "http://ollama:11434"
 
 ## Running CLI Commands Inside the Container
 
-Any `synthadoc` CLI command can be run inside the container. The container sets
-`SYNTHADOC_WIKI=/wiki` automatically, so the `-w` flag is not needed — the CLI
-already knows the wiki is mounted at `/wiki`.
+Any `synthadoc` CLI command can be run inside the container. Two things are
+pre-configured so commands work without extra flags:
 
-**Using `docker run` (container name = whatever you passed to `--name`)**
+- **`SYNTHADOC_WIKI=/wiki`** is set in the image — the `-w` flag is not needed.
+- **`WORKDIR /wiki`** is set in the image — relative paths like `raw_sources/report.pdf`
+  resolve to `/wiki/raw_sources/report.pdf` automatically. Use the absolute path
+  `/wiki/raw_sources/report.pdf` if you prefer to be explicit.
+
+> **Why `--wait` matters in `docker exec`**
+>
+> Many `synthadoc` commands (lint, scaffold, workflow) queue a background job
+> on the server and return immediately. Without `--wait`, `docker exec` exits
+> right after queuing — before the job finishes — and you see no results.
+> Add `--wait` to keep the process alive until the job completes.
+
+The examples below use Docker Compose service name (`sd-server`).
+Substitute `docker exec my-wiki` when using plain `docker run`.
+
+### Querying the wiki
 
 ```bash
-# Ingest a file from raw_sources/
-docker exec my-wiki synthadoc ingest raw_sources/report.pdf
+# Ask a question — streams the answer token by token
+docker compose exec sd-server synthadoc query "What are the key findings in Q3 report?"
 
-# Run lint on all pages
-docker exec my-wiki synthadoc lint run --wait
-
-# List recent jobs
-docker exec my-wiki synthadoc jobs list --limit 20
-
-# Check server health
-docker exec my-wiki synthadoc status
+# Force a fresh LLM call (skip the query cache)
+docker compose exec sd-server synthadoc query "What changed in the last audit?" --no-cache
 ```
 
-**Using Docker Compose (use the service name `sd-server`, not the container name)**
+### Cross-wiki queries (multi-wiki Compose only)
+
+In the multi-wiki Compose setup, each wiki runs in its own container on the
+same Docker network. If you configure cross-wiki routing in one wiki's
+`CROSS_WIKI_ROUTING.md` to reference the other container by its service name
+(e.g. `http://sd-server-b:7070`), you can fan out a single query across both:
 
 ```bash
+# Query wiki-a — fans out to wiki-b automatically via Docker internal network
+docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
+  synthadoc query "Total revenue across all entities?" --cross-wiki
+
+# Scaffold the routing table for wiki-a from the registry
+docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
+  synthadoc cross-wiki routing init
+```
+
+### Ingesting content
+
+```bash
+# Ingest a single file (relative path resolves from /wiki/)
 docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
+
+# Batch-ingest an entire folder
+docker compose exec sd-server synthadoc ingest raw_sources/ --batch
+
+# Ingest a URL
+docker compose exec sd-server synthadoc ingest https://example.com/article
+
+# Ingest via web search (Tavily) — requires TAVILY_API_KEY in container env
+docker compose exec sd-server synthadoc ingest "search for: IFRS 17 insurance contract accounting"
+
+# Watch job progress after queuing (ingest returns immediately)
+docker compose exec sd-server synthadoc jobs list --limit 5
+```
+
+### Linting
+
+```bash
+# Enqueue lint and wait for completion (--wait keeps docker exec alive)
 docker compose exec sd-server synthadoc lint run --wait
+
+# Show lint report (contradictions, orphan pages, adversarial findings)
+docker compose exec sd-server synthadoc lint report
+
+# Lint with URL source availability check
+docker compose exec sd-server synthadoc lint run --check-urls --wait
+```
+
+### Agentic workflows
+
+```bash
+# List all available workflows
+docker compose exec sd-server synthadoc workflow list
+
+# Re-ingest all stale pages (agentic loop, streams progress)
+docker compose exec sd-server synthadoc workflow run --name ingest-lint
+
+# Run the contradiction resolver (interactive — approves rewrites one by one)
+docker compose exec sd-server synthadoc workflow run --name contradiction-resolver
+
+# Scan and fix broken wikilinks
+docker compose exec sd-server synthadoc workflow run --name broken-wikilinks
+```
+
+### Scaffold
+
+```bash
+# Regenerate index.md, AGENTS.md, and purpose.md using the LLM
+# (queues a background job; --wait keeps docker exec alive)
+docker compose exec sd-server synthadoc scaffold
+docker compose exec sd-server synthadoc jobs list --limit 5
+```
+
+### Lifecycle (promote, archive, restore)
+
+Pages start as `draft`. Use `lifecycle activate` to promote a reviewed page
+to `active`, or `lifecycle archive` to retire it.
+
+```bash
+# Promote a draft page to active
+docker compose exec sd-server synthadoc lifecycle activate quarterly-report-q3 \
+  --reason "Reviewed and approved"
+
+# Archive a superseded page
+docker compose exec sd-server synthadoc lifecycle archive old-market-analysis \
+  --reason "Superseded by 2026 report"
+
+# Restore an archived page back to draft
+docker compose exec sd-server synthadoc lifecycle restore old-market-analysis \
+  --reason "Needed for comparison"
+
+# Show full lifecycle event log
+docker compose exec sd-server synthadoc lifecycle log
+
+# Show lifecycle history for one page
+docker compose exec sd-server synthadoc lifecycle history quarterly-report-q3
+```
+
+### Scheduled jobs
+
+```bash
+# List all registered scheduled jobs
+docker compose exec sd-server synthadoc schedule list
+
+# Schedule a nightly lint (cron: 2 AM every day)
+docker compose exec sd-server synthadoc schedule add \
+  --op "lint run" --cron "0 2 * * *"
+
+# Apply schedules declared in config.toml [schedule] blocks
+docker compose exec sd-server synthadoc schedule apply
+```
+
+### Monitoring and audit
+
+```bash
+# Show all recent jobs
 docker compose exec sd-server synthadoc jobs list --limit 20
+
+# Server health and version
+docker compose exec sd-server synthadoc status
+
+# Ingest cost and history
+docker compose exec sd-server synthadoc audit history
+
+# Backup the wiki to a zip file (lands in the mounted /wiki folder)
+docker compose exec sd-server synthadoc backup
 ```
 
 ---
@@ -379,9 +507,33 @@ docker run ... chenp/synthadoc:latest \
 
 ## File Permissions on Linux Hosts
 
-The container runs as uid 1000 (`synthadoc`). If your host wiki directory is owned by a different uid, the container cannot write to it and ingest jobs will fail with permission errors.
+> **macOS / Windows:** Docker Desktop maps file ownership transparently through
+> its virtual machine layer. This section does not apply to those platforms.
 
-Fix by passing your host uid/gid at run time:
+The container process runs as **uid 1000** (an internal user named `synthadoc`).
+Docker maps uids numerically — it does not look up user names — so the container
+can write to a host directory only if the directory's owner uid matches the
+process uid (1000).
+
+**You do not need to create any user account on your host.** The fix is purely
+about which uid owns the directory.
+
+### Step 1 — Check your host uid
+
+```bash
+id -u    # prints your numeric user id, e.g. 1000 or 1001
+```
+
+### Step 2 — Pick the right fix
+
+**Your host uid is already 1000** (the first user on most Linux systems):
+
+No action needed. The container's uid 1000 and your uid 1000 match — Docker
+mounts the directory and both sides can read and write it without any changes.
+
+**Your host uid is NOT 1000:**
+
+Option A — tell Docker to run the container as your uid (recommended, no sudo):
 
 ```bash
 docker run -d \
@@ -392,11 +544,94 @@ docker run -d \
   chenp/synthadoc:latest
 ```
 
-Or pre-set the ownership on the host:
+In Docker Compose, add a `user` key to the service:
+
+```yaml
+services:
+  sd-server:
+    image: chenp/synthadoc:latest
+    user: "1001:1001"   # replace with your uid:gid from `id -u` / `id -g`
+    ...
+```
+
+Option B — change the host directory ownership to uid 1000 (requires sudo):
 
 ```bash
 sudo chown -R 1000:1000 ~/wikis/my-wiki
 ```
+
+This permanently assigns the directory to uid 1000. Useful on servers where you
+always want containers to own the wiki data and your personal account is a
+separate uid for administration only.
+
+---
+
+## Export, Backup, and Restore Paths
+
+The container's only persistent storage is the `/wiki` mount. Any file written
+**outside** `/wiki` goes into the container's ephemeral overlay filesystem:
+it is invisible to your host, and is permanently lost when the container is
+removed (`docker rm`). No error is reported — the command appears to succeed.
+
+The image sets `WORKDIR /wiki`, so **relative paths and the default `.` all
+resolve inside `/wiki/`** — which means the safe defaults work without extra flags.
+
+### Backup
+
+```bash
+# Default (--output ".") writes the zip to /wiki/ → visible on host
+docker exec my-wiki synthadoc backup
+
+# Explicit subdirectory — also fine
+docker exec my-wiki synthadoc backup --output /wiki/backups/
+```
+
+Avoid absolute host-style paths (`--output ~/backups/`): `~` expands to
+`/home/synthadoc/` inside the container, not your home directory on the host.
+
+### Restore
+
+The zip file must be reachable inside the container. The easiest way is to
+copy it into the mounted wiki directory first:
+
+```bash
+# On the host — copy the zip into the wiki mount
+cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip ~/wikis/my-wiki/
+
+# Inside the container — restore from /wiki/ (default target is zip's parent = /wiki/)
+docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+```
+
+Alternatively, use `docker cp` to push the file directly into the container:
+
+```bash
+docker cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip my-wiki:/wiki/
+docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+```
+
+### Export (CLI)
+
+For formats that print to stdout (`json`, `llms.txt`, `llms-full.txt`,
+`graphml`), redirect on the host side — no path issue:
+
+```bash
+docker exec my-wiki synthadoc export --format llms.txt > ~/wiki-export.txt
+docker exec my-wiki synthadoc export --format json     > ~/wiki-export.json
+```
+
+For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
+`/wiki/` so it lands on the host:
+
+```bash
+# Writes to /wiki/exports/<wiki>-okf-<date>/ → visible on host
+docker exec my-wiki synthadoc export --format okf --output /wiki/exports/
+```
+
+> **Obsidian plugin OKF export does not have this limitation.** When you
+> trigger the export from the Obsidian UI, the plugin fetches the manifest
+> from the server and then writes files using **Obsidian's own filesystem API
+> on your host machine**. The default path (`~/exports/…`) resolves on your
+> host, not inside the container. No special Docker configuration is needed.
 
 ---
 
@@ -448,7 +683,7 @@ tar -czf my-wiki-backup-$(date +%Y%m%d).tar.gz ~/wikis/my-wiki/
 Or use the built-in backup command from inside the container:
 
 ```bash
-docker exec my-wiki synthadoc backup -w /wiki
+docker exec my-wiki synthadoc backup
 # The .zip lands in ~/wikis/my-wiki/ on the host
 ```
 

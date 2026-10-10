@@ -7,7 +7,7 @@
 #   docker compose up -d
 #
 # To ingest a file:
-#   docker compose exec sd-server synthadoc ingest raw_sources/myfile.pdf -w /wiki
+#   docker compose exec sd-server synthadoc ingest raw_sources/myfile.pdf
 
 services:
   sd-server:

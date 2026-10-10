@@ -13,7 +13,6 @@
 #   [agents.default]
 #   provider = "ollama"
 #   model = "llama3.2"
-#   [agents.ollama]
 #   base_url = "http://ollama:11434"
 
 services:
