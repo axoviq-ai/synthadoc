@@ -118,7 +118,7 @@ docker run -d \
   chenp/synthadoc:latest
 ```
 
-The server starts in HTTP-only mode. Point your Obsidian plugin at `http://localhost:7070`.
+The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on the same port. Point your Obsidian plugin at `http://localhost:7070`.
 
 Check that it is running:
 
