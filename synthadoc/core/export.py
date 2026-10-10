@@ -471,7 +471,7 @@ class ExportAgent:
         ]
         by_type: dict[str, list[tuple[str, WikiPage]]] = {}
         for slug, page in sorted(pages.items()):
-            t = page.type or "concept"
+            t = _OKF_TYPE_MAP.get(page.type or "", "article")
             by_type.setdefault(t, []).append((slug, page))
 
         for type_name in sorted(by_type):
