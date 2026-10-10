@@ -839,7 +839,30 @@ docker stop synthadoc-test
 docker rm synthadoc-test
 ```
 
-The wiki files on the host (`~/wikis/test-docker-wiki/`) are untouched — only the container is removed.
+The wiki files on the host are untouched — only the container is removed.
+
+### Step 9 — Rebuild after a source change
+
+When you change the Python source and want to test it in Docker, remove the
+old container, rebuild the image from the repo root, then re-run Step 5:
+
+**cmd.exe:**
+```
+docker rm -f synthadoc-test
+cd C:\Users\ladmin\Documents\my_workspace\synthadoc
+docker build -t synthadoc:local .
+```
+
+**WSL bash:**
+```bash
+docker rm -f synthadoc-test
+cd ~/path/to/synthadoc
+docker build -t synthadoc:local .
+```
+
+The local build installs synthadoc from your source tree, so it always
+reflects your latest changes. Layer caching means only the layers after
+the source copy are re-run — typically just the `pip install` step.
 
 ---
 
