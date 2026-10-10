@@ -353,7 +353,10 @@ def find_broken_citation_refs(
     result: dict[str, list[dict]] = {}
     for slug in candidates:
         page = store.read_page(slug)
-        if page is None or page.status != "active":
+        # Treat empty/unset status as "active" — consistent with the rest of the
+        # codebase and the /lint/report HTTP endpoint.  Only explicitly non-active
+        # states (draft, archived, contradicted, stale) are excluded.
+        if page is None or (page.status and page.status != "active"):
             continue
         issues = _check_page_citations(slug, page, extracted_dir)
         if issues:
