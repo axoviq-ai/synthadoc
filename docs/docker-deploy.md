@@ -110,6 +110,8 @@ For Docker Compose, place the `.env` file in the same directory as your Compose 
 docker pull chenp/synthadoc:latest
 
 # Run a wiki
+# -p HOST_PORT:7070  — 7070 is fixed inside the container; HOST_PORT is what you choose.
+# Use 7070:7070 to keep the same port, or e.g. 7071:7070 to avoid conflicts.
 docker run -d \
   --name my-wiki \
   -v ~/wikis/my-wiki:/wiki \
