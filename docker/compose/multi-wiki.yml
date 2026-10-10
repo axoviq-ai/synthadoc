@@ -13,6 +13,7 @@ services:
     container_name: synthadoc-wiki-a
     restart: unless-stopped
     ports:
+      # HOST_PORT:7070 — 7070 is fixed inside every container; pick a different host port per wiki.
       - "7070:7070"
     volumes:
       - ${WIKI_A_PATH:-./wiki-a}:/wiki
