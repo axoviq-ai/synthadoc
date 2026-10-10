@@ -782,18 +782,7 @@ TAVILY_API_KEY=tvly-...   # optional
 
 ### Step 5 — Run the container
 
-**PowerShell** (use backtick `` ` `` for line continuation, not `\`):
-
-```powershell
-docker run -d `
-  --name synthadoc-test `
-  -v "$HOME/wikis/history-of-computing:/wiki" `
-  -p 7099:7070 `
-  --env-file "$HOME/wikis/.env" `
-  synthadoc:local
-```
-
-**cmd.exe / single line** (paste as one line):
+**cmd.exe** (single line — backslash continuation does not work in cmd):
 
 ```
 docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing:/wiki" -p 7099:7070 --env-file "%USERPROFILE%/wikis/.env" synthadoc:local
