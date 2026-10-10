@@ -764,13 +764,13 @@ If you see `(N/N) FINISHED` at the top and no `ERROR` lines, the image built suc
 
 ### Step 3 — Create a test wiki
 
-You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise create a minimal one:
+You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise install the built-in demo:
 
 ```bash
-synthadoc install test-docker-wiki --target ~/wikis
+synthadoc install history-of-computing --target ~/wikis --demo
 ```
 
-This creates `~/wikis/test-docker-wiki/` with the wiki structure.
+This creates `~/wikis/history-of-computing/` pre-populated with demo content, so you have real pages to query straight away.
 
 ### Step 4 — Create a .env file
 
@@ -785,7 +785,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```bash
 docker run -d \
   --name synthadoc-test \
-  -v ~/wikis/test-docker-wiki:/wiki \
+  -v ~/wikis/history-of-computing:/wiki \
   -p 7099:7070 \
   --env-file ~/wikis/.env \
   synthadoc:local
