@@ -748,9 +748,9 @@ docker build -t synthadoc:local .
 The trailing `.` tells Docker to use the current directory as the build context
 (where it reads the `Dockerfile` and packages source files).
 
-The first build takes a few minutes (downloads `python:3.12-slim` and installs the latest synthadoc from PyPI). Subsequent builds are faster due to layer caching.
+The first build takes a few minutes (downloads `python:3.12-slim` and installs synthadoc). Subsequent builds are faster due to layer caching.
 
-> **Local vs. production builds:** A local `docker build` always installs the latest published synthadoc version from PyPI (no version pin). The production CI build passes `--build-arg SYNTHADOC_VERSION=X.Y.Z` to pin the image to the exact release, and it runs only after the PyPI publish workflow completes — so there is no race between the two.
+> **Local vs. production builds:** A local `docker build` installs synthadoc directly from your source tree, so it picks up any unreleased changes. The production CI build passes `--build-arg SYNTHADOC_VERSION=X.Y.Z` to install the exact release from PyPI instead, and it runs only after the PyPI publish workflow completes — so there is no race between the two.
 
 Expected output (Docker BuildKit format):
 ```
