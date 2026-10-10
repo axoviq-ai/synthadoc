@@ -444,11 +444,11 @@ Obsidian makes two independent connections — one to the wiki files, one to the
 Open the wiki folder from the host filesystem (e.g. `~/wikis/my-wiki`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
 
 **2 — Point the plugin at the container**
-In Obsidian → Settings → Synthadoc plugin → Server URL, set it to the host port:
+In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL, enter the host port:
 ```
-http://localhost:7070
+http://127.0.0.1:7070
 ```
-The plugin talks to the container's HTTP API exactly as it would to a locally running synthadoc process.
+Then click the book icon in the left navigation bar to verify the connection. The plugin talks to the container's HTTP API exactly as it would to a locally running synthadoc process.
 
 ### MCP Client
 
