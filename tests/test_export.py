@@ -565,8 +565,10 @@ async def test_okf_index_groups_pages_by_type(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
     index = result["index.md"]
-    assert "## person" in index
-    assert "## technology" in index
+    # both "person" and "technology" map to OKF canonical type "reference"
+    assert "## reference" in index
+    assert "## person" not in index
+    assert "## technology" not in index
     assert "[Alan Turing](wiki/alan-turing.md)" in index
     assert "[ENIAC](wiki/eniac.md)" in index
 
