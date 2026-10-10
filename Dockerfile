@@ -24,6 +24,7 @@ COPY --from=builder /root/.local /home/synthadoc/.local
 # Wiki volume — user mounts their wiki root here at runtime.
 RUN mkdir /wiki && chown synthadoc:synthadoc /wiki
 VOLUME ["/wiki"]
+WORKDIR /wiki
 
 # Expose the default synthadoc server port.
 EXPOSE 7070
