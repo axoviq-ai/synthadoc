@@ -252,17 +252,24 @@ pre-configured so commands work without extra flags:
 > right after queuing — before the job finishes — and you see no results.
 > Add `--wait` to keep the process alive until the job completes.
 
-The examples below use Docker Compose service name (`sd-server`).
-Substitute `docker exec my-wiki` when using plain `docker run`.
+All examples below use `docker exec <container-name>`, which works regardless
+of how the container was started. The container name is whatever you passed to
+`--name` in `docker run`, or the `container_name:` in your Compose file
+(e.g. `synthadoc-wiki`).
+
+If you are using Docker Compose, you can also address the container by its
+**service name** using `docker compose exec <service-name>` — for example,
+`docker compose exec sd-server synthadoc query "..."`. Either form works;
+`docker exec` is shown here because it is universal.
 
 ### Querying the wiki
 
 ```bash
 # Ask a question — streams the answer token by token
-docker compose exec sd-server synthadoc query "What are the key findings in Q3 report?"
+docker exec my-wiki synthadoc query "What are the key findings in Q3 report?"
 
 # Force a fresh LLM call (skip the query cache)
-docker compose exec sd-server synthadoc query "What changed in the last audit?" --no-cache
+docker exec my-wiki synthadoc query "What changed in the last audit?" --no-cache
 ```
 
 ### Cross-wiki queries (multi-wiki Compose only)
@@ -270,14 +277,16 @@ docker compose exec sd-server synthadoc query "What changed in the last audit?" 
 In the multi-wiki Compose setup, each wiki runs in its own container on the
 same Docker network. If you configure cross-wiki routing in one wiki's
 `CROSS_WIKI_ROUTING.md` to reference the other container by its service name
-(e.g. `http://sd-server-b:7070`), you can fan out a single query across both:
+(e.g. `http://sd-server-b:7070`), you can fan out a single query across both.
+This uses `docker compose exec` because Docker Compose service-name DNS
+(`sd-server-b`) is only available inside the Compose network:
 
 ```bash
 # Query wiki-a — fans out to wiki-b automatically via Docker internal network
 docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
   synthadoc query "Total revenue across all entities?" --cross-wiki
 
-# Scaffold the routing table for wiki-a from the registry
+# Scaffold the routing table for wiki-a
 docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
   synthadoc cross-wiki routing init
 ```
@@ -286,57 +295,57 @@ docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
 
 ```bash
 # Ingest a single file (relative path resolves from /wiki/)
-docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
+docker exec my-wiki synthadoc ingest raw_sources/report.pdf
 
 # Batch-ingest an entire folder
-docker compose exec sd-server synthadoc ingest raw_sources/ --batch
+docker exec my-wiki synthadoc ingest raw_sources/ --batch
 
 # Ingest a URL
-docker compose exec sd-server synthadoc ingest https://example.com/article
+docker exec my-wiki synthadoc ingest https://example.com/article
 
 # Ingest via web search (Tavily) — requires TAVILY_API_KEY in container env
-docker compose exec sd-server synthadoc ingest "search for: IFRS 17 insurance contract accounting"
+docker exec my-wiki synthadoc ingest "search for: IFRS 17 insurance contract accounting"
 
 # Watch job progress after queuing (ingest returns immediately)
-docker compose exec sd-server synthadoc jobs list --limit 5
+docker exec my-wiki synthadoc jobs list --limit 5
 ```
 
 ### Linting
 
 ```bash
 # Enqueue lint and wait for completion (--wait keeps docker exec alive)
-docker compose exec sd-server synthadoc lint run --wait
+docker exec my-wiki synthadoc lint run --wait
 
 # Show lint report (contradictions, orphan pages, adversarial findings)
-docker compose exec sd-server synthadoc lint report
+docker exec my-wiki synthadoc lint report
 
 # Lint with URL source availability check
-docker compose exec sd-server synthadoc lint run --check-urls --wait
+docker exec my-wiki synthadoc lint run --check-urls --wait
 ```
 
 ### Agentic workflows
 
 ```bash
 # List all available workflows
-docker compose exec sd-server synthadoc workflow list
+docker exec my-wiki synthadoc workflow list
 
 # Re-ingest all stale pages (agentic loop, streams progress)
-docker compose exec sd-server synthadoc workflow run --name ingest-lint
+docker exec my-wiki synthadoc workflow run --name ingest-lint
 
 # Run the contradiction resolver (interactive — approves rewrites one by one)
-docker compose exec sd-server synthadoc workflow run --name contradiction-resolver
+docker exec -it my-wiki synthadoc workflow run --name contradiction-resolver
 
 # Scan and fix broken wikilinks
-docker compose exec sd-server synthadoc workflow run --name broken-wikilinks
+docker exec my-wiki synthadoc workflow run --name broken-wikilinks
 ```
 
 ### Scaffold
 
 ```bash
 # Regenerate index.md, AGENTS.md, and purpose.md using the LLM
-# (queues a background job; --wait keeps docker exec alive)
-docker compose exec sd-server synthadoc scaffold
-docker compose exec sd-server synthadoc jobs list --limit 5
+# (queues a background job; monitor with jobs list)
+docker exec my-wiki synthadoc scaffold
+docker exec my-wiki synthadoc jobs list --limit 5
 ```
 
 ### Lifecycle (promote, archive, restore)
@@ -346,52 +355,52 @@ to `active`, or `lifecycle archive` to retire it.
 
 ```bash
 # Promote a draft page to active
-docker compose exec sd-server synthadoc lifecycle activate quarterly-report-q3 \
+docker exec my-wiki synthadoc lifecycle activate quarterly-report-q3 \
   --reason "Reviewed and approved"
 
 # Archive a superseded page
-docker compose exec sd-server synthadoc lifecycle archive old-market-analysis \
+docker exec my-wiki synthadoc lifecycle archive old-market-analysis \
   --reason "Superseded by 2026 report"
 
 # Restore an archived page back to draft
-docker compose exec sd-server synthadoc lifecycle restore old-market-analysis \
+docker exec my-wiki synthadoc lifecycle restore old-market-analysis \
   --reason "Needed for comparison"
 
 # Show full lifecycle event log
-docker compose exec sd-server synthadoc lifecycle log
+docker exec my-wiki synthadoc lifecycle log
 
 # Show lifecycle history for one page
-docker compose exec sd-server synthadoc lifecycle history quarterly-report-q3
+docker exec my-wiki synthadoc lifecycle history quarterly-report-q3
 ```
 
 ### Scheduled jobs
 
 ```bash
 # List all registered scheduled jobs
-docker compose exec sd-server synthadoc schedule list
+docker exec my-wiki synthadoc schedule list
 
 # Schedule a nightly lint (cron: 2 AM every day)
-docker compose exec sd-server synthadoc schedule add \
+docker exec my-wiki synthadoc schedule add \
   --op "lint run" --cron "0 2 * * *"
 
 # Apply schedules declared in config.toml [schedule] blocks
-docker compose exec sd-server synthadoc schedule apply
+docker exec my-wiki synthadoc schedule apply
 ```
 
 ### Monitoring and audit
 
 ```bash
 # Show all recent jobs
-docker compose exec sd-server synthadoc jobs list --limit 20
+docker exec my-wiki synthadoc jobs list --limit 20
 
 # Server health and version
-docker compose exec sd-server synthadoc status
+docker exec my-wiki synthadoc status
 
 # Ingest cost and history
-docker compose exec sd-server synthadoc audit history
+docker exec my-wiki synthadoc audit history
 
 # Backup the wiki to a zip file (lands in the mounted /wiki folder)
-docker compose exec sd-server synthadoc backup
+docker exec my-wiki synthadoc backup
 ```
 
 ---
