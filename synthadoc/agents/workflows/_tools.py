@@ -314,7 +314,9 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
           },
           "contradicted_pages": [{"slug": str, "since": str}],
           "adversarial_warnings": [{"slug": str, "count": int}],
-          "orphan_slugs": [str]
+          "orphan_slugs": [str],
+          "broken_citations": int,
+          "broken_citation_pages": [{"slug": str, "count": int}]
         }
 
     "last_run" is an empty dict if no lint run has been recorded yet.
