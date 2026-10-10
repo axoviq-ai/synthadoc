@@ -734,19 +734,33 @@ docker buildx version
 
 ### Step 2 — Build the image from source
 
-From the repo root (where `Dockerfile` lives):
+The `Dockerfile` lives at the **repo root** — the top-level `synthadoc/` folder,
+not the `docker/` subfolder (which only contains Compose files and examples).
+Run the build from that directory:
 
 ```bash
+# In PowerShell or WSL, cd to the repo root first
+cd path/to/synthadoc   # e.g. C:\Users\you\Documents\my_workspace\synthadoc
+
 docker build -t synthadoc:local .
 ```
 
-The first build takes a few minutes (downloads `python:3.12-slim` and installs synthadoc from PyPI). Subsequent builds are faster due to layer caching.
+The trailing `.` tells Docker to use the current directory as the build context
+(where it reads the `Dockerfile` and packages source files).
 
-Expected output ends with:
+The first build takes a few minutes (downloads `python:3.12-slim` and installs the latest synthadoc from PyPI). Subsequent builds are faster due to layer caching.
+
+> **Local vs. production builds:** A local `docker build` always installs the latest published synthadoc version from PyPI (no version pin). The production CI build passes `--build-arg SYNTHADOC_VERSION=X.Y.Z` to pin the image to the exact release, and it runs only after the PyPI publish workflow completes — so there is no race between the two.
+
+Expected output (Docker BuildKit format):
 ```
-Successfully built <image-id>
-Successfully tagged synthadoc:local
+[+] Building XX.Xs (13/13) FINISHED
+ ...
+ => => naming to docker.io/library/synthadoc:local
+ => => unpacking to docker.io/library/synthadoc:local
 ```
+
+If you see `(N/N) FINISHED` at the top and no `ERROR` lines, the image built successfully.
 
 ### Step 3 — Create a test wiki
 

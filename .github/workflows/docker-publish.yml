@@ -1,14 +1,19 @@
 name: Publish Docker Image
 
 on:
-  release:
-    types: [published]   # fires on the same event as publish.yml (PyPI)
+  # Run only after the PyPI publish workflow succeeds — the Dockerfile
+  # installs synthadoc from PyPI, so Docker must start after PyPI is live.
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
 
 env:
   IMAGE: chenp/synthadoc
 
 jobs:
   build-and-push:
+    # Skip if the PyPI publish failed or was cancelled.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,11 +21,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0   # fetch all tags so git describe can find the release tag
 
       - name: Extract version from release tag
         id: version
-        # Release tags are vX.Y.Z; strip the leading 'v' for the image tag.
-        run: echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        # workflow_run doesn't set GITHUB_REF_NAME; derive the tag from the commit.
+        run: |
+          TAG=$(git describe --tags --exact-match HEAD)
+          echo "tag=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -40,6 +50,9 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.IMAGE }}:latest
+          # Pin the exact release version so the image matches the git tag.
+          build-args: |
+            SYNTHADOC_VERSION=${{ steps.version.outputs.tag }}
           # Cache layers between runs to speed up builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
