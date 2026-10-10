@@ -777,7 +777,7 @@ This creates `~/wikis/history-of-computing/` pre-populated with demo content, so
 ```bash
 # ~/wikis/.env  (keep outside the wiki folder)
 ANTHROPIC_API_KEY=sk-ant-...
-# TAVILY_API_KEY=tvly-...   # optional
+TAVILY_API_KEY=tvly-...   # optional
 ```
 
 ### Step 5 — Run the container
