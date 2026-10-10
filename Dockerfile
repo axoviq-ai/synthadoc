@@ -6,10 +6,14 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
+# SYNTHADOC_VERSION: pinned by CI to the exact release tag (e.g. 1.3.3).
+# Omit the build-arg for local builds — installs the latest published version.
+ARG SYNTHADOC_VERSION=
+
 # Install synthadoc and all runtime deps.
 # --user installs to /root/.local; copied into the runtime stage below.
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir --user synthadoc
+ && pip install --no-cache-dir --user "synthadoc${SYNTHADOC_VERSION:+==$SYNTHADOC_VERSION}"
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
