@@ -695,21 +695,25 @@ docker compose -f docker/compose/multi-wiki.yml ps
 
 **Step 2 — Query from the web UI**
 
-Open the coordinator wiki's web UI in your browser (e.g. `http://localhost:7070`). In the Chat tab, click the **🌐** globe icon at the right end of the message input bar to enable cross-wiki mode. A context bar appears showing which wikis will be searched:
+Open the coordinator wiki's web UI in your browser (e.g. `http://localhost:7070/app`). In the Chat tab, click the **🌐** globe icon at the right end of the message input bar to enable cross-wiki mode. A context bar appears showing which wikis will be searched:
 
 ```
-🌐  Querying across: finance-wiki · legal-wiki
+🌐  Querying across: history-of-computing · ai-research
 ```
 
-Type your question and submit. The coordinator fans out to all running peer containers, merges the results, and returns one synthesised answer. Citations show the source wiki: `[finance-wiki]  Valuation Methods`.
+Type your question and submit. The coordinator fans out to all running peer containers, merges the results, and returns one synthesised answer. Citations show the source wiki: `[history-of-computing]  Alan Turing`.
+
+If you are using the **history-of-computing** and **ai-research** demo wikis, try this query to see results from both:
+
+> *How did Alan Turing's theoretical work on computation influence the foundations of modern artificial intelligence?*
 
 After the response the bar updates to show what was actually reached:
 
 ```
-🌐  Searched: finance-wiki · legal-wiki
+🌐  Searched: history-of-computing · ai-research
 ```
 
-If a peer was unreachable, it is flagged inline: `⚠ ops-wiki offline`. The coordinator still returns an answer from the available wikis.
+If a peer was unreachable, it is flagged inline: `⚠ ai-research offline`. The coordinator still returns an answer from the available wikis.
 
 **Step 3 — Handle an offline wiki**
 
