@@ -232,14 +232,7 @@ Expected response:
 http://localhost:9070/app
 ```
 
-**Connect the Obsidian plugin:**
-
-1. Open `~/wikis/history-of-computing` as an Obsidian vault (File → Open Folder as Vault).
-2. In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings, set **Server URL** to:
-   ```
-   http://127.0.0.1:9070
-   ```
-3. Click the book icon in the left navigation bar to verify the connection.
+For Obsidian plugin setup, see [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian) below.
 
 ---
 
