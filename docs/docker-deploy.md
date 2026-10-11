@@ -2,8 +2,6 @@
 
 ## Table of Contents
 
-**Main**
-
 1. [Why Docker](#why-docker)
 2. [Architecture](#architecture)
 3. [Prerequisites](#prerequisites)
