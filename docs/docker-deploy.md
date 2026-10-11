@@ -658,6 +658,91 @@ WIKI_B_PATH=/home/yourname/wikis/legal-wiki
 
 On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis/...`), not the Windows drive path (`/mnt/c/Users/...`).
 
+#### Cross-wiki queries
+
+Cross-wiki queries fan out a single question across multiple wiki containers and return one unified answer. In Docker, each wiki runs in its own container on a shared Compose network — containers reach each other by **service name**, not `localhost`.
+
+**How it differs from local (non-Docker) setup:**
+
+| Local | Docker |
+|---|---|
+| `synthadoc serve --all` starts all wikis from the registry | Each wiki is a separate Compose service — no shared registry inside containers |
+| Coordinator discovers peers from `~/.synthadoc/wikis.json` | Coordinator discovers peers from `CROSS_WIKI_ROUTING.md` with service-name URLs |
+| Peer URLs: `http://localhost:7071` | Peer URLs: `http://legal-wiki:7070` (Docker service name) |
+
+**Step 1 — Start the multi-wiki stack**
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml up -d
+```
+
+Both containers start on the same Compose network. Verify they are running:
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml ps
+```
+
+**Step 2 — Initialise the routing file**
+
+Run `cross-wiki routing init` inside the coordinator container. This generates `CROSS_WIKI_ROUTING.md` in the coordinator's global config path (`/home/synthadoc/.synthadoc/`):
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
+  synthadoc cross-wiki routing init
+```
+
+Then open the generated file and replace the `localhost` URLs with Docker service names:
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
+  synthadoc cross-wiki routing edit
+```
+
+Example routing file for a two-wiki stack where `finance-wiki` is the coordinator:
+
+```markdown
+# Cross-Wiki Routing
+
+## finance
+wikis: finance-wiki, legal-wiki
+keywords: M&A, covenant, valuation, investment, portfolio
+
+## legal
+wikis: legal-wiki
+keywords: contract, NDA, compliance, regulatory
+
+## default
+wikis: finance-wiki, legal-wiki
+keywords:
+```
+
+> **Service-name hostnames:** in Docker Compose, containers on the same network reach each other by service name. The routing file must reference peer wikis by their Compose service name (e.g. `legal-wiki`), not `localhost`. The port is always `7070` (the container's internal port).
+
+**Step 3 — Run a cross-wiki query**
+
+Target the coordinator container with `--cross-wiki`:
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
+  synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?"
+```
+
+The coordinator fans out to all peer containers in the Compose network, merges results, and returns one synthesised answer with `[[wiki-name::PageTitle]]` citations.
+
+**Step 4 — Handle an offline wiki**
+
+If a peer container is stopped, the coordinator continues with the available wikis and notes which were unreachable. Restart a stopped wiki:
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml start legal-wiki
+```
+
+Then re-run the query to include it.
+
+> For full cross-wiki setup details (routing rules, web UI globe toggle, citation format) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
+
+---
+
 #### Local LLM with Ollama (no cloud API key)
 
 ```bash
