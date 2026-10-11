@@ -153,20 +153,36 @@ Note the assigned port (`7070` above) — you will use it in Step 4. **Do not ru
 
 ### Step 3 — Set your LLM provider
 
-Open `~/wikis/history-of-computing/.synthadoc/config.toml`. The `[agents]` section defaults to Gemini and includes commented alternatives for every supported provider:
+Open `~/wikis/history-of-computing/.synthadoc/config.toml`. The `[agents]` section has one active `default =` line and commented-out alternatives for every supported provider. It looks like this out of the box:
 
 ```toml
 [agents]
 default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # Alternatives (uncomment and restart to switch):
-# default = { provider = "anthropic", model = "claude-sonnet-4-6" }
-# default = { provider = "openai",    model = "gpt-4o" }
+# default = { provider = "gemini",    model = "gemini-2.5-flash" }
+# default = { provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }
+# default = { provider = "anthropic", model = "claude-sonnet-4-6" }
+# default = { provider = "anthropic", model = "claude-opus-4-8" }
+# default = { provider = "deepseek",  model = "deepseek-v4-flash" }
 # default = { provider = "ollama",    model = "llama3.2" }
+# default = { provider = "claude-code" }
 # ...
 ```
 
-Comment out the current `default =` line and uncomment the provider you have a key for. Then make sure your `.env` file contains the matching API key — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
+To switch providers: **comment out the active line** and **uncomment the one you want**. For example, to switch to MiniMax:
+
+```toml
+[agents]
+# default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
+# Alternatives (uncomment and restart to switch):
+# default = { provider = "gemini",    model = "gemini-2.5-flash" }
+default = { provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }
+# default = { provider = "groq",      model = "openai/gpt-oss-20b" }
+# ...
+```
+
+Then add the matching API key to your `.env` file (e.g. `MINIMAX_API_KEY=...` for MiniMax, `ANTHROPIC_API_KEY=...` for Anthropic) — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
 
 ### Step 4 — Start the container
 
