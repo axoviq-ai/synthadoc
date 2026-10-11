@@ -153,25 +153,20 @@ Note the assigned port (`7070` above) — you will use it in Step 4. **Do not ru
 
 ### Step 3 — Set your LLM provider
 
-The installed wiki's `.synthadoc/config.toml` defaults to **Gemini** as the LLM provider:
+Open `~/wikis/history-of-computing/.synthadoc/config.toml`. The `[agents]` section defaults to Gemini and includes commented alternatives for every supported provider:
 
 ```toml
-[agents.default]
-provider = "gemini"
-model = "gemini-2.0-flash"
+[agents]
+default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
+# Alternatives (uncomment and restart to switch):
+# default = { provider = "anthropic", model = "claude-sonnet-4-6" }
+# default = { provider = "openai",    model = "gpt-4o" }
+# default = { provider = "groq",      model = "openai/gpt-oss-20b" }
+# default = { provider = "ollama",    model = "llama3.2" }
+# ...
 ```
 
-Open `~/wikis/history-of-computing/.synthadoc/config.toml` and change `provider` to whichever LLM you have a key for. For example, to use Anthropic:
-
-```toml
-[agents.default]
-provider = "anthropic"
-model = "claude-opus-4-6"
-```
-
-Supported values: `anthropic`, `openai`, `gemini`, `groq`.
-
-Then make sure your `.env` file contains the matching key for that provider — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
+Comment out the current `default =` line and uncomment the provider you have a key for. Then make sure your `.env` file contains the matching API key — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
 
 ### Step 4 — Start the container
 
@@ -443,9 +438,8 @@ Synthadoc reads its configuration from `.synthadoc/config.toml` inside the wiki 
 port = 7070          # port set during install — used inside the container and mapped 1:1 to the host
 host = "0.0.0.0"     # set by --host flag in CMD; do not change here
 
-[agents.default]
-provider = "anthropic"
-model = "claude-opus-4-6"
+[agents]
+default = { provider = "anthropic", model = "claude-sonnet-4-6" }
 ```
 
 To change the provider, edit `config.toml` and restart the container:
