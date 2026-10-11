@@ -995,12 +995,18 @@ class LintAgent(BaseAgent):
                             if raw_sources_dir.exists():
                                 src_path = raw_sources_dir / src_ref.file
                                 if not src_path.exists():
+                                    # fallback: file may already carry the raw_sources/ prefix
+                                    src_path = self._wiki_root / src_ref.file
+                                if not src_path.exists():
                                     local_sources = [
                                         s for s in page.sources
                                         if s.file and not is_url(s.file)
                                     ]
                                     all_missing = all(
-                                        not (raw_sources_dir / s.file).exists()
+                                        not (
+                                            (raw_sources_dir / s.file).exists()
+                                            or (self._wiki_root / s.file).exists()
+                                        )
                                         for s in local_sources
                                     )
                                     if all_missing:
@@ -1060,6 +1066,8 @@ class LintAgent(BaseAgent):
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
                             src_path = raw_sources_dir / src_ref.file
+                            if not src_path.exists():
+                                src_path = self._wiki_root / src_ref.file
                             if src_path.exists():
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
