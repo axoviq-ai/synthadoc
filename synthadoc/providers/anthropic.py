@@ -46,11 +46,23 @@ class AnthropicProvider(LLMProvider):
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
-                resp = await self._client.messages.create(**kwargs)
-                text = "".join(b.text for b in resp.content if hasattr(b, "text"))
-                return CompletionResponse(text=text,
-                                         input_tokens=resp.usage.input_tokens,
-                                         output_tokens=resp.usage.output_tokens)
+                # Anthropic requires streaming for requests that may exceed 10 minutes.
+                # Accumulate streamed chunks so callers get the same synchronous interface.
+                parts: list[str] = []
+                input_tokens = 0
+                output_tokens = 0
+                async with self._client.messages.stream(**kwargs) as stream:
+                    async for event in stream:
+                        if event.type == "message_start":
+                            input_tokens = event.message.usage.input_tokens
+                        elif event.type == "message_delta" and hasattr(event, "usage"):
+                            output_tokens = event.usage.output_tokens
+                        elif (event.type == "content_block_delta"
+                                and hasattr(event.delta, "text")):
+                            parts.append(event.delta.text)
+                return CompletionResponse(text="".join(parts),
+                                         input_tokens=input_tokens,
+                                         output_tokens=output_tokens)
             except _RATE_LIMIT:
                 raise  # quota exhaustion — propagate immediately, no retry
             except _RETRYABLE as exc:
