@@ -642,15 +642,13 @@ On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis
 
 #### Cross-wiki queries
 
-Cross-wiki queries fan out a single question across multiple wiki containers and return one unified answer. In Docker, each wiki runs in its own container on a shared Compose network — containers reach each other by **service name**, not `localhost`.
+Cross-wiki queries fan out a single question across multiple wiki containers and return one unified answer. Each container exposes both a `/retrieve` endpoint (responds to other wikis) and a `/cross-wiki/query` endpoint (acts as coordinator). Any running container can coordinate a query.
 
-**How it differs from local (non-Docker) setup:**
+**How it works — no routing file required**
 
-| Local | Docker |
-|---|---|
-| `synthadoc serve --all` starts all wikis from the registry | Each wiki is a separate Compose service — no shared registry inside containers |
-| Coordinator discovers peers from `~/.synthadoc/wikis.json` | Coordinator discovers peers from `CROSS_WIKI_ROUTING.md` with service-name URLs |
-| Peer URLs: `http://localhost:7071` | Peer URLs: `http://legal-wiki:7070` (Docker service name) |
+By default, the coordinator picks which wikis to search automatically: it reads each wiki's domain description from the registry and asks the LLM to select the most relevant ones for your question. You do not need to configure anything beyond starting the containers.
+
+In Docker Compose, containers on the same network reach each other by **service name** rather than `localhost`. The registry entry for each wiki stores the service-name URL (e.g. `http://legal-wiki:7070`) set at install time, so the coordinator resolves peers correctly without any extra steps.
 
 **Step 1 — Start the multi-wiki stack**
 
@@ -658,70 +656,59 @@ Cross-wiki queries fan out a single question across multiple wiki containers and
 docker compose -f docker/compose/multi-wiki.yml up -d
 ```
 
-Both containers start on the same Compose network. Verify they are running:
+Verify both containers are running:
 
 ```bash
 docker compose -f docker/compose/multi-wiki.yml ps
 ```
 
-**Step 2 — Initialise the routing file**
+**Step 2 — Query from the web UI**
 
-Run `cross-wiki routing init` inside the coordinator container. This generates `CROSS_WIKI_ROUTING.md` in the coordinator's global config path (`/home/synthadoc/.synthadoc/`):
+Open the coordinator wiki's web UI in your browser (e.g. `http://localhost:7070`). In the Chat tab, click the **🌐** globe icon at the right end of the message input bar to enable cross-wiki mode. A context bar appears showing which wikis will be searched:
+
+```
+🌐  Querying across: finance-wiki · legal-wiki
+```
+
+Type your question and submit. The coordinator fans out to all running peer containers, merges the results, and returns one synthesised answer. Citations show the source wiki: `[finance-wiki]  Valuation Methods`.
+
+After the response the bar updates to show what was actually reached:
+
+```
+🌐  Searched: finance-wiki · legal-wiki
+```
+
+If a peer was unreachable, it is flagged inline: `⚠ ops-wiki offline`. The coordinator still returns an answer from the available wikis.
+
+**Step 3 — Handle an offline wiki**
+
+If a peer container is stopped, the coordinator degrades gracefully: it answers from the wikis that responded and notes which were unreachable. Restart a stopped wiki and re-query to include it:
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
-  synthadoc cross-wiki routing init
+docker compose -f docker/compose/multi-wiki.yml start legal-wiki
 ```
 
-Then open the generated file and replace the `localhost` URLs with Docker service names:
+**CLI alternative**
 
-```bash
-docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
-  synthadoc cross-wiki routing edit
-```
-
-Example routing file for a two-wiki stack where `finance-wiki` is the coordinator:
-
-```markdown
-# Cross-Wiki Routing
-
-## finance
-wikis: finance-wiki, legal-wiki
-keywords: M&A, covenant, valuation, investment, portfolio
-
-## legal
-wikis: legal-wiki
-keywords: contract, NDA, compliance, regulatory
-
-## default
-wikis: finance-wiki, legal-wiki
-keywords:
-```
-
-> **Service-name hostnames:** in Docker Compose, containers on the same network reach each other by service name. The routing file must reference peer wikis by their Compose service name (e.g. `legal-wiki`), not `localhost`. The port is always `7070` (the container's internal port).
-
-**Step 3 — Run a cross-wiki query**
-
-Target the coordinator container with `--cross-wiki`:
+You can also run a cross-wiki query from the command line by targeting the coordinator container:
 
 ```bash
 docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
   synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?"
 ```
 
-The coordinator fans out to all peer containers in the Compose network, merges results, and returns one synthesised answer with `[[wiki-name::PageTitle]]` citations.
+**Optional: keyword-based routing override**
 
-**Step 4 — Handle an offline wiki**
-
-If a peer container is stopped, the coordinator continues with the available wikis and notes which were unreachable. Restart a stopped wiki:
+For large stacks (three or more wikis) where you want deterministic wiki selection rather than LLM-based routing, you can create `CROSS_WIKI_ROUTING.md` in the coordinator container's config directory. This is a plain-text file that maps keywords to wiki groups:
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml start legal-wiki
+docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
+  synthadoc cross-wiki routing init   # scaffold the file, then edit to taste
 ```
 
-Then re-run the query to include it.
+When the file is present, the LLM routing call is skipped and keyword matching is used instead. This is optional — skip it for most setups.
 
-> For full cross-wiki setup details (routing rules, web UI globe toggle, citation format) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
+> For full cross-wiki details (citation format, SSE events, routing file syntax) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
 ---
 
