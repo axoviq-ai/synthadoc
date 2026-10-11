@@ -266,10 +266,10 @@ If you are using Docker Compose, you can also address the container by its
 
 ```bash
 # Ask a question — streams the answer token by token
-docker exec history-of-computing synthadoc query "What are the key findings in Q3 report?"
+docker exec history-of-computing synthadoc query "Who is Turing and his major contributions in the field?"
 
 # Force a fresh LLM call (skip the query cache)
-docker exec history-of-computing synthadoc query "What changed in the last audit?" --no-cache
+docker exec history-of-computing synthadoc query "What were the key milestones in the development of the internet?" --no-cache
 ```
 
 ### Ingesting content
