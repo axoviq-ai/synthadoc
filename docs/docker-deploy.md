@@ -121,7 +121,7 @@ docker pull chenp/synthadoc:latest
 Install the `history-of-computing` demo wiki on the host. This creates the wiki folder, pre-populates it with demo pages, and registers it with a local port number:
 
 ```bash
-synthadoc install history-of-computing --demo
+synthadoc install history-of-computing --target ~/wikis --demo
 ```
 
 Expected output:
