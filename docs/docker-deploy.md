@@ -144,12 +144,12 @@ synthadoc install my-wiki --target ~/wikis --domain "Your domain description"
 This guide continues with the Option A demo. After running the install command, you will see:
 
 ```
-✓ Wiki installed: ~/wikis/history-of-computing
-  Assigned port:   7070
-  Start locally:   synthadoc serve -w ~/wikis/history-of-computing
+Wiki 'history-of-computing' installed.
+  Port   7070
+  Plugin Obsidian plugin ready
 ```
 
-Note the assigned port — you will use it in the next step.
+Note the assigned port (`7070` above) — you will use it in the next step. **Do not run `synthadoc serve`** — instead you will start a Docker container in Steps 3 and 4.
 
 ### Step 3 — Choose the container host port
 
