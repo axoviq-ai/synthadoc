@@ -288,7 +288,7 @@ docker exec history-of-computing synthadoc ingest https://example.com/article
 docker exec history-of-computing synthadoc ingest "search for: IFRS 17 insurance contract accounting"
 
 # Watch job progress after queuing (ingest returns immediately)
-docker exec history-of-computing synthadoc jobs list --limit 5
+docker exec history-of-computing synthadoc jobs list --sort created_at --order desc
 ```
 
 ### Linting
@@ -326,7 +326,7 @@ docker exec history-of-computing synthadoc workflow run --name broken-wikilinks
 # Regenerate index.md, AGENTS.md, and purpose.md using the LLM
 # (queues a background job; monitor with jobs list)
 docker exec history-of-computing synthadoc scaffold
-docker exec history-of-computing synthadoc jobs list --limit 5
+docker exec history-of-computing synthadoc jobs list --sort created_at --order desc
 ```
 
 ### Lifecycle (promote, archive, restore)
@@ -371,8 +371,8 @@ docker exec history-of-computing synthadoc schedule apply
 ### Monitoring and audit
 
 ```bash
-# Show all recent jobs
-docker exec history-of-computing synthadoc jobs list --limit 20
+# Show all recent jobs (newest first)
+docker exec history-of-computing synthadoc jobs list --sort created_at --order desc
 
 # Server health and version
 docker exec history-of-computing synthadoc status
@@ -1017,7 +1017,7 @@ echo "Synthadoc Docker test document." > ~/wikis/test-docker-wiki/raw_sources/do
 docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt
 
 # Check the job completed
-docker exec synthadoc-test synthadoc jobs list --limit 5
+docker exec synthadoc-test synthadoc jobs list --sort created_at --order desc
 ```
 
 #### Step 8 — Tear down
