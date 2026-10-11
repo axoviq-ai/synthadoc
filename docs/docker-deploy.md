@@ -202,12 +202,44 @@ The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HT
 
 ### Step 6 — Verify
 
+**Check the container is running:**
+
 ```bash
 docker ps
+```
+
+If it is missing from the list, it exited — check why:
+
+```bash
+docker logs history-of-computing
+```
+
+**Check the health endpoint:**
+
+```bash
 curl http://localhost:9070/health
 ```
 
-Open the Web UI at **`http://localhost:9070/app`**. Point your Obsidian plugin at `http://localhost:9070`.
+Expected response:
+
+```json
+{"status": "ok", ...}
+```
+
+**Open the Web UI** in any browser:
+
+```
+http://localhost:9070/app
+```
+
+**Connect the Obsidian plugin:**
+
+1. Open `~/wikis/history-of-computing` as an Obsidian vault (File → Open Folder as Vault).
+2. In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings, set **Server URL** to:
+   ```
+   http://127.0.0.1:9070
+   ```
+3. Click the book icon in the left navigation bar to verify the connection.
 
 ---
 
