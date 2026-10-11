@@ -621,7 +621,39 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 #### Multiple wikis
 
-Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file before starting — Compose reads it at `up` time:
+**Step 1 — Check each wiki's port**
+
+Each wiki has its own port, set when it was installed. Check before editing the Compose file:
+
+```bash
+synthadoc status -w history-of-computing
+synthadoc status -w ai-research
+```
+
+Note the port for each wiki — you'll need it in the next step.
+
+**Step 2 — Update `multi-wiki.yml` for wiki B's port**
+
+Copy `docker/compose/multi-wiki.yml` to your working directory and edit the `sd-server-b` section to match wiki B's actual port (replace `7071` with your port in both places):
+
+```yaml
+  sd-server-b:
+    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7071/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    ports:
+      - "7071:7071"
+```
+
+> The Dockerfile health check is hardcoded to port 7070. If wiki B runs on any other port, the `healthcheck:` override above is required — without it the container will start but stay `unhealthy`.
+
+**Step 3 — Set wiki paths in `.env`**
+
+Create a `.env` file alongside your Compose file before starting — Compose reads it at `up` time:
 
 ```bash
 # .env
@@ -632,15 +664,25 @@ WIKI_A_PATH=/home/yourname/wikis/history-of-computing
 WIKI_B_PATH=/home/yourname/wikis/ai-research
 ```
 
-Then start the stack:
+On Windows: use forward slashes (`C:/Users/yourname/wikis/...`) or the WSL path (`/mnt/c/Users/...`). Backslashes break volume mounts.
+
+**Step 4 — Start the stack**
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml up -d
-# Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7071
+docker compose -f multi-wiki.yml up -d
 ```
 
-On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis/...`), not the Windows drive path (`/mnt/c/Users/...`).
+Verify both containers reach `(healthy)` (takes up to 30 seconds):
+
+```bash
+docker compose -f multi-wiki.yml ps
+```
+
+If wiki B stays `unhealthy`, check the logs:
+
+```bash
+docker logs synthadoc-wiki-b --tail 30
+```
 
 #### Cross-wiki queries
 
