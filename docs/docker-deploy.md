@@ -2,23 +2,28 @@
 
 ## Table of Contents
 
+**Main**
+
 1. [Why Docker](#why-docker)
 2. [Architecture](#architecture)
 3. [Prerequisites](#prerequisites)
 4. [API Key Setup](#api-key-setup)
 5. [Quick Start](#quick-start)
-6. [Platform-Native Runtimes](#platform-native-runtimes)
-7. [Docker Compose](#docker-compose)
-8. [Running CLI Commands Inside the Container](#running-cli-commands-inside-the-container)
-9. [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian)
-10. [CI/CD — Scheduled Ingest](#cicd--scheduled-ingest)
-11. [Configuration](#configuration)
-12. [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts)
-13. [Export, Backup, and Restore Paths](#export-backup-and-restore-paths)
-14. [Security](#security)
-15. [Maintenance](#maintenance)
-16. [Local Build and Test (Windows)](#local-build-and-test-windows)
-17. [Troubleshooting](#troubleshooting)
+6. [Running CLI Commands Inside the Container](#running-cli-commands-inside-the-container)
+7. [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian)
+8. [Configuration](#configuration)
+9. [Maintenance](#maintenance)
+
+**Appendix**
+
+- [A. Platform-Native Runtimes](#a-platform-native-runtimes)
+- [B. Docker Compose](#b-docker-compose)
+- [C. CI/CD — Scheduled Ingest](#c-cicd--scheduled-ingest)
+- [D. File Permissions on Linux Hosts](#d-file-permissions-on-linux-hosts)
+- [E. Export, Backup, and Restore Paths](#e-export-backup-and-restore-paths)
+- [F. Security](#f-security)
+- [G. Local Build and Test (Windows)](#g-local-build-and-test-windows)
+- [H. Troubleshooting](#h-troubleshooting)
 
 ---
 
@@ -134,103 +139,6 @@ Stop and remove:
 
 ```bash
 docker stop my-wiki && docker rm my-wiki
-```
-
----
-
-## Platform-Native Runtimes
-
-### macOS 26+ (Apple Silicon — M1 or later)
-
-Apple's built-in `container` tool ships with macOS 26 (Tahoe) and runs OCI images without Docker Desktop. Replace `docker` with `container`:
-
-```bash
-container run -d \
-  --name my-wiki \
-  -v ~/wikis/my-wiki:/wiki \
-  -p 7070:7070 \
-  --env-file .env \
-  chenp/synthadoc:latest
-```
-
-> **Intel Macs (Mac Pro 2019, MacBook Air/Pro pre-2020):** Apple's `container` tool requires Apple Silicon. Use Docker Desktop on Intel hardware.
-
-### Windows 11 (WSL 2.9.3+)
-
-WSL Containers (`wslc`) ship with WSL 2.9.3+ on Windows 11. Run inside WSL:
-
-```bash
-wslc run -d \
-  --name my-wiki \
-  -v ~/wikis/my-wiki:/wiki \
-  -p 7070:7070 \
-  --env-file .env \
-  chenp/synthadoc:latest
-```
-
-> **Windows performance tip:** keep your wiki folder inside the WSL2 filesystem (e.g. `/home/yourname/wikis/my-wiki`) rather than on the Windows drive (`/mnt/c/Users/...`). Volume mounts from the Windows drive are significantly slower for file-heavy operations like ingest.
-
-> **Docker Compose** is not yet supported by `wslc`. Use Docker Desktop if you need Compose.
-
----
-
-## Docker Compose
-
-Compose files are in `docker/compose/` in the repo. Copy and customise the one that fits your setup. Requires Docker Desktop on Windows and macOS (the platform-native tools do not support Compose yet).
-
-### Single wiki
-
-```bash
-cp docker/compose/single-wiki.yml docker-compose.yml
-# Edit WIKI_PATH in docker-compose.yml or set it in .env
-docker compose up -d
-```
-
-Access at `http://localhost:7070`.
-
-Run a CLI command inside the running container:
-
-```bash
-docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
-```
-
-### Multiple wikis
-
-```bash
-docker compose -f docker/compose/multi-wiki.yml up -d
-# Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7071
-```
-
-Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file alongside your API key:
-
-```bash
-# .env
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Absolute paths to each wiki folder on the host
-WIKI_A_PATH=/home/yourname/wikis/finance-wiki
-WIKI_B_PATH=/home/yourname/wikis/legal-wiki
-```
-
-On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis/...`), not the Windows drive path (`/mnt/c/Users/...`).
-
-### Local LLM with Ollama (no cloud API key)
-
-```bash
-docker compose -f docker/compose/with-ollama.yml up -d
-
-# Pull a model into Ollama
-docker compose -f docker/compose/with-ollama.yml exec ollama ollama pull llama3.2
-```
-
-Then configure the wiki's `config.toml`:
-
-```toml
-[agents.default]
-provider = "ollama"
-model = "llama3.2"
-base_url = "http://ollama:11434"
 ```
 
 ---
@@ -466,23 +374,6 @@ On a shared server, the Web UI (`http://<server>:<port>/app`) becomes the primar
 
 ---
 
-## CI/CD — Scheduled Ingest
-
-See `docker/examples/github-actions-ingest.yml` for a complete GitHub Actions workflow that runs daily batch ingest and lint against a running container on a self-hosted runner.
-
-Key pattern:
-
-```yaml
-- name: Trigger batch ingest
-  run: |
-    # No -w needed — the container sets SYNTHADOC_WIKI=/wiki automatically
-    docker exec synthadoc-wiki synthadoc ingest raw_sources/ --batch
-```
-
-The container must already be running on the runner host (started by your Compose stack or a systemd/launchd service).
-
----
-
 ## Configuration
 
 Synthadoc reads its configuration from `.synthadoc/config.toml` inside the wiki directory. Because the wiki is mounted as a volume, you edit this file on the host — no need to rebuild or restart the image.
@@ -511,148 +402,6 @@ Or pass `--provider` at runtime without editing the file:
 docker run ... chenp/synthadoc:latest \
   synthadoc serve -w /wiki --host 0.0.0.0 --http-only --provider openai
 ```
-
----
-
-## File Permissions on Linux Hosts
-
-> **macOS / Windows:** Docker Desktop maps file ownership transparently through
-> its virtual machine layer. This section does not apply to those platforms.
-
-The container process runs as **uid 1000** (an internal user named `synthadoc`).
-Docker maps uids numerically — it does not look up user names — so the container
-can write to a host directory only if the directory's owner uid matches the
-process uid (1000).
-
-**You do not need to create any user account on your host.** The fix is purely
-about which uid owns the directory.
-
-### Step 1 — Check your host uid
-
-```bash
-id -u    # prints your numeric user id, e.g. 1000 or 1001
-```
-
-### Step 2 — Pick the right fix
-
-**Your host uid is already 1000** (the first user on most Linux systems):
-
-No action needed. The container's uid 1000 and your uid 1000 match — Docker
-mounts the directory and both sides can read and write it without any changes.
-
-**Your host uid is NOT 1000:**
-
-Option A — tell Docker to run the container as your uid (recommended, no sudo):
-
-```bash
-docker run -d \
-  --user $(id -u):$(id -g) \
-  -v ~/wikis/my-wiki:/wiki \
-  -p 7070:7070 \
-  --env-file .env \
-  chenp/synthadoc:latest
-```
-
-In Docker Compose, add a `user` key to the service:
-
-```yaml
-services:
-  sd-server:
-    image: chenp/synthadoc:latest
-    user: "1001:1001"   # replace with your uid:gid from `id -u` / `id -g`
-    ...
-```
-
-Option B — change the host directory ownership to uid 1000 (requires sudo):
-
-```bash
-sudo chown -R 1000:1000 ~/wikis/my-wiki
-```
-
-This permanently assigns the directory to uid 1000. Useful on servers where you
-always want containers to own the wiki data and your personal account is a
-separate uid for administration only.
-
----
-
-## Export, Backup, and Restore Paths
-
-The container's only persistent storage is the `/wiki` mount. Any file written
-**outside** `/wiki` goes into the container's ephemeral overlay filesystem:
-it is invisible to your host, and is permanently lost when the container is
-removed (`docker rm`). No error is reported — the command appears to succeed.
-
-The image sets `WORKDIR /wiki`, so **relative paths and the default `.` all
-resolve inside `/wiki/`** — which means the safe defaults work without extra flags.
-
-### Backup
-
-```bash
-# Default (--output ".") writes the zip to /wiki/ → visible on host
-docker exec my-wiki synthadoc backup
-
-# Explicit subdirectory — also fine
-docker exec my-wiki synthadoc backup --output /wiki/backups/
-```
-
-Avoid absolute host-style paths (`--output ~/backups/`): `~` expands to
-`/home/synthadoc/` inside the container, not your home directory on the host.
-
-### Restore
-
-The zip file must be reachable inside the container. The easiest way is to
-copy it into the mounted wiki directory first:
-
-```bash
-# On the host — copy the zip into the wiki mount
-cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip ~/wikis/my-wiki/
-
-# Inside the container — restore from /wiki/ (default target is zip's parent = /wiki/)
-docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
-```
-
-Alternatively, use `docker cp` to push the file directly into the container:
-
-```bash
-docker cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip my-wiki:/wiki/
-docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
-```
-
-### Export (CLI)
-
-For formats that print to stdout (`json`, `llms.txt`, `llms-full.txt`,
-`graphml`), redirect on the host side — no path issue:
-
-```bash
-docker exec my-wiki synthadoc export --format llms.txt > ~/wiki-export.txt
-docker exec my-wiki synthadoc export --format json     > ~/wiki-export.json
-```
-
-For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
-`/wiki/` so it lands on the host:
-
-```bash
-# Writes to /wiki/exports/<wiki>-okf-<date>/ → visible on host
-docker exec my-wiki synthadoc export --format okf --output /wiki/exports/
-```
-
-> **Obsidian plugin OKF export does not have this limitation.** When you
-> trigger the export from the Obsidian UI, the plugin fetches the manifest
-> from the server and then writes files using **Obsidian's own filesystem API
-> on your host machine**. The default path (`~/exports/…`) resolves on your
-> host, not inside the container. No special Docker configuration is needed.
-
----
-
-## Security
-
-Synthadoc has **no built-in authentication**. For localhost-only use this is fine. For any deployment reachable beyond localhost:
-
-- Put a reverse proxy (nginx, Traefik, Caddy) with TLS and basic auth in front of the container
-- Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`
-- On team servers, use a VPN or SSH tunnel rather than exposing the port directly
-
-**API keys:** always use `--env-file .env`, never `-e KEY=value` on the command line. Store the `.env` file with restricted permissions (`chmod 600 .env`).
 
 ---
 
@@ -716,12 +465,270 @@ docker run ... chenp/synthadoc:1.3.3
 
 ---
 
-## Local Build and Test (Windows)
+## Appendix
+
+### A. Platform-Native Runtimes
+
+#### macOS 26+ (Apple Silicon — M1 or later)
+
+Apple's built-in `container` tool ships with macOS 26 (Tahoe) and runs OCI images without Docker Desktop. Replace `docker` with `container`:
+
+```bash
+container run -d \
+  --name my-wiki \
+  -v ~/wikis/my-wiki:/wiki \
+  -p 7070:7070 \
+  --env-file .env \
+  chenp/synthadoc:latest
+```
+
+> **Intel Macs (Mac Pro 2019, MacBook Air/Pro pre-2020):** Apple's `container` tool requires Apple Silicon. Use Docker Desktop on Intel hardware.
+
+#### Windows 11 (WSL 2.9.3+)
+
+WSL Containers (`wslc`) ship with WSL 2.9.3+ on Windows 11. Run inside WSL:
+
+```bash
+wslc run -d \
+  --name my-wiki \
+  -v ~/wikis/my-wiki:/wiki \
+  -p 7070:7070 \
+  --env-file .env \
+  chenp/synthadoc:latest
+```
+
+> **Windows performance tip:** keep your wiki folder inside the WSL2 filesystem (e.g. `/home/yourname/wikis/my-wiki`) rather than on the Windows drive (`/mnt/c/Users/...`). Volume mounts from the Windows drive are significantly slower for file-heavy operations like ingest.
+
+> **Docker Compose** is not yet supported by `wslc`. Use Docker Desktop if you need Compose.
+
+---
+
+### B. Docker Compose
+
+Compose files are in `docker/compose/` in the repo. Copy and customise the one that fits your setup. Requires Docker Desktop on Windows and macOS (the platform-native tools do not support Compose yet).
+
+#### Single wiki
+
+```bash
+cp docker/compose/single-wiki.yml docker-compose.yml
+# Edit WIKI_PATH in docker-compose.yml or set it in .env
+docker compose up -d
+```
+
+Access at `http://localhost:7070`.
+
+Run a CLI command inside the running container:
+
+```bash
+docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
+```
+
+#### Multiple wikis
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml up -d
+# Wiki A: http://localhost:7070
+# Wiki B: http://localhost:7071
+```
+
+Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file alongside your API key:
+
+```bash
+# .env
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Absolute paths to each wiki folder on the host
+WIKI_A_PATH=/home/yourname/wikis/finance-wiki
+WIKI_B_PATH=/home/yourname/wikis/legal-wiki
+```
+
+On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis/...`), not the Windows drive path (`/mnt/c/Users/...`).
+
+#### Local LLM with Ollama (no cloud API key)
+
+```bash
+docker compose -f docker/compose/with-ollama.yml up -d
+
+# Pull a model into Ollama
+docker compose -f docker/compose/with-ollama.yml exec ollama ollama pull llama3.2
+```
+
+Then configure the wiki's `config.toml`:
+
+```toml
+[agents.default]
+provider = "ollama"
+model = "llama3.2"
+base_url = "http://ollama:11434"
+```
+
+---
+
+### C. CI/CD — Scheduled Ingest
+
+See `docker/examples/github-actions-ingest.yml` for a complete GitHub Actions workflow that runs daily batch ingest and lint against a running container on a self-hosted runner.
+
+Key pattern:
+
+```yaml
+- name: Trigger batch ingest
+  run: |
+    # No -w needed — the container sets SYNTHADOC_WIKI=/wiki automatically
+    docker exec synthadoc-wiki synthadoc ingest raw_sources/ --batch
+```
+
+The container must already be running on the runner host (started by your Compose stack or a systemd/launchd service).
+
+---
+
+### D. File Permissions on Linux Hosts
+
+> **macOS / Windows:** Docker Desktop maps file ownership transparently through
+> its virtual machine layer. This section does not apply to those platforms.
+
+The container process runs as **uid 1000** (an internal user named `synthadoc`).
+Docker maps uids numerically — it does not look up user names — so the container
+can write to a host directory only if the directory's owner uid matches the
+process uid (1000).
+
+**You do not need to create any user account on your host.** The fix is purely
+about which uid owns the directory.
+
+#### Step 1 — Check your host uid
+
+```bash
+id -u    # prints your numeric user id, e.g. 1000 or 1001
+```
+
+#### Step 2 — Pick the right fix
+
+**Your host uid is already 1000** (the first user on most Linux systems):
+
+No action needed. The container's uid 1000 and your uid 1000 match — Docker
+mounts the directory and both sides can read and write it without any changes.
+
+**Your host uid is NOT 1000:**
+
+Option A — tell Docker to run the container as your uid (recommended, no sudo):
+
+```bash
+docker run -d \
+  --user $(id -u):$(id -g) \
+  -v ~/wikis/my-wiki:/wiki \
+  -p 7070:7070 \
+  --env-file .env \
+  chenp/synthadoc:latest
+```
+
+In Docker Compose, add a `user` key to the service:
+
+```yaml
+services:
+  sd-server:
+    image: chenp/synthadoc:latest
+    user: "1001:1001"   # replace with your uid:gid from `id -u` / `id -g`
+    ...
+```
+
+Option B — change the host directory ownership to uid 1000 (requires sudo):
+
+```bash
+sudo chown -R 1000:1000 ~/wikis/my-wiki
+```
+
+This permanently assigns the directory to uid 1000. Useful on servers where you
+always want containers to own the wiki data and your personal account is a
+separate uid for administration only.
+
+---
+
+### E. Export, Backup, and Restore Paths
+
+The container's only persistent storage is the `/wiki` mount. Any file written
+**outside** `/wiki` goes into the container's ephemeral overlay filesystem:
+it is invisible to your host, and is permanently lost when the container is
+removed (`docker rm`). No error is reported — the command appears to succeed.
+
+The image sets `WORKDIR /wiki`, so **relative paths and the default `.` all
+resolve inside `/wiki/`** — which means the safe defaults work without extra flags.
+
+#### Backup
+
+```bash
+# Default (--output ".") writes the zip to /wiki/ → visible on host
+docker exec my-wiki synthadoc backup
+
+# Explicit subdirectory — also fine
+docker exec my-wiki synthadoc backup --output /wiki/backups/
+```
+
+Avoid absolute host-style paths (`--output ~/backups/`): `~` expands to
+`/home/synthadoc/` inside the container, not your home directory on the host.
+
+#### Restore
+
+The zip file must be reachable inside the container. The easiest way is to
+copy it into the mounted wiki directory first:
+
+```bash
+# On the host — copy the zip into the wiki mount
+cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip ~/wikis/my-wiki/
+
+# Inside the container — restore from /wiki/ (default target is zip's parent = /wiki/)
+docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+```
+
+Alternatively, use `docker cp` to push the file directly into the container:
+
+```bash
+docker cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip my-wiki:/wiki/
+docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+```
+
+#### Export (CLI)
+
+For formats that print to stdout (`json`, `llms.txt`, `llms-full.txt`,
+`graphml`), redirect on the host side — no path issue:
+
+```bash
+docker exec my-wiki synthadoc export --format llms.txt > ~/wiki-export.txt
+docker exec my-wiki synthadoc export --format json     > ~/wiki-export.json
+```
+
+For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
+`/wiki/` so it lands on the host:
+
+```bash
+# Writes to /wiki/exports/<wiki>-okf-<date>/ → visible on host
+docker exec my-wiki synthadoc export --format okf --output /wiki/exports/
+```
+
+> **Obsidian plugin OKF export does not have this limitation.** When you
+> trigger the export from the Obsidian UI, the plugin fetches the manifest
+> from the server and then writes files using **Obsidian's own filesystem API
+> on your host machine**. The default path (`~/exports/…`) resolves on your
+> host, not inside the container. No special Docker configuration is needed.
+
+---
+
+### F. Security
+
+Synthadoc has **no built-in authentication**. For localhost-only use this is fine. For any deployment reachable beyond localhost:
+
+- Put a reverse proxy (nginx, Traefik, Caddy) with TLS and basic auth in front of the container
+- Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`
+- On team servers, use a VPN or SSH tunnel rather than exposing the port directly
+
+**API keys:** always use `--env-file .env`, never `-e KEY=value` on the command line. Store the `.env` file with restricted permissions (`chmod 600 .env`).
+
+---
+
+### G. Local Build and Test (Windows)
 
 Use this when you want to verify the Dockerfile works before publishing a release.
 Building images requires **Docker Desktop** — `wslc` is runtime-only and cannot build.
 
-### Step 1 — Install Docker Desktop
+#### Step 1 — Install Docker Desktop
 
 1. Download from [docs.docker.com/desktop/install/windows-install](https://docs.docker.com/desktop/install/windows-install/)
 2. Run the installer — it uses your existing WSL2 backend automatically
@@ -732,7 +739,7 @@ docker --version
 docker buildx version
 ```
 
-### Step 2 — Build the image from source
+#### Step 2 — Build the image from source
 
 The `Dockerfile` lives at the **repo root** — the top-level `synthadoc/` folder,
 not the `docker/` subfolder (which only contains Compose files and examples).
@@ -762,7 +769,7 @@ Expected output (Docker BuildKit format):
 
 If you see `(N/N) FINISHED` at the top and no `ERROR` lines, the image built successfully.
 
-### Step 3 — Create a test wiki
+#### Step 3 — Create a test wiki
 
 You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise install the built-in demo:
 
@@ -772,7 +779,7 @@ synthadoc install history-of-computing --target ~/wikis --demo
 
 This creates `~/wikis/history-of-computing/` pre-populated with demo content, so you have real pages to query straight away.
 
-### Step 4 — Create a .env file
+#### Step 4 — Create a .env file
 
 ```bash
 # ~/wikis/.env  (keep outside the wiki folder)
@@ -780,7 +787,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 TAVILY_API_KEY=tvly-...   # optional
 ```
 
-### Step 5 — Run the container
+#### Step 5 — Run the container
 
 **cmd.exe** (single line — backslash continuation does not work in cmd):
 
@@ -801,7 +808,7 @@ docker run -d \
 
 Using port `7099` (instead of `7070`) avoids conflicting with any locally running synthadoc instance.
 
-### Step 6 — Verify it started
+#### Step 6 — Verify it started
 
 ```bash
 # Check the container is running
@@ -819,7 +826,7 @@ Expected response:
 {"status": "ok", ...}
 ```
 
-### Step 7 — Run a quick ingest test
+#### Step 7 — Run a quick ingest test
 
 ```bash
 # Drop a small test file into raw_sources on the host
@@ -832,7 +839,7 @@ docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt
 docker exec synthadoc-test synthadoc jobs list --limit 5
 ```
 
-### Step 8 — Tear down
+#### Step 8 — Tear down
 
 ```bash
 docker stop synthadoc-test
@@ -841,7 +848,7 @@ docker rm synthadoc-test
 
 The wiki files on the host are untouched — only the container is removed.
 
-### Step 9 — Rebuild after a source change
+#### Step 9 — Rebuild after a source change
 
 When you change the Python source and want to test it in Docker, remove the
 old container, rebuild the image from the repo root, then re-run Step 5:
@@ -866,7 +873,7 @@ the source copy are re-run — typically just the `pip install` step.
 
 ---
 
-## Troubleshooting
+### H. Troubleshooting
 
 **Container exits immediately**
 
@@ -878,7 +885,7 @@ Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not
 
 **Permission denied on wiki files**
 
-The container user (uid 1000) cannot write to the mounted directory. See [File Permissions on Linux Hosts](#file-permissions-on-linux-hosts).
+The container user (uid 1000) cannot write to the mounted directory. See [Appendix D: File Permissions on Linux Hosts](#d-file-permissions-on-linux-hosts).
 
 **Port already in use**
 
