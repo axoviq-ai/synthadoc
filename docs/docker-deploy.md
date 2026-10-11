@@ -75,10 +75,10 @@ Host machine
 |---|---|---|
 | **Linux** | Docker Engine | Standard `docker` install — [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) |
 | **macOS (Apple Silicon)** | Apple `container` (built-in) | macOS 26 (Tahoe)+, M1 or later — no install needed |
-| **macOS (Apple Silicon)** | Docker Desktop | Alternative if macOS < 26 |
-| **macOS (Intel)** | Docker Desktop | Required — Apple's `container` tool does not support Intel. Affects Mac Pro 2019, MacBook Air/Pro pre-2020, iMac pre-2021 |
+| **macOS (Apple Silicon)** | Docker Desktop | Alternative if macOS < 26 — [docs.docker.com/desktop/install/mac-install](https://docs.docker.com/desktop/install/mac-install/) |
+| **macOS (Intel)** | Docker Desktop | Required — Apple's `container` tool does not support Intel. Affects Mac Pro 2019, MacBook Air/Pro pre-2020, iMac pre-2021 — [docs.docker.com/desktop/install/mac-install](https://docs.docker.com/desktop/install/mac-install/) |
 | **Windows** | WSL Containers (`wslc`) | Windows 11, WSL 2.9.3+ — no install needed |
-| **Windows** | Docker Desktop | Alternative, or required for Docker Compose |
+| **Windows** | Docker Desktop | Alternative, or required for Docker Compose — [docs.docker.com/desktop/install/windows-install](https://docs.docker.com/desktop/install/windows-install/) |
 
 All runtimes use the same OCI image — no separate image per platform.
 
