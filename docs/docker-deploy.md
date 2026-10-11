@@ -621,21 +621,23 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 #### Multiple wikis
 
-```bash
-docker compose -f docker/compose/multi-wiki.yml up -d
-# Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7071
-```
-
-Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file alongside your API key:
+Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file before starting — Compose reads it at `up` time:
 
 ```bash
 # .env
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Absolute paths to each wiki folder on the host
-WIKI_A_PATH=/home/yourname/wikis/finance-wiki
-WIKI_B_PATH=/home/yourname/wikis/legal-wiki
+WIKI_A_PATH=/home/yourname/wikis/history-of-computing
+WIKI_B_PATH=/home/yourname/wikis/ai-research
+```
+
+Then start the stack:
+
+```bash
+docker compose -f docker/compose/multi-wiki.yml up -d
+# Wiki A: http://localhost:7070
+# Wiki B: http://localhost:7071
 ```
 
 On Windows (inside WSL): use the WSL filesystem path (e.g. `/home/yourname/wikis/...`), not the Windows drive path (`/mnt/c/Users/...`).
