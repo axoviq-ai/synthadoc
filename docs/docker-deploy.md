@@ -149,9 +149,31 @@ Wiki 'history-of-computing' installed.
   Plugin Obsidian plugin ready
 ```
 
-Note the assigned port (`7070` above) — you will use it in the next step. **Do not run `synthadoc serve`** — instead you will start a Docker container in Steps 3 and 4.
+Note the assigned port (`7070` above) — you will use it in Step 4. **Do not run `synthadoc serve`** — instead you will start a Docker container in Steps 4 and 5.
 
-### Step 3 — Choose the container host port
+### Step 3 — Set your LLM provider
+
+The installed wiki's `.synthadoc/config.toml` defaults to **Gemini** as the LLM provider:
+
+```toml
+[agents.default]
+provider = "gemini"
+model = "gemini-2.0-flash"
+```
+
+Open `~/wikis/history-of-computing/.synthadoc/config.toml` and change `provider` to whichever LLM you have a key for. For example, to use Anthropic:
+
+```toml
+[agents.default]
+provider = "anthropic"
+model = "claude-opus-4-6"
+```
+
+Supported values: `anthropic`, `openai`, `gemini`, `groq`.
+
+Then make sure your `.env` file contains the matching key for that provider — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
+
+### Step 4 — Choose the container host port
 
 The container always listens internally on port **7070**. Map it to a host port that will not clash with any locally running Synthadoc instance.
 
@@ -163,7 +185,7 @@ The container always listens internally on port **7070**. Map it to a host port 
 | 7071 | **9071** |
 | 7072 | **9072** |
 
-### Step 4 — Start the container
+### Step 5 — Start the container
 
 Use `--name history-of-computing` to match the wiki domain. Use `-p 9070:7070` (host 9070 mapped to container 7070):
 
@@ -178,7 +200,7 @@ docker run -d \
 
 The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on port 9070.
 
-### Step 5 — Verify
+### Step 6 — Verify
 
 ```bash
 docker ps
