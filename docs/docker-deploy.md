@@ -111,35 +111,65 @@ For Docker Compose, place the `.env` file in the same directory as your Compose 
 
 ## Quick Start
 
-```bash
-# Pull the latest image
-docker pull chenp/synthadoc:latest
+### Step 1 — Pull the image
 
-# Run a wiki
-# -p HOST_PORT:7070  — 7070 is fixed inside the container; HOST_PORT is what you choose.
-# Use 7070:7070 to keep the same port, or e.g. 7071:7070 to avoid conflicts.
+```bash
+docker pull chenp/synthadoc:latest
+```
+
+### Step 2 — Install the demo wiki
+
+Install the `history-of-computing` demo wiki on the host. This creates the wiki folder, pre-populates it with demo pages, and registers it with a local port number:
+
+```bash
+synthadoc install history-of-computing --demo
+```
+
+Expected output:
+
+```
+✓ Wiki installed: ~/wikis/history-of-computing
+  Assigned port:   7070
+  Start locally:   synthadoc serve -w ~/wikis/history-of-computing
+```
+
+Note the assigned port — you will use it in the next step.
+
+### Step 3 — Choose the container host port
+
+The container always listens internally on port **7070**. Map it to a host port that will not clash with any locally running Synthadoc instance.
+
+**Convention:** replace the leading `7` in the assigned port with `9`:
+
+| Assigned port | Use as container host port |
+|---|---|
+| 7070 | **9070** |
+| 7071 | **9071** |
+| 7072 | **9072** |
+
+### Step 4 — Start the container
+
+Use `--name history-of-computing` to match the wiki domain. Use `-p 9070:7070` (host 9070 mapped to container 7070):
+
+```bash
 docker run -d \
-  --name my-wiki \
-  -v ~/wikis/my-wiki:/wiki \
-  -p 7070:7070 \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 9070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
 
-The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on the same port. Point your Obsidian plugin at `http://localhost:7070`.
+The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on port 9070.
 
-Check that it is running:
+### Step 5 — Verify
 
 ```bash
 docker ps
-curl http://localhost:7070/health
+curl http://localhost:9070/health
 ```
 
-Stop and remove:
-
-```bash
-docker stop my-wiki && docker rm my-wiki
-```
+Open the Web UI at **`http://localhost:9070/app`**. Point your Obsidian plugin at `http://localhost:9070`.
 
 ---
 
@@ -407,60 +437,100 @@ docker run ... chenp/synthadoc:latest \
 
 ## Maintenance
 
-### Updating the image
+Examples below use `history-of-computing` as the container name. Substitute your own container name throughout.
+
+### Health check
+
+The image includes a HEALTHCHECK that polls `/health` every 30 seconds:
 
 ```bash
-docker pull chenp/synthadoc:latest
-docker stop my-wiki && docker rm my-wiki
-# Re-run the same docker run command as before
-docker run -d --name my-wiki ...
+docker inspect --format='{{.State.Health.Status}}' history-of-computing
+# healthy | starting | unhealthy
 ```
 
-Wiki data is safe — it lives in the host volume, not inside the container.
+If the status is `unhealthy`, check the logs (see below) and try the health endpoint directly:
+
+```bash
+curl http://localhost:9070/health
+```
+
+### Pinning a version
+
+`latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
+
+```bash
+docker pull chenp/synthadoc:1.3.3
+docker run -d \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 9070:7070 \
+  --env-file .env \
+  chenp/synthadoc:1.3.3
+```
 
 ### Viewing logs
 
 ```bash
-# Live logs
-docker logs -f my-wiki
+# Live logs (follow)
+docker logs -f history-of-computing
 
 # Last 100 lines
-docker logs --tail 100 my-wiki
+docker logs --tail 100 history-of-computing
 ```
 
 Synthadoc also writes structured logs to `.synthadoc/logs/` inside the wiki directory on the host.
+
+### Updating the image
+
+Pull the latest build, then recreate the container. Wiki data is safe — it lives in the host volume, not inside the container:
+
+```bash
+docker pull chenp/synthadoc:latest
+docker stop history-of-computing
+docker rm history-of-computing
+docker run -d \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 9070:7070 \
+  --env-file .env \
+  chenp/synthadoc:latest
+```
+
+### Stop and restart
+
+```bash
+# Stop the container (preserves it; can be restarted)
+docker stop history-of-computing
+
+# Start it again
+docker start history-of-computing
+
+# Restart in one step (useful after editing config.toml)
+docker restart history-of-computing
+```
+
+### Tear down
+
+Stops and permanently removes the container. The wiki files on the host are untouched:
+
+```bash
+docker stop history-of-computing
+docker rm history-of-computing
+```
 
 ### Backup
 
 Back up the wiki directory on the host as you would any directory:
 
 ```bash
-tar -czf my-wiki-backup-$(date +%Y%m%d).tar.gz ~/wikis/my-wiki/
+tar -czf history-of-computing-backup-$(date +%Y%m%d).tar.gz ~/wikis/history-of-computing/
 ```
 
 Or use the built-in backup command from inside the container:
 
 ```bash
-docker exec my-wiki synthadoc backup
-# The .zip lands in ~/wikis/my-wiki/ on the host
-```
-
-### Health check
-
-The image includes a HEALTHCHECK that polls `/health` every 30 seconds. View status:
-
-```bash
-docker inspect --format='{{.State.Health.Status}}' my-wiki
-# healthy | starting | unhealthy
-```
-
-### Pinning a version
-
-For production deployments, pin to a specific release tag instead of `latest`:
-
-```bash
-docker pull chenp/synthadoc:1.3.3
-docker run ... chenp/synthadoc:1.3.3
+docker exec history-of-computing synthadoc backup
+# The .zip lands in ~/wikis/history-of-computing/ on the host
 ```
 
 ---
