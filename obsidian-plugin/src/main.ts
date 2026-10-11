@@ -388,8 +388,9 @@ export default class SynthadocPlugin extends Plugin {
 
     async ingestFile(file: TFile) {
         try {
-            const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
-            const r = await api.ingest(absPath) as any;
+            // Send vault-relative path; server resolves it against wiki_root.
+            // Avoids Windows absolute paths breaking Docker containers (Linux server).
+            const r = await api.ingest(file.path) as any;
             new Notice(`Synthadoc: ingest queued (job ${r.job_id})`);
         } catch { new Notice("Synthadoc: ingest failed — is the server running?"); }
     }
@@ -738,8 +739,7 @@ class IngestModal extends Modal {
             let queueFailed = 0;
             for (const file of files) {
                 try {
-                    const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
-                    const r = await api.ingest(absPath, undefined, force) as any;
+                    const r = await api.ingest(file.path, undefined, force) as any;
                     if (r?.job_id) jobIds.push(r.job_id);
                 } catch { queueFailed++; }
             }
@@ -929,8 +929,7 @@ class IngestModal extends Modal {
             let queueFailed = 0;
             for (const file of selectedFiles) {
                 try {
-                    const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
-                    const r = await api.ingest(absPath, undefined, force) as any;
+                    const r = await api.ingest(file.path, undefined, force) as any;
                     if (r?.job_id) jobIds.push(r.job_id);
                 } catch { queueFailed++; }
             }
