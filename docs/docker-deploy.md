@@ -930,13 +930,15 @@ Run the build from that directory:
 # In PowerShell or WSL, cd to the repo root first
 cd path/to/synthadoc   # e.g. C:\Users\you\Documents\my_workspace\synthadoc
 
-docker build -t synthadoc:local .
+docker build --no-cache -t synthadoc:local .
 ```
 
 The trailing `.` tells Docker to use the current directory as the build context
 (where it reads the `Dockerfile` and packages source files).
 
-The first build takes a few minutes (downloads `python:3.12-slim` and installs synthadoc). Subsequent builds are faster due to layer caching.
+`--no-cache` forces Docker to re-copy the source files on every build. Without it, Docker reuses the cached source layer and your local code changes are silently ignored.
+
+The first build takes a few minutes (downloads `python:3.12-slim` and installs synthadoc). Subsequent builds take roughly the same time because `--no-cache` disables layer reuse.
 
 > **Local vs. production builds:** A local `docker build` installs synthadoc directly from your source tree, so it picks up any unreleased changes. The production CI build passes `--build-arg SYNTHADOC_VERSION=X.Y.Z` to install the exact release from PyPI instead, and it runs only after the PyPI publish workflow completes — so there is no race between the two.
 
@@ -1038,19 +1040,18 @@ old container, rebuild the image from the repo root, then re-run Step 5:
 ```
 docker rm -f synthadoc-test
 cd path\to\synthadoc
-docker build -t synthadoc:local .
+docker build --no-cache -t synthadoc:local .
 ```
 
 **WSL bash:**
 ```bash
 docker rm -f synthadoc-test
 cd ~/path/to/synthadoc
-docker build -t synthadoc:local .
+docker build --no-cache -t synthadoc:local .
 ```
 
-The local build installs synthadoc from your source tree, so it always
-reflects your latest changes. Layer caching means only the layers after
-the source copy are re-run — typically just the `pip install` step.
+`--no-cache` is required here: without it, Docker reuses the cached source
+layer and your code changes are silently ignored.
 
 ---
 
