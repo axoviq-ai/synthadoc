@@ -273,25 +273,6 @@ docker exec history-of-computing synthadoc query "What are the key findings in Q
 docker exec history-of-computing synthadoc query "What changed in the last audit?" --no-cache
 ```
 
-### Cross-wiki queries (multi-wiki Compose only)
-
-In the multi-wiki Compose setup, each wiki runs in its own container on the
-same Docker network. If you configure cross-wiki routing in one wiki's
-`CROSS_WIKI_ROUTING.md` to reference the other container by its service name
-(e.g. `http://sd-server-b:7070`), you can fan out a single query across both.
-This uses `docker compose exec` because Docker Compose service-name DNS
-(`sd-server-b`) is only available inside the Compose network:
-
-```bash
-# Query wiki-a — fans out to wiki-b automatically via Docker internal network
-docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
-  synthadoc query "Total revenue across all entities?" --cross-wiki
-
-# Scaffold the routing table for wiki-a
-docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
-  synthadoc cross-wiki routing init
-```
-
 ### Ingesting content
 
 ```bash
