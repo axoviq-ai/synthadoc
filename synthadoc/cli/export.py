@@ -9,7 +9,7 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._http import server_url
-from synthadoc.cli._wiki import resolve_wiki
+from synthadoc.cli._wiki import resolve_wiki, resolve_wiki_path
 from synthadoc import errors as E
 
 
@@ -67,7 +67,9 @@ def export_cmd(
         output = output.rstrip('"')
         manifest: dict = resp.json()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        out_dir = Path(output) / f"{wiki_name}-okf-{ts}"
+        # wiki_name may be "." when resolved from CWD; use the real directory name.
+        bundle_name = Path(resolve_wiki_path(wiki_name)).resolve().name
+        out_dir = Path(output) / f"{bundle_name}-okf-{ts}"
         for rel_path, content in manifest.items():
             dest = out_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,50 @@
+# docker/compose/with-ollama.yml
+# Synthadoc + Ollama for fully local LLM — no cloud API keys required.
+#
+# Requirements: Docker host with a GPU, or CPU-only Ollama (slower).
+#
+# Usage:
+#   docker compose -f docker/compose/with-ollama.yml up -d
+#   # Pull a model into Ollama first:
+#   docker compose -f docker/compose/with-ollama.yml exec ollama \
+#     ollama pull llama3.2
+#
+# Then set your wiki's config.toml:
+#   [agents.default]
+#   provider = "ollama"
+#   model = "llama3.2"
+#   base_url = "http://ollama:11434"
+
+services:
+  sd-server:
+    image: chenp/synthadoc:latest
+    container_name: synthadoc-wiki
+    restart: unless-stopped
+    ports:
+      # HOST_PORT:7070 — 7070 is fixed inside the container; change the left side to avoid conflicts.
+      - "7070:7070"
+    volumes:
+      - ${WIKI_PATH:-./my-wiki}:/wiki
+    # No API key needed — Ollama runs locally in the same Compose network.
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: synthadoc-ollama
+    restart: unless-stopped
+    # Expose only to the Compose network — not to the host.
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  ollama-models:

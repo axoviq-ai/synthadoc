@@ -1,0 +1,38 @@
+# docker/compose/single-wiki.yml
+# Single Synthadoc wiki on port 7070.
+#
+# Usage:
+#   cp docker/compose/single-wiki.yml docker-compose.yml
+#   # Edit WIKI_PATH and API key env vars, then:
+#   docker compose up -d
+#
+# To ingest a file:
+#   docker compose exec sd-server synthadoc ingest raw_sources/myfile.pdf
+
+services:
+  sd-server:
+    image: chenp/synthadoc:latest
+    # build: .   ← uncomment to build from local source instead
+    container_name: synthadoc-wiki
+    restart: unless-stopped
+    ports:
+      # HOST_PORT:7070 — 7070 is fixed inside the container; change the left side to avoid conflicts.
+      - "7070:7070"
+    volumes:
+      # Mount your wiki root to /wiki inside the container.
+      # On Windows: use the WSL2 filesystem path for best performance,
+      #   e.g. /home/yourname/wikis/my-wiki  (NOT /mnt/c/Users/...)
+      - ${WIKI_PATH:-./my-wiki}:/wiki
+    environment:
+      # LLM provider API key — pass via .env file, never hardcode here.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Uncomment for other providers:
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:7070/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

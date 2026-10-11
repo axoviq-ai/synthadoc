@@ -339,21 +339,22 @@ def find_broken_citation_refs(
     *,
     slugs: list[str] | None = None,
 ) -> dict[str, list[dict]]:
-    """Return {slug: [{"citation": str, "reason": str}, ...]} for active pages
+    """Return {slug: [{"citation": str, "reason": str}, ...]} for pages
     with broken ^[file:L-L] markers.
 
     Each dict in the list has:
       "citation" — the raw marker text, e.g. "^[bio.txt:5-12]"
       "reason"   — "broken_ref" | "malformed" | "out_of_range"
 
-    Only active pages are scanned unless slugs is provided.
+    All non-system pages are scanned (including stale/contradicted), consistent
+    with the CLI lint report and /lint/report HTTP endpoint.
     Returns an empty dict when no issues are found.
     """
     candidates = slugs if slugs is not None else store.list_pages()
     result: dict[str, list[dict]] = {}
     for slug in candidates:
         page = store.read_page(slug)
-        if page is None or page.status != "active":
+        if page is None:
             continue
         issues = _check_page_citations(slug, page, extracted_dir)
         if issues:

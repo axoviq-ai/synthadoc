@@ -1,0 +1,32 @@
+# docker/compose/multi-wiki.yml
+# Two Synthadoc wikis on different host ports.
+#
+# Usage:
+#   docker compose -f docker/compose/multi-wiki.yml up -d
+#
+# Wiki A: http://localhost:7070
+# Wiki B: http://localhost:7071
+
+services:
+  sd-server-a:
+    image: chenp/synthadoc:latest
+    container_name: synthadoc-wiki-a
+    restart: unless-stopped
+    ports:
+      # HOST_PORT:7070 — 7070 is fixed inside every container; pick a different host port per wiki.
+      - "7070:7070"
+    volumes:
+      - ${WIKI_A_PATH:-./wiki-a}:/wiki
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+  sd-server-b:
+    image: chenp/synthadoc:latest
+    container_name: synthadoc-wiki-b
+    restart: unless-stopped
+    ports:
+      - "7071:7070"
+    volumes:
+      - ${WIKI_B_PATH:-./wiki-b}:/wiki
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

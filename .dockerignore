@@ -1,0 +1,42 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Dev and test
+.git/
+.gitignore
+tests/
+test_tmp/
+coverage.json
+.coverage
+htmlcov/
+
+# Local wikis (never goes in the image)
+mywiki/
+wiki/
+*.db
+*.db-wal
+*.db-shm
+
+# Node / frontend build artifacts
+obsidian-plugin/node_modules/
+web-ui/node_modules/
+obsidian-plugin/dist/
+web-ui/dist/
+
+# Docs and plans (internal)
+docs/plans/
+docs/blog/
+
+# OS
+.DS_Store
+Thumbs.db
