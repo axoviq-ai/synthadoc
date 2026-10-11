@@ -549,9 +549,14 @@ async def tool_find_broken_citations(
             scan_slugs = []
         scope_label = f"page '{page_slug}'"
     else:
-        # Whole-wiki mode: pass None so find_broken_citation_refs calls
-        # store.list_pages() and filters by frontmatter status itself.
-        scan_slugs = None
+        # Whole-wiki mode: scan only active pages for the interactive resolver.
+        # find_broken_citation_refs scans all pages (no status filter), so we
+        # pre-filter to active slugs here — consistent with GET /lifecycle/status
+        # and the pre-prompt broken-citation chip.
+        scan_slugs = [
+            slug for slug in ctx.store.list_pages()
+            if (p := ctx.store.read_page(slug)) is not None and p.status == "active"
+        ]
         scope_label = "active pages"
 
     await ctx.send_sse_event(
