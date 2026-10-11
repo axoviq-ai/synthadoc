@@ -158,10 +158,10 @@ describe("SynthadocPlugin.ingestFile", () => {
 
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
-        plugin.app = { vault: { adapter: { getFullPath: (p: string) => `/vault/${p}` } } } as any;
+        plugin.app = { vault: { adapter: {} } } as any;
         await plugin.ingestFile({ path: "notes/paper.md" } as any);
 
-        expect(api.ingest).toHaveBeenCalledWith("/vault/notes/paper.md");
+        expect(api.ingest).toHaveBeenCalledWith("notes/paper.md");
         expect(Notice).toHaveBeenCalledWith(expect.stringContaining("job-xyz"));
     });
 
@@ -232,8 +232,8 @@ describe("IngestModal All-sources tab", () => {
         await flushPromises();
 
         expect(apiMock.ingest).toHaveBeenCalledTimes(2);
-        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-a.pdf", undefined, false);
-        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-b.png", undefined, false);
+        expect(apiMock.ingest).toHaveBeenCalledWith("raw_sources/file-a.pdf", undefined, false);
+        expect(apiMock.ingest).toHaveBeenCalledWith("raw_sources/file-b.png", undefined, false);
     });
 
     it("disables Ingest all button while jobs are in flight", async () => {
@@ -873,7 +873,7 @@ describe("IngestModal Pick-files tab", () => {
         await flushPromises();
 
         expect(apiMock.ingest).toHaveBeenCalledTimes(1);
-        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/a.pdf", undefined, false);
+        expect(apiMock.ingest).toHaveBeenCalledWith("raw_sources/a.pdf", undefined, false);
     });
 
     it("shows error and re-enables button when all queuing fails", async () => {
