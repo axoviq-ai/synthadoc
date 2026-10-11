@@ -13,7 +13,6 @@ services:
     container_name: synthadoc-wiki-a
     restart: unless-stopped
     ports:
-      # HOST_PORT:7070 — 7070 is fixed inside every container; pick a different host port per wiki.
       - "7070:7070"
     volumes:
       - ${WIKI_A_PATH:-./wiki-a}:/wiki
@@ -24,8 +23,9 @@ services:
     image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-b
     restart: unless-stopped
+    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
     ports:
-      - "7071:7070"
+      - "7071:7071"
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
     environment:
