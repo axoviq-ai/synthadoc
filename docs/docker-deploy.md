@@ -186,7 +186,7 @@ Then add the matching API key to your `.env` file (e.g. `MINIMAX_API_KEY=...` fo
 
 ### Step 4 — Start the container
 
-Use the **same port** that `synthadoc install` assigned for both sides of `-p`. For the demo wiki, that is 7070:
+Use the port that `synthadoc install` assigned (shown in Step 2) for both sides of `-p`. For the demo wiki that is 7070:
 
 ```bash
 docker run -d \
@@ -197,11 +197,7 @@ docker run -d \
   chenp/synthadoc:latest
 ```
 
-The container reads the port from the wiki's `config.toml` (set during install). Mapping it symmetrically (`-p 7070:7070`) means the Obsidian plugin, Web UI bookmark, and any scripts pointing at `localhost:7070` continue to work without any changes — whether the wiki is running in Docker or via `synthadoc serve` directly.
-
-For a second wiki assigned port 7071, use `-p 7071:7071`. Stop or remove the first container before starting the second if they share the same host port.
-
-The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on port 7070.
+Using the same port on both sides means the Obsidian plugin, Web UI, and any scripts that already point at `localhost:7070` work without any changes — whether the wiki is running in Docker or via `synthadoc serve` directly.
 
 ### Step 5 — Verify
 
