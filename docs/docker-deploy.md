@@ -45,7 +45,7 @@ For personal use, `pip install synthadoc` is the simpler path — but Docker sti
 
 ```
 Host machine
-├── ~/wikis/my-wiki/          ← wiki files live here (Obsidian reads these directly)
+├── ~/wikis/history-of-computing/          ← wiki files live here (Obsidian reads these directly)
 │   ├── .synthadoc/
 │   │   ├── config.toml
 │   │   └── synthadoc.db
@@ -53,7 +53,7 @@ Host machine
 │   └── pages/
 │
 └── Docker container (synthadoc:latest)
-    ├── /wiki  →  bind-mounted from ~/wikis/my-wiki
+    ├── /wiki  →  bind-mounted from ~/wikis/history-of-computing
     ├── port 7070  →  mapped to host port of your choice
     └── synthadoc serve -w /wiki --host 0.0.0.0
 ```
@@ -267,10 +267,10 @@ If you are using Docker Compose, you can also address the container by its
 
 ```bash
 # Ask a question — streams the answer token by token
-docker exec my-wiki synthadoc query "What are the key findings in Q3 report?"
+docker exec history-of-computing synthadoc query "What are the key findings in Q3 report?"
 
 # Force a fresh LLM call (skip the query cache)
-docker exec my-wiki synthadoc query "What changed in the last audit?" --no-cache
+docker exec history-of-computing synthadoc query "What changed in the last audit?" --no-cache
 ```
 
 ### Cross-wiki queries (multi-wiki Compose only)
@@ -296,48 +296,48 @@ docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
 
 ```bash
 # Ingest a single file (relative path resolves from /wiki/)
-docker exec my-wiki synthadoc ingest raw_sources/report.pdf
+docker exec history-of-computing synthadoc ingest raw_sources/report.pdf
 
 # Batch-ingest an entire folder
-docker exec my-wiki synthadoc ingest raw_sources/ --batch
+docker exec history-of-computing synthadoc ingest raw_sources/ --batch
 
 # Ingest a URL
-docker exec my-wiki synthadoc ingest https://example.com/article
+docker exec history-of-computing synthadoc ingest https://example.com/article
 
 # Ingest via web search (Tavily) — requires TAVILY_API_KEY in container env
-docker exec my-wiki synthadoc ingest "search for: IFRS 17 insurance contract accounting"
+docker exec history-of-computing synthadoc ingest "search for: IFRS 17 insurance contract accounting"
 
 # Watch job progress after queuing (ingest returns immediately)
-docker exec my-wiki synthadoc jobs list --limit 5
+docker exec history-of-computing synthadoc jobs list --limit 5
 ```
 
 ### Linting
 
 ```bash
 # Enqueue lint and wait for completion (--wait keeps docker exec alive)
-docker exec my-wiki synthadoc lint run --wait
+docker exec history-of-computing synthadoc lint run --wait
 
 # Show lint report (contradictions, orphan pages, adversarial findings)
-docker exec my-wiki synthadoc lint report
+docker exec history-of-computing synthadoc lint report
 
 # Lint with URL source availability check
-docker exec my-wiki synthadoc lint run --check-urls --wait
+docker exec history-of-computing synthadoc lint run --check-urls --wait
 ```
 
 ### Agentic workflows
 
 ```bash
 # List all available workflows
-docker exec my-wiki synthadoc workflow list
+docker exec history-of-computing synthadoc workflow list
 
 # Re-ingest all stale pages (agentic loop, streams progress)
-docker exec my-wiki synthadoc workflow run --name ingest-lint
+docker exec history-of-computing synthadoc workflow run --name ingest-lint
 
 # Run the contradiction resolver (interactive — approves rewrites one by one)
-docker exec -it my-wiki synthadoc workflow run --name contradiction-resolver
+docker exec -it history-of-computing synthadoc workflow run --name contradiction-resolver
 
 # Scan and fix broken wikilinks
-docker exec my-wiki synthadoc workflow run --name broken-wikilinks
+docker exec history-of-computing synthadoc workflow run --name broken-wikilinks
 ```
 
 ### Scaffold
@@ -345,8 +345,8 @@ docker exec my-wiki synthadoc workflow run --name broken-wikilinks
 ```bash
 # Regenerate index.md, AGENTS.md, and purpose.md using the LLM
 # (queues a background job; monitor with jobs list)
-docker exec my-wiki synthadoc scaffold
-docker exec my-wiki synthadoc jobs list --limit 5
+docker exec history-of-computing synthadoc scaffold
+docker exec history-of-computing synthadoc jobs list --limit 5
 ```
 
 ### Lifecycle (promote, archive, restore)
@@ -356,52 +356,52 @@ to `active`, or `lifecycle archive` to retire it.
 
 ```bash
 # Promote a draft page to active
-docker exec my-wiki synthadoc lifecycle activate quarterly-report-q3 \
+docker exec history-of-computing synthadoc lifecycle activate quarterly-report-q3 \
   --reason "Reviewed and approved"
 
 # Archive a superseded page
-docker exec my-wiki synthadoc lifecycle archive old-market-analysis \
+docker exec history-of-computing synthadoc lifecycle archive old-market-analysis \
   --reason "Superseded by 2026 report"
 
 # Restore an archived page back to draft
-docker exec my-wiki synthadoc lifecycle restore old-market-analysis \
+docker exec history-of-computing synthadoc lifecycle restore old-market-analysis \
   --reason "Needed for comparison"
 
 # Show full lifecycle event log
-docker exec my-wiki synthadoc lifecycle log
+docker exec history-of-computing synthadoc lifecycle log
 
 # Show lifecycle history for one page
-docker exec my-wiki synthadoc lifecycle history quarterly-report-q3
+docker exec history-of-computing synthadoc lifecycle history quarterly-report-q3
 ```
 
 ### Scheduled jobs
 
 ```bash
 # List all registered scheduled jobs
-docker exec my-wiki synthadoc schedule list
+docker exec history-of-computing synthadoc schedule list
 
 # Schedule a nightly lint (cron: 2 AM every day)
-docker exec my-wiki synthadoc schedule add \
+docker exec history-of-computing synthadoc schedule add \
   --op "lint run" --cron "0 2 * * *"
 
 # Apply schedules declared in config.toml [schedule] blocks
-docker exec my-wiki synthadoc schedule apply
+docker exec history-of-computing synthadoc schedule apply
 ```
 
 ### Monitoring and audit
 
 ```bash
 # Show all recent jobs
-docker exec my-wiki synthadoc jobs list --limit 20
+docker exec history-of-computing synthadoc jobs list --limit 20
 
 # Server health and version
-docker exec my-wiki synthadoc status
+docker exec history-of-computing synthadoc status
 
 # Ingest cost and history
-docker exec my-wiki synthadoc audit history
+docker exec history-of-computing synthadoc audit history
 
 # Backup the wiki to a zip file (lands in the mounted /wiki folder)
-docker exec my-wiki synthadoc backup
+docker exec history-of-computing synthadoc backup
 ```
 
 ---
@@ -442,7 +442,7 @@ http://192.168.1.50:7070/mcp        # MCP client
 Obsidian makes two independent connections — one to the wiki files, one to the server API:
 
 **1 — Open the wiki folder in Obsidian**
-Open the wiki folder from the host filesystem (e.g. `~/wikis/my-wiki`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
+Open the wiki folder from the host filesystem (e.g. `~/wikis/history-of-computing`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
 
 **2 — Point the plugin at the container**
 In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL, enter the **host** port you mapped (not the container's internal 7070):
@@ -472,7 +472,7 @@ On a shared server, the Web UI (`http://<server>:<port>/app`) becomes the primar
 Synthadoc reads its configuration from `.synthadoc/config.toml` inside the wiki directory. Because the wiki is mounted as a volume, you edit this file on the host — no need to rebuild or restart the image.
 
 ```toml
-# ~/wikis/my-wiki/.synthadoc/config.toml
+# ~/wikis/history-of-computing/.synthadoc/config.toml
 
 [server]
 port = 7070          # internal port — always 7070 inside the container
@@ -486,7 +486,7 @@ model = "claude-opus-4-6"
 To change the provider, edit `config.toml` and restart the container:
 
 ```bash
-docker restart my-wiki
+docker restart history-of-computing
 ```
 
 Or pass `--provider` at runtime without editing the file:
@@ -608,8 +608,8 @@ Apple's built-in `container` tool ships with macOS 26 (Tahoe) and runs OCI image
 
 ```bash
 container run -d \
-  --name my-wiki \
-  -v ~/wikis/my-wiki:/wiki \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
@@ -623,14 +623,14 @@ WSL Containers (`wslc`) ship with WSL 2.9.3+ on Windows 11. Run inside WSL:
 
 ```bash
 wslc run -d \
-  --name my-wiki \
-  -v ~/wikis/my-wiki:/wiki \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
 
-> **Windows performance tip:** keep your wiki folder inside the WSL2 filesystem (e.g. `/home/yourname/wikis/my-wiki`) rather than on the Windows drive (`/mnt/c/Users/...`). Volume mounts from the Windows drive are significantly slower for file-heavy operations like ingest.
+> **Windows performance tip:** keep your wiki folder inside the WSL2 filesystem (e.g. `/home/yourname/wikis/history-of-computing`) rather than on the Windows drive (`/mnt/c/Users/...`). Volume mounts from the Windows drive are significantly slower for file-heavy operations like ingest.
 
 > **Docker Compose** is not yet supported by `wslc`. Use Docker Desktop if you need Compose.
 
@@ -747,7 +747,7 @@ Option A — tell Docker to run the container as your uid (recommended, no sudo)
 ```bash
 docker run -d \
   --user $(id -u):$(id -g) \
-  -v ~/wikis/my-wiki:/wiki \
+  -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
@@ -766,7 +766,7 @@ services:
 Option B — change the host directory ownership to uid 1000 (requires sudo):
 
 ```bash
-sudo chown -R 1000:1000 ~/wikis/my-wiki
+sudo chown -R 1000:1000 ~/wikis/history-of-computing
 ```
 
 This permanently assigns the directory to uid 1000. Useful on servers where you
@@ -789,10 +789,10 @@ resolve inside `/wiki/`** — which means the safe defaults work without extra f
 
 ```bash
 # Default (--output ".") writes the zip to /wiki/ → visible on host
-docker exec my-wiki synthadoc backup
+docker exec history-of-computing synthadoc backup
 
 # Explicit subdirectory — also fine
-docker exec my-wiki synthadoc backup --output /wiki/backups/
+docker exec history-of-computing synthadoc backup --output /wiki/backups/
 ```
 
 Avoid absolute host-style paths (`--output ~/backups/`): `~` expands to
@@ -805,17 +805,17 @@ copy it into the mounted wiki directory first:
 
 ```bash
 # On the host — copy the zip into the wiki mount
-cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip ~/wikis/my-wiki/
+cp ~/downloads/synthadoc-backup-history-of-computing-20261010.zip ~/wikis/history-of-computing/
 
 # Inside the container — restore from /wiki/ (default target is zip's parent = /wiki/)
-docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
 Alternatively, use `docker cp` to push the file directly into the container:
 
 ```bash
-docker cp ~/downloads/synthadoc-backup-my-wiki-20261010.zip my-wiki:/wiki/
-docker exec -it my-wiki synthadoc restore /wiki/synthadoc-backup-my-wiki-20261010.zip
+docker cp ~/downloads/synthadoc-backup-history-of-computing-20261010.zip history-of-computing:/wiki/
+docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
 #### Export (CLI)
@@ -824,8 +824,8 @@ For formats that print to stdout (`json`, `llms.txt`, `llms-full.txt`,
 `graphml`), redirect on the host side — no path issue:
 
 ```bash
-docker exec my-wiki synthadoc export --format llms.txt > ~/wiki-export.txt
-docker exec my-wiki synthadoc export --format json     > ~/wiki-export.json
+docker exec history-of-computing synthadoc export --format llms.txt > ~/wiki-export.txt
+docker exec history-of-computing synthadoc export --format json     > ~/wiki-export.json
 ```
 
 For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
@@ -833,7 +833,7 @@ For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
 
 ```bash
 # Writes to /wiki/exports/<wiki>-okf-<date>/ → visible on host
-docker exec my-wiki synthadoc export --format okf --output /wiki/exports/
+docker exec history-of-computing synthadoc export --format okf --output /wiki/exports/
 ```
 
 > **Obsidian plugin OKF export does not have this limitation.** When you
@@ -1011,7 +1011,7 @@ the source copy are re-run — typically just the `pip install` step.
 **Container exits immediately**
 
 ```bash
-docker logs my-wiki
+docker logs history-of-computing
 ```
 
 Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not exist at `/wiki`, or port 7070 already in use on the host.
@@ -1027,7 +1027,7 @@ Map to a different host port: `-p 7071:7070`.
 **Health check shows `unhealthy`**
 
 ```bash
-docker logs my-wiki        # check for startup errors
+docker logs history-of-computing        # check for startup errors
 curl http://localhost:7070/health
 ```
 
