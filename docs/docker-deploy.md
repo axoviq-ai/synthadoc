@@ -54,7 +54,7 @@ Host machine
 │
 └── Docker container (synthadoc:latest)
     ├── /wiki  →  bind-mounted from ~/wikis/history-of-computing
-    ├── port 7070  →  mapped to host port of your choice
+    ├── port 7070  →  mapped to host port 7070 (same as assigned)
     └── synthadoc serve -w /wiki --host 0.0.0.0
 ```
 
@@ -63,7 +63,7 @@ Host machine
 - **One wiki per container** — matches the one-process/one-port model; run multiple containers on different host ports for multiple wikis
 - **Wiki files on the host** — the container mounts the wiki as a volume, so Obsidian and other tools access the files normally without going through the container
 - **No registry inside the container** — the server always starts with an explicit `-w /wiki` path; the synthadoc registry is not used
-- **Fixed internal port 7070** — the container always listens on 7070; map it to any host port you like (`-p 9070:7070`, `-p 9071:7070`, etc.)
+- **Port matches the installed wiki** — the container reads the port from the wiki's `config.toml` (set by `synthadoc install`). Map it symmetrically: `-p 7070:7070` for a wiki assigned 7070, `-p 7071:7071` for one assigned 7071. Obsidian and other tools need no reconfiguration when switching between Docker and native `synthadoc serve`.
 - **API keys via environment variables only** — never baked into the image
 - **Non-root user** — the container runs as uid 1000 (`synthadoc`) for standard container hardening
 
@@ -173,34 +173,26 @@ Supported values: `anthropic`, `openai`, `gemini`, `groq`.
 
 Then make sure your `.env` file contains the matching key for that provider — see [API Key Setup](#api-key-setup) above. The container will exit immediately on startup if the expected key is missing.
 
-### Step 4 — Choose the container host port
+### Step 4 — Start the container
 
-The container always listens internally on port **7070**. Map it to a host port that will not clash with any locally running Synthadoc instance.
-
-**Convention:** replace the leading `7` in the assigned port with `9`:
-
-| Assigned port | Use as container host port |
-|---|---|
-| 7070 | **9070** |
-| 7071 | **9071** |
-| 7072 | **9072** |
-
-### Step 5 — Start the container
-
-Use `--name history-of-computing` to match the wiki domain. Use `-p 9070:7070` (host 9070 mapped to container 7070):
+Use the **same port** that `synthadoc install` assigned for both sides of `-p`. For the demo wiki, that is 7070:
 
 ```bash
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
 
-The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on port 9070.
+The container reads the port from the wiki's `config.toml` (set during install). Mapping it symmetrically (`-p 7070:7070`) means the Obsidian plugin, Web UI bookmark, and any scripts pointing at `localhost:7070` continue to work without any changes — whether the wiki is running in Docker or via `synthadoc serve` directly.
 
-### Step 6 — Verify
+For a second wiki assigned port 7071, use `-p 7071:7071`. Stop or remove the first container before starting the second if they share the same host port.
+
+The server starts in default mode — HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) are all available on port 7070.
+
+### Step 5 — Verify
 
 **Check the container is running:**
 
@@ -217,7 +209,7 @@ docker logs history-of-computing
 **Check the health endpoint:**
 
 ```bash
-curl http://localhost:9070/health
+curl http://localhost:7070/health
 ```
 
 Expected response:
@@ -229,7 +221,7 @@ Expected response:
 **Open the Web UI** in any browser:
 
 ```
-http://localhost:9070/app
+http://localhost:7070/app
 ```
 
 For Obsidian plugin setup, see [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian) below.
@@ -393,29 +385,21 @@ Both interfaces are available automatically the moment the container starts — 
 
 ### Web UI
 
-The HTTP server the container runs also serves the Web UI. Open it in any browser using the **host port** (the left side of `-p HOST:7070`):
+The HTTP server the container runs also serves the Web UI. Because the port mapping is symmetric (`-p 7070:7070`), the URL is identical to what you would use with a native `synthadoc serve`:
 
-The **host port** (the left side of `-p HOST:7070`) is the single point of contact for every client outside the container. The internal port `7070` is only used by processes inside the container itself (e.g. the HEALTHCHECK):
-
-| Client | URL pattern |
+| Client | URL |
 |---|---|
-| Browser (Web UI) | `http://localhost:<host-port>/app` |
-| Obsidian plugin (Server URL) | `http://localhost:<host-port>` |
-| MCP client | `http://localhost:<host-port>/mcp` |
-| Health check / scripts | `http://localhost:<host-port>/health` |
+| Browser (Web UI) | `http://localhost:7070/app` |
+| Obsidian plugin (Server URL) | `http://localhost:7070` |
+| MCP client | `http://localhost:7070/mcp` |
+| Health check / scripts | `http://localhost:7070/health` |
 
-Examples using the Quick Start port convention (replace leading `7` with `9`):
-
-| Assigned port | docker run flag | All clients use |
-|---|---|---|
-| 7070 | `-p 9070:7070` | `http://localhost:9070` |
-| 7071 | `-p 9071:7070` | `http://localhost:9071` |
-| 7072 | `-p 9072:7070` | `http://localhost:9072` |
+For a second wiki on port 7071, substitute `7071` throughout.
 
 For a team or remote server, replace `localhost` with the server's IP or hostname:
 ```
-http://192.168.1.50:9070/app        # Web UI
-http://192.168.1.50:9070/mcp        # MCP client
+http://192.168.1.50:7070/app        # Web UI
+http://192.168.1.50:7070/mcp        # MCP client
 ```
 
 ### Obsidian Plugin
@@ -426,11 +410,11 @@ Obsidian makes two independent connections — one to the wiki files, one to the
 Open the wiki folder from the host filesystem (e.g. `~/wikis/history-of-computing`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
 
 **2 — Point the plugin at the container**
-In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL, enter the **host** port you mapped (not the container's internal 7070). For the Quick Start example with `-p 9070:7070`:
+Because the port mapping is symmetric, the Server URL is the same as for a native install. In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL:
 ```
-http://127.0.0.1:9070
+http://127.0.0.1:7070
 ```
-For a Compose deployment using the default `single-wiki.yml`, use `7070` instead. Then click the book icon in the left navigation bar to verify the connection.
+No change is needed if you are switching an existing vault from native `synthadoc serve` to Docker — the URL stays the same. Then click the book icon in the left navigation bar to verify the connection.
 
 ### MCP Client
 
@@ -456,7 +440,7 @@ Synthadoc reads its configuration from `.synthadoc/config.toml` inside the wiki 
 # ~/wikis/history-of-computing/.synthadoc/config.toml
 
 [server]
-port = 7070          # internal port — always 7070 inside the container
+port = 7070          # port set during install — used inside the container and mapped 1:1 to the host
 host = "0.0.0.0"     # set by --host flag in CMD; do not change here
 
 [agents.default]
@@ -495,7 +479,7 @@ docker inspect --format='{{.State.Health.Status}}' history-of-computing
 If the status is `unhealthy`, check the logs (see below) and try the health endpoint directly:
 
 ```bash
-curl http://localhost:9070/health
+curl http://localhost:7070/health
 ```
 
 ### Pinning a version
@@ -507,7 +491,7 @@ docker pull chenp/synthadoc:1.3.3
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:1.3.3
 ```
@@ -535,7 +519,7 @@ docker rm history-of-computing
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -591,7 +575,7 @@ Apple's built-in `container` tool ships with macOS 26 (Tahoe) and runs OCI image
 container run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -606,7 +590,7 @@ WSL Containers (`wslc`) ship with WSL 2.9.3+ on Windows 11. Run inside WSL:
 wslc run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -629,7 +613,7 @@ cp docker/compose/single-wiki.yml docker-compose.yml
 docker compose up -d
 ```
 
-Access at `http://localhost:9070`.
+Access at `http://localhost:7070`.
 
 Run a CLI command inside the running container:
 
@@ -641,8 +625,8 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 ```bash
 docker compose -f docker/compose/multi-wiki.yml up -d
-# Wiki A: http://localhost:9070
-# Wiki B: http://localhost:9071
+# Wiki A: http://localhost:7070
+# Wiki B: http://localhost:7071
 ```
 
 Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file alongside your API key:
@@ -814,7 +798,7 @@ Option A — tell Docker to run the container as your uid (recommended, no sudo)
 docker run -d \
   --user $(id -u):$(id -g) \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -915,7 +899,7 @@ docker exec history-of-computing synthadoc export --format okf --output /wiki/ex
 Synthadoc has **no built-in authentication**. For localhost-only use this is fine. For any deployment reachable beyond localhost:
 
 - Put a reverse proxy (nginx, Traefik, Caddy) with TLS and basic auth in front of the container
-- Restrict the mapped port to a specific interface: `-p 127.0.0.1:9070:7070` binds only to localhost even if the container listens on `0.0.0.0`
+- Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`
 - On team servers, use a VPN or SSH tunnel rather than exposing the port directly
 
 **API keys:** always use `--env-file .env`, never `-e KEY=value` on the command line. Store the `.env` file with restricted permissions (`chmod 600 .env`).
@@ -991,7 +975,7 @@ TAVILY_API_KEY=tvly-...   # optional
 **cmd.exe** (single line — backslash continuation does not work in cmd):
 
 ```
-docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing:/wiki" -p 9070:7070 --env-file "%USERPROFILE%/wikis/.env" synthadoc:local
+docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%/wikis/.env" synthadoc:local
 ```
 
 **WSL bash** (backslash continuation works here):
@@ -1000,12 +984,12 @@ docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing
 docker run -d \
   --name synthadoc-test \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 9070:7070 \
+  -p 7070:7070 \
   --env-file ~/wikis/.env \
   synthadoc:local
 ```
 
-Using port `9070` follows the Quick Start convention (replace leading `7` with `9`) and avoids conflicting with any locally running synthadoc instance.
+Stop any locally running `synthadoc serve` instance for that wiki before starting the container — they both bind the same port.
 
 #### Step 6 — Verify it started
 
@@ -1017,7 +1001,7 @@ docker ps
 docker logs synthadoc-test
 
 # Hit the health endpoint
-curl http://localhost:9070/health
+curl http://localhost:7070/health
 ```
 
 Expected response:
@@ -1080,7 +1064,7 @@ the source copy are re-run — typically just the `pip install` step.
 docker logs history-of-computing
 ```
 
-Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not exist at `/wiki`, or host port 9070 already in use.
+Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not exist at `/wiki`, or host port already in use (stop any running `synthadoc serve` instance for the same wiki first).
 
 **Permission denied on wiki files**
 
@@ -1088,13 +1072,13 @@ The container user (uid 1000) cannot write to the mounted directory. See [Append
 
 **Port already in use**
 
-Map to a different host port: `-p 9071:7070`.
+Another process (or a running `synthadoc serve` for this wiki) is already on that port. Stop it first, or install a second wiki on a different port and use `-p 7071:7071` for it.
 
 **Health check shows `unhealthy`**
 
 ```bash
 docker logs history-of-computing        # check for startup errors
-curl http://localhost:9070/health
+curl http://localhost:7070/health
 ```
 
 If the server started but `/health` does not respond, the wiki may have failed validation (e.g. corrupted database). Check the logs and try `synthadoc status -w /wiki` inside the container.
