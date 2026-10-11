@@ -8,6 +8,24 @@ from synthadoc.providers.anthropic import AnthropicProvider
 from synthadoc.config import AgentConfig, Config
 
 
+def _make_stream(text: str = "ok", input_tokens: int = 5, output_tokens: int = 2):
+    """Async iterable that emits the stream events complete() reads."""
+    events = [
+        MagicMock(type="message_start",
+                  message=MagicMock(usage=MagicMock(input_tokens=input_tokens))),
+        MagicMock(type="content_block_delta",
+                  delta=MagicMock(text=text)),
+        MagicMock(type="message_delta",
+                  usage=MagicMock(output_tokens=output_tokens)),
+    ]
+
+    async def _aiter():
+        for e in events:
+            yield e
+
+    return _aiter()
+
+
 def test_provider_interface_has_required_methods():
     assert hasattr(LLMProvider, "complete")
     assert hasattr(LLMProvider, "embed")
@@ -17,10 +35,8 @@ def test_provider_interface_has_required_methods():
 async def test_anthropic_provider_complete():
     cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
     provider = AnthropicProvider(api_key="test-key", config=cfg)
-    mock_resp = AsyncMock()
-    mock_resp.content = [AsyncMock(text="Paris")]
-    mock_resp.usage = AsyncMock(input_tokens=10, output_tokens=5)
-    with patch.object(provider._client.messages, "create", new=AsyncMock(return_value=mock_resp)):
+    with patch.object(provider._client.messages, "create",
+                      new=AsyncMock(return_value=_make_stream("Paris", 10, 5))):
         result = await provider.complete(messages=[Message(role="user", content="Capital of France?")])
     assert "Paris" in result.text
     assert result.input_tokens == 10
@@ -47,10 +63,7 @@ async def test_anthropic_provider_complete_passes_temperature_for_legacy_model()
 
     async def capture(**kwargs):
         captured.update(kwargs)
-        mock = MagicMock()
-        mock.content = [MagicMock(text="ok")]
-        mock.usage = MagicMock(input_tokens=5, output_tokens=2)
-        return mock
+        return _make_stream()
 
     with patch.object(provider._client.messages, "create", side_effect=capture):
         await provider.complete(
@@ -130,10 +143,7 @@ async def test_anthropic_provider_includes_system_message():
 
     async def capture(**kwargs):
         captured.update(kwargs)
-        mock = MagicMock()
-        mock.content = [MagicMock(text="ok")]
-        mock.usage = MagicMock(input_tokens=5, output_tokens=2)
-        return mock
+        return _make_stream()
 
     with patch.object(provider._client.messages, "create", side_effect=capture):
         await provider.complete(
@@ -234,10 +244,7 @@ async def test_anthropic_provider_retries_on_internal_server_error():
         if call_count == 1:
             raise anthropic.InternalServerError(
                 response=MagicMock(status_code=500), body={}, message="server error")
-        m = MagicMock()
-        m.content = [MagicMock(text="recovered")]
-        m.usage = MagicMock(input_tokens=8, output_tokens=3)
-        return m
+        return _make_stream("recovered", 8, 3)
 
     with patch.object(provider._client.messages, "create", side_effect=flaky):
         with patch("asyncio.sleep", new=AsyncMock()):
