@@ -404,18 +404,18 @@ The **host port** (the left side of `-p HOST:7070`) is the single point of conta
 | MCP client | `http://localhost:<host-port>/mcp` |
 | Health check / scripts | `http://localhost:<host-port>/health` |
 
-Examples with different port mappings:
+Examples using the Quick Start port convention (replace leading `7` with `9`):
 
-| docker run flag | All clients use |
-|---|---|
-| `-p 7070:7070` | `http://localhost:7070` |
-| `-p 7099:7070` | `http://localhost:7099` |
-| `-p 8080:7070` | `http://localhost:8080` |
+| Assigned port | docker run flag | All clients use |
+|---|---|---|
+| 7070 | `-p 9070:7070` | `http://localhost:9070` |
+| 7071 | `-p 9071:7070` | `http://localhost:9071` |
+| 7072 | `-p 9072:7070` | `http://localhost:9072` |
 
 For a team or remote server, replace `localhost` with the server's IP or hostname:
 ```
-http://192.168.1.50:7070/app        # Web UI
-http://192.168.1.50:7070/mcp        # MCP client
+http://192.168.1.50:9070/app        # Web UI
+http://192.168.1.50:9070/mcp        # MCP client
 ```
 
 ### Obsidian Plugin
@@ -426,9 +426,9 @@ Obsidian makes two independent connections — one to the wiki files, one to the
 Open the wiki folder from the host filesystem (e.g. `~/wikis/history-of-computing`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
 
 **2 — Point the plugin at the container**
-In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL, enter the **host** port you mapped (not the container's internal 7070):
+In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL, enter the **host** port you mapped (not the container's internal 7070). For the Quick Start example with `-p 9070:7070`:
 ```
-http://127.0.0.1:7099
+http://127.0.0.1:9070
 ```
 For a Compose deployment using the default `single-wiki.yml`, use `7070` instead. Then click the book icon in the left navigation bar to verify the connection.
 
