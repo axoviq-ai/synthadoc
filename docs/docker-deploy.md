@@ -1056,6 +1056,23 @@ the source copy are re-run — typically just the `pip install` step.
 
 ### H. Troubleshooting
 
+**API key change has no effect after `docker restart`**
+
+`docker restart` reuses the environment captured at `docker run` time — it does not re-read `.env`. After updating `.env`, stop and recreate the container:
+
+```bash
+docker stop history-of-computing
+docker rm history-of-computing
+docker run -d \
+  --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 7070:7070 \
+  --env-file .env \
+  chenp/synthadoc:latest
+```
+
+Run this from the directory that contains your `.env` file.
+
 **Container exits immediately**
 
 ```bash
