@@ -231,7 +231,7 @@ Expected response:
 http://localhost:7070/app
 ```
 
-For Obsidian plugin setup, see [Accessing the Web UI and Obsidian](#accessing-the-web-ui-and-obsidian) below.
+**Verify Obsidian:** open the `history-of-computing` vault in Obsidian (the same folder you installed in Step 2) and click the **bookmark icon** in the left navigator. The plugin connects to `localhost:7070` — the same address it used before Docker, so no settings change is needed.
 
 ---
 
@@ -411,17 +411,9 @@ http://192.168.1.50:7070/mcp        # MCP client
 
 ### Obsidian Plugin
 
-Obsidian makes two independent connections — one to the wiki files, one to the server API:
+Open the wiki folder (`~/wikis/history-of-computing`) as an Obsidian vault — the volume mount means the wiki files exist on both the host and inside the container, so Obsidian reads them directly with no Docker-specific configuration.
 
-**1 — Open the wiki folder in Obsidian**
-Open the wiki folder from the host filesystem (e.g. `~/wikis/history-of-computing`) as an Obsidian vault. The volume mount means the wiki files exist on the host and inside the container at `/wiki` simultaneously — Obsidian reads the host path directly, no difference from non-Docker use.
-
-**2 — Point the plugin at the container**
-Because the port mapping is symmetric, the Server URL is the same as for a native install. In Obsidian → Settings → Community plugins → Installed plugins → Synthadoc (⋯) → Settings → Server URL:
-```
-http://127.0.0.1:7070
-```
-No change is needed if you are switching an existing vault from native `synthadoc serve` to Docker — the URL stays the same. Then click the book icon in the left navigation bar to verify the connection.
+The Synthadoc plugin connects to `http://127.0.0.1:7070` — the same address it uses for a native `synthadoc serve` session. No URL change is needed. Click the **bookmark icon** in the left navigator to verify the connection.
 
 ### MCP Client
 
