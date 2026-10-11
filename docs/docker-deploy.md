@@ -63,7 +63,7 @@ Host machine
 - **One wiki per container** — matches the one-process/one-port model; run multiple containers on different host ports for multiple wikis
 - **Wiki files on the host** — the container mounts the wiki as a volume, so Obsidian and other tools access the files normally without going through the container
 - **No registry inside the container** — the server always starts with an explicit `-w /wiki` path; the synthadoc registry is not used
-- **Fixed internal port 7070** — the container always listens on 7070; map it to any host port you like (`-p 7071:7070`, `-p 8080:7070`, etc.)
+- **Fixed internal port 7070** — the container always listens on 7070; map it to any host port you like (`-p 9070:7070`, `-p 9071:7070`, etc.)
 - **API keys via environment variables only** — never baked into the image
 - **Non-root user** — the container runs as uid 1000 (`synthadoc`) for standard container hardening
 
@@ -591,7 +591,7 @@ Apple's built-in `container` tool ships with macOS 26 (Tahoe) and runs OCI image
 container run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 7070:7070 \
+  -p 9070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -606,7 +606,7 @@ WSL Containers (`wslc`) ship with WSL 2.9.3+ on Windows 11. Run inside WSL:
 wslc run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 7070:7070 \
+  -p 9070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -629,7 +629,7 @@ cp docker/compose/single-wiki.yml docker-compose.yml
 docker compose up -d
 ```
 
-Access at `http://localhost:7070`.
+Access at `http://localhost:9070`.
 
 Run a CLI command inside the running container:
 
@@ -641,8 +641,8 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 ```bash
 docker compose -f docker/compose/multi-wiki.yml up -d
-# Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7071
+# Wiki A: http://localhost:9070
+# Wiki B: http://localhost:9071
 ```
 
 Set `WIKI_A_PATH` and `WIKI_B_PATH` in your `.env` file alongside your API key:
@@ -814,7 +814,7 @@ Option A — tell Docker to run the container as your uid (recommended, no sudo)
 docker run -d \
   --user $(id -u):$(id -g) \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 7070:7070 \
+  -p 9070:7070 \
   --env-file .env \
   chenp/synthadoc:latest
 ```
@@ -915,7 +915,7 @@ docker exec history-of-computing synthadoc export --format okf --output /wiki/ex
 Synthadoc has **no built-in authentication**. For localhost-only use this is fine. For any deployment reachable beyond localhost:
 
 - Put a reverse proxy (nginx, Traefik, Caddy) with TLS and basic auth in front of the container
-- Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`
+- Restrict the mapped port to a specific interface: `-p 127.0.0.1:9070:7070` binds only to localhost even if the container listens on `0.0.0.0`
 - On team servers, use a VPN or SSH tunnel rather than exposing the port directly
 
 **API keys:** always use `--env-file .env`, never `-e KEY=value` on the command line. Store the `.env` file with restricted permissions (`chmod 600 .env`).
@@ -991,7 +991,7 @@ TAVILY_API_KEY=tvly-...   # optional
 **cmd.exe** (single line — backslash continuation does not work in cmd):
 
 ```
-docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing:/wiki" -p 7099:7070 --env-file "%USERPROFILE%/wikis/.env" synthadoc:local
+docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing:/wiki" -p 9070:7070 --env-file "%USERPROFILE%/wikis/.env" synthadoc:local
 ```
 
 **WSL bash** (backslash continuation works here):
@@ -1000,12 +1000,12 @@ docker run -d --name synthadoc-test -v "%USERPROFILE%/wikis/history-of-computing
 docker run -d \
   --name synthadoc-test \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 7099:7070 \
+  -p 9070:7070 \
   --env-file ~/wikis/.env \
   synthadoc:local
 ```
 
-Using port `7099` (instead of `7070`) avoids conflicting with any locally running synthadoc instance.
+Using port `9070` follows the Quick Start convention (replace leading `7` with `9`) and avoids conflicting with any locally running synthadoc instance.
 
 #### Step 6 — Verify it started
 
@@ -1017,7 +1017,7 @@ docker ps
 docker logs synthadoc-test
 
 # Hit the health endpoint
-curl http://localhost:7099/health
+curl http://localhost:9070/health
 ```
 
 Expected response:
@@ -1080,7 +1080,7 @@ the source copy are re-run — typically just the `pip install` step.
 docker logs history-of-computing
 ```
 
-Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not exist at `/wiki`, or port 7070 already in use on the host.
+Common causes: missing API key (`ANTHROPIC_API_KEY` not set), wiki path does not exist at `/wiki`, or host port 9070 already in use.
 
 **Permission denied on wiki files**
 
@@ -1088,13 +1088,13 @@ The container user (uid 1000) cannot write to the mounted directory. See [Append
 
 **Port already in use**
 
-Map to a different host port: `-p 7071:7070`.
+Map to a different host port: `-p 9071:7070`.
 
 **Health check shows `unhealthy`**
 
 ```bash
 docker logs history-of-computing        # check for startup errors
-curl http://localhost:7070/health
+curl http://localhost:9070/health
 ```
 
 If the server started but `/health` does not respond, the wiki may have failed validation (e.g. corrupted database). Check the logs and try `synthadoc status -w /wiki` inside the container.
