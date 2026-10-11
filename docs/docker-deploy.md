@@ -118,19 +118,30 @@ docker pull chenp/synthadoc:latest
 
 ### Step 2 — Install a wiki
 
-Before starting the container you need a wiki folder on the host to mount. You have three options:
+Before starting the container you need a wiki folder on the host to mount. Pick one of three paths:
 
-- **Demo wiki** — pre-populated with sample pages, ready to query immediately (used in this guide)
-- **Template wiki** — blank wiki scaffolded for a specific domain (e.g. `synthadoc install my-wiki --template finance`)
-- **Your own wiki** — an existing wiki folder already on disk; skip this step and use its path in Step 4
-
-This guide uses the `history-of-computing` demo as the example. Install it on the host, specifying where the wiki folder should be created:
+**Option A — Demo wiki** (used in this guide): pre-populated with sample pages, ready to query immediately:
 
 ```bash
 synthadoc install history-of-computing --target ~/wikis --demo
 ```
 
-Expected output:
+**Option B — Template wiki**: scaffolded for a specific domain. Browse the 30 available templates first, then install:
+
+```bash
+synthadoc templates list
+synthadoc install my-market-wiki --target ~/wikis --template research/market-research
+```
+
+**Option C — Custom domain wiki**: no template; provide a `--domain` description and Synthadoc scaffolds from scratch:
+
+```bash
+synthadoc install my-wiki --target ~/wikis --domain "Your domain description"
+```
+
+---
+
+This guide continues with the Option A demo. After running the install command, you will see:
 
 ```
 ✓ Wiki installed: ~/wikis/history-of-computing
