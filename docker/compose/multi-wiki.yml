@@ -5,7 +5,7 @@
 #   docker compose -f docker/compose/multi-wiki.yml up -d
 #
 # Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7072  (set WIKI_B port to match the wiki's config.toml)
+# Wiki B: http://localhost:7071
 
 services:
   sd-server-a:
@@ -23,9 +23,9 @@ services:
     image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-b
     restart: unless-stopped
-    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7072"]
+    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
     ports:
-      - "7072:7072"
+      - "7071:7071"
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
     environment:
