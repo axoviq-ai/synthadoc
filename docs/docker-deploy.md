@@ -116,9 +116,15 @@ For Docker Compose, place the `.env` file in the same directory as your Compose 
 docker pull chenp/synthadoc:latest
 ```
 
-### Step 2 — Install the demo wiki
+### Step 2 — Install a wiki
 
-Install the `history-of-computing` demo wiki on the host. This creates the wiki folder, pre-populates it with demo pages, and registers it with a local port number:
+Before starting the container you need a wiki folder on the host to mount. You have three options:
+
+- **Demo wiki** — pre-populated with sample pages, ready to query immediately (used in this guide)
+- **Template wiki** — blank wiki scaffolded for a specific domain (e.g. `synthadoc install my-wiki --template finance`)
+- **Your own wiki** — an existing wiki folder already on disk; skip this step and use its path in Step 4
+
+This guide uses the `history-of-computing` demo as the example. Install it on the host, specifying where the wiki folder should be created:
 
 ```bash
 synthadoc install history-of-computing --target ~/wikis --demo
