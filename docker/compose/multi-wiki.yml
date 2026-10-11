@@ -4,14 +4,20 @@
 # Usage:
 #   docker compose -f docker/compose/multi-wiki.yml up -d
 #
-# BEFORE STARTING — check each wiki's installed port:
-#   synthadoc status -w <wiki-name>
+# BEFORE STARTING:
 #
-# Then update the three PORT placeholders in sd-server-b below if your
-# wiki B is not on 7071. All three must match each other:
-#   1. command   --port <PORT>
-#   2. healthcheck  localhost:<PORT>/health
-#   3. ports     "<PORT>:<PORT>"
+# 1. Check each wiki's installed port:
+#      synthadoc status -w <wiki-name>
+#
+# 2. Update the three PORT placeholders in sd-server-b if wiki B is not on 7071.
+#    All three must match each other:
+#      command   --port <PORT>
+#      healthcheck  localhost:<PORT>/health
+#      ports     "<PORT>:<PORT>"
+#
+# 3. Edit wikis.json (same folder as this file) — set the wiki names and ports
+#    to match your two wikis. This file is mounted into the coordinator container
+#    so cross-wiki queries can discover and reach both wikis.
 #
 # Wiki A: http://localhost:7070  (port 7070 is the install default — usually no change needed)
 # Wiki B: http://localhost:7071  (change 7071 → your wiki B port if different)
@@ -25,6 +31,9 @@ services:
       - "7070:7070"
     volumes:
       - ${WIKI_A_PATH:-./wiki-a}:/wiki
+      # Cross-wiki registry: maps wiki names to Docker service-name hostnames.
+      # Edit wikis.json before starting — see step 3 in the header comment above.
+      - ./wikis.json:/home/synthadoc/.synthadoc/wikis.json:ro
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 

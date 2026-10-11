@@ -1,0 +1,12 @@
+{
+  "wiki-a-name": {
+    "host": "sd-server-a",
+    "port": 7070,
+    "purpose_summary": ""
+  },
+  "wiki-b-name": {
+    "host": "sd-server-b",
+    "port": 7071,
+    "purpose_summary": ""
+  }
+}

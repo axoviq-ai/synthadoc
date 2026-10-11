@@ -630,13 +630,34 @@ synthadoc status -w <wiki-a-name>
 synthadoc status -w <wiki-b-name>
 ```
 
-**Step 2 — Edit `multi-wiki.yml`**
+**Step 2 — Edit `multi-wiki.yml` and `wikis.json`**
 
-Copy `docker/compose/multi-wiki.yml` to your working directory and open it. The file has inline comments marking every value you need to review. The key rule: **all three port values in `sd-server-b` must match each other** — `command`, `healthcheck`, and `ports`. If wiki B is not on 7071, replace all three occurrences.
+Copy both `docker/compose/multi-wiki.yml` and `docker/compose/wikis.json` to your working directory.
 
-Wiki A defaults to 7070 and usually needs no change.
+Open `multi-wiki.yml`. The file has inline comments marking every value to review. The key rule: **all three port values in `sd-server-b` must match each other** — `command`, `healthcheck`, and `ports`. If wiki B is not on 7071, replace all three occurrences. Wiki A defaults to 7070 and usually needs no change.
 
 > The Dockerfile health check is hardcoded to port 7070. If wiki B runs on any other port the `healthcheck:` override in the file is required — skip it and the container starts but stays `unhealthy`.
+
+Open `wikis.json` and set the real wiki names and ports. The `host` values must be the Compose **service names** (`sd-server-a`, `sd-server-b`) — not `localhost`:
+
+```json
+{
+  "history-of-computing": {
+    "host": "sd-server-a",
+    "port": 7070,
+    "purpose_summary": ""
+  },
+  "ai-research": {
+    "host": "sd-server-b",
+    "port": 7072,
+    "purpose_summary": ""
+  }
+}
+```
+
+`purpose_summary` is optional but improves routing — the coordinator uses it to decide which wikis to search for a given question. Set it to a one-sentence description of what each wiki covers, or leave it empty to let the wiki name guide routing.
+
+This file is mounted into the coordinator container (`sd-server-a`) as its cross-wiki registry. Without it, cross-wiki queries return an error because the coordinator has no peers to fan out to.
 
 **Step 3 — Set wiki paths in `.env`**
 
