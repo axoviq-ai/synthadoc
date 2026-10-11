@@ -4,8 +4,17 @@
 # Usage:
 #   docker compose -f docker/compose/multi-wiki.yml up -d
 #
-# Wiki A: http://localhost:7070
-# Wiki B: http://localhost:7071
+# BEFORE STARTING — check each wiki's installed port:
+#   synthadoc status -w <wiki-name>
+#
+# Then update the three PORT placeholders in sd-server-b below if your
+# wiki B is not on 7071. All three must match each other:
+#   1. command   --port <PORT>
+#   2. healthcheck  localhost:<PORT>/health
+#   3. ports     "<PORT>:<PORT>"
+#
+# Wiki A: http://localhost:7070  (port 7070 is the install default — usually no change needed)
+# Wiki B: http://localhost:7071  (change 7071 → your wiki B port if different)
 
 services:
   sd-server-a:
@@ -23,6 +32,7 @@ services:
     image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-b
     restart: unless-stopped
+    # ▼ Change 7071 to your wiki B port (all three occurrences below must match)
     command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7071/health')"]
@@ -32,6 +42,7 @@ services:
       retries: 3
     ports:
       - "7071:7071"
+    # ▲ Change 7071 to your wiki B port (all three occurrences above must match)
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
     environment:
