@@ -621,76 +621,70 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 #### Multiple wikis
 
-**Step 1 — Check each wiki's port**
+Copy `docker/compose/multi-wiki.yml` to your working directory. The file contains a setup checklist, usage commands, and a troubleshooting guide in its header — read it before starting.
 
-Each wiki has its own port set at install time. Check before editing anything:
+The short version:
+
+**Step 1 — Check each wiki's port**
 
 ```bash
 synthadoc status -w <wiki-a-name>
 synthadoc status -w <wiki-b-name>
 ```
 
-**Step 2 — Edit `multi-wiki.yml` and `wikis.json`**
+**Step 2 — Edit `multi-wiki.yml`**
 
-Copy both `docker/compose/multi-wiki.yml` and `docker/compose/wikis.json` to your working directory.
+Find every `TODO` in the file and replace with real values. There are two areas:
 
-Open `multi-wiki.yml`. The file has inline comments marking every value to review. The key rule: **all three port values in `sd-server-b` must match each other** — `command`, `healthcheck`, and `ports`. If wiki B is not on 7071, replace all three occurrences. Wiki A defaults to 7070 and usually needs no change.
+- **`sd-server-b` service** — replace the three `TODO_PORT_B` occurrences with wiki B's actual port (`command`, `healthcheck`, and `ports` must all match)
+- **`configs` block at the bottom** — replace `wiki-a-name` and `wiki-b-name` with the real wiki names, and `TODO_PORT_B` with wiki B's port
 
-> The Dockerfile health check is hardcoded to port 7070. If wiki B runs on any other port the `healthcheck:` override in the file is required — skip it and the container starts but stays `unhealthy`.
+> The `configs` block is the cross-wiki registry. It tells the coordinator the Docker service-name hostname and port for each peer. Without correct values here, cross-wiki queries fail. The `host` values must be Compose service names (`sd-server-a`, `sd-server-b`) — not `localhost`.
 
-Open `wikis.json` and set the real wiki names and ports. The `host` values must be the Compose **service names** (`sd-server-a`, `sd-server-b`) — not `localhost`:
+`purpose_summary` in the configs block is optional but improves automatic routing. Set it to a one-sentence description of what each wiki covers, or leave it empty.
 
-```json
-{
-  "history-of-computing": {
-    "host": "sd-server-a",
-    "port": 7070,
-    "purpose_summary": ""
-  },
-  "ai-research": {
-    "host": "sd-server-b",
-    "port": 7072,
-    "purpose_summary": ""
-  }
-}
-```
-
-`purpose_summary` is optional but improves routing — the coordinator uses it to decide which wikis to search for a given question. Set it to a one-sentence description of what each wiki covers, or leave it empty to let the wiki name guide routing.
-
-This file is mounted into the coordinator container (`sd-server-a`) as its cross-wiki registry. Without it, cross-wiki queries return an error because the coordinator has no peers to fan out to.
-
-**Step 3 — Set wiki paths in `.env`**
-
-Create a `.env` file alongside the Compose file before starting — Compose reads it at `up` time:
+**Step 3 — Set `.env`**
 
 ```bash
-# .env
+# .env  (same folder as the yml)
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Absolute paths to each wiki folder on the host
 WIKI_A_PATH=/home/yourname/wikis/history-of-computing
 WIKI_B_PATH=/home/yourname/wikis/ai-research
 ```
 
-On Windows: use forward slashes (`C:/Users/yourname/wikis/...`) or the WSL path (`/mnt/c/Users/...`). Backslashes break volume mounts.
+On Windows: use forward slashes (`C:/Users/yourname/wikis/...`). Backslashes break volume mounts.
 
-**Step 4 — Start the stack**
+**Step 4 — Start**
 
 ```bash
 docker compose -f multi-wiki.yml up -d
 ```
 
-Verify both containers reach `(healthy)` within about 30 seconds:
+Both containers should reach `(healthy)` within 30 seconds:
 
 ```bash
 docker compose -f multi-wiki.yml ps
 ```
 
-If wiki B stays `unhealthy`, the port values in the yml don't all match. Check the logs to confirm:
+**Debugging**
 
+View logs for a container:
 ```bash
-docker logs synthadoc-wiki-b --tail 30
+docker compose -f multi-wiki.yml logs sd-server-a --tail 50
+docker compose -f multi-wiki.yml logs sd-server-b --tail 50
 ```
+
+Recreate one container after changing the yml or a wiki's `config.toml`:
+```bash
+docker compose -f multi-wiki.yml up -d --force-recreate sd-server-a
+```
+
+Recreate both:
+```bash
+docker compose -f multi-wiki.yml up -d --force-recreate
+```
+
+See the header comment in `multi-wiki.yml` for a full troubleshooting guide.
 
 #### Cross-wiki queries
 

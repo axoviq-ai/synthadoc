@@ -1,26 +1,78 @@
 # docker/compose/multi-wiki.yml
-# Two Synthadoc wikis on different host ports.
+# Two Synthadoc wikis on different host ports with cross-wiki query support.
 #
-# Usage:
-#   docker compose -f docker/compose/multi-wiki.yml up -d
+# ─── SETUP CHECKLIST ──────────────────────────────────────────────────────────
 #
-# BEFORE STARTING:
+# Before running `docker compose up`, complete these steps:
 #
-# 1. Check each wiki's installed port:
-#      synthadoc status -w <wiki-name>
+# 1. CHECK EACH WIKI'S PORT
+#      synthadoc status -w <wiki-a-name>
+#      synthadoc status -w <wiki-b-name>
 #
-# 2. Update the three PORT placeholders in sd-server-b if wiki B is not on 7071.
-#    All three must match each other:
-#      command   --port <PORT>
-#      healthcheck  localhost:<PORT>/health
-#      ports     "<PORT>:<PORT>"
+# 2. EDIT THIS FILE — find each "TODO" comment below and update:
 #
-# 3. Edit wikis.json (same folder as this file) — set the wiki names and ports
-#    to match your two wikis. This file is mounted into the coordinator container
-#    so cross-wiki queries can discover and reach both wikis.
+#    WIKI A (sd-server-a)
+#      - WIKI_A_PATH in your .env  →  absolute path to wiki A folder
 #
-# Wiki A: http://localhost:7070  (port 7070 is the install default — usually no change needed)
-# Wiki B: http://localhost:7071  (change 7071 → your wiki B port if different)
+#    WIKI B (sd-server-b)
+#      - WIKI_B_PATH in your .env  →  absolute path to wiki B folder
+#      - Replace all three "TODO_PORT_B" values with wiki B's actual port
+#        (command --port, healthcheck URL, and ports mapping must all match)
+#
+#    CROSS-WIKI REGISTRY (configs block at the bottom)
+#      - Replace "wiki-a-name" with wiki A's real name  (e.g. history-of-computing)
+#      - Replace "wiki-b-name" with wiki B's real name  (e.g. ai-research)
+#      - Replace 7071 with wiki B's actual port
+#      - Optionally fill in purpose_summary for better automatic routing
+#        (one sentence describing what each wiki covers)
+#
+# 3. SET .env FILE (same folder as this file)
+#      ANTHROPIC_API_KEY=sk-ant-...
+#      WIKI_A_PATH=/absolute/path/to/wiki-a
+#      WIKI_B_PATH=/absolute/path/to/wiki-b
+#      On Windows: use forward slashes (C:/Users/...) not backslashes
+#
+# ─── USAGE ────────────────────────────────────────────────────────────────────
+#
+#   Start both wikis:
+#     docker compose -f multi-wiki.yml up -d
+#
+#   Check status (both should reach "healthy" within 30 seconds):
+#     docker compose -f multi-wiki.yml ps
+#
+#   View logs for a wiki (replace <service> with sd-server-a or sd-server-b):
+#     docker compose -f multi-wiki.yml logs <service> --tail 50
+#
+#   Recreate one wiki after editing config.toml or this file:
+#     docker compose -f multi-wiki.yml up -d --force-recreate <service>
+#
+#   Recreate both wikis:
+#     docker compose -f multi-wiki.yml up -d --force-recreate
+#
+#   Stop everything:
+#     docker compose -f multi-wiki.yml down
+#
+# ─── TROUBLESHOOTING ──────────────────────────────────────────────────────────
+#
+#   Wiki stays "unhealthy":
+#     → The three TODO_PORT_B values don't all match, or wiki B's config.toml
+#       uses a different port. Check with:
+#         docker compose -f multi-wiki.yml logs sd-server-b --tail 30
+#
+#   Cross-wiki query returns "Unexpected error":
+#     → Check coordinator logs for the real error:
+#         docker compose -f multi-wiki.yml logs sd-server-a --tail 50
+#     → Common causes:
+#         - Wiki names in the configs block don't match the installed wiki names
+#         - Port in the configs block doesn't match wiki B's actual port
+#         - Wiki's config.toml uses an LLM provider whose API key isn't set
+#           (add the key to .env and the service's environment block)
+#
+#   "No such file or directory" for wikis.json inside the container:
+#     → The configs block is only supported in Docker Compose v2.23+.
+#       Check your version: docker compose version
+#
+# ──────────────────────────────────────────────────────────────────────────────
 
 services:
   sd-server-a:
@@ -31,9 +83,9 @@ services:
       - "7070:7070"
     volumes:
       - ${WIKI_A_PATH:-./wiki-a}:/wiki
-      # Cross-wiki registry: maps wiki names to Docker service-name hostnames.
-      # Edit wikis.json before starting — see step 3 in the header comment above.
-      - ./wikis.json:/home/synthadoc/.synthadoc/wikis.json:ro
+    configs:
+      - source: cross_wiki_registry
+        target: /home/synthadoc/.synthadoc/wikis.json
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
@@ -41,18 +93,37 @@ services:
     image: chenp/synthadoc:latest
     container_name: synthadoc-wiki-b
     restart: unless-stopped
-    # ▼ Change 7071 to your wiki B port (all three occurrences below must match)
-    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
+    # ▼ Replace TODO_PORT_B with wiki B's port in all three places below
+    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "TODO_PORT_B"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7071/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:TODO_PORT_B/health')"]
       interval: 30s
       timeout: 5s
       start_period: 10s
       retries: 3
     ports:
-      - "7071:7071"
-    # ▲ Change 7071 to your wiki B port (all three occurrences above must match)
+      - "TODO_PORT_B:TODO_PORT_B"
+    # ▲ Replace TODO_PORT_B with wiki B's port in all three places above
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+# Cross-wiki registry — defines which wikis the coordinator can fan out to.
+# The host values must be Compose service names (sd-server-a, sd-server-b),
+# not localhost. Ports must match each wiki's installed port.
+configs:
+  cross_wiki_registry:
+    content: |
+      {
+        "wiki-a-name": {
+          "host": "sd-server-a",
+          "port": 7070,
+          "purpose_summary": ""
+        },
+        "wiki-b-name": {
+          "host": "sd-server-b",
+          "port": TODO_PORT_B,
+          "purpose_summary": ""
+        }
+      }
