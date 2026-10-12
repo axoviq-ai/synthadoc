@@ -3219,7 +3219,7 @@ If the wiki has no broken citations, the workflow reports: *"No broken citations
 
 Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes them with your approval.
 
-**How it surfaces:** After every ingest, a fast heuristic scanner checks changed pages for known issue patterns. If any are found:
+**How it surfaces:** A fast heuristic scanner (no LLM) checks pages for known issue patterns in three situations: after every ingest on changed pages; immediately after any workflow fix is written (so structural problems introduced by the contradiction, orphan, or broken-citation resolver are caught right away); and during every full `synthadoc lint run`, which refreshes all active pages. If any issues are found:
 
 - A **pre-filled suggestion** appears in the chat input at session start: *"N page(s) with content health issues — run the content health resolver?"*
 - The **"Run content health resolver"** hint chip appears in the sidebar when you are in **Health Check** or **Power User** session mode.
@@ -3229,7 +3229,6 @@ In the web chat UI, type: **"run content health resolver"**
 The workflow announces what it found and the order it will work in:
 
 > *Found 3 page(s) with content issues (2 critical, 1 high).*
-> *Working within a budget of ~50,000 tokens.*
 > *A snapshot is saved before each change — say "roll back [page name]" at any time to undo.*
 
 For each page, the agent runs a deep LLM analysis and presents a side-by-side diff:
