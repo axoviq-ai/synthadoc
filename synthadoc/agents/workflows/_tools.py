@@ -314,7 +314,9 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
           },
           "contradicted_pages": [{"slug": str, "since": str}],
           "adversarial_warnings": [{"slug": str, "count": int}],
-          "orphan_slugs": [str]
+          "orphan_slugs": [str],
+          "broken_citations": int,
+          "broken_citation_pages": [{"slug": str, "count": int}]
         }
 
     "last_run" is an empty dict if no lint run has been recorded yet.
@@ -547,9 +549,14 @@ async def tool_find_broken_citations(
             scan_slugs = []
         scope_label = f"page '{page_slug}'"
     else:
-        # Whole-wiki mode: pass None so find_broken_citation_refs calls
-        # store.list_pages() and filters by frontmatter status itself.
-        scan_slugs = None
+        # Whole-wiki mode: scan only active pages for the interactive resolver.
+        # find_broken_citation_refs scans all pages (no status filter), so we
+        # pre-filter to active slugs here — consistent with GET /lifecycle/status
+        # and the pre-prompt broken-citation chip.
+        scan_slugs = [
+            slug for slug in ctx.store.list_pages()
+            if (p := ctx.store.read_page(slug)) is not None and p.status == "active"
+        ]
         scope_label = "active pages"
 
     await ctx.send_sse_event(
