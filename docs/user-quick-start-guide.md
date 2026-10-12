@@ -2928,7 +2928,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Seven workflows are available, listed in the order the web UI will pre-prompt them at session start:
+Eight workflows are available, listed in the order the web UI will pre-prompt them at session start:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                                                   |
@@ -2939,6 +2939,7 @@ Seven workflows are available, listed in the order the web UI will pre-prompt th
 | **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating          |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                |
 | **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
+| **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, thin/empty content, broken markdown structure) using heuristics on ingest; LLM deep-analysis on launch; side-by-side diff approval per page; snapshot saved before every write for rollback |
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                      |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                  |
 
@@ -3209,6 +3210,65 @@ synthadoc workflow run --name broken-citation-resolver --slug my-page
 If the wiki has no broken citations, the workflow reports: *"No broken citations found. Citation integrity is clean."* — no confirmation card appears.
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its citations need checking.
+
+---
+
+<a name="demo--content-health-resolver"></a>
+
+### Demo — content health resolver
+
+Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes them with your approval.
+
+**How it surfaces:** After every ingest, a fast heuristic scanner checks changed pages for known issue patterns. If any are found, the **"Run content health resolver"** hint chip appears in the sidebar at the next session start.
+
+In the web chat UI, type: **"run content health resolver"**
+
+The workflow announces what it found and the order it will work in:
+
+> *Found 3 page(s) with content issues (2 critical, 1 high).*
+> *Working within a budget of ~50,000 tokens.*
+> *A snapshot is saved before each change — say "roll back [page name]" at any time to undo.*
+
+For each page, the agent runs a deep LLM analysis and presents a side-by-side diff:
+
+```
+alan-turing
+
+  BEFORE                                    AFTER
+  ──────────────────────────────────────    ──────────────────────────────────────
+  ## Bletchley Park and Cryptanalysis       ## Bletchley Park and Cryptanalysis
+  [content]                                 [consolidated content]
+  ## Early Life and Education
+  [content]
+  ## Early Life and Education  ← duplicate
+  [duplicate content]
+
+  Issues addressed: duplicate_section ×3, thin_section ×1
+```
+
+> **Approve** / **Skip this page** / **Stop workflow**
+
+Click **Approve**. The workflow saves a snapshot, applies the fix, re-validates with the heuristic scanner to confirm the page is clean, then summarises:
+
+> *alan-turing: 4 issues fixed (3 duplicate sections, 1 thin section).*
+> *Snapshot #7 saved — say "roll back alan-turing" to undo.*
+
+If the token budget is nearly exhausted, the workflow pauses:
+
+> *Budget nearly exhausted. Fixed 2 of 3 pages. 1 page remains: [konrad-zuse]. Continue? (uses ~8,000 more tokens)*
+
+**To target a single page:**
+
+```bash
+synthadoc workflow run --name content-health --slug alan-turing
+```
+
+**Rollback after the fact:** Any page fixed by this workflow can be restored later — even days later:
+
+- *"Show me pages fixed by content health"* — lists all fixes with timestamps
+- *"Roll back alan-turing to before the content health fix"* — restores the page to its pre-fix snapshot automatically
+
+**Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 
 ---
 
