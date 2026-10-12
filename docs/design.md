@@ -4228,12 +4228,15 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Two-phase design:**
 
-- **Phase 1 — Heuristic scanner** (`content_health_scanner.py`): runs synchronously after every ingest on changed pages. No LLM. Detects six issue types: `duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`. Results stored in `WikiPage.content_health_issues`; count exposed via `lifecycle_summary["content_health"]`.
+- **Phase 1 — Heuristic scanner** (`content_health_scanner.py`): pure-Python regex scan, no LLM. Detects six issue types: `duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`. Results stored in `WikiPage.content_health_issues`; count exposed via `lifecycle_summary["content_health"]`. Runs in three places:
+  - **Post-ingest** — synchronously in `on_ingest_complete` on changed pages (original trigger).
+  - **Post-workflow-write** — immediately after `tool_apply_citation_fixes`, `tool_apply_link_fixes`, and `tool_propose_and_apply` write a page, via `_rescan_content_health()` in `_tools.py`. Catches structural issues introduced by LLM rewrites from other workflows (contradiction resolver, orphan resolver, broken citation/wikilink resolver) that bypass the ingest pipeline.
+  - **During lint** — `LintAgent._run_content_health_scan()` sweeps all active pages on `scope=all` lint runs, writing back only pages whose issue list changed. Acts as a ground-truth refresh and catches any issues that slipped through the other two triggers.
 - **Phase 2 — LLM deep analysis**: runs when the user launches the workflow. Reads pre-flagged pages, sorts by severity (`critical` → `high` → `medium` → `low`), runs one bounded LLM call per page to produce a refined issue list and proposed section rewrite.
 
 **Per-page loop:** LLM analysis → side-by-side BEFORE/AFTER diff → user approves → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner to confirm clean → summary line.
 
-**Token budget:** Default `content_health_token_budget = 50000` (configurable in `config.toml`). Checked before each new page; pauses and offers to continue when fewer than 5,000 tokens remain.
+**Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
 
 **Rollback traceability:** Two tools registered in both `ContentHealthResolverWorkflow` and `query_agent`:
 - `tool_list_content_health_fixes()` — returns all pages fixed, with timestamps and pre-fix snapshot indices
