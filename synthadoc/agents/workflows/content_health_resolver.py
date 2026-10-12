@@ -163,7 +163,8 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         r"|\bfix.{0,20}content\b"
         r"|\bduplicate.{0,20}sections?\b"
         r"|\bcontent.{0,20}issues?\b"
-        r"|\bcontent.{0,15}resolver\b",
+        r"|\bcontent.{0,15}resolver\b"
+        r"|\broll\s*back\b",
         re.IGNORECASE,
     )
 
@@ -184,14 +185,22 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 "If the fixes list is empty: output 'No content health fixes have been recorded yet.'\n"
                 "Output plain text only — no JSON, no tool calls after the list is printed."
             )
-        # "roll back SLUG" → restore that page's pre-fix snapshot
-        rollback_match = self._ROLLBACK_RE.search(user_input)
-        if rollback_match:
-            slug = rollback_match.group(1).rstrip(".,;")
+        # "roll back SLUG" or bare "roll back" → restore a page's pre-fix snapshot
+        if re.search(r"\broll\s*back\b", user_input, re.IGNORECASE):
+            rollback_match = self._ROLLBACK_RE.search(user_input)
+            if rollback_match:
+                slug = rollback_match.group(1).rstrip(".,;")
+                return (
+                    f"The user wants to roll back the content health fix for page '{slug}'.\n"
+                    f"Call rollback_content_health_fix(slug='{slug}') and report the result as plain text.\n"
+                    "Output plain text only — do not call any other tools."
+                )
+            # "roll back" without a specific slug → list fixes so user can choose
             return (
-                f"The user wants to roll back the content health fix for page '{slug}'.\n"
-                f"Call rollback_content_health_fix(slug='{slug}') and report the result as plain text.\n"
-                "Output plain text only — do not call any other tools."
+                "The user wants to roll back a content health fix but did not specify which page.\n"
+                "Call list_content_health_fixes() and present the results, then ask the user "
+                "which page to roll back.\n"
+                "Output plain text only."
             )
         # Single-page targeted run
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
