@@ -247,6 +247,105 @@ _DUPLICATE_ISSUES = [
     }
 ]
 
+_PIPELINE_SLUG = "_live-test-chr-pipeline"
+
+
+def _apply_scanner(wiki_root: Path, slug: str, content: str) -> list[dict]:
+    """Run the content health scanner on *content* and write results to the page's
+    frontmatter.
+
+    This is exactly what ``ingest_agent.py`` does after the LLM writes a new page::
+
+        page.content_health_issues = [asdict(i) for i in scan_page(slug, page.content)]
+        store.write_page(slug, page)
+
+    Running it here lets the live test exercise the scanner→resolver pipeline
+    without triggering a full LLM ingest call.
+    """
+    from dataclasses import asdict
+    from synthadoc.agents.content_health_scanner import scan_page as _scan_page
+
+    issues = [asdict(i) for i in _scan_page(slug, content)]
+
+    page_path = wiki_root / "wiki" / f"{slug}.md"
+    text = page_path.read_text(encoding="utf-8")
+    end = text.index("---", 3)
+    fm = yaml.safe_load(text[3:end]) or {}
+    body = text[end + 3:]
+    fm["content_health_issues"] = issues
+    page_path.write_text(
+        f"---\n{yaml.dump(fm, default_flow_style=False, allow_unicode=True)}---\n{body}",
+        encoding="utf-8",
+    )
+    return issues
+
+
+@pytest.mark.live
+@pytest.mark.timeout(300)
+def test_full_pipeline_scan_then_resolve(tmp_path):
+    """Full pipeline: raw page → scanner detects issues → resolver fixes them.
+
+    Step 1  Write a page with a duplicate heading to the wiki filesystem — no
+            ``content_health_issues`` pre-populated, just raw content.
+    Step 2  Run ``scan_page`` directly (the same call ``ingest_agent`` makes
+            after writing every new page) and store results in frontmatter.
+    Step 3  Assert the scanner found at least one ``duplicate_section`` issue,
+            proving step 2 exercised the real scanner.
+    Step 4  Run the content health resolver workflow via HTTP SSE and auto-
+            approve every confirm gate.
+    Step 5  Assert the fix record was written and the ``duplicate_section``
+            issue is cleared from frontmatter.
+    """
+    wiki_root = _get_wiki_root()
+    try:
+        # Step 1 — write raw page, no pre-populated issues
+        _ingest_page(
+            wiki_root, _PIPELINE_SLUG,
+            "Pipeline Test — Duplicate Section",
+            _DUPLICATE_CONTENT,
+            content_health_issues=None,
+        )
+
+        fm_raw = _read_page_frontmatter(wiki_root, _PIPELINE_SLUG)
+        assert not fm_raw.get("content_health_issues"), (
+            "issues were pre-populated; expected empty at start of pipeline test"
+        )
+
+        # Step 2 — run scanner (mirrors ingest_agent.py line 860)
+        issues = _apply_scanner(wiki_root, _PIPELINE_SLUG, _DUPLICATE_CONTENT)
+
+        # Step 3 — assert scanner found the duplicate
+        dup_issues = [i for i in issues if i.get("type") == "duplicate_section"]
+        assert dup_issues, (
+            f"Scanner found no duplicate_section issues.\nAll issues: {issues}\n"
+            "Check that _DUPLICATE_CONTENT has a real repeated heading."
+        )
+
+        fm_scanned = _read_page_frontmatter(wiki_root, _PIPELINE_SLUG)
+        assert fm_scanned.get("content_health_issues"), (
+            "Scanner results were not persisted to frontmatter"
+        )
+
+        # Step 4 — run resolver
+        events = _run_workflow_http(
+            f"run content health resolver --slug {_PIPELINE_SLUG}",
+            confirm_response=True,
+        )
+        assert events, "No SSE events received from workflow"
+
+        # Step 5 — assert issues fixed
+        fm_after = _read_page_frontmatter(wiki_root, _PIPELINE_SLUG)
+        assert fm_after.get("content_health_fix_record") is not None, (
+            f"fix_record not written after resolver run.\nEvents: {events}"
+        )
+        remaining = fm_after.get("content_health_issues", [])
+        assert not any(i.get("type") == "duplicate_section" for i in remaining), (
+            f"duplicate_section still present after fix.\nEvents: {events}"
+        )
+
+    finally:
+        _delete_page(wiki_root, _PIPELINE_SLUG)
+
 
 @pytest.mark.live
 @pytest.mark.timeout(300)
