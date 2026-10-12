@@ -56,6 +56,7 @@ _WORKFLOW_QUERIES: dict[str, str] = {
     "contradiction-resolver":  "run contradiction resolver",
     "ingest-lint":             "re-ingest stale pages",
     "orphan-resolver":         "run orphan resolver",
+    "content-health":          "run content health resolver",
 }
 
 
