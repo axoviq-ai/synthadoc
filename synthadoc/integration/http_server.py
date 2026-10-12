@@ -1648,10 +1648,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         elif _st == _SLS.CONTRADICTED:
                             _sess_all[_slug] = _p.content
                 summary["orphan"] = len(_sess_find_orphans(_sess_active, link_texts=_sess_all))
+            summary["content_health"] = orch._store.count_content_health_issues()
             has_health_issues = (
                 summary.get("stale", 0)
                 + summary.get("contradicted", 0)
-                + summary.get("orphan", 0) > 0
+                + summary.get("orphan", 0)
+                + summary.get("content_health", 0) > 0
             )
             mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
         await orch._audit.create_session(session_id, mode)
@@ -2510,6 +2512,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         _broken_cite_total = sum(len(issues) for issues in _broken_cite.values())
         if _broken_cite_total > 0:
             counts["broken_citations"] = _broken_cite_total
+        _content_health_total = orch._store.count_content_health_issues()
+        if _content_health_total > 0:
+            counts["content_health"] = _content_health_total
         return counts
 
     @app.get("/lifecycle/events")
