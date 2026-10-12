@@ -21,6 +21,40 @@ _STATUS_OK = "success"
 _STATUS_ERR = "error"
 
 
+async def tool_find_content_health_issues(ctx: "WorkflowContext", slug: str = "") -> dict:
+    """Return all ACTIVE pages that have content health issues, sorted by severity then count.
+
+    If ``slug`` is provided, return only that page (or empty if it has no issues /
+    doesn't exist).  Use this as STEP 1 to discover which pages need repair.
+    """
+    if ctx.store is None:
+        return {"status": _STATUS_ERR, "pages": [], "error": "No store available"}
+
+    _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    flagged: list[dict] = []
+    for page_slug in ctx.store.list_pages():
+        if slug and page_slug != slug:
+            continue
+        page = ctx.store.read_page(page_slug)
+        if page is None or page.status != LifecycleState.ACTIVE or not page.content_health_issues:
+            continue
+        top_sev = min(_SEVERITY_ORDER.get(i["severity"], 9) for i in page.content_health_issues)
+        flagged.append({
+            "_sort": (top_sev, -len(page.content_health_issues)),
+            "slug": page_slug,
+            "title": page.title,
+            "issue_count": len(page.content_health_issues),
+            "top_severity": page.content_health_issues[0]["severity"],
+            "issues": page.content_health_issues,
+        })
+
+    flagged.sort(key=lambda r: r["_sort"])
+    for r in flagged:
+        del r["_sort"]
+
+    return {"status": _STATUS_OK, "total": len(flagged), "pages": flagged}
+
+
 async def tool_get_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     """Read the raw markdown content and existing health issues for a page."""
     if ctx.store is None:
