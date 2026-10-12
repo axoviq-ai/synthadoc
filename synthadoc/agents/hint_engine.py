@@ -281,6 +281,8 @@ class HintEngine:
                 priority.append("Scan for broken wikilinks")
             if context.get("broken_citations", 0) > 0:
                 priority.append("Fix broken citations")
+            if context.get("content_health", 0) > 0:
+                priority.append("Run content health resolver")
             if priority:
                 seen = set(priority)
                 extras = [h for h in pool if h not in seen]

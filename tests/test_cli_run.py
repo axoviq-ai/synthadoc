@@ -257,7 +257,7 @@ def test_workflow_run_unknown_name_prints_available_list():
 # ── CLI_REGISTRY ──────────────────────────────────────────────────────────────
 
 def test_cli_registry_contains_all_named_workflows():
-    """CLI_REGISTRY contains all 7 workflow classes."""
+    """CLI_REGISTRY contains all 8 workflow classes."""
     from synthadoc.agents.workflows._registry import CLI_REGISTRY
     expected = {
         "lint-report",
@@ -267,6 +267,7 @@ def test_cli_registry_contains_all_named_workflows():
         "ingest-lint",
         "orphan-resolver",
         "broken-citation-resolver",
+        "content-health",
     }
     assert expected == set(CLI_REGISTRY.keys())
 
