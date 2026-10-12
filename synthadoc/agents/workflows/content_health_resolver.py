@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
 from synthadoc.agents.workflows.tools.content_health_tools import (
+    tool_find_content_health_issues,
     tool_get_page_content,
     tool_list_content_health_fixes,
     tool_rollback_content_health_fix,
@@ -37,6 +38,15 @@ Emit EXACTLY this JSON object (no markdown fences, no XML, no prose) to call a t
 When delivering a final message for the user, respond with plain text only (no JSON).
 
 ━━━ TOOL INVENTORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+find_content_health_issues
+  Discover all ACTIVE wiki pages that have content health issues.
+  Call this FIRST (STEP 1) to build the work list.
+  Input:  {"slug": str}  — omit slug (or pass "") to scan the whole wiki
+  Output: {"status": "success"|"error", "total": int,
+           "pages": [{"slug": str, "title": str, "issue_count": int,
+                      "top_severity": str, "issues": [...]}]}
+  Pages are pre-sorted: critical first, then by issue count descending.
 
 get_page_content
   Read the raw markdown content and existing issues for a page.
@@ -75,9 +85,11 @@ notify
 
 ━━━ WORKFLOW STEPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-STEP 1 — Parse the page list from the initial message.
-  Sort pages: critical issues first, then high, then medium. Within each
-  severity, sort by issue count descending.
+STEP 1 — Discover pages with issues.
+  Call find_content_health_issues (pass slug="" to scan the whole wiki, or
+  the specific slug if one was requested).
+  The tool returns pages pre-sorted: critical first, then by issue count.
+  If total=0: output plain text "No active pages with content health issues found." and stop.
 
 STEP 2 — Opening confirm before any work begins.
   Call confirm with:
@@ -161,12 +173,31 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         return _SYSTEM_PROMPT
 
     def build_initial_message(self, user_input: str) -> str:
-        return user_input
+        slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
+        if slug_match:
+            slug = slug_match.group(1)
+            return (
+                f"Run the content health resolver for a single page: {slug}\n"
+                f"FIRST: call find_content_health_issues(slug='{slug}') to check "
+                f"whether this page has any issues. If total=0: stop with a plain-text "
+                f"'No issues found for {slug}' message. Otherwise proceed to STEP 2."
+            )
+        return (
+            "Run the content health resolver workflow.\n"
+            "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
+            "with content quality issues. If total=0: stop with a plain-text "
+            "'No active pages with content health issues found.' message.\n"
+            "Otherwise proceed through STEP 2 (opening confirm) and STEP 3 (per-page loop) "
+            "WITHOUT STOPPING mid-task.\n"
+            "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
+            "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
+        )
 
     def get_tool_fns(
         self, ctx: WorkflowContext
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
         return {
+            "find_content_health_issues": functools.partial(tool_find_content_health_issues, ctx),
             "get_page_content": functools.partial(tool_get_page_content, ctx),
             "write_content_health_fix": functools.partial(tool_write_content_health_fix, ctx),
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),

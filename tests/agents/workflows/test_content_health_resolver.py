@@ -45,7 +45,7 @@ def test_get_tool_fns_returns_expected_tools():
     wf = ContentHealthResolverWorkflow()
     tools = wf.get_tool_fns(ctx)
     expected = {
-        "get_page_content", "write_content_health_fix",
+        "find_content_health_issues", "get_page_content", "write_content_health_fix",
         "list_content_health_fixes", "rollback_content_health_fix",
         "confirm", "notify",
     }
