@@ -111,9 +111,12 @@ STEP 3 — Per-page loop:
       factual content.
 
   3c. Call confirm with a SIDE-BY-SIDE DIFF message:
-      Show "BEFORE:" with affected sections and "AFTER:" with proposed rewrite.
-      List the issue types being addressed.
-      yes_label="Approve", no_label="Skip this page"
+      message should contain ONLY:
+        - "BEFORE:" with the affected sections (current state)
+        - "AFTER:" with the proposed rewrite of those sections
+        - A line listing the issue types being addressed
+      Do NOT include "yes_label" or "no_label" text in the message field —
+      those are separate JSON fields in the tool call: yes_label="Approve", no_label="Skip this page".
 
       If confirmed → proceed to 3d.
       If not confirmed AND user said "stop" → output final summary, stop.
