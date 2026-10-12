@@ -1372,6 +1372,15 @@ class IngestAgent(BaseAgent):
                         result.pages_created.append(slug)
                         final_slug = slug
                     else:
+                        from dataclasses import asdict as _asdict
+                        from synthadoc.agents.content_health_scanner import scan_page as _scan_page
+                        try:
+                            _thin_min = int(self._cfg.content_health.thin_section_min_words) if self._cfg else 50
+                        except (TypeError, AttributeError, ValueError):
+                            _thin_min = 50
+                        new_page.content_health_issues = [
+                            _asdict(i) for i in _scan_page(slug, new_page.content, _thin_min)
+                        ]
                         with self._store.page_lock(slug):
                             self._store.write_page(slug, new_page)
                             self._search.invalidate_index()
