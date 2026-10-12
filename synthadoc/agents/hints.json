@@ -23,6 +23,7 @@
       "Run contradiction resolver",
       "Re-ingest stale pages",
       "Run orphan resolver",
+      "Run content health resolver",
       "Run lint and report",
       "Show my lint report",
       "Show wiki status",
@@ -69,8 +70,17 @@
   },
   "topic_patterns": [
     {
-      "keywords": ["stale", "outdated", "old"],
-      "answer_keywords": ["is stale", "are stale", "stale page", "stale pages"],
+      "keywords": [
+        "stale",
+        "outdated",
+        "old"
+      ],
+      "answer_keywords": [
+        "is stale",
+        "are stale",
+        "stale page",
+        "stale pages"
+      ],
       "hints": [
         "Re-ingest stale pages",
         "What are these stale pages?",
@@ -80,8 +90,14 @@
       ]
     },
     {
-      "keywords": ["ingest", "pdf", "url"],
-      "answer_keywords": ["ingest"],
+      "keywords": [
+        "ingest",
+        "pdf",
+        "url"
+      ],
+      "answer_keywords": [
+        "ingest"
+      ],
       "hints": [
         "What file types can I ingest?",
         "How do I bulk ingest?",
@@ -89,8 +105,16 @@
       ]
     },
     {
-      "keywords": ["export", "llms", "graph", "json"],
-      "answer_keywords": ["export", "llms"],
+      "keywords": [
+        "export",
+        "llms",
+        "graph",
+        "json"
+      ],
+      "answer_keywords": [
+        "export",
+        "llms"
+      ],
       "hints": [
         "Export as llms.txt for AI tools",
         "Export as GraphML",
@@ -98,8 +122,21 @@
       ]
     },
     {
-      "keywords": ["lifecycle", "archive", "archived", "draft", "restore", "activate"],
-      "answer_keywords": ["lifecycle", "archived page", "archived pages", "restore", "activate"],
+      "keywords": [
+        "lifecycle",
+        "archive",
+        "archived",
+        "draft",
+        "restore",
+        "activate"
+      ],
+      "answer_keywords": [
+        "lifecycle",
+        "archived page",
+        "archived pages",
+        "restore",
+        "activate"
+      ],
       "hints": [
         "Show me recently updated wiki pages",
         "Show me recently archived wiki pages",
@@ -112,8 +149,15 @@
       ]
     },
     {
-      "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
-      "answer_keywords": ["no inbound"],
+      "keywords": [
+        "orphan",
+        "no inbound",
+        "isolated",
+        "unlinked"
+      ],
+      "answer_keywords": [
+        "no inbound"
+      ],
       "hints": [
         "Run orphan resolver",
         "What pages are orphan pages?",
@@ -121,8 +165,24 @@
       ]
     },
     {
-      "keywords": ["broken wikilink", "broken link", "dead link", "dangling link", "link integrity", "wikilink"],
-      "answer_keywords": ["broken wikilink", "broken wikilinks", "broken link", "broken links", "dead link", "dead links", "dangling link", "dangling links"],
+      "keywords": [
+        "broken wikilink",
+        "broken link",
+        "dead link",
+        "dangling link",
+        "link integrity",
+        "wikilink"
+      ],
+      "answer_keywords": [
+        "broken wikilink",
+        "broken wikilinks",
+        "broken link",
+        "broken links",
+        "dead link",
+        "dead links",
+        "dangling link",
+        "dangling links"
+      ],
       "hints": [
         "Scan for broken wikilinks",
         "Fix broken wikilinks",
@@ -131,8 +191,16 @@
       ]
     },
     {
-      "keywords": ["lint", "contradiction", "dangling"],
-      "answer_keywords": ["lint", "dangling", "contradiction resolver"],
+      "keywords": [
+        "lint",
+        "contradiction",
+        "dangling"
+      ],
+      "answer_keywords": [
+        "lint",
+        "dangling",
+        "contradiction resolver"
+      ],
       "hints": [
         "Run lint and report",
         "Run orphan resolver",
@@ -147,8 +215,16 @@
       ]
     },
     {
-      "keywords": ["truncated", "truncation", "max_source_chars", "source limit"],
-      "answer_keywords": ["truncated", "max_source_chars"],
+      "keywords": [
+        "truncated",
+        "truncation",
+        "max_source_chars",
+        "source limit"
+      ],
+      "answer_keywords": [
+        "truncated",
+        "max_source_chars"
+      ],
       "hints": [
         "Which sources were truncated?",
         "Run lint and report",
@@ -156,8 +232,15 @@
       ]
     },
     {
-      "keywords": ["schedule", "scheduled", "recurring", "cron"],
-      "answer_keywords": ["cron"],
+      "keywords": [
+        "schedule",
+        "scheduled",
+        "recurring",
+        "cron"
+      ],
+      "answer_keywords": [
+        "cron"
+      ],
       "hints": [
         "Show my scheduled tasks",
         "Schedule scaffold every Sunday at 11 PM",
@@ -166,8 +249,14 @@
       ]
     },
     {
-      "keywords": ["scaffold", "template", "structure"],
-      "answer_keywords": ["scaffold"],
+      "keywords": [
+        "scaffold",
+        "template",
+        "structure"
+      ],
+      "answer_keywords": [
+        "scaffold"
+      ],
       "hints": [
         "Rebuild the wiki scaffold",
         "What does scaffold generate?",
@@ -175,8 +264,17 @@
       ]
     },
     {
-      "keywords": ["adversarial", "warning", "flagged", "overstated", "claim concern"],
-      "answer_keywords": ["adversarial", "claim concern"],
+      "keywords": [
+        "adversarial",
+        "warning",
+        "flagged",
+        "overstated",
+        "claim concern"
+      ],
+      "answer_keywords": [
+        "adversarial",
+        "claim concern"
+      ],
       "hints": [
         "Which pages have adversarial warnings?",
         "Show adversarial warnings",
@@ -186,8 +284,20 @@
       ]
     },
     {
-      "keywords": ["job", "jobs", "ingest status", "lint status", "background", "running", "failed job", "pending job"],
-      "answer_keywords": ["ingest status", "lint status"],
+      "keywords": [
+        "job",
+        "jobs",
+        "ingest status",
+        "lint status",
+        "background",
+        "running",
+        "failed job",
+        "pending job"
+      ],
+      "answer_keywords": [
+        "ingest status",
+        "lint status"
+      ],
       "hints": [
         "Show me job status",
         "List all jobs",
@@ -197,8 +307,15 @@
       ]
     },
     {
-      "keywords": ["re-ingest", "reingest", "ingested"],
-      "answer_keywords": ["re-ingested", "ingested successfully"],
+      "keywords": [
+        "re-ingest",
+        "reingest",
+        "ingested"
+      ],
+      "answer_keywords": [
+        "re-ingested",
+        "ingested successfully"
+      ],
       "hints": [
         "Run lint now",
         "Show updated wiki status",
@@ -206,8 +323,21 @@
       ]
     },
     {
-      "keywords": ["changed", "updated", "re-ingested", "ingested", "added", "archived", "recently", "this week", "this month", "this year"],
-      "answer_keywords": ["re-ingested"],
+      "keywords": [
+        "changed",
+        "updated",
+        "re-ingested",
+        "ingested",
+        "added",
+        "archived",
+        "recently",
+        "this week",
+        "this month",
+        "this year"
+      ],
+      "answer_keywords": [
+        "re-ingested"
+      ],
       "hints": [
         "What changed in the wiki this week?",
         "What changed in the wiki this month?",
@@ -218,8 +348,23 @@
       ]
     },
     {
-      "keywords": ["broken citation", "citation error", "broken_ref", "malformed citation", "out of range", "citation marker", "source marker"],
-      "answer_keywords": ["broken citation", "broken citations", "broken_ref", "malformed", "out_of_range", "citation marker"],
+      "keywords": [
+        "broken citation",
+        "citation error",
+        "broken_ref",
+        "malformed citation",
+        "out of range",
+        "citation marker",
+        "source marker"
+      ],
+      "answer_keywords": [
+        "broken citation",
+        "broken citations",
+        "broken_ref",
+        "malformed",
+        "out_of_range",
+        "citation marker"
+      ],
       "hints": [
         "Fix broken citations",
         "Run the citation resolver",
