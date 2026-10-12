@@ -172,7 +172,28 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
+    _LIST_RE = re.compile(r"\blist\b", re.IGNORECASE)
+    _ROLLBACK_RE = re.compile(r"\broll\s*back\b\s+(\S+)", re.IGNORECASE)
+
     def build_initial_message(self, user_input: str) -> str:
+        # "list content health fixes" → show fix history, not find new issues
+        if self._LIST_RE.search(user_input):
+            return (
+                "The user wants to see which pages have been fixed by the content health resolver.\n"
+                "Call list_content_health_fixes() and present the results as a formatted plain-text list.\n"
+                "If the fixes list is empty: output 'No content health fixes have been recorded yet.'\n"
+                "Output plain text only — no JSON, no tool calls after the list is printed."
+            )
+        # "roll back SLUG" → restore that page's pre-fix snapshot
+        rollback_match = self._ROLLBACK_RE.search(user_input)
+        if rollback_match:
+            slug = rollback_match.group(1).rstrip(".,;")
+            return (
+                f"The user wants to roll back the content health fix for page '{slug}'.\n"
+                f"Call rollback_content_health_fix(slug='{slug}') and report the result as plain text.\n"
+                "Output plain text only — do not call any other tools."
+            )
+        # Single-page targeted run
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
         if slug_match:
             slug = slug_match.group(1)
