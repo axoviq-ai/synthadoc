@@ -773,6 +773,29 @@ class LintAgent(BaseAgent):
             _log.warning("[adversarial] unexpected error for slug=%s: %s", slug, exc)
             return [], 0
 
+    def _run_content_health_scan(self, slugs: list[str]) -> None:
+        """Refresh content_health_issues for all active pages.
+
+        Runs the heuristic scanner (no LLM, pure regex) over every active page
+        and writes back any page whose health-issue list changed.  This catches
+        structural problems introduced by other workflow LLM rewrites that bypass
+        the ingest pipeline.
+        """
+        from dataclasses import asdict
+        from synthadoc.agents.content_health_scanner import scan_page
+        thin_min: int = 50
+        if self._cfg is not None:
+            thin_min = int(getattr(getattr(self._cfg, "content_health", None), "thin_section_min_words", 50))
+
+        for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:
+            page = self._store.read_page(slug)
+            if page is None or page.status != "active":
+                continue
+            new_issues = [asdict(i) for i in scan_page(slug, page.content or "", thin_min)]
+            if new_issues != (page.content_health_issues or []):
+                page.content_health_issues = new_issues
+                self._store.write_page(slug, page)
+
     async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int, int]:
         """Concurrent adversarial review of all non-skip pages.
 
@@ -1381,6 +1404,10 @@ class LintAgent(BaseAgent):
                     if page and page.lint_warnings:
                         page.lint_warnings = []
                         self._store.write_page(slug, page)
+
+        if scope == "all":
+            await self._emit_progress({"phase": "content_health", "message": "Scanning content health..."})
+            self._run_content_health_scan(slugs)
 
         if scope in ("all", "stale") and lifecycle:
             await self._emit_progress({"phase": "lifecycle", "message": "Running lifecycle checks..."})
