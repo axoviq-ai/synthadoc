@@ -15,7 +15,7 @@ from synthadoc.utils import atomic_write_text
 
 _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "updated", "sources", "orphan",
                        "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
-                       "type", "resource")
+                       "type", "resource", "content_health_issues", "content_health_fix_record")
 
 # Slugs that are system/metadata pages managed by Synthadoc itself.
 # These are excluded from page counts, search indexes, exports, lifecycle checks,
@@ -114,6 +114,8 @@ class WikiPage:
     updated: Optional[str] = None               # ISO date of last re-ingest; absent on initial creation
     type: Optional[str] = None                 # OKF knowledge type: concept|person|technology|event|…
     resource: Optional[str] = None             # OKF primary source URL (URL sources only)
+    content_health_issues: list[dict] = field(default_factory=list)
+    content_health_fix_record: Optional[dict] = None
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
@@ -194,6 +196,10 @@ class WikiStorage:
                 fm["type"] = page.type
             if page.resource:
                 fm["resource"] = page.resource
+            if page.content_health_issues:
+                fm["content_health_issues"] = page.content_health_issues
+            if page.content_health_fix_record is not None:
+                fm["content_health_fix_record"] = page.content_health_fix_record
             body = page.content
         else:
             fm = frontmatter or {}
@@ -247,6 +253,8 @@ class WikiStorage:
             updated=fm.get("updated") or None,
             type=fm.get("type") or None,
             resource=fm.get("resource") or None,
+            content_health_issues=fm.get("content_health_issues") or [],
+            content_health_fix_record=fm.get("content_health_fix_record") or None,
         )
 
     def page_exists(self, slug: str) -> bool:
@@ -275,6 +283,15 @@ class WikiStorage:
         for slug in self.list_pages():
             page = self.read_page(slug)
             if page is not None and page.status == LifecycleState.ACTIVE and page.orphan:
+                count += 1
+        return count
+
+    def count_content_health_issues(self) -> int:
+        """Return count of active pages with non-empty content_health_issues."""
+        count = 0
+        for slug in self.list_pages():
+            page = self.read_page(slug)
+            if page is not None and page.status == LifecycleState.ACTIVE and page.content_health_issues:
                 count += 1
         return count
 
