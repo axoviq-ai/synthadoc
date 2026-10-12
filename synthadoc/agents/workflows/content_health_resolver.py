@@ -185,9 +185,76 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         provider: "LLMProvider",  # type: ignore[name-defined]
     ):
         """CLI-provider path: Python-driven gather → LLM analysis → typer.confirm → write."""
-        # Implemented in Task 7.
-        raise NotImplementedError(
-            "run_for_cli_provider not yet implemented — see Task 7."
+        import typer
+
+        from synthadoc.agents.workflows.tools.content_health_tools import (
+            tool_write_content_health_fix,
         )
-        if False:  # pragma: no cover
-            yield {}  # type: ignore[misc]
+
+        if ctx.store is None:
+            yield {"event": "final_text", "data": {"text": "No wiki store available."}}
+            return
+
+        _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        flagged = []
+        for slug in ctx.store.list_pages():
+            page = ctx.store.read_page(slug)
+            if page is None or page.status != LifecycleState.ACTIVE or not page.content_health_issues:
+                continue
+            top_sev = min(_SEVERITY_ORDER.get(i["severity"], 9) for i in page.content_health_issues)
+            flagged.append((top_sev, -len(page.content_health_issues), slug, page))
+        flagged.sort()
+
+        if not flagged:
+            yield {"event": "final_text", "data": {"text": "No active pages with content issues found."}}
+            return
+
+        yield {"event": "token", "data": {"text": f"Found {len(flagged)} page(s) with content issues.\n"}}
+
+        fixed: list[str] = []
+        skipped: list[str] = []
+
+        for _sev, _count, slug, page in flagged:
+            issues_summary = ", ".join(
+                f"{i['type']} ({i['severity']})" for i in page.content_health_issues[:3]
+            )
+            yield {"event": "token", "data": {"text": f"\n--- {slug} ---\nIssues: {issues_summary}\n"}}
+
+            prompt = (
+                f"Wiki page '{slug}':\n\n{page.content}\n\n"
+                f"Detected issues: {page.content_health_issues}\n\n"
+                "Rewrite ONLY the affected sections to fix these structural issues. "
+                "Do NOT change factual content. Return ONLY the complete rewritten page markdown."
+            )
+            proposed = await provider.complete(prompt)
+
+            typer.echo("\n=== BEFORE ===")
+            typer.echo(page.content[:500] + ("..." if len(page.content) > 500 else ""))
+            typer.echo("\n=== AFTER ===")
+            typer.echo(proposed[:500] + ("..." if len(proposed) > 500 else ""))
+
+            if typer.confirm(f"\nApply fix to '{slug}'?", default=False):
+                result = await tool_write_content_health_fix(
+                    ctx, slug=slug, content=proposed,
+                    issues_fixed=[i["type"] for i in page.content_health_issues],
+                )
+                if result["status"] == "success":
+                    snapshot_idx = result.get("snapshot_index", "?")
+                    fixed.append(slug)
+                    yield {"event": "token", "data": {
+                        "text": f"✅ {slug}: fixed. Snapshot #{snapshot_idx} saved.\n"
+                    }}
+                else:
+                    yield {"event": "token", "data": {
+                        "text": f"⚠ {slug}: write failed — {result.get('error')}\n"
+                    }}
+            else:
+                skipped.append(slug)
+                yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped.\n"}}
+
+        summary = (
+            f"\nContent Health Resolver — Complete\n"
+            f"✅ Fixed: {len(fixed)} page(s) — {', '.join(fixed) or 'none'}\n"
+            f"⏭ Skipped: {len(skipped)} page(s) — {', '.join(skipped) or 'none'}\n"
+        )
+        yield {"event": "final_text", "data": {"text": summary}}
