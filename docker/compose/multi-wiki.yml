@@ -1,83 +1,59 @@
 # docker/compose/multi-wiki.yml
-# Two Synthadoc wikis on different host ports with cross-wiki query support.
+# Two Synthadoc wikis with cross-wiki query support.
 #
-# ─── SETUP CHECKLIST ──────────────────────────────────────────────────────────
+# This example uses the two demo wikis from the Docker deployment guide:
+#   history-of-computing  →  http://localhost:7070
+#   ai-research           →  http://localhost:7071
 #
-# Before running `docker compose up`, complete these steps:
+# To use your own wikis, search and replace:
+#   history-of-computing  →  your wiki A name
+#   ai-research           →  your wiki B name
+#   7071 (wiki B port)    →  your wiki B's installed port  (check: synthadoc status -w <name>)
+#   All three 7071 values in sd-server-b must match: command, healthcheck, and ports.
 #
-# 1. CHECK EACH WIKI'S PORT
-#      synthadoc status -w <wiki-a-name>
-#      synthadoc status -w <wiki-b-name>
+# ─── SETUP ────────────────────────────────────────────────────────────────────
 #
-# 2. EDIT THIS FILE — find each "TODO" comment below and update:
-#
-#    WIKI A (sd-server-a)
-#      - WIKI_A_PATH in your .env  →  absolute path to wiki A folder
-#
-#    WIKI B (sd-server-b)
-#      - WIKI_B_PATH in your .env  →  absolute path to wiki B folder
-#      - Replace all three "TODO_PORT_B" values with wiki B's actual port
-#        (command --port, healthcheck URL, and ports mapping must all match)
-#
-#    CROSS-WIKI REGISTRY (configs block at the bottom)
-#      - Replace "wiki-a-name" with wiki A's real name  (e.g. history-of-computing)
-#      - Replace "wiki-b-name" with wiki B's real name  (e.g. ai-research)
-#      - Replace 7071 with wiki B's actual port
-#      - Optionally fill in purpose_summary for better automatic routing
-#        (one sentence describing what each wiki covers)
-#
-# 3. SET .env FILE (same folder as this file)
+# 1. Set wiki paths and API key in .env (same folder as this file):
 #      ANTHROPIC_API_KEY=sk-ant-...
-#      WIKI_A_PATH=/absolute/path/to/wiki-a
-#      WIKI_B_PATH=/absolute/path/to/wiki-b
+#      WIKI_A_PATH=/home/yourname/wikis/history-of-computing
+#      WIKI_B_PATH=/home/yourname/wikis/ai-research
 #      On Windows: use forward slashes (C:/Users/...) not backslashes
 #
-# ─── USAGE ────────────────────────────────────────────────────────────────────
+# 2. Start:
+#      docker compose -f multi-wiki.yml up -d
 #
-#   Start both wikis:
-#     docker compose -f multi-wiki.yml up -d
+# 3. Verify both reach (healthy) within 30 seconds:
+#      docker compose -f multi-wiki.yml ps
 #
-#   Check status (both should reach "healthy" within 30 seconds):
-#     docker compose -f multi-wiki.yml ps
+# ─── DEBUGGING ────────────────────────────────────────────────────────────────
 #
-#   View logs for a wiki (replace <service> with sd-server-a or sd-server-b):
-#     docker compose -f multi-wiki.yml logs <service> --tail 50
+#   View logs:
+#     docker compose -f multi-wiki.yml logs sd-server-a --tail 50
+#     docker compose -f multi-wiki.yml logs sd-server-b --tail 50
 #
-#   Recreate one wiki after editing config.toml or this file:
-#     docker compose -f multi-wiki.yml up -d --force-recreate <service>
+#   Recreate one container after editing this file or a wiki's config.toml:
+#     docker compose -f multi-wiki.yml up -d --force-recreate sd-server-a
+#     docker compose -f multi-wiki.yml up -d --force-recreate sd-server-b
 #
-#   Recreate both wikis:
+#   Recreate both:
 #     docker compose -f multi-wiki.yml up -d --force-recreate
 #
-#   Stop everything:
-#     docker compose -f multi-wiki.yml down
-#
-# ─── TROUBLESHOOTING ──────────────────────────────────────────────────────────
-#
-#   Wiki stays "unhealthy":
-#     → The three TODO_PORT_B values don't all match, or wiki B's config.toml
-#       uses a different port. Check with:
-#         docker compose -f multi-wiki.yml logs sd-server-b --tail 30
+#   Wiki B stays unhealthy:
+#     → The three port values in sd-server-b don't all match, or wiki B's
+#       config.toml uses a different port. Check the logs above.
 #
 #   Cross-wiki query returns "Unexpected error":
-#     → Check coordinator logs for the real error:
-#         docker compose -f multi-wiki.yml logs sd-server-a --tail 50
-#     → Common causes:
-#         - Wiki names in the configs block don't match the installed wiki names
-#         - Port in the configs block doesn't match wiki B's actual port
-#         - Wiki's config.toml uses an LLM provider whose API key isn't set
-#           (add the key to .env and the service's environment block)
-#
-#   "No such file or directory" for wikis.json inside the container:
-#     → The configs block is only supported in Docker Compose v2.23+.
-#       Check your version: docker compose version
+#     → Check coordinator logs (sd-server-a) for the real error.
+#     → Common causes: wiki name mismatch in the configs block below,
+#       wrong port in the configs block, or missing API key for the
+#       LLM provider configured in the wiki's config.toml.
 #
 # ──────────────────────────────────────────────────────────────────────────────
 
 services:
   sd-server-a:
     image: chenp/synthadoc:latest
-    container_name: synthadoc-wiki-a
+    container_name: synthadoc-history-of-computing
     restart: unless-stopped
     ports:
       - "7070:7070"
@@ -91,39 +67,38 @@ services:
 
   sd-server-b:
     image: chenp/synthadoc:latest
-    container_name: synthadoc-wiki-b
+    container_name: synthadoc-ai-research
     restart: unless-stopped
-    # ▼ Replace TODO_PORT_B with wiki B's port in all three places below
-    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "TODO_PORT_B"]
+    command: ["synthadoc", "serve", "-w", "/wiki", "--host", "0.0.0.0", "--port", "7071"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:TODO_PORT_B/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7071/health')"]
       interval: 30s
       timeout: 5s
       start_period: 10s
       retries: 3
     ports:
-      - "TODO_PORT_B:TODO_PORT_B"
-    # ▲ Replace TODO_PORT_B with wiki B's port in all three places above
+      - "7071:7071"
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
-# Cross-wiki registry — defines which wikis the coordinator can fan out to.
-# The host values must be Compose service names (sd-server-a, sd-server-b),
-# not localhost. Ports must match each wiki's installed port.
+# Cross-wiki registry — tells the coordinator how to reach each wiki.
+# host must be the Compose service name (not localhost).
+# purpose_summary is optional: one sentence describing the wiki's domain.
+# It helps the coordinator decide which wikis to search for a given question.
 configs:
   cross_wiki_registry:
     content: |
       {
-        "wiki-a-name": {
+        "history-of-computing": {
           "host": "sd-server-a",
           "port": 7070,
-          "purpose_summary": ""
+          "purpose_summary": "History of computing, pioneers, hardware evolution, and software movements."
         },
-        "wiki-b-name": {
+        "ai-research": {
           "host": "sd-server-b",
-          "port": TODO_PORT_B,
-          "purpose_summary": ""
+          "port": 7071,
+          "purpose_summary": "Artificial intelligence research, machine learning, neural networks, and LLMs."
         }
       }

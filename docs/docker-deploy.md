@@ -621,29 +621,9 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 #### Multiple wikis
 
-Copy `docker/compose/multi-wiki.yml` to your working directory. The file contains a setup checklist, usage commands, and a troubleshooting guide in its header — read it before starting.
+Copy `docker/compose/multi-wiki.yml` to your working directory. It is pre-configured for the two demo wikis used in this guide (`history-of-computing` on 7070, `ai-research` on 7071). If you are using different wikis or ports, do a search-and-replace — the header comment in the file tells you exactly what to change.
 
-The short version:
-
-**Step 1 — Check each wiki's port**
-
-```bash
-synthadoc status -w <wiki-a-name>
-synthadoc status -w <wiki-b-name>
-```
-
-**Step 2 — Edit `multi-wiki.yml`**
-
-Find every `TODO` in the file and replace with real values. There are two areas:
-
-- **`sd-server-b` service** — replace the three `TODO_PORT_B` occurrences with wiki B's actual port (`command`, `healthcheck`, and `ports` must all match)
-- **`configs` block at the bottom** — replace `wiki-a-name` and `wiki-b-name` with the real wiki names, and `TODO_PORT_B` with wiki B's port
-
-> The `configs` block is the cross-wiki registry. It tells the coordinator the Docker service-name hostname and port for each peer. Without correct values here, cross-wiki queries fail. The `host` values must be Compose service names (`sd-server-a`, `sd-server-b`) — not `localhost`.
-
-`purpose_summary` in the configs block is optional but improves automatic routing. Set it to a one-sentence description of what each wiki covers, or leave it empty.
-
-**Step 3 — Set `.env`**
+**Step 1 — Set `.env`**
 
 ```bash
 # .env  (same folder as the yml)
@@ -654,7 +634,7 @@ WIKI_B_PATH=/home/yourname/wikis/ai-research
 
 On Windows: use forward slashes (`C:/Users/yourname/wikis/...`). Backslashes break volume mounts.
 
-**Step 4 — Start**
+**Step 2 — Start**
 
 ```bash
 docker compose -f multi-wiki.yml up -d
@@ -668,23 +648,19 @@ docker compose -f multi-wiki.yml ps
 
 **Debugging**
 
-View logs for a container:
 ```bash
+# View logs
 docker compose -f multi-wiki.yml logs sd-server-a --tail 50
 docker compose -f multi-wiki.yml logs sd-server-b --tail 50
-```
 
-Recreate one container after changing the yml or a wiki's `config.toml`:
-```bash
+# Recreate one container after editing the yml or a wiki's config.toml
 docker compose -f multi-wiki.yml up -d --force-recreate sd-server-a
-```
 
-Recreate both:
-```bash
+# Recreate both
 docker compose -f multi-wiki.yml up -d --force-recreate
 ```
 
-See the header comment in `multi-wiki.yml` for a full troubleshooting guide.
+See the header comment in `multi-wiki.yml` for a full troubleshooting guide including common cross-wiki error causes.
 
 #### Cross-wiki queries
 
