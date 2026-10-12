@@ -229,9 +229,11 @@ def test_post_sessions_health_check_mode_uses_db_not_read_page(tmp_wiki):
                        new=AsyncMock()):
                 with patch("synthadoc.storage.wiki.WikiStorage.count_orphan_active_pages",
                            return_value=0):
-                    with patch("synthadoc.storage.wiki.WikiStorage.read_page") as mock_read:
-                        with TestClient(app) as client:
-                            resp = client.post("/sessions")
+                    with patch("synthadoc.storage.wiki.WikiStorage.count_content_health_issues",
+                               return_value=0):
+                        with patch("synthadoc.storage.wiki.WikiStorage.read_page") as mock_read:
+                            with TestClient(app) as client:
+                                resp = client.post("/sessions")
     assert resp.status_code == 200
     assert resp.json()["mode"] == "HEALTH_CHECK"
     mock_summary.assert_awaited_once()
