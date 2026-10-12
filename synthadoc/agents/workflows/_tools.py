@@ -31,6 +31,17 @@ from synthadoc.agents.lint_agent import (
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
 from synthadoc.core.queue import JobStatus
 
+
+def _rescan_content_health(page: "WikiPage", slug: str) -> None:  # type: ignore[name-defined]
+    """Re-run the heuristic scanner and update page.content_health_issues in-place.
+
+    Called after any workflow write so structural issues introduced by LLM
+    rewrites are detected immediately rather than waiting for the next ingest.
+    """
+    from dataclasses import asdict
+    from synthadoc.agents.content_health_scanner import scan_page
+    page.content_health_issues = [asdict(i) for i in scan_page(slug, page.content or "")]
+
 # Retry delays (seconds) when the job queue is temporarily unavailable.
 # The first attempt uses 0 delay; subsequent attempts use these values.
 _INGEST_RETRY_DELAYS: list[int] = [2, 4, 8]
@@ -648,6 +659,7 @@ async def tool_apply_citation_fixes(
         return {"status": ToolStatus.SUCCESS, "changes": 0, "page": page_slug}
 
     page.content = content
+    _rescan_content_health(page, page_slug)
     with ctx.store.page_lock(page_slug):
         ctx.store.write_page(page_slug, page)
 
@@ -695,6 +707,7 @@ async def tool_apply_link_fixes(
         return {"status": ToolStatus.SUCCESS, "changes": 0, "page": page_slug}
 
     page.content = content
+    _rescan_content_health(page, page_slug)
     with ctx.store.page_lock(page_slug):
         ctx.store.write_page(page_slug, page)
 
@@ -1017,6 +1030,7 @@ async def tool_propose_and_apply(
         # is not None, regardless of content quality.  Applying approved new content
         # is the act of resolving the conflict, so the note must be cleared here.
         page.contradiction_note = None
+        _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
             ctx.store.write_page(slug, page)
         await ctx.send_sse_event(
