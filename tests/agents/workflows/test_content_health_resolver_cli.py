@@ -62,7 +62,10 @@ async def test_cli_provider_user_approves_fix(tmp_path):
 
     wf = ContentHealthResolverWorkflow()
     events = []
-    with patch("typer.echo"), patch("typer.confirm", return_value=True):
+    with patch(
+        "synthadoc.agents.workflows.content_health_resolver.tool_confirm",
+        new=AsyncMock(return_value={"confirmed": True}),
+    ):
         async for event in wf.run_for_cli_provider(ctx, question="run content health", provider=provider):
             events.append(event)
 
