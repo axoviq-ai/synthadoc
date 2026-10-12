@@ -3219,7 +3219,10 @@ If the wiki has no broken citations, the workflow reports: *"No broken citations
 
 Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes them with your approval.
 
-**How it surfaces:** After every ingest, a fast heuristic scanner checks changed pages for known issue patterns. If any are found, the **"Run content health resolver"** hint chip appears in the sidebar at the next session start.
+**How it surfaces:** After every ingest, a fast heuristic scanner checks changed pages for known issue patterns. If any are found:
+
+- A **pre-filled suggestion** appears in the chat input at session start: *"N page(s) with content health issues — run the content health resolver?"*
+- The **"Run content health resolver"** hint chip appears in the sidebar when you are in **Health Check** or **Power User** session mode.
 
 In the web chat UI, type: **"run content health resolver"**
 
@@ -3265,8 +3268,8 @@ synthadoc workflow run --name content-health --slug alan-turing
 
 **Rollback after the fact:** Any page fixed by this workflow can be restored later — even days later:
 
-- *"Show me pages fixed by content health"* — lists all fixes with timestamps
-- *"Roll back alan-turing to before the content health fix"* — restores the page to its pre-fix snapshot automatically
+- *"list content health fixes"* — lists all fixes with timestamps
+- *"roll back alan-turing"* — restores the page to its pre-fix snapshot automatically
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 

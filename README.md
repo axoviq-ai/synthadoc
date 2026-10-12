@@ -849,6 +849,12 @@ synthadoc workflow run --name broken-citation-resolver -w my-wiki
 
 # Fix citations on a single page only
 synthadoc workflow run --name broken-citation-resolver --slug my-page -w my-wiki
+
+# Content health resolver — fix duplicate sections, thin/empty sections, broken markdown structure
+synthadoc workflow run --name content-health -w my-wiki
+
+# Fix content issues on a single page only
+synthadoc workflow run --name content-health --slug alan-turing -w my-wiki
 ```
 
 The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.

@@ -4239,7 +4239,7 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 - `tool_list_content_health_fixes()` — returns all pages fixed, with timestamps and pre-fix snapshot indices
 - `tool_rollback_content_health_fix(slug)` — looks up the fix record, calls `POST /pages/{slug}/rollback` with the pre-fix snapshot index; clears the fix record and restores heuristic issue flags after rollback
 
-**Pre-prompt priority:** 4th in the chain (after contradicted → stale → orphan → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
+**Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
 
 **Workflow class:** `ContentHealthResolverWorkflow` — `WORKFLOW_KEY = "content-health"`, `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`.
 
