@@ -214,6 +214,12 @@ class ChatConfig:
 
 
 @dataclass
+class ContentHealthConfig:
+    token_budget: int = 50_000
+    thin_section_min_words: int = 50
+
+
+@dataclass
 class SecurityConfig:
     # None = key absent from config file (show one-time startup notice)
     # False = explicitly disabled
@@ -247,6 +253,7 @@ class Config:
     audit: AuditConfig = field(default_factory=AuditConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    content_health: ContentHealthConfig = field(default_factory=ContentHealthConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
