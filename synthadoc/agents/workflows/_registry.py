@@ -51,6 +51,7 @@ from __future__ import annotations
 from synthadoc.agents.workflows._base import AgenticWorkflow
 from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
 from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
 from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
 from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
 from synthadoc.agents.workflows.lint_report import LintReportWorkflow
@@ -66,6 +67,7 @@ ROUTED_WORKFLOWS: list[type[AgenticWorkflow]] = [
     ContradictionResolverWorkflow,   # more specific than IngestLintWorkflow
     BrokenCitationResolverWorkflow,
     OrphanResolverWorkflow,
+    ContentHealthResolverWorkflow,
     IngestLintWorkflow,
 ]
 

@@ -107,6 +107,7 @@ SUITES = {
     "citation_faithfulness":    "test_citation_faithfulness_live.py",
     "orphan_resolver":          "test_orphan_resolver_live.py",
     "broken_citation_resolver": "test_broken_citation_resolver_live.py",
+    "content_health_resolver":  "test_content_health_resolver_live.py",
     "template_install":         "live_template_install_test.py",
     "cross_wiki":               "test_cross_wiki_live.py",
 }
@@ -116,7 +117,7 @@ FAIL = "\033[91mFAIL\033[0m"
 
 # Suites whose test files use pytest conventions — run via `python -m pytest`
 # rather than direct script execution.
-PYTEST_SUITES = {"cross_wiki"}
+PYTEST_SUITES = {"cross_wiki", "content_health_resolver"}
 
 
 def run_suite(name: str, script: Path, extra_args: list[str], env: dict) -> int:
@@ -227,6 +228,7 @@ def main() -> None:
         "citation_faithfulness":    [],
         "orphan_resolver":          [],
         "broken_citation_resolver": [],
+        "content_health_resolver":  [],
         "template_install":         [],
         "cross_wiki":               [],
     }
@@ -245,6 +247,7 @@ def main() -> None:
         "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
         "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_citation_resolver": {**os.environ, "SYNTHADOC_URL": base},
+        "content_health_resolver":  {**os.environ, "SYNTHADOC_URL": base, "SYNTHADOC_WIKI": args.wiki},
         "template_install":         {**os.environ},
         "cross_wiki":               {**os.environ, "SYNTHADOC_LIVE_TESTS": "1"},
     }
