@@ -3623,7 +3623,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 
 ### Provider compatibility
 
-All seven workflows support both standard API providers (Anthropic, OpenAI, Gemini, Groq, Ollama, MiniMax, DeepSeek, Qwen, and any custom endpoint) and CLI providers (Claude Code, Opencode). The execution model differs between provider types.
+All eight workflows support both standard API providers (Anthropic, OpenAI, Gemini, Groq, Ollama, MiniMax, DeepSeek, Qwen, and any custom endpoint) and CLI providers (Claude Code, Opencode). The execution model differs between provider types.
 
 **Why CLI providers need a separate path:** CLI providers are themselves LLM agents. When they receive Synthadoc's JSON wire-format system prompt (`{"tool_call": ...}` protocol), they correctly identify it as prompt injection and refuse to follow it. Each workflow implements a Python-driven path (`run_for_cli_provider`) that calls the same tool functions directly from code — no wire-format loop involved.
 
@@ -3634,6 +3634,7 @@ All seven workflows support both standard API providers (Anthropic, OpenAI, Gemi
 | **BrokenCitationResolverWorkflow** | "fix broken citations", "check citation integrity" | Pattern B (declarative) | LLM drives tool-call loop | Pure Python — fuzzy match pre-computed by tool |
 | **ContradictionResolverWorkflow** | "resolve contradictions", "fix contradicted pages" | Per-page diff approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per page rewrite) |
 | **OrphanResolverWorkflow** | "resolve orphan pages", "fix orphaned pages" | Per-orphan approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per link insertion) |
+| **ContentHealthResolverWorkflow** | "run content health resolver", "fix content issues" | Per-page side-by-side diff approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per page analysis and rewrite) |
 | **LintReportWorkflow** | "run lint", "show lint report" | None (read-only) | LLM drives tool-call loop | Pure Python — sequential run→read→format |
 | **ScaffoldWorkflow** | "run scaffold", "regenerate scaffold" | Pattern A (embedded in tool) | LLM drives tool-call loop | Pure Python — Pattern A confirm preserved inside tool |
 
@@ -4221,7 +4222,43 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 
 ---
 
-## 40. Cross-Wiki Queries (v1.4.0)
+## 40. Content Health Resolver Workflow
+
+The content health resolver is the 8th agentic maintenance workflow. It detects content quality issues in wiki pages — duplicate sections, thin or empty sections, broken markdown structure, and LLM-assessed semantic issues — and repairs them interactively with side-by-side diff approval and lifecycle snapshot rollback.
+
+**Two-phase design:**
+
+- **Phase 1 — Heuristic scanner** (`content_health_scanner.py`): pure-Python regex scan, no LLM. Detects six issue types: `duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`. Results stored in `WikiPage.content_health_issues`; count exposed via `lifecycle_summary["content_health"]`. Runs in three places:
+  - **Post-ingest** — synchronously in `on_ingest_complete` on changed pages (original trigger).
+  - **Post-workflow-write** — immediately after `tool_apply_citation_fixes`, `tool_apply_link_fixes`, and `tool_propose_and_apply` write a page, via `_rescan_content_health()` in `_tools.py`. Catches structural issues introduced by LLM rewrites from other workflows (contradiction resolver, orphan resolver, broken citation/wikilink resolver) that bypass the ingest pipeline.
+  - **During lint** — `LintAgent._run_content_health_scan()` sweeps all active pages on `scope=all` lint runs, writing back only pages whose issue list changed. Acts as a ground-truth refresh and catches any issues that slipped through the other two triggers.
+- **Phase 2 — LLM deep analysis**: runs when the user launches the workflow. Reads pre-flagged pages, sorts by severity (`critical` → `high` → `medium` → `low`), runs one bounded LLM call per page to produce a refined issue list and proposed section rewrite.
+
+**Per-page loop:** LLM analysis → side-by-side BEFORE/AFTER diff → user approves → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner to confirm clean → summary line.
+
+**Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
+
+**Rollback traceability:** Two tools registered in both `ContentHealthResolverWorkflow` and `query_agent`:
+- `tool_list_content_health_fixes()` — returns all pages fixed, with timestamps and pre-fix snapshot indices
+- `tool_rollback_content_health_fix(slug)` — looks up the fix record, calls `POST /pages/{slug}/rollback` with the pre-fix snapshot index; clears the fix record and restores heuristic issue flags after rollback
+
+**Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
+
+**Workflow class:** `ContentHealthResolverWorkflow` — `WORKFLOW_KEY = "content-health"`, `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`.
+
+Accessible from the web UI (hint chip "Run content health resolver"), natural language ("run content health resolver", "fix content issues", "fix duplicate sections"), and `synthadoc workflow run --name content-health [--slug SLUG]`.
+
+```bash
+synthadoc workflow run --name content-health              # all flagged pages
+synthadoc workflow run --name content-health --slug alan-turing  # single page
+synthadoc workflow run --name content-health -w my-wiki
+```
+
+→ User walkthrough: [Quick-Start Guide §26 — Demo: Content Health Resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
+
+---
+
+## 41. Cross-Wiki Queries (v1.4.0)
 
 Cross-wiki queries allow a single natural-language query to fan out across multiple registered Synthadoc wikis, merge results from each, and synthesise one unified answer. The user does not need to know which wiki holds which knowledge — routing is automatic. For typical use cases (cross-domain analysis, aggregate reporting, incident response, policy synthesis) see [Appendix L — Cross-Wiki Queries](user-quick-start-guide.md#appendix-l--cross-wiki-queries) in the Quick-Start Guide.
 
@@ -4434,7 +4471,7 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 ### v1.4.0
 
 - **OKF v0.2 Export** — `synthadoc export --format okf` produces a distributable bundle: one Markdown file per wiki page with v0.2 YAML frontmatter (`generated.{by,at}`, `sources`, `verified`, `stale_after`, `synthadoc_lifecycle`); `index.md` manifest grouped by knowledge type; `log.md` plain-text changelog; wikilinks converted to relative paths. Active and contradicted pages exported by default; drafts, stale, and archived excluded. Lifecycle states map to OKF status: `active` → `stable`, `contradicted`/`draft` → `draft`, `stale`/`archived` → `deprecated`. Any OKF-aware tool can consume the bundle without running Synthadoc.
-- **Cross-Wiki Queries** — `synthadoc query --cross-wiki` distributes a single question across all registered running wikis in parallel, synthesizes a unified answer, and qualifies citations as `[[wiki-name::PageTitle]]`. The coordinator wiki picks relevant peers via LLM routing against each wiki's `purpose.md`; results are merged with source-prefix normalization before synthesis. Configurable via an optional routing table (`synthadoc cross-wiki routing init`). Per-peer epoch cache for independent cache invalidation; CJK fan-out translation for cross-language retrieval; workflow lint enforcement for routing validation. Recent cross-wiki runs persist in the web UI history. See [§40 Cross-Wiki Queries](#40-cross-wiki-queries-v140).
+- **Cross-Wiki Queries** — `synthadoc query --cross-wiki` distributes a single question across all registered running wikis in parallel, synthesizes a unified answer, and qualifies citations as `[[wiki-name::PageTitle]]`. The coordinator wiki picks relevant peers via LLM routing against each wiki's `purpose.md`; results are merged with source-prefix normalization before synthesis. Configurable via an optional routing table (`synthadoc cross-wiki routing init`). Per-peer epoch cache for independent cache invalidation; CJK fan-out translation for cross-language retrieval; workflow lint enforcement for routing validation. Recent cross-wiki runs persist in the web UI history. See [§41 Cross-Wiki Queries](#41-cross-wiki-queries-v140).
 - **MiniMax-M3 compatibility** — corrected non-standard response envelope parsing that caused silent failures with MiniMax-M3.
 - **Orphan resolver robustness** — gracefully skips stale references when pages are deleted between list generation and execution, preventing mid-workflow crashes.
 - **Workflow status chips** — intermediate states (`confirming`, `ingesting`, `linting`) now reflected in real time in the web UI chip rather than staying blank until completion.
