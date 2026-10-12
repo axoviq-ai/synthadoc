@@ -258,6 +258,11 @@ def serve_cmd(
         help="Override config.toml provider for all agents for this server session "
              "(e.g. anthropic, claude-code, opencode). Does not require editing config.toml.",
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host",
+        help="Bind address override (e.g. 0.0.0.0 for Docker or remote access). "
+             "Defaults to [server] host in config (127.0.0.1).",
+    ),
     all_wikis: bool = typer.Option(False, "--all",
         help="Start all registered wikis in background."),
 ):
@@ -297,6 +302,8 @@ def serve_cmd(
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
     effective_port = port if port is not None else cfg.server.port
+    if host is not None:
+        cfg.server.host = host
 
     if provider_override:
         _apply_provider_override(cfg, provider_override)

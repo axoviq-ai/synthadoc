@@ -157,3 +157,60 @@ async def test_scope_stale_does_not_promote_drafts(tmp_path):
     page = store.read_page("alan-turing")
     assert page is not None
     assert page.status == LifecycleState.DRAFT  # must remain draft
+
+
+async def test_draft_promoted_when_source_file_prefixed_with_raw_sources(tmp_path):
+    """Regression: src_ref.file stored as 'raw_sources/foo.pdf' must not be
+    misidentified as missing, which would block draft→active promotion."""
+    from synthadoc.agents.lint_agent import LintAgent
+    wiki_dir = tmp_path / "wiki"
+    raw_dir = tmp_path / "raw_sources"
+    wiki_dir.mkdir(parents=True)
+    raw_dir.mkdir()
+    # File is at raw_sources/foo.pdf but frontmatter stores the full-prefix path
+    (raw_dir / "foo.pdf").write_bytes(b"%PDF-1.4 dummy")
+    store = WikiStorage(wiki_dir)
+    page = WikiPage(
+        title="Test", tags=[], content="# Test\n\nContent.", status=LifecycleState.DRAFT,
+        confidence="medium",
+        sources=[SourceRef(file="raw_sources/foo.pdf", hash="", size=0, ingested="2026-10-11")],
+    )
+    store.write_page("test-page", page)
+    db = await _make_db(tmp_path)
+    agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
+    await agent.run(scope="all", adversarial=False)
+    result = store.read_page("test-page")
+    assert result is not None
+    assert result.status == LifecycleState.ACTIVE, (
+        f"Expected ACTIVE after lint but got {result.status!r}; "
+        "raw_sources/ prefix in src_ref.file must not cause false 'missing source'"
+    )
+
+
+async def test_stale_page_promoted_after_reingest_when_source_prefixed(tmp_path):
+    """Regression: STALE page with 'raw_sources/foo.pdf' source must reach ACTIVE
+    after re-ingest sets it to DRAFT and lint runs (mirrors the Docker/serve bug)."""
+    from synthadoc.agents.lint_agent import LintAgent
+    wiki_dir = tmp_path / "wiki"
+    raw_dir = tmp_path / "raw_sources"
+    wiki_dir.mkdir(parents=True)
+    raw_dir.mkdir()
+    (raw_dir / "foo.pdf").write_bytes(b"%PDF-1.4 dummy")
+    store = WikiStorage(wiki_dir)
+    # Simulate state after re-ingest: page is DRAFT (ingest moved it from STALE→DRAFT)
+    page = WikiPage(
+        title="Test", tags=[], content="# Test\n\nContent.", status=LifecycleState.DRAFT,
+        confidence="medium",
+        sources=[SourceRef(file="raw_sources/foo.pdf", hash="", size=0, ingested="2026-10-11")],
+    )
+    store.write_page("test-page", page)
+    db = await _make_db(tmp_path)
+    await db.set_page_state("test-page", LifecycleState.DRAFT, "ingest")
+    agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
+    await agent.run(scope="all", adversarial=False)
+    result = store.read_page("test-page")
+    assert result is not None
+    assert result.status == LifecycleState.ACTIVE, (
+        f"Expected ACTIVE but got {result.status!r}; "
+        "DRAFT page with raw_sources/-prefixed source must promote after re-ingest+lint"
+    )

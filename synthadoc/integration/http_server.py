@@ -1785,9 +1785,25 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if SkillAgent().needs_path_resolution(source):
             p = _Path(source)
             if not p.is_absolute():
-                # Resolve vault-relative paths (e.g. "raw_sources/file.pdf") against
-                # wiki root so they work regardless of server working directory.
-                source = str((wiki_root / source).resolve())
+                import re as _re
+                _WIN_PATH_RE = _re.compile(r'^[A-Za-z][:\\]')
+                if _WIN_PATH_RE.match(source):
+                    # Windows absolute path received by a Linux server (e.g. inside Docker).
+                    # Path("C:\\...").is_absolute() is False on Linux, so detect explicitly.
+                    # Strip drive letter and backslashes, then suffix-match against wiki_root.
+                    _norm = source.replace('\\', '/')
+                    _parts = [s for s in _norm.split('/') if s and not s.endswith(':')]
+                    _resolved = None
+                    for _i in range(len(_parts)):
+                        _candidate = wiki_root.joinpath(*_parts[_i:])
+                        if _candidate.exists():
+                            _resolved = _candidate
+                            break
+                    source = str(_resolved.resolve()) if _resolved else source
+                else:
+                    # Resolve vault-relative paths (e.g. "raw_sources/file.pdf") against
+                    # wiki root so they work regardless of server working directory.
+                    source = str((wiki_root / source).resolve())
         payload: dict = {"source": source, "force": req.force}
         if req.max_results is not None:
             payload["max_results"] = req.max_results

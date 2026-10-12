@@ -976,10 +976,16 @@ async def test_tool_get_lint_report_returns_full_structure():
     warned_page = MagicMock()
     warned_page.lint_warnings = ["adversarial content detected"]
     warned_page.orphan = False
+    warned_page.content = "Clean content, no citations."
+    warned_page.sources = []
+    warned_page.status = "active"
 
     orphan_page = MagicMock()
     orphan_page.lint_warnings = []
     orphan_page.orphan = True
+    orphan_page.content = "Another clean page."
+    orphan_page.sources = []
+    orphan_page.status = "contradicted"
 
     def _read(slug):
         return warned_page if slug == "page-a" else orphan_page

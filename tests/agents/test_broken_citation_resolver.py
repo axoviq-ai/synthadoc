@@ -89,8 +89,12 @@ def test_find_broken_citation_refs_clean_page_returns_empty(tmp_path):
     assert result == {}
 
 
-def test_find_broken_citation_refs_only_active_pages(tmp_path):
-    """Stale and draft pages are NOT scanned."""
+def test_find_broken_citation_refs_scans_all_statuses(tmp_path):
+    """find_broken_citation_refs scans all pages regardless of status.
+
+    Callers that need active-only behaviour (e.g. tool_find_broken_citations
+    in whole-wiki mode) must pre-filter the slug list themselves.
+    """
     stale = WikiPage(
         title="Stale", tags=[], content="Claim.^[missing.txt:1-5]",
         status="stale", confidence="low", sources=[],
@@ -101,7 +105,8 @@ def test_find_broken_citation_refs_only_active_pages(tmp_path):
     )
     store = _make_store({"stale-page": stale, "draft-page": draft})
     result = find_broken_citation_refs(store, tmp_path)
-    assert result == {}
+    assert "stale-page" in result
+    assert "draft-page" in result
 
 
 def test_find_broken_citation_refs_slug_filter(tmp_path):

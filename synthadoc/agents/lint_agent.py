@@ -339,21 +339,22 @@ def find_broken_citation_refs(
     *,
     slugs: list[str] | None = None,
 ) -> dict[str, list[dict]]:
-    """Return {slug: [{"citation": str, "reason": str}, ...]} for active pages
+    """Return {slug: [{"citation": str, "reason": str}, ...]} for pages
     with broken ^[file:L-L] markers.
 
     Each dict in the list has:
       "citation" — the raw marker text, e.g. "^[bio.txt:5-12]"
       "reason"   — "broken_ref" | "malformed" | "out_of_range"
 
-    Only active pages are scanned unless slugs is provided.
+    All non-system pages are scanned (including stale/contradicted), consistent
+    with the CLI lint report and /lint/report HTTP endpoint.
     Returns an empty dict when no issues are found.
     """
     candidates = slugs if slugs is not None else store.list_pages()
     result: dict[str, list[dict]] = {}
     for slug in candidates:
         page = store.read_page(slug)
-        if page is None or page.status != "active":
+        if page is None:
             continue
         issues = _check_page_citations(slug, page, extracted_dir)
         if issues:
@@ -994,12 +995,18 @@ class LintAgent(BaseAgent):
                             if raw_sources_dir.exists():
                                 src_path = raw_sources_dir / src_ref.file
                                 if not src_path.exists():
+                                    # fallback: file may already carry the raw_sources/ prefix
+                                    src_path = self._wiki_root / src_ref.file
+                                if not src_path.exists():
                                     local_sources = [
                                         s for s in page.sources
                                         if s.file and not is_url(s.file)
                                     ]
                                     all_missing = all(
-                                        not (raw_sources_dir / s.file).exists()
+                                        not (
+                                            (raw_sources_dir / s.file).exists()
+                                            or (self._wiki_root / s.file).exists()
+                                        )
                                         for s in local_sources
                                     )
                                     if all_missing:
@@ -1059,6 +1066,8 @@ class LintAgent(BaseAgent):
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
                             src_path = raw_sources_dir / src_ref.file
+                            if not src_path.exists():
+                                src_path = self._wiki_root / src_ref.file
                             if src_path.exists():
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
