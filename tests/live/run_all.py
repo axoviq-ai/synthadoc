@@ -247,7 +247,7 @@ def main() -> None:
         "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
         "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_citation_resolver": {**os.environ, "SYNTHADOC_URL": base},
-        "content_health_resolver":  {**os.environ, "SYNTHADOC_URL": base},
+        "content_health_resolver":  {**os.environ, "SYNTHADOC_URL": base, "SYNTHADOC_WIKI": args.wiki},
         "template_install":         {**os.environ},
         "cross_wiki":               {**os.environ, "SYNTHADOC_LIVE_TESTS": "1"},
     }
