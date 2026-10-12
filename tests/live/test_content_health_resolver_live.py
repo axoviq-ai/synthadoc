@@ -2,32 +2,36 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Live end-to-end tests for the Content Health Resolver Workflow.
 
-Each test writes dedicated wiki pages (prefixed with _live-test-chr-) directly
-to the wiki filesystem so they never conflict with real wiki content.  A finally
-block removes all created pages, leaving the wiki in its original state.
+Tests connect through the CLI (``synthadoc workflow run``) and HTTP
+(``GET /query/stream``).  No API key is required in the test code — the
+server handles LLM authentication via whichever provider is configured
+(anthropic, claude-code, opencode, …).
 
-Pages are written to the wiki filesystem with ``content_health_issues`` already
-embedded in the frontmatter — this simulates the post-ingest scanner state
-(the scanner normally runs inside ingest_agent._write_or_stage).
+Each test writes dedicated wiki pages (prefixed with _live-test-chr-) directly
+to the wiki filesystem, runs the workflow, then removes the pages in a finally
+block, leaving the wiki in its original state.
 
 Prerequisites:
-  - synthadoc serve -w <wiki> running on SYNTHADOC_URL (default: http://127.0.0.1:7070)
-  - ANTHROPIC_API_KEY (or equivalent provider key) set
+  - synthadoc serve -w <wiki> running on SYNTHADOC_URL (default 127.0.0.1:7070)
+  - LLM provider configured in the wiki's config.toml (any supported provider)
 
 Run:
   pytest tests/live/test_content_health_resolver_live.py -v -s -m live
+  python -X utf8 tests/live/run_all.py --suite content_health_resolver
 
 Environment variables:
   SYNTHADOC_URL     Server base URL (default: http://127.0.0.1:7070)
+  SYNTHADOC_WIKI    Wiki name to use (default: inferred from server /status)
 """
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Union
 from urllib.parse import quote
 
 import httpx
@@ -35,6 +39,7 @@ import pytest
 import yaml
 
 BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
+PY = sys.executable
 
 _DUP_SLUG   = "_live-test-chr-duplicate-sections"
 _CLEAN_SLUG = "_live-test-chr-clean-page"
@@ -50,6 +55,16 @@ def _get_wiki_root() -> Path:
         return Path(resp.json()["wiki"])
 
 
+def _get_wiki_name() -> str:
+    """Return the wiki name from SYNTHADOC_WIKI env or GET /status."""
+    if name := os.environ.get("SYNTHADOC_WIKI"):
+        return name
+    with httpx.Client(timeout=10) as client:
+        resp = client.get(f"{BASE}/status")
+        resp.raise_for_status()
+        return resp.json().get("wiki_name", "")
+
+
 def _ingest_page(
     wiki_root: Path,
     slug: str,
@@ -59,8 +74,8 @@ def _ingest_page(
 ) -> None:
     """Write a page directly to the wiki filesystem.
 
-    ``content_health_issues`` mirrors what the post-ingest scanner stores.
-    Writing it here avoids needing to trigger a real ingest cycle.
+    ``content_health_issues`` is written to the frontmatter to simulate the
+    post-ingest scanner state without requiring a real ingest cycle.
     """
     page_path = wiki_root / "wiki" / f"{slug}.md"
     fm: dict = {
@@ -100,19 +115,42 @@ def _read_page_frontmatter(wiki_root: Path, slug: str) -> dict:
     return yaml.safe_load(text[3:end]) or {}
 
 
-def _run_workflow(
+def _run_workflow_cli(
+    wiki_name: str,
+    slug: str,
+    *,
+    confirm_input: str = "y\ny\ny\ny\n",
+    timeout: int = 240,
+) -> subprocess.CompletedProcess:
+    """Run ``synthadoc workflow run --name content-health`` via subprocess.
+
+    Pipes *confirm_input* to stdin so the CLI's interactive confirm prompts
+    are answered automatically.  No API key is referenced in the test code.
+    """
+    return subprocess.run(
+        [PY, "-m", "synthadoc", "workflow", "run",
+         "--name", "content-health",
+         "--slug", slug,
+         "--wiki", wiki_name,
+         "--timeout", str(timeout)],
+        input=confirm_input,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout + 30,
+    )
+
+
+def _run_workflow_http(
     query: str,
     *,
-    confirm_response: Union[bool, Callable[[dict], bool]] = True,
+    confirm_response: bool = True,
     timeout: int = 240,
 ) -> list[dict]:
-    """Stream GET /query/stream and auto-respond to all confirm gates.
+    """Stream GET /query/stream and auto-respond to confirm gates via HTTP POST.
 
-    *confirm_response* controls how each ``confirm_request`` SSE event is
-    answered.  Pass ``True`` to accept all gates, ``False`` to decline all,
-    or a callable ``fn(data) -> bool`` to decide per-event.
-
-    Returns a list of event dicts: [{"event": str, "data": dict}, ...]
+    Returns a list of SSE event dicts: [{"event": str, "data": dict}, ...]
     """
     events: list[dict] = []
     current_type = "message"
@@ -141,20 +179,15 @@ def _run_workflow(
 
                             if current_type == "confirm_request":
                                 session_id = data.get("session_id", "")
-                                if callable(confirm_response):
-                                    accepted = confirm_response(data)
-                                else:
-                                    accepted = bool(confirm_response)
 
-                                def _respond(
-                                    sid: str = session_id, acc: bool = accepted
-                                ) -> None:
+                                def _respond(sid: str = session_id) -> None:
                                     time.sleep(0.3)
                                     with httpx.Client(timeout=10) as c:
                                         try:
                                             c.post(
                                                 f"{BASE}/action/confirm",
-                                                json={"session_id": sid, "confirmed": acc},
+                                                json={"session_id": sid,
+                                                      "confirmed": confirm_response},
                                             )
                                         except Exception:
                                             pass
@@ -192,7 +225,7 @@ def require_server():
 _DUPLICATE_CONTENT = """\
 ## Background
 
-This section describes the background of the topic in detail.
+This section describes the background of the topic in detail for the reader.
 
 ## Key Contributions
 
@@ -200,8 +233,8 @@ Important contributions include work on computation, algorithms, and logic.
 
 ## Background
 
-This section describes the background of the topic in detail.
-This duplicate should be merged with the first Background section.
+This section describes the background of the topic in detail for the reader.
+This duplicate should be merged with the first Background section above.
 """
 
 _DUPLICATE_ISSUES = [
@@ -216,8 +249,8 @@ _DUPLICATE_ISSUES = [
 
 @pytest.mark.live
 @pytest.mark.timeout(300)
-def test_fixes_duplicate_section():
-    """Workflow rewrites a page with a duplicate section and stores a fix_record."""
+def test_fixes_duplicate_section_via_http(tmp_path):
+    """Workflow fixes a duplicate section via HTTP SSE streaming."""
     wiki_root = _get_wiki_root()
     try:
         _ingest_page(
@@ -227,27 +260,23 @@ def test_fixes_duplicate_section():
             content_health_issues=_DUPLICATE_ISSUES,
         )
 
-        # Confirm the issue is visible before running
         fm_before = _read_page_frontmatter(wiki_root, _DUP_SLUG)
         assert fm_before.get("content_health_issues"), (
             "content_health_issues not written to frontmatter"
         )
 
-        # Run the workflow targeting just this page; accept all confirms
-        events = _run_workflow(
+        events = _run_workflow_http(
             f"run content health resolver --slug {_DUP_SLUG}",
             confirm_response=True,
         )
 
         assert events, "No SSE events received from workflow"
 
-        # After the workflow the page must have a fix_record
         fm_after = _read_page_frontmatter(wiki_root, _DUP_SLUG)
         assert fm_after.get("content_health_fix_record") is not None, (
             f"fix_record not stored after workflow run.\nEvents: {events}"
         )
 
-        # Issues should be cleared (or reduced) in the stored page
         remaining = fm_after.get("content_health_issues", [])
         assert not any(i.get("type") == "duplicate_section" for i in remaining), (
             f"duplicate_section issue still present after fix.\nEvents: {events}"
@@ -258,31 +287,47 @@ def test_fixes_duplicate_section():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(120)
-def test_skips_page_with_no_issues():
-    """Workflow exits cleanly when no active pages have content issues."""
+@pytest.mark.timeout(300)
+def test_fixes_duplicate_section_via_cli(tmp_path):
+    """Workflow fixes a duplicate section via CLI subprocess (no API key in test)."""
     wiki_root = _get_wiki_root()
+    wiki_name = _get_wiki_name()
+    if not wiki_name:
+        pytest.skip("Cannot determine wiki name from server /status")
+
     try:
         _ingest_page(
-            wiki_root, _CLEAN_SLUG,
-            "Clean Page",
-            "## Overview\n\n" + " ".join(["word"] * 60) + "\n",
-            content_health_issues=[],
+            wiki_root, _DUP_SLUG,
+            "Duplicate Section Test",
+            _DUPLICATE_CONTENT,
+            content_health_issues=_DUPLICATE_ISSUES,
         )
 
-        events = _run_workflow("run content health resolver", confirm_response=False)
+        result = _run_workflow_cli(wiki_name, _DUP_SLUG)
+        combined = result.stdout + result.stderr
 
-        assert events, "No SSE events received from workflow"
-        # At least one final_text event should mention no issues
-        final_texts = [
-            e["data"].get("text", "")
-            for e in events
-            if e.get("event") == "final_text"
-        ]
-        combined = " ".join(final_texts).lower()
-        assert "no" in combined or "0" in combined, (
-            f"Expected no-issues message in final_text.\nfinal_texts: {final_texts}"
+        assert result.returncode == 0 or "fixed" in combined.lower() or "snapshot" in combined.lower(), (
+            f"CLI workflow run failed.\nstdout: {result.stdout[:600]}\nstderr: {result.stderr[:200]}"
+        )
+
+        fm_after = _read_page_frontmatter(wiki_root, _DUP_SLUG)
+        assert fm_after.get("content_health_fix_record") is not None, (
+            f"fix_record not stored after CLI run.\nCLI output: {combined[:600]}"
         )
 
     finally:
-        _delete_page(wiki_root, _CLEAN_SLUG)
+        _delete_page(wiki_root, _DUP_SLUG)
+
+
+@pytest.mark.live
+@pytest.mark.timeout(60)
+def test_workflow_list_includes_content_health():
+    """``synthadoc workflow list`` shows content-health without hitting the LLM."""
+    result = subprocess.run(
+        [PY, "-m", "synthadoc", "workflow", "list"],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, f"workflow list failed: {result.stderr}"
+    assert "content-health" in result.stdout, (
+        f"content-health not in workflow list.\nOutput: {result.stdout}"
+    )

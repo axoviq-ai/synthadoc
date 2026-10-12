@@ -184,13 +184,12 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         question: str,
         provider: "LLMProvider",  # type: ignore[name-defined]
     ):
-        """CLI-provider path: Python-driven gather → LLM analysis → typer.confirm → write."""
-        import typer
+        """CLI-provider path: Python-driven gather → LLM analysis → tool_confirm → write.
 
-        from synthadoc.agents.workflows.tools.content_health_tools import (
-            tool_write_content_health_fix,
-        )
-
+        Called server-side when the provider is a CodingToolCLIProvider (claude-code,
+        opencode).  All output and confirmations go through SSE events so they reach
+        the HTTP stream; typer is not used here.
+        """
         if ctx.store is None:
             yield {"event": "final_text", "data": {"text": "No wiki store available."}}
             return
@@ -205,11 +204,32 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             flagged.append((top_sev, -len(page.content_health_issues), slug, page))
         flagged.sort()
 
+        # Filter to --slug if given
+        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
+        if slug_match:
+            requested = slug_match.group(1).lower()
+            flagged = [(s, c, sl, pg) for s, c, sl, pg in flagged if sl == requested]
+
         if not flagged:
             yield {"event": "final_text", "data": {"text": "No active pages with content issues found."}}
             return
 
-        yield {"event": "token", "data": {"text": f"Found {len(flagged)} page(s) with content issues.\n"}}
+        counts: dict[str, int] = {}
+        for _, _, _, pg in flagged:
+            for issue in pg.content_health_issues:
+                counts[issue["severity"]] = counts.get(issue["severity"], 0) + 1
+
+        summary_parts = [f"{v} {k}" for k, v in sorted(counts.items())]
+        opening_msg = (
+            f"Found {len(flagged)} page(s) with content issues "
+            f"({', '.join(summary_parts)}).\n"
+            "A snapshot is saved before each change — say 'roll back [page]' to undo.\n"
+            "Ready to begin?"
+        )
+        gate = await tool_confirm(ctx, message=opening_msg, yes_label="Begin", no_label="Cancel")
+        if not gate.get("confirmed"):
+            yield {"event": "final_text", "data": {"text": "Content health resolver cancelled."}}
+            return
 
         fixed: list[str] = []
         skipped: list[str] = []
@@ -228,12 +248,15 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             )
             proposed = await provider.complete(prompt)
 
-            typer.echo("\n=== BEFORE ===")
-            typer.echo(page.content[:500] + ("..." if len(page.content) > 500 else ""))
-            typer.echo("\n=== AFTER ===")
-            typer.echo(proposed[:500] + ("..." if len(proposed) > 500 else ""))
-
-            if typer.confirm(f"\nApply fix to '{slug}'?", default=False):
+            before_excerpt = page.content[:400] + ("..." if len(page.content) > 400 else "")
+            after_excerpt = proposed[:400] + ("..." if len(proposed) > 400 else "")
+            diff_msg = (
+                f"**{slug}** — {issues_summary}\n\n"
+                f"**BEFORE:**\n```\n{before_excerpt}\n```\n\n"
+                f"**AFTER:**\n```\n{after_excerpt}\n```"
+            )
+            gate = await tool_confirm(ctx, message=diff_msg, yes_label="Approve", no_label="Skip this page")
+            if gate.get("confirmed"):
                 result = await tool_write_content_health_fix(
                     ctx, slug=slug, content=proposed,
                     issues_fixed=[i["type"] for i in page.content_health_issues],
@@ -252,9 +275,9 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 skipped.append(slug)
                 yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped.\n"}}
 
-        summary = (
+        final_summary = (
             f"\nContent Health Resolver — Complete\n"
             f"✅ Fixed: {len(fixed)} page(s) — {', '.join(fixed) or 'none'}\n"
             f"⏭ Skipped: {len(skipped)} page(s) — {', '.join(skipped) or 'none'}\n"
         )
-        yield {"event": "final_text", "data": {"text": summary}}
+        yield {"event": "final_text", "data": {"text": final_summary}}
