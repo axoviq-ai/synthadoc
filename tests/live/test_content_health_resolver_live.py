@@ -62,7 +62,8 @@ def _get_wiki_name() -> str:
     with httpx.Client(timeout=10) as client:
         resp = client.get(f"{BASE}/status")
         resp.raise_for_status()
-        return resp.json().get("wiki_name", "")
+        data = resp.json()
+        return data.get("wiki_name") or Path(data.get("wiki", "")).name
 
 
 def _ingest_page(
