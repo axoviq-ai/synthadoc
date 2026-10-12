@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import functools
 import re
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import Awaitable, Callable
 
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
@@ -22,9 +22,6 @@ from synthadoc.agents.workflows.tools.content_health_tools import (
     tool_write_content_health_fix,
 )
 from synthadoc.storage.wiki import LifecycleState
-
-if TYPE_CHECKING:
-    pass
 
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
