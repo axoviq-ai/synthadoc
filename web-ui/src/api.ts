@@ -97,6 +97,7 @@ export interface LifecycleStatus {
     draft_candidates?: number;
     broken_wikilinks?: number;
     broken_citations?: number;
+    content_health?: number;
 }
 
 export async function getLifecycleStatus(): Promise<LifecycleStatus> {
