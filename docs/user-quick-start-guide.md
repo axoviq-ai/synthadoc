@@ -3451,6 +3451,7 @@ You have now walked through every major Synthadoc feature on the demo wiki. When
 ready to build a wiki for your own domain:
 
 - **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — step-by-step guide: install, configure, scaffold, ingest, and grow your wiki
+- **[Docker Deployment Guide](docker-deploy.md)** — run Synthadoc on a server, in CI/CD, or as a team shared instance using Docker; covers platform-native runtimes (macOS `container`, Windows `wslc`), Docker Compose, API key security, and maintenance
 
 Key differences from the demo:
 

@@ -264,6 +264,12 @@ synthadoc --version   # confirm it works
 
 The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
 
+### Docker
+
+For server deployments, team wikis, and CI/CD pipelines, Synthadoc ships an OCI-compatible Docker image that works with Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11).
+
+See **[docs/docker-deploy.md](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md)** for the full deployment guide: architecture, API key setup, platform-native runtimes, Docker Compose examples, CI/CD, security, and maintenance.
+
 ---
 
 ### Development
