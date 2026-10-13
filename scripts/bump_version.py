@@ -98,8 +98,8 @@ def main() -> None:
     # 5. Design document version header
     _patch_text(
         ROOT / "docs" / "design.md",
-        f"**Version:** {old_version}  ",
-        f"**Version:** {new_version}  ",
+        f"**Version:** {old_version}\n",
+        f"**Version:** {new_version}\n",
     )
 
     print("Done. Remember to:")

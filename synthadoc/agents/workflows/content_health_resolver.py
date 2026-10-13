@@ -146,6 +146,20 @@ STEP 4 — Final summary (plain text only):
 """
 
 
+def _format_fix_list(fixes: list[dict]) -> str:
+    """Render tool_list_content_health_fixes() output as plain text."""
+    if not fixes:
+        return "No content health fixes have been recorded yet."
+    lines = [f"Content health fixes ({len(fixes)}):"]
+    for fix in fixes:
+        issues = ", ".join(fix.get("issues_fixed") or []) or "issues fixed"
+        lines.append(
+            f"- {fix['slug']} — {fix.get('fixed_at') or 'unknown time'} — {issues} "
+            f"(pre-fix snapshot #{fix.get('snapshot_index_before')})"
+        )
+    return "\n".join(lines)
+
+
 class ContentHealthResolverWorkflow(AgenticWorkflow):
     """Detect and fix wiki content quality issues interactively."""
 
@@ -176,22 +190,36 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         return _SYSTEM_PROMPT
 
     _LIST_RE = re.compile(r"\blist\b", re.IGNORECASE)
+    _ROLLBACK_BARE_RE = re.compile(r"\broll\s*back\b", re.IGNORECASE)
     _ROLLBACK_RE = re.compile(r"\broll\s*back\b\s+(\S+)", re.IGNORECASE)
 
-    def build_initial_message(self, user_input: str) -> str:
+    @classmethod
+    def _parse_intent(cls, user_input: str) -> tuple[str, str | None]:
+        """Classify a request as ("list", None), ("rollback", slug | None) or ("fix", None).
+
+        Shared by the API path (build_initial_message) and the CLI-provider path
+        (run_for_cli_provider) so both honour the same list / roll back intents.
+        """
         # "list content health fixes" → show fix history, not find new issues
-        if self._LIST_RE.search(user_input):
+        if cls._LIST_RE.search(user_input):
+            return "list", None
+        # "roll back SLUG" or bare "roll back" → restore a page's pre-fix snapshot
+        if cls._ROLLBACK_BARE_RE.search(user_input):
+            match = cls._ROLLBACK_RE.search(user_input)
+            return "rollback", match.group(1).rstrip(".,;") if match else None
+        return "fix", None
+
+    def build_initial_message(self, user_input: str) -> str:
+        intent, slug = self._parse_intent(user_input)
+        if intent == "list":
             return (
                 "The user wants to see which pages have been fixed by the content health resolver.\n"
                 "Call list_content_health_fixes() and present the results as a formatted plain-text list.\n"
                 "If the fixes list is empty: output 'No content health fixes have been recorded yet.'\n"
                 "Output plain text only — no JSON, no tool calls after the list is printed."
             )
-        # "roll back SLUG" or bare "roll back" → restore a page's pre-fix snapshot
-        if re.search(r"\broll\s*back\b", user_input, re.IGNORECASE):
-            rollback_match = self._ROLLBACK_RE.search(user_input)
-            if rollback_match:
-                slug = rollback_match.group(1).rstrip(".,;")
+        if intent == "rollback":
+            if slug:
                 return (
                     f"The user wants to roll back the content health fix for page '{slug}'.\n"
                     f"Call rollback_content_health_fix(slug='{slug}') and report the result as plain text.\n"
@@ -255,6 +283,22 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         """
         if ctx.store is None:
             yield {"event": "final_text", "data": {"text": "No wiki store available."}}
+            return
+
+        # "list" / "roll back" intents need no LLM — answer them directly instead
+        # of starting a new scan-and-fix session.
+        intent, rollback_slug = self._parse_intent(question)
+        if intent == "rollback" and rollback_slug:
+            result = await tool_rollback_content_health_fix(ctx, rollback_slug)
+            text = result.get("message") or f"Rollback of '{rollback_slug}' failed."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+        if intent in ("list", "rollback"):
+            listing = await tool_list_content_health_fixes(ctx)
+            text = _format_fix_list(listing.get("fixes", []))
+            if intent == "rollback" and listing.get("fixes"):
+                text += "\nSay 'roll back <slug>' to restore one of these pages."
+            yield {"event": "final_text", "data": {"text": text}}
             return
 
         _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
