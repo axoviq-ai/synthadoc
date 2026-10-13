@@ -71,6 +71,7 @@ dev = [
     "pytest-timeout>=2.3",
     "pytest-benchmark>=4.0",
     "respx>=0.21",
+    "httpx2>=2.0",      # Starlette >= 1.x TestClient transport; avoids its httpx deprecation warning
     "matplotlib>=3.8",
     "mcp>=1.0,<2.0",
 ]
