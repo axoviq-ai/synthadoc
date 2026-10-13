@@ -34,39 +34,37 @@ def _make_confirm_gatekeeper(
 _DIFF_EXCERPT_LEN = 400  # chars shown per BEFORE / AFTER block
 
 
-def _read_current_body(ctx: "WorkflowContext", slug: str) -> "str | None":
-    """Return the current page body for *slug*, or None if unreadable.
+def _read_current_body(ctx: "WorkflowContext", slug: str) -> "tuple[str | None, bool]":
+    """Return ``(body, page_exists)`` for *slug*.
 
-    Tries ctx.store.read_page first; falls back to a direct filesystem read
-    that bypasses the store's path-guard and lock machinery.  Both failures
-    are logged at DEBUG so operators can diagnose the root cause without
-    disrupting the user-facing confirm dialog.
+    Returns:
+        (str,  True)  — page found; body may be "" for template/empty pages.
+        (None, True)  — page found but content could not be read (exception).
+        (None, False) — page does not exist in the wiki.
     """
     # ── Primary: store abstraction ────────────────────────────────────────────
     if ctx.store is not None:
         try:
             page = ctx.store.read_page(slug)
             if page is not None:
-                return page.content  # may be "" for template/empty pages
-            _logger.debug(
-                "_build_fallback: read_page(%r) returned None — file not found in store root",
-                slug,
-            )
+                return page.content, True
+            # read_page returns None ↔ file not found in store root
+            _logger.debug("_build_fallback: read_page(%r) returned None", slug)
         except Exception as exc:
             _logger.warning(
-                "_build_fallback: read_page(%r) raised %s: %s — falling back to direct read",
+                "_build_fallback: read_page(%r) raised %s: %s",
                 slug, type(exc).__name__, exc,
             )
+            # Page likely exists (store found it) but couldn't be parsed.
+            return None, True
+    else:
+        _logger.debug("_build_fallback: ctx.store is None for slug=%r", slug)
 
-    # ── Fallback: direct filesystem read ─────────────────────────────────────
-    # Bypasses _assert_in_root, FileLock, and YAML parsing so encoding or
-    # lock issues do not block the diff display entirely.
+    # ── Fallback: direct filesystem check / read ─────────────────────────────
     store_root: "Path | None" = getattr(ctx.store, "_root", None)
     candidates: list[Path] = []
     if store_root is not None:
         candidates.append(store_root / f"{slug}.md")
-    # Also try wiki_root/wiki/ (conventional Synthadoc layout) in case the
-    # store root attribute is missing or points elsewhere.
     wiki_root: "Path | None" = getattr(ctx, "wiki_root", None)
     if wiki_root is not None:
         alt = wiki_root / "wiki" / f"{slug}.md"
@@ -75,17 +73,20 @@ def _read_current_body(ctx: "WorkflowContext", slug: str) -> "str | None":
 
     for candidate in candidates:
         try:
-            if candidate.exists():
-                raw = candidate.read_text(encoding="utf-8", errors="replace")
-                if raw.startswith("---"):
-                    parts = raw.split("---", 2)
-                    return parts[2].lstrip("\n") if len(parts) >= 3 else raw
-                return raw
+            if not candidate.exists():
+                continue
+            raw = candidate.read_text(encoding="utf-8", errors="replace")
+            if raw.startswith("---"):
+                parts = raw.split("---", 2)
+                return (parts[2].lstrip("\n") if len(parts) >= 3 else raw), True
+            return raw, True
         except Exception as exc:
             _logger.debug("_build_fallback: direct read of %r failed: %s", candidate, exc)
+            return None, True  # file exists but unreadable
 
-    _logger.warning("_build_fallback: could not read body for slug=%r from any path", slug)
-    return None
+    # No candidate path existed → page genuinely not found.
+    _logger.warning("_build_fallback: page %r not found at any candidate path", slug)
+    return None, False
 
 
 def _build_fallback_confirm_message(
@@ -95,21 +96,15 @@ def _build_fallback_confirm_message(
     new_content: str,
     ctx: "WorkflowContext",
 ) -> str:
-    """Build an informative fallback confirm message with a before/after diff.
-
-    Shown when a gated tool is called before the LLM has called ``confirm``.
-    Extracts the current page content from the store so the user can review
-    what will change, even when the LLM skipped the explicit confirm step.
-    """
+    """Build an informative fallback confirm message with a before/after diff."""
     if not slug:
         return (
             f"Run `{tool_name}`?\n\n"
             "(Tip: call `confirm` with a detailed diff first.)"
         )
 
-    current_content = _read_current_body(ctx, slug)
+    current_content, page_exists = _read_current_body(ctx, slug)
 
-    # Build the issues line (e.g. "duplicate_section ×2, thin_section ×1").
     issues_line = ""
     if issues:
         issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
@@ -119,6 +114,17 @@ def _build_fallback_confirm_message(
         if len(text) > _DIFF_EXCERPT_LEN:
             excerpt += f"\n… ({len(text) - _DIFF_EXCERPT_LEN} more chars)"
         return f"**{label}:**\n```\n{excerpt}\n```"
+
+    # Page doesn't exist in the wiki — LLM is likely using a fabricated slug.
+    if not page_exists:
+        proposed = f"\n\n{_excerpt(new_content, 'PROPOSED CONTENT')}" if new_content else ""
+        return (
+            f"**⚠️ WARNING: page '{slug}' does not exist in this wiki.**{issues_line}\n\n"
+            "The LLM is attempting to write to a page that was never ingested. "
+            "This is likely a hallucinated slug. **Cancel** unless you intentionally "
+            f"want to create a new page named `{slug}`."
+            f"{proposed}"
+        )
 
     # Both sides available and content actually changed → BEFORE / AFTER.
     if current_content and new_content and current_content.strip() != new_content.strip():
@@ -146,7 +152,7 @@ def _build_fallback_confirm_message(
             f"{_excerpt(new_content, 'PROPOSED CONTENT')}"
         )
 
-    # Store unavailable or read failed — show only proposed content.
+    # Page exists but content could not be read (parse/encoding error).
     if new_content:
         return (
             f"**{slug}** — apply content-health fix?{issues_line}\n\n"
