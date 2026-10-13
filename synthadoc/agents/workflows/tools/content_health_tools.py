@@ -125,6 +125,62 @@ async def tool_write_content_health_fix(
     }
 
 
+async def tool_dismiss_content_health_issues(
+    ctx: "WorkflowContext",
+    slug: str,
+    reason: str,
+) -> dict:
+    """Dismiss all current content health issues on a page without modifying content.
+
+    Use this when every remaining issue requires adding factual content (e.g.
+    all issues are 'thin_section') and cannot be resolved by structural fixes.
+    Clears ``content_health_issues`` from the page frontmatter so the hint chip
+    stops surfacing it, and records the dismissal in ``content_health_fix_record``.
+    Does NOT snapshot the page — content is unchanged.
+
+    Always call ``notify`` FIRST to explain to the user what is being dismissed
+    and why, then call this tool to persist the dismissal.
+    """
+    if ctx.store is None:
+        return {"status": _STATUS_ERR, "error": "No store available"}
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
+
+    dismissed_count = len(page.content_health_issues)
+    dismissed_types = list({i.get("type", "unknown") for i in page.content_health_issues})
+
+    page.content_health_issues = []
+    # Merge into any existing fix_record so prior structural fixes aren't lost.
+    existing = page.content_health_fix_record or {}
+    existing.update({
+        "dismissed_at": datetime.now(timezone.utc).isoformat(),
+        "dismissed_count": dismissed_count,
+        "dismissed_types": dismissed_types,
+        "dismissed_reason": reason,
+    })
+    if "slug" not in existing:
+        existing["slug"] = slug
+    if "timestamp" not in existing:
+        existing["timestamp"] = existing["dismissed_at"]
+    if "issues_fixed" not in existing:
+        existing["issues_fixed"] = []
+    page.content_health_fix_record = existing
+
+    ctx.store.write_page(slug, page)
+    if ctx.bump_epoch:
+        ctx.bump_epoch()
+
+    return {
+        "status": _STATUS_OK,
+        "slug": slug,
+        "dismissed_count": dismissed_count,
+        "dismissed_types": dismissed_types,
+        "remaining_issues": 0,
+        "reason": reason,
+    }
+
+
 async def tool_list_content_health_fixes(ctx: "WorkflowContext") -> dict:
     """Return all pages that have a content_health_fix_record, sorted by timestamp desc."""
     if ctx.store is None:

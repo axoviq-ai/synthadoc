@@ -15,13 +15,14 @@ from typing import Awaitable, Callable
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
 from synthadoc.agents.workflows.tools.content_health_tools import (
+    tool_dismiss_content_health_issues,
     tool_find_content_health_issues,
     tool_get_page_content,
     tool_list_content_health_fixes,
     tool_rollback_content_health_fix,
     tool_write_content_health_fix,
 )
-from synthadoc.storage.wiki import LifecycleState
+from synthadoc.storage.wiki import LifecycleState, SYSTEM_PAGE_SLUGS
 
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
@@ -53,7 +54,12 @@ get_page_content
 
 write_content_health_fix
   Apply a content-health fix. A snapshot is taken before writing.
-  The confirm gate fires automatically before the first call.
+  MANDATORY SEQUENCE (enforced): get_page_content(slug) → confirm → write_content_health_fix(slug)
+  • You MUST have called get_page_content for this EXACT slug first.
+  • The content argument MUST be the get_page_content response with ONLY structural
+    fixes applied — never invented or recalled from training.
+  • You MUST call confirm with a side-by-side diff BEFORE every call to this tool.
+  • The slug MUST be one returned by find_content_health_issues in this session.
   Input:  {"slug": str, "content": str, "issues_fixed": [str]}
   Output: {"status": "success"|"error", "slug": str, "snapshot_index": int,
            "remaining_issues": int, "fix_record": dict}
@@ -69,6 +75,16 @@ rollback_content_health_fix
   Input:  {"slug": str}
   Output: {"status": "success"|"error", "slug": str, "rolled_back_to_snapshot": int,
            "message": str}
+
+dismiss_content_health_issues
+  Dismiss issues that CANNOT be fixed by this workflow (e.g. all remaining
+  issues are 'thin_section' which require adding factual prose — prohibited here).
+  Clears content_health_issues from frontmatter so the hint chip stops surfacing
+  this page. Does NOT modify page content or create a snapshot.
+  ALWAYS call notify FIRST to explain the dismissal, then call this tool.
+  Input:  {"slug": str, "reason": str}
+  Output: {"status": "success"|"error", "slug": str, "dismissed_count": int,
+           "remaining_issues": int, "reason": str}
 
 confirm
   Send a confirmation card to the UI and wait up to 120 seconds.
@@ -88,28 +104,39 @@ STEP 1 — Discover pages with issues.
   The tool returns pages pre-sorted: critical first, then by issue count.
   If total=0: output plain text "No active pages with content health issues found." and stop.
 
-STEP 2 — Opening confirm before any work begins.
-  Call confirm with:
+STEP 2 — Opening summary before any work begins.
+  Call notify with level="info" and message:
     "Found N page(s) with content issues (X critical, Y high, Z medium).
-    Pages processed highest-severity first. A snapshot is saved before each
-    change — say 'list content health fixes' or 'roll back [page]' to undo.
-    Ready to begin?"
-  yes_label="Begin", no_label="Cancel"
-  If not confirmed: output plain-text cancel message and stop.
+    Pages to process: <list every slug from pages[] here, comma-separated>.
+    Processing highest-severity pages first. A snapshot is saved before each
+    change — say 'list content health fixes' or 'roll back [page]' to undo."
+  Then proceed immediately to STEP 3.
 
-STEP 3 — Per-page loop:
+STEP 3 — Per-page loop.
+  Iterate ONLY over the slug values in the pages[] array returned by
+  find_content_health_issues. Do NOT use any slug that was not in that array.
+  Do NOT invent, guess, or recall slugs from training knowledge.
 
-  3a. Call get_page_content(slug=<slug>).
+  For EACH slug in pages[] (in order):
+
+  3a. Call get_page_content using the EXACT slug string from the pages[] entry.
+      Copy the slug character-for-character from the find_content_health_issues
+      result — do not alter it in any way.
+      If the result has status="error":
+      → STOP processing this slug immediately.
+      → Do NOT call write_content_health_fix for it.
+      → Do NOT invent or generate any content for it.
+      → Move on to the next slug in the discovery list.
 
   3b. DEEP ANALYSIS:
-      Read the full content and all reported issues carefully.
-      Identify ALL issues including any additional semantic problems.
-      Compose a rewrite that ONLY fixes structural issues — never alter
-      factual content.
+      Read the full content (from the get_page_content result) and all reported
+      issues carefully. Compose a rewrite that ONLY fixes structural issues —
+      never alter factual content. Base your rewrite ENTIRELY on the content
+      returned by get_page_content — do not add information from other sources.
 
   3c. Call confirm with a SIDE-BY-SIDE DIFF message:
       message should contain ONLY:
-        - "BEFORE:" with the affected sections (current state)
+        - "BEFORE:" with the affected sections (current state from get_page_content)
         - "AFTER:" with the proposed rewrite of those sections
         - A line listing the issue types being addressed
       Do NOT include "yes_label" or "no_label" text in the message field —
@@ -120,17 +147,38 @@ STEP 3 — Per-page loop:
       If not confirmed → skip page (no snapshot, no write), continue to next.
 
   3d. On approval:
-      Call write_content_health_fix(slug=<slug>, content=<rewritten>,
-        issues_fixed=[<list of "type xN" strings>])
-      If remaining_issues > 0: call notify(level="warning", message=...)
+      Call write_content_health_fix using the SAME slug from the pages[] entry,
+        content=<rewritten content based on get_page_content result>,
+        issues_fixed=[<list of "type xN" strings>]
+      If remaining_issues > 0 and ALL remaining issues are unfixable (e.g. thin_section):
+        proceed to 3e for those remaining issues.
+      Else if remaining_issues > 0: call notify(level="warning", message=...)
       Output summary line: "<slug>: N issues fixed. Snapshot saved — say
         'roll back <slug>' to undo."
+
+  3e. DISMISSAL — when ALL issues on a page (or all REMAINING issues after 3d) are
+      structurally unfixable by this workflow (all are 'thin_section', or fixing them
+      would require inventing factual content):
+      1. Call notify(level="warning", message="<slug>: N issue(s) cannot be fixed
+         automatically. [Explain what type they are and why human editing is needed.
+         Tell the user exactly which sections need expanding and by how many words.]")
+      2. Call dismiss_content_health_issues(slug=<slug>,
+           reason="<brief reason, e.g. 'all issues are thin_section requiring human editing'>")
+      3. Output summary line: "<slug>: N issue(s) dismissed — requires human editing."
+
+      When to use 3e (NEVER write invented content instead):
+      - All issues are type 'thin_section'
+      - Fixing any issue would require adding new factual sentences
+      - Any issue cannot be resolved by structural reformatting alone
 
 STEP 4 — Final summary (plain text only):
   "Content Health Resolver — Complete
 
   ✅ Fixed (N pages):
   - **<slug>**: <issues> → Snapshot saved
+  ...
+  ⚠️ Dismissed — requires human editing (N pages):
+  - **<slug>**: <issue types> → A human editor must expand these sections
   ...
   ⏭ Skipped (N pages): <slug>, ...
 
@@ -141,7 +189,20 @@ STEP 4 — Final summary (plain text only):
 
 1. NEVER output plain text while work remains — plain text terminates the workflow.
 2. NEVER modify factual content — only fix structural/formatting issues.
-3. ALWAYS call write_content_health_fix after user approves.
+3. ALWAYS follow the exact per-page sequence: get_page_content → confirm → write_content_health_fix.
+   Skipping get_page_content means you are writing content you invented, not the real page.
+   Skipping confirm means the user cannot review changes before they are applied.
+4. NEVER call write_content_health_fix with a slug that was not returned by
+   find_content_health_issues. Only process pages from the discovery list.
+5. NEVER invent or guess page content. The content you pass to write_content_health_fix
+   MUST come from the get_page_content response for that exact slug — with ONLY the
+   structural issues corrected, nothing else changed.
+6. ONLY use slugs from the pages[] array in the find_content_health_issues result.
+   This means: iterate over result["pages"], take result["pages"][i]["slug"], and use
+   THAT STRING — character for character — as the slug argument in every subsequent
+   tool call. Do NOT substitute a slug from your training knowledge, from memory, or
+   from any other source. If you do not have a find_content_health_issues result yet,
+   call that tool first before calling any other tool.
 """
 
 
@@ -183,6 +244,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
     )
 
     GATED_TOOLS: frozenset[str] = frozenset({"write_content_health_fix"})
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"write_content_health_fix"})
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
@@ -240,24 +302,176 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 f"whether this page has any issues. If total=0: stop with a plain-text "
                 f"'No issues found for {slug}' message. Otherwise proceed to STEP 2."
             )
+        prediscovered = getattr(self, "_prediscovered_slugs", [])
+        if not prediscovered:
+            return (
+                "Run the content health resolver workflow.\n"
+                "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
+                "with content quality issues. If total=0: stop with a plain-text "
+                "'No active pages with content health issues found.' message.\n"
+                "Otherwise proceed through STEP 2 (opening notify) and STEP 3 (per-page loop) "
+                "WITHOUT STOPPING mid-task.\n"
+                "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
+                "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
+            )
+        # The pages with content health issues have already been identified by Python.
+        # Give the LLM the EXACT slug strings upfront so it never needs to guess.
+        slug_bullet_list = "\n".join(f"  • {s}" for s in prediscovered)
+        slug_comma_list = ", ".join(prediscovered)
         return (
-            "Run the content health resolver workflow.\n"
-            "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
-            "with content quality issues. If total=0: stop with a plain-text "
-            "'No active pages with content health issues found.' message.\n"
-            "Otherwise proceed through STEP 2 (opening confirm) and STEP 3 (per-page loop) "
-            "WITHOUT STOPPING mid-task.\n"
-            "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
-            "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
+            f"Run the content health resolver workflow.\n\n"
+            f"These {len(prediscovered)} page(s) have content health issues in this wiki:\n"
+            f"{slug_bullet_list}\n\n"
+            f"STEP 1: Call find_content_health_issues(slug='') to get full issue details.\n\n"
+            f"STEP 2: Call notify with a summary that lists exactly: {slug_comma_list}\n\n"
+            f"STEP 3: For EACH slug in this exact list — {slug_comma_list} — call:\n"
+            f"  a. get_page_content(slug=\"<exact slug from list above>\")\n"
+            f"  b. compose a structural fix\n"
+            f"  c. confirm with BEFORE/AFTER diff\n"
+            f"  d. write_content_health_fix(slug=\"<exact slug>\", ...)\n\n"
+            f"CRITICAL: The ONLY valid slug values are: {slug_comma_list}\n"
+            f"Do NOT call any tool with a slug not in that list.\n"
+            f"Do NOT pause mid-task. Plain text ONLY in the final summary."
         )
+
+    def build_guarded_tool_fns(self, ctx: WorkflowContext) -> dict:
+        """Pre-discover pages before the LLM loop starts.
+
+        Stores verified slugs on the instance so that:
+        • get_tool_fns can pre-populate found_slugs (enforcement guard)
+        • build_initial_message can name the exact slugs upfront (prompt anchor)
+
+        The LLM still calls find_content_health_issues for issue details, but
+        found_slugs is already seeded so invented slugs are rejected even if the
+        model ignores the tool result.
+        """
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        self._prediscovered_slugs: list[str] = []
+        if ctx.store is not None:
+            for slug in sorted(ctx.store.list_pages()):
+                if slug in SYSTEM_PAGE_SLUGS:
+                    continue
+                try:
+                    page = ctx.store.read_page(slug)
+                    if (page is not None
+                            and page.status == LifecycleState.ACTIVE
+                            and page.content_health_issues):
+                        self._prediscovered_slugs.append(slug)
+                except Exception as exc:
+                    _logger.debug("content-health pre-discovery: skip %r — %s", slug, exc)
+        _logger.debug(
+            "content-health pre-discovery: %d page(s) found: %s",
+            len(self._prediscovered_slugs), self._prediscovered_slugs,
+        )
+        return super().build_guarded_tool_fns(ctx)
 
     def get_tool_fns(
         self, ctx: WorkflowContext
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
+        # Track which slugs are legitimate (found by find_content_health_issues)
+        # and which have been read via get_page_content.  write_content_health_fix
+        # is blocked at the function level for any slug not in both sets, so the
+        # LLM cannot write invented content even if it skips the workflow steps.
+        #
+        # Pre-seed found_slugs from the Python-level pre-discovery so that the
+        # enforcement guard works even if the LLM never calls find_content_health_issues.
+        found_slugs: set[str] = set(getattr(self, "_prediscovered_slugs", []))
+        read_slugs: set[str] = set()
+
+        async def _find_issues(slug: str = "") -> dict:
+            result = await tool_find_content_health_issues(ctx, slug)
+            if result.get("status") == "success" and ctx.store is not None:
+                # Verify each returned slug is still readable right now.
+                # Filters out any page that was deleted between list_pages() and
+                # this call (race-condition window), and populates found_slugs
+                # with only confirmed-readable slugs.
+                verified: list[dict] = []
+                import logging as _logging
+                _log = _logging.getLogger(__name__)
+                for page in result.get("pages", []):
+                    page_slug = page["slug"]
+                    try:
+                        page_obj = ctx.store.read_page(page_slug)
+                        if page_obj is not None:
+                            found_slugs.add(page_slug)
+                            verified.append(page)
+                        else:
+                            _log.warning(
+                                "content-health: find_content_health_issues returned slug %r "
+                                "but read_page returned None — excluding from work list",
+                                page_slug,
+                            )
+                    except Exception as exc:
+                        _log.warning(
+                            "content-health: could not verify slug %r — excluding: %s",
+                            page_slug, exc,
+                        )
+                result = dict(result)
+                result["pages"] = verified
+                result["total"] = len(verified)
+            return result
+
+        async def _get_content(slug: str) -> dict:
+            # Reject slugs that were never returned by find_content_health_issues.
+            # This catches the case where the LLM invents a slug from imagination
+            # rather than using the actual discovery results.
+            if found_slugs and slug not in found_slugs:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "content-health: LLM requested get_page_content(%r) but that slug "
+                    "was not in the discovery results. Valid slugs: %s",
+                    slug, sorted(found_slugs),
+                )
+                return {
+                    "status": "error",
+                    "error": (
+                        f"'{slug}' was not returned by find_content_health_issues. "
+                        "Only use slugs from the discovery results."
+                    ),
+                    "action": (
+                        "Do NOT invent page slugs. Re-read the find_content_health_issues "
+                        "result and use only the slugs listed there."
+                    ),
+                    "valid_slugs": sorted(found_slugs),
+                }
+            result = await tool_get_page_content(ctx, slug)
+            if result.get("status") == "success":
+                read_slugs.add(slug)
+            else:
+                result["action"] = (
+                    f"Skip '{slug}' entirely. "
+                    "Do NOT call write_content_health_fix for this slug. "
+                    "Continue to the next slug in the discovery list."
+                )
+            return result
+
+        async def _write_fix(slug: str, content: str, issues_fixed: list) -> dict:
+            if slug not in read_slugs:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"Workflow violation: get_page_content('{slug}') must be called "
+                        "before write_content_health_fix. Call get_page_content now."
+                    ),
+                }
+            if found_slugs and slug not in found_slugs:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"Workflow violation: '{slug}' was not returned by "
+                        "find_content_health_issues. Only process pages from the "
+                        "discovery list."
+                    ),
+                }
+            return await tool_write_content_health_fix(ctx, slug=slug, content=content,
+                                                       issues_fixed=issues_fixed)
+
         return {
-            "find_content_health_issues": functools.partial(tool_find_content_health_issues, ctx),
-            "get_page_content": functools.partial(tool_get_page_content, ctx),
-            "write_content_health_fix": functools.partial(tool_write_content_health_fix, ctx),
+            "find_content_health_issues": _find_issues,
+            "get_page_content": _get_content,
+            "write_content_health_fix": _write_fix,
+            "dismiss_content_health_issues": functools.partial(tool_dismiss_content_health_issues, ctx),
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),
             "rollback_content_health_fix": functools.partial(tool_rollback_content_health_fix, ctx),
             "confirm": functools.partial(tool_confirm, ctx),
