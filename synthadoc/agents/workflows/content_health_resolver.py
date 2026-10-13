@@ -15,6 +15,7 @@ from typing import Awaitable, Callable
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
 from synthadoc.agents.workflows.tools.content_health_tools import (
+    tool_dismiss_content_health_issues,
     tool_find_content_health_issues,
     tool_get_page_content,
     tool_list_content_health_fixes,
@@ -74,6 +75,16 @@ rollback_content_health_fix
   Input:  {"slug": str}
   Output: {"status": "success"|"error", "slug": str, "rolled_back_to_snapshot": int,
            "message": str}
+
+dismiss_content_health_issues
+  Dismiss issues that CANNOT be fixed by this workflow (e.g. all remaining
+  issues are 'thin_section' which require adding factual prose — prohibited here).
+  Clears content_health_issues from frontmatter so the hint chip stops surfacing
+  this page. Does NOT modify page content or create a snapshot.
+  ALWAYS call notify FIRST to explain the dismissal, then call this tool.
+  Input:  {"slug": str, "reason": str}
+  Output: {"status": "success"|"error", "slug": str, "dismissed_count": int,
+           "remaining_issues": int, "reason": str}
 
 confirm
   Send a confirmation card to the UI and wait up to 120 seconds.
@@ -139,15 +150,35 @@ STEP 3 — Per-page loop.
       Call write_content_health_fix using the SAME slug from the pages[] entry,
         content=<rewritten content based on get_page_content result>,
         issues_fixed=[<list of "type xN" strings>]
-      If remaining_issues > 0: call notify(level="warning", message=...)
+      If remaining_issues > 0 and ALL remaining issues are unfixable (e.g. thin_section):
+        proceed to 3e for those remaining issues.
+      Else if remaining_issues > 0: call notify(level="warning", message=...)
       Output summary line: "<slug>: N issues fixed. Snapshot saved — say
         'roll back <slug>' to undo."
+
+  3e. DISMISSAL — when ALL issues on a page (or all REMAINING issues after 3d) are
+      structurally unfixable by this workflow (all are 'thin_section', or fixing them
+      would require inventing factual content):
+      1. Call notify(level="warning", message="<slug>: N issue(s) cannot be fixed
+         automatically. [Explain what type they are and why human editing is needed.
+         Tell the user exactly which sections need expanding and by how many words.]")
+      2. Call dismiss_content_health_issues(slug=<slug>,
+           reason="<brief reason, e.g. 'all issues are thin_section requiring human editing'>")
+      3. Output summary line: "<slug>: N issue(s) dismissed — requires human editing."
+
+      When to use 3e (NEVER write invented content instead):
+      - All issues are type 'thin_section'
+      - Fixing any issue would require adding new factual sentences
+      - Any issue cannot be resolved by structural reformatting alone
 
 STEP 4 — Final summary (plain text only):
   "Content Health Resolver — Complete
 
   ✅ Fixed (N pages):
   - **<slug>**: <issues> → Snapshot saved
+  ...
+  ⚠️ Dismissed — requires human editing (N pages):
+  - **<slug>**: <issue types> → A human editor must expand these sections
   ...
   ⏭ Skipped (N pages): <slug>, ...
 
@@ -440,6 +471,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             "find_content_health_issues": _find_issues,
             "get_page_content": _get_content,
             "write_content_health_fix": _write_fix,
+            "dismiss_content_health_issues": functools.partial(tool_dismiss_content_health_issues, ctx),
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),
             "rollback_content_health_fix": functools.partial(tool_rollback_content_health_fix, ctx),
             "confirm": functools.partial(tool_confirm, ctx),

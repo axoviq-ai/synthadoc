@@ -36,6 +36,7 @@ async def test_system_prompt_contains_tool_inventory():
     wf = ContentHealthResolverWorkflow()
     prompt = await wf.build_system_prompt()
     for tool_name in ("get_page_content", "write_content_health_fix",
+                      "dismiss_content_health_issues",
                       "list_content_health_fixes", "rollback_content_health_fix",
                       "confirm", "notify"):
         assert tool_name in prompt, f"Missing tool '{tool_name}' in system prompt"
@@ -47,6 +48,7 @@ def test_get_tool_fns_returns_expected_tools():
     tools = wf.get_tool_fns(ctx)
     expected = {
         "find_content_health_issues", "get_page_content", "write_content_health_fix",
+        "dismiss_content_health_issues",
         "list_content_health_fixes", "rollback_content_health_fix",
         "confirm", "notify",
     }
@@ -213,6 +215,41 @@ async def test_find_issues_excludes_unreadable_slugs():
     assert "good-page" in slugs
     assert "ghost-page" not in slugs
     assert result["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dismiss_clears_issues_and_sets_record():
+    """dismiss_content_health_issues clears content_health_issues and records the dismissal."""
+    from synthadoc.agents.workflows.tools.content_health_tools import (
+        tool_dismiss_content_health_issues,
+    )
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    store = MagicMock()
+    page = MagicMock()
+    page.content_health_issues = [
+        {"type": "thin_section", "severity": "high"},
+        {"type": "thin_section", "severity": "medium"},
+    ]
+    page.content_health_fix_record = None
+    store.read_page.return_value = page
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.store = store
+    ctx.bump_epoch = None
+
+    result = await tool_dismiss_content_health_issues(
+        ctx, slug="grace-hopper", reason="all issues are thin_section requiring human editing"
+    )
+
+    assert result["status"] == "success"
+    assert result["dismissed_count"] == 2
+    assert result["remaining_issues"] == 0
+    assert page.content_health_issues == []
+    assert page.content_health_fix_record is not None
+    assert page.content_health_fix_record["dismissed_count"] == 2
+    assert "thin_section" in page.content_health_fix_record["dismissed_types"]
+    store.write_page.assert_called_once_with("grace-hopper", page)
 
 
 def test_prediscovery_seeds_found_slugs():
