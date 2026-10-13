@@ -51,42 +51,58 @@ def _build_fallback_confirm_message(
         )
 
     # Try to read current content for the before side of the diff.
-    current_content = ""
+    current_content: str | None = None  # None = store unavailable; "" = page empty
     if ctx.store is not None:
-        page = ctx.store.read_page(slug)
-        if page is not None:
-            current_content = page.content
+        try:
+            page = ctx.store.read_page(slug)
+            if page is not None:
+                current_content = page.content  # may be "" for template pages
+        except Exception:
+            pass  # store error — fall through to show what we have
 
     # Build the issues line (e.g. "duplicate_section ×2, thin_section ×1").
     issues_line = ""
     if issues:
-        if isinstance(issues[0], str):
-            issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
-        else:
-            issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
+        issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
 
-    # If we have both sides, render a compact before/after block.
-    if current_content and new_content and current_content != new_content:
-        before = current_content[:_DIFF_EXCERPT_LEN]
-        if len(current_content) > _DIFF_EXCERPT_LEN:
-            before += f"\n… ({len(current_content) - _DIFF_EXCERPT_LEN} more chars)"
-        after = new_content[:_DIFF_EXCERPT_LEN]
-        if len(new_content) > _DIFF_EXCERPT_LEN:
-            after += f"\n… ({len(new_content) - _DIFF_EXCERPT_LEN} more chars)"
+    def _excerpt(text: str, label: str) -> str:
+        excerpt = text[:_DIFF_EXCERPT_LEN]
+        if len(text) > _DIFF_EXCERPT_LEN:
+            excerpt += f"\n… ({len(text) - _DIFF_EXCERPT_LEN} more chars)"
+        return f"**{label}:**\n```\n{excerpt}\n```"
+
+    # Both sides available and content actually changed → BEFORE / AFTER.
+    if current_content and new_content and current_content.strip() != new_content.strip():
         return (
             f"**{slug}** — apply content-health fix?{issues_line}\n\n"
-            f"**BEFORE:**\n```\n{before}\n```\n\n"
-            f"**AFTER:**\n```\n{after}\n```"
+            f"{_excerpt(current_content, 'BEFORE')}\n\n"
+            f"{_excerpt(new_content, 'AFTER')}"
         )
 
-    # Fallback when we can't build a diff (new page, store unavailable, etc.).
+    # LLM returned the same content — nothing would change.
+    if current_content and new_content and current_content.strip() == new_content.strip():
+        return (
+            f"**{slug}** — no changes detected.{issues_line}\n\n"
+            "The proposed content is identical to the current page.\n"
+            "Proceed only if you want a snapshot recorded with no actual edits.\n\n"
+            f"{_excerpt(current_content, 'CURRENT CONTENT')}"
+        )
+
+    # Current page has no body content — LLM is about to write from scratch.
+    if current_content is not None and not current_content and new_content:
+        return (
+            f"**{slug}** — ⚠️ page currently has no content.{issues_line}\n\n"
+            "The LLM generated new content from scratch (the existing page body is empty). "
+            "Review carefully before proceeding.\n\n"
+            f"{_excerpt(new_content, 'PROPOSED CONTENT')}"
+        )
+
+    # Store unavailable or read failed — show only proposed content.
     if new_content:
-        excerpt = new_content[:_DIFF_EXCERPT_LEN]
-        if len(new_content) > _DIFF_EXCERPT_LEN:
-            excerpt += f"\n… ({len(new_content) - _DIFF_EXCERPT_LEN} more chars)"
         return (
             f"**{slug}** — apply content-health fix?{issues_line}\n\n"
-            f"**NEW CONTENT:**\n```\n{excerpt}\n```"
+            "(Current content could not be read — showing proposed content only.)\n\n"
+            f"{_excerpt(new_content, 'PROPOSED CONTENT')}"
         )
 
     return (
