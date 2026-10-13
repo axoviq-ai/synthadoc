@@ -96,28 +96,36 @@ STEP 1 — Discover pages with issues.
 STEP 2 — Opening summary before any work begins.
   Call notify with level="info" and message:
     "Found N page(s) with content issues (X critical, Y high, Z medium).
+    Pages to process: <list every slug from pages[] here, comma-separated>.
     Processing highest-severity pages first. A snapshot is saved before each
     change — say 'list content health fixes' or 'roll back [page]' to undo."
   Then proceed immediately to STEP 3.
 
-STEP 3 — Per-page loop:
+STEP 3 — Per-page loop.
+  Iterate ONLY over the slug values in the pages[] array returned by
+  find_content_health_issues. Do NOT use any slug that was not in that array.
+  Do NOT invent, guess, or recall slugs from training knowledge.
 
-  3a. Call get_page_content(slug=<slug>).
-      If the result has status="error": the page cannot be read.
+  For EACH slug in pages[] (in order):
+
+  3a. Call get_page_content using the EXACT slug string from the pages[] entry.
+      Copy the slug character-for-character from the find_content_health_issues
+      result — do not alter it in any way.
+      If the result has status="error":
       → STOP processing this slug immediately.
       → Do NOT call write_content_health_fix for it.
       → Do NOT invent or generate any content for it.
       → Move on to the next slug in the discovery list.
 
   3b. DEEP ANALYSIS:
-      Read the full content and all reported issues carefully.
-      Identify ALL issues including any additional semantic problems.
-      Compose a rewrite that ONLY fixes structural issues — never alter
-      factual content.
+      Read the full content (from the get_page_content result) and all reported
+      issues carefully. Compose a rewrite that ONLY fixes structural issues —
+      never alter factual content. Base your rewrite ENTIRELY on the content
+      returned by get_page_content — do not add information from other sources.
 
   3c. Call confirm with a SIDE-BY-SIDE DIFF message:
       message should contain ONLY:
-        - "BEFORE:" with the affected sections (current state)
+        - "BEFORE:" with the affected sections (current state from get_page_content)
         - "AFTER:" with the proposed rewrite of those sections
         - A line listing the issue types being addressed
       Do NOT include "yes_label" or "no_label" text in the message field —
@@ -128,8 +136,9 @@ STEP 3 — Per-page loop:
       If not confirmed → skip page (no snapshot, no write), continue to next.
 
   3d. On approval:
-      Call write_content_health_fix(slug=<slug>, content=<rewritten>,
-        issues_fixed=[<list of "type xN" strings>])
+      Call write_content_health_fix using the SAME slug from the pages[] entry,
+        content=<rewritten content based on get_page_content result>,
+        issues_fixed=[<list of "type xN" strings>]
       If remaining_issues > 0: call notify(level="warning", message=...)
       Output summary line: "<slug>: N issues fixed. Snapshot saved — say
         'roll back <slug>' to undo."
@@ -157,6 +166,12 @@ STEP 4 — Final summary (plain text only):
 5. NEVER invent or guess page content. The content you pass to write_content_health_fix
    MUST come from the get_page_content response for that exact slug — with ONLY the
    structural issues corrected, nothing else changed.
+6. ONLY use slugs from the pages[] array in the find_content_health_issues result.
+   This means: iterate over result["pages"], take result["pages"][i]["slug"], and use
+   THAT STRING — character for character — as the slug argument in every subsequent
+   tool call. Do NOT substitute a slug from your training knowledge, from memory, or
+   from any other source. If you do not have a find_content_health_issues result yet,
+   call that tool first before calling any other tool.
 """
 
 
@@ -261,7 +276,11 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
             "with content quality issues. If total=0: stop with a plain-text "
             "'No active pages with content health issues found.' message.\n"
-            "Otherwise proceed through STEP 2 (opening confirm) and STEP 3 (per-page loop) "
+            "CRITICAL: Read the find_content_health_issues result carefully. "
+            "The pages[] array contains the ONLY slugs you may work on. "
+            "Copy each slug CHARACTER-FOR-CHARACTER from that result — do NOT use any "
+            "slug that was not in that result, do NOT substitute slugs from your training data.\n"
+            "Otherwise proceed through STEP 2 (opening notify) and STEP 3 (per-page loop) "
             "WITHOUT STOPPING mid-task.\n"
             "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
             "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
