@@ -3281,7 +3281,7 @@ synthadoc workflow run --name content-health list
 synthadoc workflow run --name content-health roll back alan-turing
 ```
 
-> **Coding-tool providers (`claude-code`, `opencode`):** the scan-and-fix loop works, but `list` and `roll back` need an API provider. To undo a fix with a coding-tool provider, use `synthadoc lifecycle history alan-turing` to find the pre-fix snapshot, then `synthadoc lifecycle rollback alan-turing --index N`.
+These work with every provider, including the coding-tool providers (`claude-code`, `opencode`).
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 

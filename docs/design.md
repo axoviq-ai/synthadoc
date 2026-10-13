@@ -4263,7 +4263,7 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 | `rollback_content_health_fix` | Restores the pre-fix snapshot via `POST /pages/{slug}/rollback`, clears the fix record, restores issue flags |
 | `confirm` / `notify` | Shared `_tools.py` gate and progress events (`Begin`/`Cancel` opening gate; `Approve`/`Skip this page` per page) |
 
-**Intent routing inside the workflow:** `build_initial_message()` inspects the request — any request containing `list` shows the fix history; `roll back <slug>` rolls back one page; a bare `roll back` lists fixes and asks which page; `--slug SLUG` scopes the run to one page; anything else runs the full scan-and-fix loop.
+**Intent routing inside the workflow:** `_parse_intent()` inspects the request — any request containing `list` shows the fix history; `roll back <slug>` rolls back one page; a bare `roll back` lists fixes and asks which page; `--slug SLUG` scopes the run to one page; anything else runs the full scan-and-fix loop.
 
 Accessible from the web UI (pre-prompt at session start + hint chip "Run content health resolver"), natural language ("run content health resolver", "fix content issues", "fix duplicate sections", "list content health fixes", "roll back alan-turing"), and the CLI — extra words after `--name content-health` are forwarded verbatim to the workflow:
 
@@ -4275,7 +4275,7 @@ synthadoc workflow run --name content-health roll back alan-turing    # undo one
 synthadoc workflow run --name content-health -w my-wiki
 ```
 
-**CLI-provider path limitation:** with a coding-tool provider (`claude-code`, `opencode`), `run_for_cli_provider()` implements only the scan → diff → approve → write loop (with `--slug` support). The `list` and `roll back` intents require an API provider; with a CLI provider, use `synthadoc lifecycle history <slug>` and `synthadoc lifecycle rollback <slug> --index N` to restore a pre-fix snapshot manually.
+**Provider parity:** `_parse_intent()` classifies the request (`list` / `roll back` / fix) for both execution paths. The API path turns it into the initial LLM instruction; the coding-tool CLI-provider path (`claude-code`, `opencode`) answers `list` and `roll back` directly in Python (no LLM call) and runs the scan → diff → approve → write loop otherwise.
 
 → User walkthrough: [Quick-Start Guide §26 — Demo: Content Health Resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 
@@ -4568,6 +4568,7 @@ Sequencing after PyPI guarantees that the image never references an unpublished 
 - **ProviderConfigurationError is permanent** — provider misconfiguration (e.g. DeepSeek thinking not disabled, ERR-PROV-005) no longer exhausts the retry budget before surfacing the actionable hint.
 - **Template intake forms never ingested** — `raw_sources/template-*.md` files installed by `--template` are now blocked on every ingest path, including `--force`, not only the CLI batch filter.
 - **OKF export** — the bundle folder name uses the real directory name when the wiki is resolved from the CWD (previously `.-okf-<date>`, a hidden folder), and `index.md` section headings now use the canonical OKF types (`article`, `reference`), matching page frontmatter.
+- **Content health list / rollback with coding-tool providers** — with `claude-code` or `opencode`, `run_for_cli_provider()` ignored the `list` and `roll back` intents and started a new scan-and-fix session instead. Both paths now share `_parse_intent()`, and the CLI-provider path answers list and rollback directly.
 - **Python 3.12 deprecation** — the cross-wiki stream handler uses `asyncio.get_running_loop()` instead of `get_event_loop()`.
 - **Security: CVE-2022-31129** — the Obsidian plugin build overrides `moment` to `>=2.31.0` (ReDoS in `moment@2.29.4` pulled in by `obsidian`).
 - **Release tooling** — `scripts/bump_version.py` now also updates the `design.md` version header; the Docker publish workflow waits for the PyPI release to become installable and sets up QEMU for the arm64 build.
