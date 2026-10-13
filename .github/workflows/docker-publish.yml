@@ -22,6 +22,9 @@ jobs:
     # Skip if the PyPI publish failed or was cancelled (workflow_run path only).
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    environment:
+      name: Docker Hub
+      url: https://hub.docker.com/r/chenp/synthadoc/tags
     permissions:
       contents: read
       packages: write   # needed if also pushing to ghcr.io
