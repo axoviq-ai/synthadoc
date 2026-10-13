@@ -32,6 +32,26 @@ jobs:
           TAG=$(git describe --tags --exact-match HEAD)
           echo "tag=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for the release to be installable from PyPI
+        # PyPI's CDN can lag a few minutes behind a successful upload; without
+        # this wait, `pip install synthadoc==<version>` in the Dockerfile can fail.
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          for i in $(seq 1 30); do
+            if python3 -m pip download --no-deps --no-cache-dir -q -d /tmp/pypi-check "synthadoc==${VERSION}"; then
+              echo "synthadoc==${VERSION} is available on PyPI"
+              exit 0
+            fi
+            echo "synthadoc==${VERSION} not on PyPI yet (attempt ${i}/30); retrying in 20s"
+            sleep 20
+          done
+          echo "synthadoc==${VERSION} never became available on PyPI" >&2
+          exit 1
+
+      - name: Set up QEMU
+        # Required to build the linux/arm64 image on an amd64 runner.
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

@@ -118,7 +118,7 @@ docker pull chenp/synthadoc:latest
 
 ### Step 2 — Install a wiki
 
-Before starting the container you need a wiki folder on the host to mount. Pick one of three paths:
+Before starting the container you need a wiki folder on the host to mount. This one-time step uses the `synthadoc` CLI on the host (`pip install synthadoc`), which creates the wiki folder, assigns its port, and installs the Obsidian plugin into the vault. After that, the server runs in Docker and you do not need `synthadoc serve` on the host. Pick one of three paths:
 
 **Option A — Demo wiki** (used in this guide): pre-populated with sample pages, ready to query immediately:
 
@@ -317,8 +317,22 @@ docker exec history-of-computing synthadoc workflow run --name ingest-lint
 docker exec -it history-of-computing synthadoc workflow run --name contradiction-resolver
 
 # Scan and fix broken wikilinks
-docker exec history-of-computing synthadoc workflow run --name broken-wikilinks
+docker exec -it history-of-computing synthadoc workflow run --name broken-wikilinks
+
+# Fix broken ^[file:L-L] citation markers
+docker exec -it history-of-computing synthadoc workflow run --name broken-citation-resolver
+
+# Content health resolver (v1.4.2) — fix duplicate/thin/empty sections and broken
+# markdown structure; side-by-side diff approval per page, snapshot before every write
+docker exec -it history-of-computing synthadoc workflow run --name content-health
+docker exec -it history-of-computing synthadoc workflow run --name content-health --slug alan-turing
+
+# Review or undo content health fixes
+docker exec history-of-computing synthadoc workflow run --name content-health list
+docker exec history-of-computing synthadoc workflow run --name content-health roll back alan-turing
 ```
+
+Use `-it` for any workflow that asks for confirmation; without a TTY the prompts cannot be answered. The same workflows are available in the Web UI at `http://localhost:7070/app`, where the content health resolver is pre-prompted at session start whenever flagged pages exist.
 
 ### Scaffold
 
@@ -456,7 +470,7 @@ Or pass `--provider` at runtime without editing the file:
 
 ```bash
 docker run ... chenp/synthadoc:latest \
-  synthadoc serve -w /wiki --host 0.0.0.0 --http-only --provider openai
+  synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
 ```
 
 ---
@@ -467,7 +481,7 @@ Examples below use `history-of-computing` as the container name. Substitute your
 
 ### Health check
 
-The image includes a HEALTHCHECK that polls `/health` every 30 seconds:
+The image includes a HEALTHCHECK that polls `/health` every 30 seconds on the port set in the wiki's `.synthadoc/config.toml` (so a wiki installed on 7071 is checked on 7071):
 
 ```bash
 docker inspect --format='{{.State.Health.Status}}' history-of-computing
@@ -485,13 +499,13 @@ curl http://localhost:7070/health
 `latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
 
 ```bash
-docker pull chenp/synthadoc:1.3.3
+docker pull chenp/synthadoc:1.4.2
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file .env \
-  chenp/synthadoc:1.3.3
+  chenp/synthadoc:1.4.2
 ```
 
 ### Viewing logs

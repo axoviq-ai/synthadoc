@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.4.1 (Community Edition)**
+**Version: v1.4.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -57,6 +57,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix J — Backup & Restore](#appendix-j--backup--restore)
 - [Appendix K — Domain Templates](#appendix-k--domain-templates)
 - [Appendix L — Cross-Wiki Queries](#appendix-l--cross-wiki-queries)
+- [Appendix M — Run the Demo in Docker](#appendix-m--run-the-demo-in-docker)
 
 ---
 
@@ -3226,10 +3227,12 @@ Wiki pages can accumulate quality issues over time — duplicate sections from m
 
 In the web chat UI, type: **"run content health resolver"**
 
-The workflow announces what it found and the order it will work in:
+The workflow announces what it found and the order it will work in (highest severity first), then waits for you to start:
 
 > *Found 3 page(s) with content issues (2 critical, 1 high).*
 > *A snapshot is saved before each change — say "roll back [page name]" at any time to undo.*
+>
+> **Begin** / **Cancel**
 
 For each page, the agent runs a deep LLM analysis and presents a side-by-side diff:
 
@@ -3248,27 +3251,37 @@ alan-turing
   Issues addressed: duplicate_section ×3, thin_section ×1
 ```
 
-> **Approve** / **Skip this page** / **Stop workflow**
+> **Approve** / **Skip this page**
 
 Click **Approve**. The workflow saves a snapshot, applies the fix, re-validates with the heuristic scanner to confirm the page is clean, then summarises:
 
 > *alan-turing: 4 issues fixed (3 duplicate sections, 1 thin section).*
 > *Snapshot #7 saved — say "roll back alan-turing" to undo.*
 
-If the token budget is nearly exhausted, the workflow pauses:
+Skipped pages are left untouched (no snapshot, no write) and are listed in the final summary.
 
-> *Budget nearly exhausted. Fixed 2 of 3 pages. 1 page remains: [konrad-zuse]. Continue? (uses ~8,000 more tokens)*
+**What the scanner flags:** `duplicate_section` and `empty_section` (critical), `thin_section` (fewer than 50 words) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
 
-**To target a single page:**
+**From the CLI:**
 
 ```bash
-synthadoc workflow run --name content-health --slug alan-turing
+synthadoc workflow run --name content-health                        # all flagged pages
+synthadoc workflow run --name content-health --slug alan-turing     # a single page
 ```
 
 **Rollback after the fact:** Any page fixed by this workflow can be restored later — even days later:
 
 - *"list content health fixes"* — lists all fixes with timestamps
 - *"roll back alan-turing"* — restores the page to its pre-fix snapshot automatically
+
+The same requests work from the CLI:
+
+```bash
+synthadoc workflow run --name content-health list
+synthadoc workflow run --name content-health roll back alan-turing
+```
+
+These work with every provider, including the coding-tool providers (`claude-code`, `opencode`).
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 
@@ -4678,3 +4691,74 @@ Then re-run your query to include it.
 ### Reference
 
 For full architecture detail, API reference, and graceful degradation behaviour see [§40 Cross-Wiki Queries in the design doc](design.md#40-cross-wiki-queries-v140).
+
+---
+
+## Appendix M — Run the Demo in Docker
+
+New in v1.4.2: the same demo wiki can run in a container instead of `synthadoc serve`. Use this when you want an isolated runtime, a shared team server, or a CI/CD pipeline. The wiki files stay on your host, so Obsidian works exactly as in the steps above.
+
+> **Full guide:** [Docker Deployment Guide](docker-deploy.md) covers Docker Compose (multi-wiki and cross-wiki queries, Ollama sidecar), CI/CD, Linux file permissions, security, and troubleshooting.
+
+**Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11). The host `synthadoc` CLI from the README Installation section is used once, to create the wiki folder.
+
+### Step 1 — Stop the native server
+
+The container uses the same port as the demo wiki, so stop the native server first:
+
+```bash
+synthadoc stop -w history-of-computing
+```
+
+### Step 2 — Put your API key in a `.env` file
+
+Create `~/wikis/.env`, keep it outside the wiki folder, and never commit it. It needs the key for the provider selected in `~/wikis/history-of-computing/.synthadoc/config.toml` (see [Appendix C](#appendix-c--switching-llm-providers)):
+
+```bash
+GEMINI_API_KEY=AI...
+# TAVILY_API_KEY=tvly-...   # optional, enables web search ingest
+```
+
+### Step 3 — Start the container
+
+```bash
+docker run -d --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 7070:7070 \
+  --env-file ~/wikis/.env \
+  chenp/synthadoc:latest
+```
+
+Use the wiki's port on both sides of `-p` (7070 for the demo). The Obsidian plugin, the Web UI, and MCP clients then keep using `localhost:7070` without any changes.
+
+### Step 4 — Verify
+
+```bash
+docker ps                                  # the container is listed
+curl http://localhost:7070/health          # {"status": "ok", ...}
+```
+
+Open the Web UI at `http://localhost:7070/app`, and click the Synthadoc bookmark icon in Obsidian to confirm that the plugin is connected.
+
+### Step 5 — Run CLI commands inside the container
+
+The container is preconfigured for the mounted wiki, so `-w` is not needed:
+
+```bash
+docker exec history-of-computing synthadoc status
+docker exec history-of-computing synthadoc query "Who was Alan Turing?"
+docker exec history-of-computing synthadoc ingest raw_sources/ --batch
+docker exec history-of-computing synthadoc lint run --wait
+
+# Interactive workflows need -it so you can answer the approval prompts
+docker exec -it history-of-computing synthadoc workflow run --name content-health
+```
+
+### Step 6 — Go back to the native server
+
+```bash
+docker stop history-of-computing && docker rm history-of-computing
+synthadoc serve -w history-of-computing --background
+```
+
+Your pages, audit trail, and config are untouched. They live in the host folder, not in the container.
