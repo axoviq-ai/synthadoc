@@ -44,15 +44,20 @@ WORKDIR /wiki
 EXPOSE 7070
 
 # Health check — /health responds in < 1 s when the server is ready.
+# Polls the port from the wiki's config.toml (falls back to 7070), so wikis
+# installed on 7071, 7072, … report healthy without overriding the check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c \
-    "import urllib.request; urllib.request.urlopen('http://localhost:7070/health')" \
+    "import tomllib, urllib.request; c = tomllib.load(open('/wiki/.synthadoc/config.toml', 'rb')); urllib.request.urlopen('http://localhost:%d/health' % c.get('server', {}).get('port', 7070))" \
     || exit 1
 
 USER synthadoc
 
 # PATH for user-installed binaries.
 ENV PATH="/home/synthadoc/.local/bin:$PATH"
+
+# Default wiki for `docker exec <container> synthadoc <cmd>` — no -w needed.
+ENV SYNTHADOC_WIKI=/wiki
 
 # Start the server bound to all interfaces so the mapped port is reachable.
 # -w /wiki bypasses the registry (not used inside the container).

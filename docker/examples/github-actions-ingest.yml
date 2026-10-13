@@ -37,4 +37,4 @@ jobs:
         env:
           CONTAINER: synthadoc-wiki
         run: |
-          docker exec "$CONTAINER" synthadoc jobs list --limit 10
+          docker exec "$CONTAINER" synthadoc jobs list --sort created_at --order desc

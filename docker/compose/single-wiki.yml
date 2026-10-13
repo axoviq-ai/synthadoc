@@ -16,7 +16,8 @@ services:
     container_name: synthadoc-wiki
     restart: unless-stopped
     ports:
-      # HOST_PORT:7070 — 7070 is fixed inside the container; change the left side to avoid conflicts.
+      # Use the wiki's [server] port from its .synthadoc/config.toml on both sides
+      # (7070 for the first installed wiki, 7071 for the next, …).
       - "7070:7070"
     volumes:
       # Mount your wiki root to /wiki inside the container.
