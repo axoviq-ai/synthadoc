@@ -53,7 +53,12 @@ get_page_content
 
 write_content_health_fix
   Apply a content-health fix. A snapshot is taken before writing.
-  You MUST call confirm with a side-by-side diff BEFORE every call to this tool.
+  MANDATORY SEQUENCE (enforced): get_page_content(slug) → confirm → write_content_health_fix(slug)
+  • You MUST have called get_page_content for this EXACT slug first.
+  • The content argument MUST be the get_page_content response with ONLY structural
+    fixes applied — never invented or recalled from training.
+  • You MUST call confirm with a side-by-side diff BEFORE every call to this tool.
+  • The slug MUST be one returned by find_content_health_issues in this session.
   Input:  {"slug": str, "content": str, "issues_fixed": [str]}
   Output: {"status": "success"|"error", "slug": str, "snapshot_index": int,
            "remaining_issues": int, "fix_record": dict}
@@ -139,10 +144,14 @@ STEP 4 — Final summary (plain text only):
 
 1. NEVER output plain text while work remains — plain text terminates the workflow.
 2. NEVER modify factual content — only fix structural/formatting issues.
-3. ALWAYS call confirm (STEP 3c) immediately before every write_content_health_fix
-   call. The sequence must be: confirm → write_content_health_fix, every time,
-   for every page. Skipping confirm means the user sees no diff and cannot
-   review changes before they are applied.
+3. ALWAYS follow the exact per-page sequence: get_page_content → confirm → write_content_health_fix.
+   Skipping get_page_content means you are writing content you invented, not the real page.
+   Skipping confirm means the user cannot review changes before they are applied.
+4. NEVER call write_content_health_fix with a slug that was not returned by
+   find_content_health_issues. Only process pages from the discovery list.
+5. NEVER invent or guess page content. The content you pass to write_content_health_fix
+   MUST come from the get_page_content response for that exact slug — with ONLY the
+   structural issues corrected, nothing else changed.
 """
 
 
@@ -256,10 +265,51 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
     def get_tool_fns(
         self, ctx: WorkflowContext
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
+        # Track which slugs are legitimate (found by find_content_health_issues)
+        # and which have been read via get_page_content.  write_content_health_fix
+        # is blocked at the function level for any slug not in both sets, so the
+        # LLM cannot write invented content even if it skips the workflow steps.
+        found_slugs: set[str] = set()
+        read_slugs: set[str] = set()
+
+        async def _find_issues(slug: str = "") -> dict:
+            result = await tool_find_content_health_issues(ctx, slug)
+            if result.get("status") == "success":
+                for page in result.get("pages", []):
+                    found_slugs.add(page["slug"])
+            return result
+
+        async def _get_content(slug: str) -> dict:
+            result = await tool_get_page_content(ctx, slug)
+            if result.get("status") == "success":
+                read_slugs.add(slug)
+            return result
+
+        async def _write_fix(slug: str, content: str, issues_fixed: list) -> dict:
+            if slug not in read_slugs:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"Workflow violation: get_page_content('{slug}') must be called "
+                        "before write_content_health_fix. Call get_page_content now."
+                    ),
+                }
+            if found_slugs and slug not in found_slugs:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"Workflow violation: '{slug}' was not returned by "
+                        "find_content_health_issues. Only process pages from the "
+                        "discovery list."
+                    ),
+                }
+            return await tool_write_content_health_fix(ctx, slug=slug, content=content,
+                                                       issues_fixed=issues_fixed)
+
         return {
-            "find_content_health_issues": functools.partial(tool_find_content_health_issues, ctx),
-            "get_page_content": functools.partial(tool_get_page_content, ctx),
-            "write_content_health_fix": functools.partial(tool_write_content_health_fix, ctx),
+            "find_content_health_issues": _find_issues,
+            "get_page_content": _get_content,
+            "write_content_health_fix": _write_fix,
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),
             "rollback_content_health_fix": functools.partial(tool_rollback_content_health_fix, ctx),
             "confirm": functools.partial(tool_confirm, ctx),

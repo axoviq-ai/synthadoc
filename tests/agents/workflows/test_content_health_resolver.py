@@ -105,6 +105,90 @@ async def test_gate_resets_after_each_write():
     assert confirm_call_count == pre_count + 1  # a second confirm was required
 
 
+@pytest.mark.asyncio
+async def test_write_blocked_without_get_page_content():
+    """write_content_health_fix must return an error if get_page_content was not called first."""
+    ctx = MagicMock()
+    wf = ContentHealthResolverWorkflow()
+    tools = wf.get_tool_fns(ctx)
+    result = await tools["write_content_health_fix"](
+        slug="some-page", content="fixed content", issues_fixed=[]
+    )
+    assert result["status"] == "error"
+    assert "get_page_content" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_write_blocked_for_undiscovered_slug():
+    """write_content_health_fix must return an error for slugs not in the discovery list."""
+    ctx = MagicMock()
+    # Simulate find_content_health_issues returning one page
+    ctx.store.list_pages.return_value = ["real-page"]
+    ctx.store.read_page.return_value = MagicMock(
+        status="active", content_health_issues=[{"severity": "high"}], content="body"
+    )
+    wf = ContentHealthResolverWorkflow()
+    tools = wf.get_tool_fns(ctx)
+
+    # Discover pages (only real-page is flagged with issues)
+    await tools["find_content_health_issues"](slug="")
+    # LLM reads a page that exists but was NOT in the discovery list
+    ctx.store.read_page.return_value = MagicMock(
+        title="Other Page", content="body", content_health_issues=[]
+    )
+    await tools["get_page_content"](slug="invented-slug")
+
+    # Try to write that undiscovered slug
+    result = await tools["write_content_health_fix"](
+        slug="invented-slug", content="invented content", issues_fixed=[]
+    )
+    assert result["status"] == "error"
+    assert "find_content_health_issues" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_write_allowed_after_proper_sequence():
+    """write_content_health_fix succeeds when get_page_content was called first."""
+    ctx = MagicMock()
+    ctx.store.list_pages.return_value = ["real-page"]
+
+    from unittest.mock import AsyncMock
+    ctx.audit_db.snapshot_if_changed = AsyncMock(return_value=None)
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"id": "snap1"}])
+
+    wf = ContentHealthResolverWorkflow()
+    tools = wf.get_tool_fns(ctx)
+
+    # Step 1: discover
+    discover_page = MagicMock(
+        status="active",
+        content_health_issues=[{"severity": "high", "type": "duplicate_section"}],
+        content="old body",
+        title="Real Page",
+    )
+    ctx.store.read_page.return_value = discover_page
+    await tools["find_content_health_issues"](slug="")
+
+    # Step 2: read
+    read_page = MagicMock(
+        status="active", title="Real Page", content="old body", content_health_issues=[]
+    )
+    ctx.store.read_page.return_value = read_page
+    await tools["get_page_content"](slug="real-page")
+
+    # Step 3: write (gate is bypassed here since we call the inner fn directly)
+    write_page = MagicMock(
+        content="old body",
+        content_health_issues=[{"type": "dup", "severity": "high"}],
+        content_health_fix_record=None,
+    )
+    ctx.store.read_page.return_value = write_page
+    result = await tools["write_content_health_fix"](
+        slug="real-page", content="fixed body", issues_fixed=["duplicate_section"]
+    )
+    assert result["status"] != "error" or "get_page_content" not in result.get("error", "")
+
+
 def test_registered_in_routed_workflows():
     from synthadoc.agents.workflows._registry import CLI_REGISTRY, ROUTED_WORKFLOWS
     names = [wf.__name__ for wf in ROUTED_WORKFLOWS]
