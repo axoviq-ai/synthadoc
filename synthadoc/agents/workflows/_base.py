@@ -28,6 +28,73 @@ def _make_confirm_gatekeeper(
     return _wrapped
 
 
+_DIFF_EXCERPT_LEN = 400  # chars shown per BEFORE / AFTER block
+
+
+def _build_fallback_confirm_message(
+    tool_name: str,
+    slug: str,
+    issues: list,
+    new_content: str,
+    ctx: "WorkflowContext",
+) -> str:
+    """Build an informative fallback confirm message with a before/after diff.
+
+    Shown when a gated tool is called before the LLM has called ``confirm``.
+    Extracts the current page content from the store so the user can review
+    what will change, even when the LLM skipped the explicit confirm step.
+    """
+    if not slug:
+        return (
+            f"Run `{tool_name}`?\n\n"
+            "(Tip: call `confirm` with a detailed diff first.)"
+        )
+
+    # Try to read current content for the before side of the diff.
+    current_content = ""
+    if ctx.store is not None:
+        page = ctx.store.read_page(slug)
+        if page is not None:
+            current_content = page.content
+
+    # Build the issues line (e.g. "duplicate_section ×2, thin_section ×1").
+    issues_line = ""
+    if issues:
+        if isinstance(issues[0], str):
+            issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
+        else:
+            issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
+
+    # If we have both sides, render a compact before/after block.
+    if current_content and new_content and current_content != new_content:
+        before = current_content[:_DIFF_EXCERPT_LEN]
+        if len(current_content) > _DIFF_EXCERPT_LEN:
+            before += f"\n… ({len(current_content) - _DIFF_EXCERPT_LEN} more chars)"
+        after = new_content[:_DIFF_EXCERPT_LEN]
+        if len(new_content) > _DIFF_EXCERPT_LEN:
+            after += f"\n… ({len(new_content) - _DIFF_EXCERPT_LEN} more chars)"
+        return (
+            f"**{slug}** — apply content-health fix?{issues_line}\n\n"
+            f"**BEFORE:**\n```\n{before}\n```\n\n"
+            f"**AFTER:**\n```\n{after}\n```"
+        )
+
+    # Fallback when we can't build a diff (new page, store unavailable, etc.).
+    if new_content:
+        excerpt = new_content[:_DIFF_EXCERPT_LEN]
+        if len(new_content) > _DIFF_EXCERPT_LEN:
+            excerpt += f"\n… ({len(new_content) - _DIFF_EXCERPT_LEN} more chars)"
+        return (
+            f"**{slug}** — apply content-health fix?{issues_line}\n\n"
+            f"**NEW CONTENT:**\n```\n{excerpt}\n```"
+        )
+
+    return (
+        f"Run `{tool_name}` on **{slug}**?{issues_line}\n\n"
+        "(Tip: call `confirm` with a side-by-side diff first.)"
+    )
+
+
 def _make_gated_tool(
     original_fn: "Callable[..., Awaitable[dict]]",
     tool_name: str,
@@ -56,23 +123,8 @@ def _make_gated_tool(
             # Build an informative fallback message using available call context.
             slug: str = kwargs.get("slug", args[0] if args else "")  # type: ignore[assignment]
             issues: list = kwargs.get("issues_fixed", [])  # type: ignore[assignment]
-            if slug and issues:
-                detail = (
-                    f"Apply fix to **{slug}**?\n\n"
-                    f"Issues: {', '.join(str(i) for i in issues)}\n\n"
-                    "(No side-by-side diff was prepared — click Cancel to request one first.)"
-                )
-            elif slug:
-                detail = (
-                    f"Apply fix to **{slug}**?\n\n"
-                    "(No diff was prepared — click Cancel to request a preview first.)"
-                )
-            else:
-                detail = (
-                    f"Run `{tool_name}`?\n\n"
-                    "(Tip: call `confirm` with a detailed summary first so the user "
-                    "can review all planned changes before anything is applied.)"
-                )
+            new_content: str = kwargs.get("content", "")  # type: ignore[assignment]
+            detail = _build_fallback_confirm_message(tool_name, slug, issues, new_content, ctx)
             fallback = await _tool_confirm(ctx, detail, yes_label="Proceed", no_label="Cancel")
             if not fallback.get("confirmed"):
                 return {
