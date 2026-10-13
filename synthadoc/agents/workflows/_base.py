@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
+
+_logger = logging.getLogger(__name__)
 
 SseEventFn = Callable[[str, dict], Awaitable[None]]
 
@@ -28,18 +31,159 @@ def _make_confirm_gatekeeper(
     return _wrapped
 
 
+_DIFF_EXCERPT_LEN = 400  # chars shown per BEFORE / AFTER block
+
+
+def _read_current_body(ctx: "WorkflowContext", slug: str) -> "tuple[str | None, bool]":
+    """Return ``(body, page_exists)`` for *slug*.
+
+    Returns:
+        (str,  True)  — page found; body may be "" for template/empty pages.
+        (None, True)  — page found but content could not be read (exception).
+        (None, False) — page does not exist in the wiki.
+    """
+    # ── Primary: store abstraction ────────────────────────────────────────────
+    if ctx.store is not None:
+        try:
+            page = ctx.store.read_page(slug)
+            if page is not None:
+                return page.content, True
+            # read_page returns None ↔ file not found in store root
+            _logger.debug("_build_fallback: read_page(%r) returned None", slug)
+        except Exception as exc:
+            _logger.warning(
+                "_build_fallback: read_page(%r) raised %s: %s",
+                slug, type(exc).__name__, exc,
+            )
+            # Page likely exists (store found it) but couldn't be parsed.
+            return None, True
+    else:
+        _logger.debug("_build_fallback: ctx.store is None for slug=%r", slug)
+
+    # ── Fallback: direct filesystem check / read ─────────────────────────────
+    store_root: "Path | None" = getattr(ctx.store, "_root", None)
+    candidates: list[Path] = []
+    if store_root is not None:
+        candidates.append(store_root / f"{slug}.md")
+    wiki_root: "Path | None" = getattr(ctx, "wiki_root", None)
+    if wiki_root is not None:
+        alt = wiki_root / "wiki" / f"{slug}.md"
+        if alt not in candidates:
+            candidates.append(alt)
+
+    for candidate in candidates:
+        try:
+            if not candidate.exists():
+                continue
+            raw = candidate.read_text(encoding="utf-8", errors="replace")
+            if raw.startswith("---"):
+                parts = raw.split("---", 2)
+                return (parts[2].lstrip("\n") if len(parts) >= 3 else raw), True
+            return raw, True
+        except Exception as exc:
+            _logger.debug("_build_fallback: direct read of %r failed: %s", candidate, exc)
+            return None, True  # file exists but unreadable
+
+    # No candidate path existed → page genuinely not found.
+    _logger.warning("_build_fallback: page %r not found at any candidate path", slug)
+    return None, False
+
+
+def _build_fallback_confirm_message(
+    tool_name: str,
+    slug: str,
+    issues: list,
+    new_content: str,
+    ctx: "WorkflowContext",
+) -> str:
+    """Build an informative fallback confirm message with a before/after diff."""
+    if not slug:
+        return (
+            f"Run `{tool_name}`?\n\n"
+            "(Tip: call `confirm` with a detailed diff first.)"
+        )
+
+    current_content, page_exists = _read_current_body(ctx, slug)
+
+    issues_line = ""
+    if issues:
+        issues_line = f"\nIssues: {', '.join(str(i) for i in issues)}"
+
+    def _excerpt(text: str, label: str) -> str:
+        excerpt = text[:_DIFF_EXCERPT_LEN]
+        if len(text) > _DIFF_EXCERPT_LEN:
+            excerpt += f"\n… ({len(text) - _DIFF_EXCERPT_LEN} more chars)"
+        return f"**{label}:**\n```\n{excerpt}\n```"
+
+    # Page doesn't exist in the wiki — LLM is likely using a fabricated slug.
+    if not page_exists:
+        proposed = f"\n\n{_excerpt(new_content, 'PROPOSED CONTENT')}" if new_content else ""
+        return (
+            f"**⚠️ WARNING: page '{slug}' does not exist in this wiki.**{issues_line}\n\n"
+            "The LLM is attempting to write to a page that was never ingested. "
+            "This is likely a hallucinated slug. **Cancel** unless you intentionally "
+            f"want to create a new page named `{slug}`."
+            f"{proposed}"
+        )
+
+    # Both sides available and content actually changed → BEFORE / AFTER.
+    if current_content and new_content and current_content.strip() != new_content.strip():
+        return (
+            f"**{slug}** — apply content-health fix?{issues_line}\n\n"
+            f"{_excerpt(current_content, 'BEFORE')}\n\n"
+            f"{_excerpt(new_content, 'AFTER')}"
+        )
+
+    # LLM returned the same content — nothing would change.
+    if current_content and new_content and current_content.strip() == new_content.strip():
+        return (
+            f"**{slug}** — no changes detected.{issues_line}\n\n"
+            "The proposed content is identical to the current page.\n"
+            "Proceed only if you want a snapshot recorded with no actual edits.\n\n"
+            f"{_excerpt(current_content, 'CURRENT CONTENT')}"
+        )
+
+    # Current page has no body content — LLM is about to write from scratch.
+    if current_content is not None and not current_content and new_content:
+        return (
+            f"**{slug}** — ⚠️ page currently has no content.{issues_line}\n\n"
+            "The LLM generated new content from scratch (the existing page body is empty). "
+            "Review carefully before proceeding.\n\n"
+            f"{_excerpt(new_content, 'PROPOSED CONTENT')}"
+        )
+
+    # Page exists but content could not be read (parse/encoding error).
+    if new_content:
+        return (
+            f"**{slug}** — apply content-health fix?{issues_line}\n\n"
+            "(Current content could not be read — showing proposed content only.)\n\n"
+            f"{_excerpt(new_content, 'PROPOSED CONTENT')}"
+        )
+
+    return (
+        f"Run `{tool_name}` on **{slug}**?{issues_line}\n\n"
+        "(Tip: call `confirm` with a side-by-side diff first.)"
+    )
+
+
 def _make_gated_tool(
     original_fn: "Callable[..., Awaitable[dict]]",
     tool_name: str,
     gate_open: "list[bool]",
     ctx: "WorkflowContext",
+    *,
+    reset_after_call: bool = False,
 ) -> "Callable[..., Awaitable[dict]]":
     """Wrap a gated tool to fire a fallback confirm when the gate is not open.
 
     The fallback fires only if the LLM calls this tool before the session's
     ``confirm`` tool has been called and approved.  Once the gate is open —
     either via the explicit confirm tool or via this fallback — subsequent
-    calls to the same tool run without an extra dialog.
+    calls to the same tool run without an extra dialog, unless
+    ``reset_after_call=True``, in which case the gate is reset to closed after
+    each successful call so that every invocation requires a fresh confirm.
+    Use ``reset_after_call=True`` for per-item write tools (e.g. one confirm
+    per wiki page) and the default for bulk-approve workflows.
     """
     async def _wrapped(*args: object, **kwargs: object) -> dict:
         if not gate_open[0]:
@@ -47,21 +191,22 @@ def _make_gated_tool(
             from synthadoc.agents.workflows._tools import (  # noqa: PLC0415
                 tool_confirm as _tool_confirm,
             )
-            fallback = await _tool_confirm(
-                ctx,
-                f"Run `{tool_name}`?\n\n"
-                "(Tip: call `confirm` with a detailed summary first so the user "
-                "can review all planned changes before anything is applied.)",
-                yes_label="Proceed",
-                no_label="Cancel",
-            )
+            # Build an informative fallback message using available call context.
+            slug: str = kwargs.get("slug", args[0] if args else "")  # type: ignore[assignment]
+            issues: list = kwargs.get("issues_fixed", [])  # type: ignore[assignment]
+            new_content: str = kwargs.get("content", "")  # type: ignore[assignment]
+            detail = _build_fallback_confirm_message(tool_name, slug, issues, new_content, ctx)
+            fallback = await _tool_confirm(ctx, detail, yes_label="Proceed", no_label="Cancel")
             if not fallback.get("confirmed"):
                 return {
                     "status": "cancelled",
                     "message": f"`{tool_name}` cancelled by user.",
                 }
             gate_open[0] = True
-        return await original_fn(*args, **kwargs)  # type: ignore[misc]
+        result: dict = await original_fn(*args, **kwargs)  # type: ignore[misc]
+        if reset_after_call:
+            gate_open[0] = False
+        return result
     return _wrapped
 
 
@@ -163,6 +308,13 @@ class AgenticWorkflow(ABC):
     # See _registry.py module docstring for a summary of both patterns.
     GATED_TOOLS: frozenset[str] = frozenset()  # override only for write workflows
 
+    # Subset of GATED_TOOLS whose gate resets after each successful call,
+    # requiring a fresh confirm before every invocation.  Use this for
+    # per-item write tools where each change needs individual user approval
+    # (e.g. one confirm per wiki page).  Leave empty for bulk-approve
+    # workflows where a single opening confirm covers the whole batch.
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset()
+
     # Set to True in subclasses that provide a CLI-provider alternative path.
     #
     # Coding-tool CLI providers (claude-code, opencode) are themselves agents
@@ -256,7 +408,10 @@ class AgenticWorkflow(ABC):
             if name == "confirm":
                 result[name] = _make_confirm_gatekeeper(fn, gate_open)
             elif name in self.GATED_TOOLS:
-                result[name] = _make_gated_tool(fn, name, gate_open, ctx)
+                result[name] = _make_gated_tool(
+                    fn, name, gate_open, ctx,
+                    reset_after_call=(name in self.GATED_TOOLS_PER_CALL),
+                )
             else:
                 result[name] = fn
         return result
