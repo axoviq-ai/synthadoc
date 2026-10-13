@@ -21,7 +21,7 @@ from synthadoc.agents.workflows.tools.content_health_tools import (
     tool_rollback_content_health_fix,
     tool_write_content_health_fix,
 )
-from synthadoc.storage.wiki import LifecycleState
+from synthadoc.storage.wiki import LifecycleState, SYSTEM_PAGE_SLUGS
 
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
@@ -271,20 +271,69 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 f"whether this page has any issues. If total=0: stop with a plain-text "
                 f"'No issues found for {slug}' message. Otherwise proceed to STEP 2."
             )
+        prediscovered = getattr(self, "_prediscovered_slugs", [])
+        if not prediscovered:
+            return (
+                "Run the content health resolver workflow.\n"
+                "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
+                "with content quality issues. If total=0: stop with a plain-text "
+                "'No active pages with content health issues found.' message.\n"
+                "Otherwise proceed through STEP 2 (opening notify) and STEP 3 (per-page loop) "
+                "WITHOUT STOPPING mid-task.\n"
+                "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
+                "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
+            )
+        # The pages with content health issues have already been identified by Python.
+        # Give the LLM the EXACT slug strings upfront so it never needs to guess.
+        slug_bullet_list = "\n".join(f"  • {s}" for s in prediscovered)
+        slug_comma_list = ", ".join(prediscovered)
         return (
-            "Run the content health resolver workflow.\n"
-            "FIRST: call find_content_health_issues(slug='') to discover all ACTIVE pages "
-            "with content quality issues. If total=0: stop with a plain-text "
-            "'No active pages with content health issues found.' message.\n"
-            "CRITICAL: Read the find_content_health_issues result carefully. "
-            "The pages[] array contains the ONLY slugs you may work on. "
-            "Copy each slug CHARACTER-FOR-CHARACTER from that result — do NOT use any "
-            "slug that was not in that result, do NOT substitute slugs from your training data.\n"
-            "Otherwise proceed through STEP 2 (opening notify) and STEP 3 (per-page loop) "
-            "WITHOUT STOPPING mid-task.\n"
-            "IMPORTANT: Do NOT pause to ask 'Would you like me to continue?' — plain text "
-            "exits the workflow permanently. Produce plain text ONLY for the FINAL summary (STEP 4)."
+            f"Run the content health resolver workflow.\n\n"
+            f"These {len(prediscovered)} page(s) have content health issues in this wiki:\n"
+            f"{slug_bullet_list}\n\n"
+            f"STEP 1: Call find_content_health_issues(slug='') to get full issue details.\n\n"
+            f"STEP 2: Call notify with a summary that lists exactly: {slug_comma_list}\n\n"
+            f"STEP 3: For EACH slug in this exact list — {slug_comma_list} — call:\n"
+            f"  a. get_page_content(slug=\"<exact slug from list above>\")\n"
+            f"  b. compose a structural fix\n"
+            f"  c. confirm with BEFORE/AFTER diff\n"
+            f"  d. write_content_health_fix(slug=\"<exact slug>\", ...)\n\n"
+            f"CRITICAL: The ONLY valid slug values are: {slug_comma_list}\n"
+            f"Do NOT call any tool with a slug not in that list.\n"
+            f"Do NOT pause mid-task. Plain text ONLY in the final summary."
         )
+
+    def build_guarded_tool_fns(self, ctx: WorkflowContext) -> dict:
+        """Pre-discover pages before the LLM loop starts.
+
+        Stores verified slugs on the instance so that:
+        • get_tool_fns can pre-populate found_slugs (enforcement guard)
+        • build_initial_message can name the exact slugs upfront (prompt anchor)
+
+        The LLM still calls find_content_health_issues for issue details, but
+        found_slugs is already seeded so invented slugs are rejected even if the
+        model ignores the tool result.
+        """
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        self._prediscovered_slugs: list[str] = []
+        if ctx.store is not None:
+            for slug in sorted(ctx.store.list_pages()):
+                if slug in SYSTEM_PAGE_SLUGS:
+                    continue
+                try:
+                    page = ctx.store.read_page(slug)
+                    if (page is not None
+                            and page.status == LifecycleState.ACTIVE
+                            and page.content_health_issues):
+                        self._prediscovered_slugs.append(slug)
+                except Exception as exc:
+                    _logger.debug("content-health pre-discovery: skip %r — %s", slug, exc)
+        _logger.debug(
+            "content-health pre-discovery: %d page(s) found: %s",
+            len(self._prediscovered_slugs), self._prediscovered_slugs,
+        )
+        return super().build_guarded_tool_fns(ctx)
 
     def get_tool_fns(
         self, ctx: WorkflowContext
@@ -293,7 +342,10 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         # and which have been read via get_page_content.  write_content_health_fix
         # is blocked at the function level for any slug not in both sets, so the
         # LLM cannot write invented content even if it skips the workflow steps.
-        found_slugs: set[str] = set()
+        #
+        # Pre-seed found_slugs from the Python-level pre-discovery so that the
+        # enforcement guard works even if the LLM never calls find_content_health_issues.
+        found_slugs: set[str] = set(getattr(self, "_prediscovered_slugs", []))
         read_slugs: set[str] = set()
 
         async def _find_issues(slug: str = "") -> dict:

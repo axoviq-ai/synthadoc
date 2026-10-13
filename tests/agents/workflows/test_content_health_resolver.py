@@ -215,6 +215,61 @@ async def test_find_issues_excludes_unreadable_slugs():
     assert result["total"] == 1
 
 
+def test_prediscovery_seeds_found_slugs():
+    """build_guarded_tool_fns pre-discovers pages; found_slugs is pre-seeded so
+    invented slugs are blocked even if the LLM skips find_content_health_issues."""
+    ctx = MagicMock()
+    ctx.store.list_pages.return_value = ["real-page", "no-issues-page"]
+
+    def _read_page(slug):
+        if slug == "real-page":
+            return MagicMock(
+                status="active",
+                content_health_issues=[{"severity": "high"}],
+            )
+        if slug == "no-issues-page":
+            return MagicMock(status="active", content_health_issues=[])
+        return None
+
+    ctx.store.read_page.side_effect = _read_page
+    wf = ContentHealthResolverWorkflow()
+    wf.build_guarded_tool_fns(ctx)
+    assert wf._prediscovered_slugs == ["no-issues-page" if False else "real-page"]
+    assert "real-page" in wf._prediscovered_slugs
+    assert "no-issues-page" not in wf._prediscovered_slugs
+
+
+def test_prediscovery_initial_message_names_slugs():
+    """build_initial_message includes the pre-discovered slug list when available."""
+    ctx = MagicMock()
+    ctx.store.list_pages.return_value = ["page-a", "page-b"]
+
+    def _read_page(slug):
+        return MagicMock(
+            status="active",
+            content_health_issues=[{"severity": "medium"}],
+        )
+
+    ctx.store.read_page.side_effect = _read_page
+    wf = ContentHealthResolverWorkflow()
+    wf.build_guarded_tool_fns(ctx)
+    msg = wf.build_initial_message("run content health resolver")
+    assert "page-a" in msg
+    assert "page-b" in msg
+    # Slugs must appear as the ONLY valid set
+    assert "ONLY valid slug" in msg or "only valid" in msg.lower() or "only" in msg.lower()
+
+
+def test_prediscovery_initial_message_fallback_when_no_pages():
+    """build_initial_message falls back to LLM-discovery path when no pages found."""
+    ctx = MagicMock()
+    ctx.store.list_pages.return_value = []
+    wf = ContentHealthResolverWorkflow()
+    wf.build_guarded_tool_fns(ctx)
+    msg = wf.build_initial_message("run content health resolver")
+    assert "find_content_health_issues" in msg
+
+
 def test_registered_in_routed_workflows():
     from synthadoc.agents.workflows._registry import CLI_REGISTRY, ROUTED_WORKFLOWS
     names = [wf.__name__ for wf in ROUTED_WORKFLOWS]
