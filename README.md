@@ -240,6 +240,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Resumable job queue + retry](docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash                                                                                                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations                                                                                                                                                                                                                                                                                                                                                | **Yes**   | Limited                  | No                     | No                                                                                                  |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                                         | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Docker deployment](docs/docker-deploy.md)** — official `chenp/synthadoc` image (amd64 + arm64); one container per wiki with HTTP API, Web UI, and MCP on one port; Compose recipes for multi-wiki cross-wiki queries and an Ollama sidecar; non-root, secrets via `--env-file` only | **Yes**   | Varies — usually DIY       | No                     | No                                                                                                  |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use`                                                                                                                                                                                                                                                                                                                                                                                                                         | **Yes**   | No                       | Partial                | No                                                                                                  |
 | **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — eight conversational workflows (stale-page re-ingest, broken wikilinks fix, lint report, scaffold regeneration, **contradiction resolver**, **orphan resolver**, **[broken citation resolver](docs/user-quick-start-guide.md#demo--broken-citation-resolver)**, **[content health resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)**) via web UI or `synthadoc workflow` CLI; confirm-before-act gate on all writes; graph sidebar chips trigger workflows with one click                                                                                                    | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Sensitive Data Retract](docs/user-quick-start-guide.md#step-27--scan-and-retract-sensitive-data)** — scan all wiki pages for API keys, emails, SSNs, credit cards, and custom patterns; apply `[REDACTED]` in place; background scan is incremental (only pages modified since the last cycle are checked); server auto-scans ingested pages immediately after each ingest job completes; `--changed-only` CLI flag for incremental manual runs; `synthadoc retract status` captures the full retraction audit trail (slug, pattern names, counts — never the sensitive values themselves) | **Yes**   | No                       | No                     | No                                                                                                  |
@@ -286,9 +287,27 @@ The Obsidian plugin is bundled inside the package. New wikis created with `synth
 
 ### Docker
 
-For server deployments, team wikis, and CI/CD pipelines, Synthadoc ships an OCI-compatible Docker image that works with Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11).
+For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
-See **[docs/docker-deploy.md](docs/docker-deploy.md)** for the full deployment guide: architecture, API key setup, platform-native runtimes, Docker Compose examples, CI/CD, security, and maintenance.
+```bash
+# 1. Create the wiki on the host (one time) — note the port it prints, e.g. 7070
+synthadoc install history-of-computing --target ~/wikis --demo
+
+# 2. Put your LLM key in .env (never on the command line), e.g. GEMINI_API_KEY=...
+#    and select that provider in ~/wikis/history-of-computing/.synthadoc/config.toml
+
+# 3. Run the server in a container — same port on both sides
+docker run -d --name history-of-computing \
+  -v ~/wikis/history-of-computing:/wiki \
+  -p 7070:7070 --env-file .env \
+  chenp/synthadoc:latest
+
+# 4. Use it — Web UI at http://localhost:7070/app, or the CLI inside the container
+docker exec history-of-computing synthadoc query "Who was Alan Turing?"
+docker exec history-of-computing synthadoc lint run --wait
+```
+
+See **[docs/docker-deploy.md](docs/docker-deploy.md)** for the full deployment guide: architecture, API key setup, platform-native runtimes, Docker Compose (single wiki, multi-wiki with cross-wiki queries, Ollama sidecar), CI/CD, file permissions, security, and maintenance.
 
 ---
 
@@ -661,6 +680,9 @@ synthadoc serve -w my-wiki --background
 # Custom port
 synthadoc serve -w my-wiki --port 7071
 
+# Bind to all interfaces (team server, remote access, containers) — default is 127.0.0.1
+synthadoc serve -w my-wiki --host 0.0.0.0
+
 # Verbose debug logging to console
 synthadoc serve -w my-wiki --verbose
 
@@ -805,6 +827,10 @@ synthadoc lint run --no-adversarial -w my-wiki
 # Skip lifecycle checks (structural and adversarial checks only)
 synthadoc lint run --no-lifecycle -w my-wiki
 
+# Block until lint finishes, printing phase progress (scripts, CI, docker exec)
+# Exits with code 1 if the server stays unreachable
+synthadoc lint run --wait -w my-wiki
+
 # Instant report (reads wiki files directly, no server needed)
 synthadoc lint report -w my-wiki
 ```
@@ -855,7 +881,17 @@ synthadoc workflow run --name content-health -w my-wiki
 
 # Fix content issues on a single page only
 synthadoc workflow run --name content-health --slug alan-turing -w my-wiki
+
+# List every content health fix (timestamp + pre-fix snapshot)
+synthadoc workflow run --name content-health list -w my-wiki
+
+# Undo one content health fix — restores the page's pre-fix snapshot
+synthadoc workflow run --name content-health roll back alan-turing -w my-wiki
 ```
+
+The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. For each flagged page it runs one LLM analysis, shows a side-by-side BEFORE/AFTER diff, and writes only after you approve. A snapshot is saved before every write, so any fix can be rolled back later.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 
 The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
 

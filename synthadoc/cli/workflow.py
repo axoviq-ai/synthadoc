@@ -129,6 +129,11 @@ def run_workflow(
       synthadoc workflow run --name orphan-resolver
       synthadoc workflow run --name orphan-resolver --slug some-page
       synthadoc workflow run --name orphan-resolver -w my-wiki
+      synthadoc workflow run --name broken-citation-resolver
+      synthadoc workflow run --name content-health
+      synthadoc workflow run --name content-health --slug alan-turing
+      synthadoc workflow run --name content-health list
+      synthadoc workflow run --name content-health roll back alan-turing
     """
     from synthadoc.agents.workflows._registry import CLI_REGISTRY
 

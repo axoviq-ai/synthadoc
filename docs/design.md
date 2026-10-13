@@ -46,8 +46,11 @@
 35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 36. [Orphan Resolver Workflow](#36-orphan-resolver-workflow)
 37. [Citation Faithfulness Audit](#37-citation-faithfulness-audit)
+38. [Sensitive Data Retract](#38-sensitive-data-retract)
 39. [Broken Citation Resolver Workflow](#39-broken-citation-resolver-workflow)
-40. [Cross-Wiki Queries (v1.4.0)](#40-cross-wiki-queries-v140)
+40. [Content Health Resolver Workflow (v1.4.2)](#40-content-health-resolver-workflow)
+41. [Cross-Wiki Queries (v1.4.0)](#41-cross-wiki-queries-v140)
+42. [Docker Deployment (v1.4.2)](#42-docker-deployment)
 
 **Appendices**
 
@@ -1021,12 +1024,14 @@ synthadoc
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
-├── serve [-w wiki] [--port N] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+│                                                    — --host 0.0.0.0 binds all interfaces (Docker / remote access; v1.4.2)
 ├── stop [-w wiki] [--all]                           — stop a running wiki server (sends /shutdown; falls back to PID file)
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N] [--cross-wiki]
 ├── lint
-│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial] [--no-lifecycle] [--check-urls]
+│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial] [--no-lifecycle] [--check-urls] [--wait]
+│   │                                                — --wait blocks and prints lint phase progress until the job finishes (v1.4.2)
 │   └── report [-w wiki]
 ├── jobs
 │   ├── list [-w wiki] [--status pending|in_progress|completed|failed|skipped|dead|cancelled] [--sort created_at|status|operation] [--order asc|desc]
@@ -1076,11 +1081,12 @@ synthadoc
 │   └── run --name NAME [WORKFLOW_ARGS...] [-w wiki] [--timeout N]
 │       # NAME is one of: lint-report | broken-wikilinks | scaffold
 │       #                  contradiction-resolver | ingest-lint | orphan-resolver
-│       #                  broken-citation-resolver
+│       #                  broken-citation-resolver | content-health
 │       # Workflow-specific args (forwarded verbatim):
 │       #   contradiction-resolver:      [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
 │       #   orphan-resolver:             [--slug SLUG]
 │       #   broken-citation-resolver:    [--slug SLUG]
+│       #   content-health:              [--slug SLUG] | list | roll back SLUG   (v1.4.2)
 ├── retract
 │   ├── scan [-w wiki] [--slug SLUG] [--apply] [--changed-only] [--yes]
 │   └── status [-w wiki] [--json]
@@ -4244,15 +4250,32 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
 
-**Workflow class:** `ContentHealthResolverWorkflow` — `WORKFLOW_KEY = "content-health"`, `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`.
+**Workflow class:** `ContentHealthResolverWorkflow` — `NAME = "content-health"`, `CLI_ARGS = "[--slug SLUG]"`, `GATED_TOOLS = {"write_content_health_fix"}`, `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`. Registered in `ROUTED_WORKFLOWS` after `OrphanResolverWorkflow` and before `IngestLintWorkflow`.
 
-Accessible from the web UI (hint chip "Run content health resolver"), natural language ("run content health resolver", "fix content issues", "fix duplicate sections"), and `synthadoc workflow run --name content-health [--slug SLUG]`.
+**Tool set** (`synthadoc/agents/workflows/tools/content_health_tools.py`):
+
+| Tool | Description |
+| --- | --- |
+| `find_content_health_issues` | Returns active pages with heuristic issues, pre-sorted critical-first then by issue count; `slug=""` scans the whole wiki |
+| `get_page_content` | Returns the full page body for LLM analysis |
+| `write_content_health_fix` | Gated write: `snapshot_if_changed(reason="content-health-fix")` → write fix record → write page → re-scan |
+| `list_content_health_fixes` | Lists every recorded fix with timestamp and pre-fix snapshot index |
+| `rollback_content_health_fix` | Restores the pre-fix snapshot via `POST /pages/{slug}/rollback`, clears the fix record, restores issue flags |
+| `confirm` / `notify` | Shared `_tools.py` gate and progress events (`Begin`/`Cancel` opening gate; `Approve`/`Skip this page` per page) |
+
+**Intent routing inside the workflow:** `build_initial_message()` inspects the request — any request containing `list` shows the fix history; `roll back <slug>` rolls back one page; a bare `roll back` lists fixes and asks which page; `--slug SLUG` scopes the run to one page; anything else runs the full scan-and-fix loop.
+
+Accessible from the web UI (pre-prompt at session start + hint chip "Run content health resolver"), natural language ("run content health resolver", "fix content issues", "fix duplicate sections", "list content health fixes", "roll back alan-turing"), and the CLI — extra words after `--name content-health` are forwarded verbatim to the workflow:
 
 ```bash
-synthadoc workflow run --name content-health              # all flagged pages
-synthadoc workflow run --name content-health --slug alan-turing  # single page
+synthadoc workflow run --name content-health                          # all flagged pages
+synthadoc workflow run --name content-health --slug alan-turing       # single page
+synthadoc workflow run --name content-health list                     # fix history
+synthadoc workflow run --name content-health roll back alan-turing    # undo one fix
 synthadoc workflow run --name content-health -w my-wiki
 ```
+
+**CLI-provider path limitation:** with a coding-tool provider (`claude-code`, `opencode`), `run_for_cli_provider()` implements only the scan → diff → approve → write loop (with `--slug` support). The `list` and `roll back` intents require an API provider; with a CLI provider, use `synthadoc lifecycle history <slug>` and `synthadoc lifecycle rollback <slug> --index N` to restore a pre-fix snapshot manually.
 
 → User walkthrough: [Quick-Start Guide §26 — Demo: Content Health Resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 
@@ -4454,7 +4477,100 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 
 ---
 
+## 42. Docker Deployment
+
+Synthadoc ships an OCI image, `chenp/synthadoc`, for server deployments, shared team wikis, CI/CD pipelines, and isolated personal use. The same image runs on Docker Engine and Docker Desktop, on the Apple `container` tool (macOS 26+, Apple Silicon), and on WSL Containers (`wslc`, Windows 11). It is published for `linux/amd64` and `linux/arm64`.
+
+→ Operator guide: [Docker Deployment Guide](docker-deploy.md)
+
+### Runtime model
+
+```
+Host                                         Container (chenp/synthadoc)
+~/wikis/history-of-computing/  ── bind ──▶   /wiki   (VOLUME, WORKDIR)
+port 7070                      ── map  ──▶   7070    synthadoc serve -w /wiki --host 0.0.0.0
+.env (API keys)                ── env  ──▶   ANTHROPIC_API_KEY, GEMINI_API_KEY, TAVILY_API_KEY, …
+```
+
+| Decision | Rationale |
+| --- | --- |
+| **One wiki per container** | Matches the one-process / one-port server model; multiple wikis run as multiple containers |
+| **Wiki files stay on the host** | `/wiki` is a bind mount, so Obsidian, git hooks, and backups work on the host files directly |
+| **No registry inside the container** | `CMD` starts the server with an explicit `-w /wiki`; `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` resolve the wiki without `-w` |
+| **Symmetric port mapping** | The server reads `[server] port` from the wiki's `config.toml`; mapping `-p 7070:7070` keeps the Obsidian plugin, Web UI, and scripts unchanged between Docker and native `synthadoc serve` |
+| **HTTP API + Web UI + MCP on one port** | The default `CMD` runs without `--http-only`, so `/app` (Web UI) and `/mcp` (MCP over HTTP) are served alongside the REST API. MCP stdio is not used in containers |
+| **Secrets via environment only** | API keys are passed with `--env-file`; nothing is baked into the image |
+| **Non-root** | Runs as uid/gid 1000 (`synthadoc`); see the guide's Linux file-permission appendix for hosts with a different uid |
+
+### `serve --host`
+
+The server binds to `[server] host` from `config.toml` (default `127.0.0.1`), which is unreachable through a container port mapping. v1.4.2 adds `synthadoc serve --host <addr>`, a per-session override that leaves `config.toml` untouched. The image's `CMD` passes `--host 0.0.0.0`. The same flag also serves non-Docker remote-access setups.
+
+### Image build (`Dockerfile`)
+
+Two-stage build on `python:3.12-slim`:
+
+1. **builder** — installs synthadoc into `/root/.local` with `pip install --user`. When the `SYNTHADOC_VERSION` build-arg is set (CI), it installs `synthadoc==$SYNTHADOC_VERSION` from PyPI, so the image is byte-for-byte the released wheel, including the bundled Web UI and Obsidian plugin. Without the build-arg (local `docker build`), it installs from the copied source tree.
+2. **runtime** — copies `/root/.local` to `/home/synthadoc/.local`, creates the non-root user, declares `VOLUME /wiki`, `EXPOSE 7070`, and a `HEALTHCHECK` that polls `GET /health` every 30 s.
+
+`.dockerignore` excludes tests, local wikis, databases, `node_modules`, and internal docs from the build context.
+
+### Compose examples (`docker/compose/`)
+
+| File | Purpose |
+| --- | --- |
+| `single-wiki.yml` | One wiki on port 7070 with a health check |
+| `multi-wiki.yml` | Two wikis (7070 / 7071) with cross-wiki queries; the cross-wiki registry is inlined through a Compose `configs:` block mounted at `/home/synthadoc/.synthadoc/wikis.json` on the coordinator, with peers addressed by service name via the registry `host` field |
+| `with-ollama.yml` | Synthadoc plus an Ollama sidecar — no cloud API key |
+
+`docker/examples/github-actions-ingest.yml` is a self-hosted-runner workflow for scheduled batch ingest and lint via `docker exec`.
+
+### Release pipeline
+
+`.github/workflows/docker-publish.yml` runs on `workflow_run` after **Publish to PyPI** completes successfully, which is itself triggered by publishing a GitHub release. It:
+
+1. checks out the released commit (`workflow_run.head_sha`) with full history and derives the version from `git describe --tags --exact-match`;
+2. waits until `synthadoc==<version>` is resolvable on PyPI, which absorbs CDN propagation delay;
+3. builds `linux/amd64` + `linux/arm64` (QEMU + Buildx) with `SYNTHADOC_VERSION=<version>`;
+4. pushes `chenp/synthadoc:<version>` and `chenp/synthadoc:latest` to Docker Hub (`DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets).
+
+Sequencing after PyPI guarantees that the image never references an unpublished version.
+
+### Container-related fixes shipped with Docker support
+
+- **Obsidian batch ingest** — the plugin sent host-absolute paths (`C:\Users\…`), which a Linux container resolved to `/wiki/C:\Users\…` and failed every batch job with "Source not found". It now sends vault-relative paths (`raw_sources/file.pdf`) that resolve identically on the host and in the container.
+- **OKF export folder name** — when the wiki is resolved from the current directory (as with `docker exec`, `WORKDIR /wiki`), the bundle folder was named `.-okf-<date>` (a hidden directory). The real directory name is now used.
+- **`lint run --wait`** — `docker exec` and CI callers can block until lint finishes, with phase-by-phase progress; the CLI exits with code 1 after 10 consecutive server errors instead of polling forever.
+
+---
+
 ## Appendix A — Release Feature Index
+
+### v1.4.2
+
+**Major features**
+
+- **Docker deployment** — official OCI image `chenp/synthadoc` for `linux/amd64` and `linux/arm64`, running on Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+), and WSL Containers (`wslc`). The two-stage `python:3.12-slim` build runs as non-root uid 1000. One container serves one wiki: the wiki is bind-mounted at `/wiki` (host files stay Obsidian-readable), and the HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) share the wiki's port with symmetric `-p 7070:7070` mapping. API keys are passed only via `--env-file`. `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` run without `-w`, and a port-aware `HEALTHCHECK` reads the port from `config.toml`. Compose recipes cover a single wiki, multi-wiki with cross-wiki queries (registry inlined through a `configs:` block, peers addressed by service name), and an Ollama sidecar. A GitHub Actions example runs scheduled ingest. `docker-publish.yml` builds and pushes `:<version>` and `:latest` after the PyPI publish succeeds, installing the exact PyPI release. See [§42 Docker Deployment](#42-docker-deployment) and the [Docker Deployment Guide](docker-deploy.md).
+- **Content health resolver (8th agentic maintenance workflow)** — a two-phase design. A pure-Python heuristic scanner flags six issue types (`duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`) after every ingest (create and update paths), after every write by another workflow, and on full lint runs. The flags are stored in `WikiPage.content_health_issues` and counted in `/lifecycle/status` as `content_health`. When the user launches the workflow, one bounded LLM analysis per page proposes a rewrite, shown as a side-by-side BEFORE/AFTER diff behind an `Approve` / `Skip this page` gate. Each approved write is preceded by `snapshot_if_changed(reason="content-health-fix")` and a `content_health_fix_record`, followed by a re-scan. `list content health fixes` and `roll back <slug>` restore any fix later. The workflow is triggered from the web UI pre-prompt (6th in the chain), the "Run content health resolver" hint chip, natural language, or `synthadoc workflow run --name content-health [--slug SLUG | list | roll back SLUG]`. Both API and coding-tool CLI providers are supported. See [§40 Content Health Resolver Workflow](#40-content-health-resolver-workflow).
+
+**CLI additions**
+
+- **`synthadoc serve --host <addr>`** — bind-address override (e.g. `0.0.0.0` for containers or remote access) that leaves `config.toml` unchanged.
+- **`synthadoc lint run --wait`** — blocks until the lint job finishes and prints phase progress (contradictions, orphans, citations, adversarial `n/N`, lifecycle, graph). It exits with code 1 after 10 consecutive server errors, which suits CI and `docker exec`. The Obsidian `LintRunModal` shows the same phase messages.
+- **`synthadoc workflow run --name content-health`** — new workflow name, with `--slug`, `list`, and `roll back <slug>` forms.
+
+**Fixes**
+
+- **Obsidian batch ingest in Docker** — the plugin now sends vault-relative paths instead of host-absolute paths; Windows paths such as `C:\Users\…` were resolved inside the Linux container to `/wiki/C:\Users\…`, failing every batch ingest job with "Source not found".
+- **Anthropic 10-minute limit** — `complete()` now uses `messages.create(stream=True)` and accumulates chunks. Long scaffold and ingest calls no longer fail with "Streaming is required for operations that may take longer than 10 minutes", and the SDK-version-sensitive `messages.stream()` helper is avoided.
+- **Lifecycle lint `raw_sources/` prefix doubling** — Checks 1 and 2 built `raw_sources/raw_sources/<file>` for sources stored with the `raw_sources/` prefix. This wrongly marked pages STALE and blocked draft → active promotion after re-ingest.
+- **Broken-citation counts consistent across surfaces** — `find_broken_citation_refs` treats empty status as active and no longer filters by status. The lint-report workflow previously showed 0 broken citations while the CLI and `/lint/report` showed the real count. The resolver tool still pre-filters to active pages in whole-wiki mode.
+- **ProviderConfigurationError is permanent** — provider misconfiguration (e.g. DeepSeek thinking not disabled, ERR-PROV-005) no longer exhausts the retry budget before surfacing the actionable hint.
+- **Template intake forms never ingested** — `raw_sources/template-*.md` files installed by `--template` are now blocked on every ingest path, including `--force`, not only the CLI batch filter.
+- **OKF export** — the bundle folder name uses the real directory name when the wiki is resolved from the CWD (previously `.-okf-<date>`, a hidden folder), and `index.md` section headings now use the canonical OKF types (`article`, `reference`), matching page frontmatter.
+- **Python 3.12 deprecation** — the cross-wiki stream handler uses `asyncio.get_running_loop()` instead of `get_event_loop()`.
+- **Security: CVE-2022-31129** — the Obsidian plugin build overrides `moment` to `>=2.31.0` (ReDoS in `moment@2.29.4` pulled in by `obsidian`).
+- **Release tooling** — `scripts/bump_version.py` now also updates the `design.md` version header; the Docker publish workflow waits for the PyPI release to become installable and sets up QEMU for the arm64 build.
 
 ### v1.4.1
 
