@@ -6,14 +6,21 @@ on:
   workflow_run:
     workflows: ["Publish to PyPI"]
     types: [completed]
+  # Manual trigger: useful for retries and hotfixes without a new PyPI release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to build, without the v prefix (e.g. 1.4.2)'
+        required: true
+        type: string
 
 env:
   IMAGE: chenp/synthadoc
 
 jobs:
   build-and-push:
-    # Skip if the PyPI publish failed or was cancelled.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Skip if the PyPI publish failed or was cancelled (workflow_run path only).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,15 +29,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          # workflow_run sets head_sha; workflow_dispatch falls back to the triggering commit.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0   # fetch all tags so git describe can find the release tag
 
-      - name: Extract version from release tag
+      - name: Extract version
         id: version
-        # workflow_run doesn't set GITHUB_REF_NAME; derive the tag from the commit.
+        # workflow_dispatch: use the input directly.
+        # workflow_run: GITHUB_REF_NAME is not set; derive the tag from the commit.
         run: |
-          TAG=$(git describe --tags --exact-match HEAD)
-          echo "tag=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(git describe --tags --exact-match HEAD)
+            echo "tag=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Wait for the release to be installable from PyPI
         # PyPI's CDN can lag a few minutes behind a successful upload; without
@@ -73,8 +86,5 @@ jobs:
           # Pin the exact release version so the image matches the git tag.
           build-args: |
             SYNTHADOC_VERSION=${{ steps.version.outputs.tag }}
-          # Cache layers between runs to speed up builds
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           # Build for both amd64 (Linux servers) and arm64 (Apple Silicon, Graviton)
           platforms: linux/amd64,linux/arm64
