@@ -285,12 +285,32 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             return result
 
         async def _get_content(slug: str) -> dict:
+            # Reject slugs that were never returned by find_content_health_issues.
+            # This catches the case where the LLM invents a slug from imagination
+            # rather than using the actual discovery results.
+            if found_slugs and slug not in found_slugs:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "content-health: LLM requested get_page_content(%r) but that slug "
+                    "was not in the discovery results. Valid slugs: %s",
+                    slug, sorted(found_slugs),
+                )
+                return {
+                    "status": "error",
+                    "error": (
+                        f"'{slug}' was not returned by find_content_health_issues. "
+                        "Only use slugs from the discovery results."
+                    ),
+                    "action": (
+                        "Do NOT invent page slugs. Re-read the find_content_health_issues "
+                        "result and use only the slugs listed there."
+                    ),
+                    "valid_slugs": sorted(found_slugs),
+                }
             result = await tool_get_page_content(ctx, slug)
             if result.get("status") == "success":
                 read_slugs.add(slug)
             else:
-                # Make the required action unambiguous so the LLM does not
-                # fabricate content for a page it could not read.
                 result["action"] = (
                     f"Skip '{slug}' entirely. "
                     "Do NOT call write_content_health_fix for this slug. "

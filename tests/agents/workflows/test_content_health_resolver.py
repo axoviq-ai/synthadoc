@@ -120,9 +120,8 @@ async def test_write_blocked_without_get_page_content():
 
 @pytest.mark.asyncio
 async def test_write_blocked_for_undiscovered_slug():
-    """write_content_health_fix must return an error for slugs not in the discovery list."""
+    """Both get_page_content and write_content_health_fix reject slugs not in the discovery list."""
     ctx = MagicMock()
-    # Simulate find_content_health_issues returning one page
     ctx.store.list_pages.return_value = ["real-page"]
     ctx.store.read_page.return_value = MagicMock(
         status="active", content_health_issues=[{"severity": "high"}], content="body"
@@ -130,20 +129,20 @@ async def test_write_blocked_for_undiscovered_slug():
     wf = ContentHealthResolverWorkflow()
     tools = wf.get_tool_fns(ctx)
 
-    # Discover pages (only real-page is flagged with issues)
+    # Discover pages — only "real-page" is in found_slugs
     await tools["find_content_health_issues"](slug="")
-    # LLM reads a page that exists but was NOT in the discovery list
-    ctx.store.read_page.return_value = MagicMock(
-        title="Other Page", content="body", content_health_issues=[]
-    )
-    await tools["get_page_content"](slug="invented-slug")
 
-    # Try to write that undiscovered slug
-    result = await tools["write_content_health_fix"](
+    # LLM tries to read an invented slug — get_page_content rejects it
+    get_result = await tools["get_page_content"](slug="invented-slug")
+    assert get_result["status"] == "error"
+    assert "find_content_health_issues" in get_result["error"]
+    assert "valid_slugs" in get_result
+
+    # LLM tries to write anyway — also blocked (slug not in read_slugs)
+    write_result = await tools["write_content_health_fix"](
         slug="invented-slug", content="invented content", issues_fixed=[]
     )
-    assert result["status"] == "error"
-    assert "find_content_health_issues" in result["error"]
+    assert write_result["status"] == "error"
 
 
 @pytest.mark.asyncio
