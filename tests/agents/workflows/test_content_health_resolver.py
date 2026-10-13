@@ -188,6 +188,33 @@ async def test_write_allowed_after_proper_sequence():
     assert result["status"] != "error" or "get_page_content" not in result.get("error", "")
 
 
+@pytest.mark.asyncio
+async def test_find_issues_excludes_unreadable_slugs():
+    """find_content_health_issues must drop any slug that cannot be re-read from the store."""
+    ctx = MagicMock()
+    # list_pages returns two slugs but one disappears before re-read
+    ctx.store.list_pages.return_value = ["good-page", "ghost-page"]
+
+    def _read_page(slug):
+        if slug == "good-page":
+            return MagicMock(
+                status="active",
+                content_health_issues=[{"severity": "high", "type": "duplicate_section"}],
+                title="Good Page",
+                content="body",
+            )
+        return None  # ghost-page vanished
+
+    ctx.store.read_page.side_effect = _read_page
+    wf = ContentHealthResolverWorkflow()
+    tools = wf.get_tool_fns(ctx)
+    result = await tools["find_content_health_issues"](slug="")
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "good-page" in slugs
+    assert "ghost-page" not in slugs
+    assert result["total"] == 1
+
+
 def test_registered_in_routed_workflows():
     from synthadoc.agents.workflows._registry import CLI_REGISTRY, ROUTED_WORKFLOWS
     names = [wf.__name__ for wf in ROUTED_WORKFLOWS]

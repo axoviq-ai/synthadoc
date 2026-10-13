@@ -279,9 +279,35 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
 
         async def _find_issues(slug: str = "") -> dict:
             result = await tool_find_content_health_issues(ctx, slug)
-            if result.get("status") == "success":
+            if result.get("status") == "success" and ctx.store is not None:
+                # Verify each returned slug is still readable right now.
+                # Filters out any page that was deleted between list_pages() and
+                # this call (race-condition window), and populates found_slugs
+                # with only confirmed-readable slugs.
+                verified: list[dict] = []
+                import logging as _logging
+                _log = _logging.getLogger(__name__)
                 for page in result.get("pages", []):
-                    found_slugs.add(page["slug"])
+                    page_slug = page["slug"]
+                    try:
+                        page_obj = ctx.store.read_page(page_slug)
+                        if page_obj is not None:
+                            found_slugs.add(page_slug)
+                            verified.append(page)
+                        else:
+                            _log.warning(
+                                "content-health: find_content_health_issues returned slug %r "
+                                "but read_page returned None — excluding from work list",
+                                page_slug,
+                            )
+                    except Exception as exc:
+                        _log.warning(
+                            "content-health: could not verify slug %r — excluding: %s",
+                            page_slug, exc,
+                        )
+                result = dict(result)
+                result["pages"] = verified
+                result["total"] = len(verified)
             return result
 
         async def _get_content(slug: str) -> dict:
