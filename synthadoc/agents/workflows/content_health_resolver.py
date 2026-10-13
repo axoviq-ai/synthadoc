@@ -53,7 +53,7 @@ get_page_content
 
 write_content_health_fix
   Apply a content-health fix. A snapshot is taken before writing.
-  The confirm gate fires automatically before the first call.
+  You MUST call confirm with a side-by-side diff BEFORE every call to this tool.
   Input:  {"slug": str, "content": str, "issues_fixed": [str]}
   Output: {"status": "success"|"error", "slug": str, "snapshot_index": int,
            "remaining_issues": int, "fix_record": dict}
@@ -169,6 +169,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
     )
 
     GATED_TOOLS: frozenset[str] = frozenset({"write_content_health_fix"})
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"write_content_health_fix"})
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT

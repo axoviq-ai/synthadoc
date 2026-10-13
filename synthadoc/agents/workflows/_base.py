@@ -33,13 +33,19 @@ def _make_gated_tool(
     tool_name: str,
     gate_open: "list[bool]",
     ctx: "WorkflowContext",
+    *,
+    reset_after_call: bool = False,
 ) -> "Callable[..., Awaitable[dict]]":
     """Wrap a gated tool to fire a fallback confirm when the gate is not open.
 
     The fallback fires only if the LLM calls this tool before the session's
     ``confirm`` tool has been called and approved.  Once the gate is open —
     either via the explicit confirm tool or via this fallback — subsequent
-    calls to the same tool run without an extra dialog.
+    calls to the same tool run without an extra dialog, unless
+    ``reset_after_call=True``, in which case the gate is reset to closed after
+    each successful call so that every invocation requires a fresh confirm.
+    Use ``reset_after_call=True`` for per-item write tools (e.g. one confirm
+    per wiki page) and the default for bulk-approve workflows.
     """
     async def _wrapped(*args: object, **kwargs: object) -> dict:
         if not gate_open[0]:
@@ -61,7 +67,10 @@ def _make_gated_tool(
                     "message": f"`{tool_name}` cancelled by user.",
                 }
             gate_open[0] = True
-        return await original_fn(*args, **kwargs)  # type: ignore[misc]
+        result: dict = await original_fn(*args, **kwargs)  # type: ignore[misc]
+        if reset_after_call:
+            gate_open[0] = False
+        return result
     return _wrapped
 
 
@@ -163,6 +172,13 @@ class AgenticWorkflow(ABC):
     # See _registry.py module docstring for a summary of both patterns.
     GATED_TOOLS: frozenset[str] = frozenset()  # override only for write workflows
 
+    # Subset of GATED_TOOLS whose gate resets after each successful call,
+    # requiring a fresh confirm before every invocation.  Use this for
+    # per-item write tools where each change needs individual user approval
+    # (e.g. one confirm per wiki page).  Leave empty for bulk-approve
+    # workflows where a single opening confirm covers the whole batch.
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset()
+
     # Set to True in subclasses that provide a CLI-provider alternative path.
     #
     # Coding-tool CLI providers (claude-code, opencode) are themselves agents
@@ -256,7 +272,10 @@ class AgenticWorkflow(ABC):
             if name == "confirm":
                 result[name] = _make_confirm_gatekeeper(fn, gate_open)
             elif name in self.GATED_TOOLS:
-                result[name] = _make_gated_tool(fn, name, gate_open, ctx)
+                result[name] = _make_gated_tool(
+                    fn, name, gate_open, ctx,
+                    reset_after_call=(name in self.GATED_TOOLS_PER_CALL),
+                )
             else:
                 result[name] = fn
         return result
