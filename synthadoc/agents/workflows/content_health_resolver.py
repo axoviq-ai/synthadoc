@@ -103,6 +103,11 @@ STEP 2 — Opening summary before any work begins.
 STEP 3 — Per-page loop:
 
   3a. Call get_page_content(slug=<slug>).
+      If the result has status="error": the page cannot be read.
+      → STOP processing this slug immediately.
+      → Do NOT call write_content_health_fix for it.
+      → Do NOT invent or generate any content for it.
+      → Move on to the next slug in the discovery list.
 
   3b. DEEP ANALYSIS:
       Read the full content and all reported issues carefully.
@@ -283,6 +288,14 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             result = await tool_get_page_content(ctx, slug)
             if result.get("status") == "success":
                 read_slugs.add(slug)
+            else:
+                # Make the required action unambiguous so the LLM does not
+                # fabricate content for a page it could not read.
+                result["action"] = (
+                    f"Skip '{slug}' entirely. "
+                    "Do NOT call write_content_health_fix for this slug. "
+                    "Continue to the next slug in the discovery list."
+                )
             return result
 
         async def _write_fix(slug: str, content: str, issues_fixed: list) -> dict:
