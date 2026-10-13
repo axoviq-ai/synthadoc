@@ -53,14 +53,27 @@ def _make_gated_tool(
             from synthadoc.agents.workflows._tools import (  # noqa: PLC0415
                 tool_confirm as _tool_confirm,
             )
-            fallback = await _tool_confirm(
-                ctx,
-                f"Run `{tool_name}`?\n\n"
-                "(Tip: call `confirm` with a detailed summary first so the user "
-                "can review all planned changes before anything is applied.)",
-                yes_label="Proceed",
-                no_label="Cancel",
-            )
+            # Build an informative fallback message using available call context.
+            slug: str = kwargs.get("slug", args[0] if args else "")  # type: ignore[assignment]
+            issues: list = kwargs.get("issues_fixed", [])  # type: ignore[assignment]
+            if slug and issues:
+                detail = (
+                    f"Apply fix to **{slug}**?\n\n"
+                    f"Issues: {', '.join(str(i) for i in issues)}\n\n"
+                    "(No side-by-side diff was prepared — click Cancel to request one first.)"
+                )
+            elif slug:
+                detail = (
+                    f"Apply fix to **{slug}**?\n\n"
+                    "(No diff was prepared — click Cancel to request a preview first.)"
+                )
+            else:
+                detail = (
+                    f"Run `{tool_name}`?\n\n"
+                    "(Tip: call `confirm` with a detailed summary first so the user "
+                    "can review all planned changes before anything is applied.)"
+                )
+            fallback = await _tool_confirm(ctx, detail, yes_label="Proceed", no_label="Cancel")
             if not fallback.get("confirmed"):
                 return {
                     "status": "cancelled",

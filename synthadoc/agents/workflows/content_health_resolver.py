@@ -88,14 +88,12 @@ STEP 1 — Discover pages with issues.
   The tool returns pages pre-sorted: critical first, then by issue count.
   If total=0: output plain text "No active pages with content health issues found." and stop.
 
-STEP 2 — Opening confirm before any work begins.
-  Call confirm with:
+STEP 2 — Opening summary before any work begins.
+  Call notify with level="info" and message:
     "Found N page(s) with content issues (X critical, Y high, Z medium).
-    Pages processed highest-severity first. A snapshot is saved before each
-    change — say 'list content health fixes' or 'roll back [page]' to undo.
-    Ready to begin?"
-  yes_label="Begin", no_label="Cancel"
-  If not confirmed: output plain-text cancel message and stop.
+    Processing highest-severity pages first. A snapshot is saved before each
+    change — say 'list content health fixes' or 'roll back [page]' to undo."
+  Then proceed immediately to STEP 3.
 
 STEP 3 — Per-page loop:
 
@@ -141,7 +139,10 @@ STEP 4 — Final summary (plain text only):
 
 1. NEVER output plain text while work remains — plain text terminates the workflow.
 2. NEVER modify factual content — only fix structural/formatting issues.
-3. ALWAYS call write_content_health_fix after user approves.
+3. ALWAYS call confirm (STEP 3c) immediately before every write_content_health_fix
+   call. The sequence must be: confirm → write_content_health_fix, every time,
+   for every page. Skipping confirm means the user sees no diff and cannot
+   review changes before they are applied.
 """
 
 
