@@ -4500,7 +4500,8 @@ port 7070                      ── map  ──▶   7070    synthadoc serve -
 | **Symmetric port mapping** | The server reads `[server] port` from the wiki's `config.toml`; mapping `-p 7070:7070` keeps the Obsidian plugin, Web UI, and scripts unchanged between Docker and native `synthadoc serve` |
 | **HTTP API + Web UI + MCP on one port** | The default `CMD` runs without `--http-only`, so `/app` (Web UI) and `/mcp` (MCP over HTTP) are served alongside the REST API. MCP stdio is not used in containers |
 | **Secrets via environment only** | API keys are passed with `--env-file`; nothing is baked into the image |
-| **Non-root** | Runs as uid/gid 1000 (`synthadoc`); see the guide's Linux file-permission appendix for hosts with a different uid |
+| **Non-root** | Runs as uid/gid 1000 (`synthadoc`) with a real, user-owned home (`useradd --create-home`), so CLI commands that write `~/.synthadoc/` work in the container; see the guide's Linux file-permission appendix for hosts with a different uid |
+| **No host Python** | Wikis are created by a one-off container that mounts the *parent* folder: `docker run --rm -v ~/wikis:/wikis chenp/synthadoc synthadoc install <name> --target /wikis [--demo \| --template …]`. Each one-off container starts with an empty registry, so additional wikis need an explicit `--port` |
 
 ### `serve --host`
 

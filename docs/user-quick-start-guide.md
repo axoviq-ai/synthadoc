@@ -4700,7 +4700,7 @@ New in v1.4.2: the same demo wiki can run in a container instead of `synthadoc s
 
 > **Full guide:** [Docker Deployment Guide](docker-deploy.md) covers Docker Compose (multi-wiki and cross-wiki queries, Ollama sidecar), CI/CD, Linux file permissions, security, and troubleshooting.
 
-**Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11). The host `synthadoc` CLI from the README Installation section is used once, to create the wiki folder.
+**Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11). This appendix reuses the demo wiki you already installed. If you are starting with Docker only (no Python on the host), create the wiki in a one-off container instead; see [Docker Deployment Guide — Step 2](docker-deploy.md#step-2--install-a-wiki).
 
 ### Step 1 — Stop the native server
 

@@ -8,7 +8,7 @@
 # To use your own wikis, search and replace:
 #   history-of-computing  →  your wiki A name
 #   ai-research           →  your wiki B name
-#   7071 (wiki B port)    →  your wiki B's installed port  (check: synthadoc status -w <name>)
+#   7071 (wiki B port)    →  your wiki B's installed port  (check: [server] port in its .synthadoc/config.toml)
 #   All three 7071 values in sd-server-b must match: command, healthcheck, and ports.
 #
 # ─── SETUP ────────────────────────────────────────────────────────────────────
