@@ -254,6 +254,14 @@ See [docs/design.md — Appendix A: Release Feature Index](https://github.com/ax
 
 ## Installation
 
+Choose one way to run Synthadoc:
+
+| | Install with pip | Run with Docker |
+| --- | --- | --- |
+| **Host requirements** | Python 3.11+ | A container runtime only, with **no Python or pip on the host** |
+| **Best for** | Personal use on one machine | Team or shared servers, CI/CD, isolated or reproducible runtimes |
+| **Steps** | [Production](#production), then [Set your API keys](#set-your-api-keys) and [Install a wiki and start the engine](#install-a-wiki-and-start-the-engine) | [Docker](#docker) below, then the [Docker Deployment Guide](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md) |
+
 ### Production
 
 **Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
@@ -266,6 +274,8 @@ synthadoc --version   # confirm it works
 The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
 
 ### Docker
+
+**Prerequisites:** a container runtime only (Docker Engine or Desktop, Apple `container`, or `wslc`). No Python, pip, or `synthadoc` install on the host: every command, including creating the wiki, runs in a container.
 
 For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
@@ -291,6 +301,8 @@ docker exec history-of-computing synthadoc lint run --wait
 ```
 
 See **[docs/docker-deploy.md](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md)** for the full deployment guide: architecture, API key setup, platform-native runtimes, Docker Compose (single wiki, multi-wiki with cross-wiki queries, Ollama sidecar), CI/CD, file permissions, security, and maintenance.
+
+> **Docker users:** the rest of this Installation section (Development, *Set your API keys* with shell `export`s, and *Install a wiki and start the engine*) is for the pip install. With Docker, API keys go in the `.env` file, and any `synthadoc …` command elsewhere in this README runs as `docker exec <container> synthadoc …` (no `-w` needed).
 
 ---
 
@@ -425,6 +437,8 @@ synthadoc templates sync --force # demo and template wikis — refresh seeds, ro
 ```
 
 Neither command requires the server to be running.
+
+**Upgrading a Docker deployment:** `docker pull chenp/synthadoc:latest`, then remove and re-create the container with the same `docker run` command; wiki data on the host is untouched. To refresh the Obsidian plugin in the vault, run `docker exec <container> synthadoc plugin install`. (`plugin upgrade` and `templates sync` rely on the host registry and don't work inside a container.) See [Docker Deployment Guide — Updating the image](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md#updating-the-image).
 
 ---
 

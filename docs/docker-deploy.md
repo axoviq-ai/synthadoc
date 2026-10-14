@@ -552,6 +552,14 @@ docker run -d \
   chenp/synthadoc:latest
 ```
 
+Then refresh the Obsidian plugin stored in the vault so it matches the new server version:
+
+```bash
+docker exec history-of-computing synthadoc plugin install
+```
+
+> `synthadoc plugin upgrade` and `synthadoc templates sync`, the upgrade commands for pip installs, read the host wiki registry, which does not exist inside a container. They fail with "No wikis registered" or "is not registered". Use `plugin install` as shown above. Refreshing demo or template content (`templates sync`) is not currently available for container-only setups.
+
 ### Stop and restart
 
 ```bash

@@ -4537,6 +4537,12 @@ Two-stage build on `python:3.12-slim`:
 
 Sequencing after PyPI guarantees that the image never references an unpublished version.
 
+The workflow can also be started manually (**Actions → Publish Docker Image → Run workflow**, input `tag`, e.g. `1.4.2`). It builds the selected branch's `Dockerfile` against that already-released PyPI version and re-pushes `:<tag>` and `:latest`. Use it for image-only fixes (for example, Dockerfile changes) without cutting a new PyPI release.
+
+### Upgrading a container deployment
+
+Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `plugin upgrade` and `templates sync` iterate the host wiki registry, which does not exist in a container, so they are unavailable there. Refreshing demo or template content is currently pip-only.
+
 ### Container-related fixes shipped with Docker support
 
 - **Obsidian batch ingest** — the plugin sent host-absolute paths (`C:\Users\…`), which a Linux container resolved to `/wiki/C:\Users\…` and failed every batch job with "Source not found". It now sends vault-relative paths (`raw_sources/file.pdf`) that resolve identically on the host and in the container.
