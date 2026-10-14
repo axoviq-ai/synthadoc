@@ -29,11 +29,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 FROM python:3.12-slim AS runtime
 
 # Non-root user (uid 1000) — standard container hardening.
+# A real, user-owned home is required: CLI commands such as `synthadoc install`
+# write ~/.synthadoc/ (registry, default wiki), which fails if the home
+# directory is missing or root-owned.
 RUN groupadd --gid 1000 synthadoc \
- && useradd --uid 1000 --gid synthadoc --no-create-home synthadoc
+ && useradd --uid 1000 --gid synthadoc --create-home synthadoc
 
 # Copy installed packages from builder stage.
-COPY --from=builder /root/.local /home/synthadoc/.local
+COPY --from=builder --chown=synthadoc:synthadoc /root/.local /home/synthadoc/.local
 
 # Wiki volume — user mounts their wiki root here at runtime.
 RUN mkdir /wiki && chown synthadoc:synthadoc /wiki
