@@ -18,7 +18,8 @@
 #      (Windows PowerShell: use curl.exe instead of curl)
 #
 # 1. Set wiki paths and API key in .env (same folder as this file):
-#      MINIMAX_API_KEY=sk-...        # or ANTHROPIC_API_KEY, GEMINI_API_KEY, …
+#      MINIMAX_API_KEY=sk-...
+#      (or ANTHROPIC_API_KEY, GEMINI_API_KEY, … — keep comments on their own line)
 #      WIKI_A_PATH=/home/yourname/wikis/history-of-computing
 #      WIKI_B_PATH=/home/yourname/wikis/ai-research
 #      On Windows: use forward slashes (C:/Users/...) not backslashes

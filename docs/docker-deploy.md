@@ -85,12 +85,12 @@ All runtimes use the same OCI image — no separate image per platform.
 
 **No Python needed on the host.** Every `synthadoc` command in this guide, including creating a wiki, runs inside a container. Besides a container runtime you only need a text editor (to set the LLM provider in `config.toml`) and, optionally, Obsidian.
 
-**How commands are shown.** Commands are written for **Linux / macOS** (bash or zsh), with long commands split across lines using `\`. Where Windows differs, a collapsible **Windows (PowerShell)** block follows with single-line commands that paste directly into PowerShell. On Windows:
+**How commands are shown.** Commands are written for **Linux / macOS** (bash or zsh), with long commands split across lines using `\`. Where Windows differs, a collapsible **Windows (Command Prompt)** block follows with single-line commands that paste directly into `cmd.exe`. On Windows:
 
-- `\` line continuation does not work in PowerShell or `cmd.exe`, so use the single-line versions.
-- `~` is not expanded inside `docker -v` paths, so the Windows versions use `"$HOME\wikis\…"`. In `cmd.exe`, use `%USERPROFILE%` instead of `$HOME`.
-- Type `curl.exe`, not `curl`. In Windows PowerShell, `curl` is an alias for `Invoke-WebRequest`.
+- `\` line continuation does not work in Command Prompt, so use the single-line versions.
+- `~` is not expanded inside `docker -v` paths, so the Windows versions use `"%USERPROFILE%\wikis\…"`.
 - `docker exec …` commands are identical on every platform and are shown once.
+- Using PowerShell instead? Replace `%USERPROFILE%` with `$env:USERPROFILE`, and type `curl.exe` instead of `curl` (in PowerShell, `curl` is an alias for `Invoke-WebRequest`).
 
 ---
 
@@ -113,7 +113,7 @@ MINIMAX_API_KEY=sk-...
 TAVILY_API_KEY=tvly-...
 ```
 
-On Windows, create it with `notepad "$HOME\wikis\.env"` (after `~/wikis` exists, Step 2) and save it as plain text.
+On Windows, create it with `notepad "%USERPROFILE%\wikis\.env"` (after `~/wikis` exists, Step 2) and save it as plain text.
 
 Pass it to the container with `--env-file`. This keeps keys out of your shell history and off the command line. **Do not use `-e KEY=value` on the command line**, because the value ends up in shell history. Either way, anyone with Docker access on the host can read the container's environment with `docker inspect`, so restrict who can use Docker on shared servers.
 
@@ -142,10 +142,10 @@ mkdir -p ~/wikis
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-mkdir -Force "$HOME\wikis"
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
 ```
 
 </details>
@@ -158,10 +158,10 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+```bat
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
 ```
 
 </details>
@@ -176,11 +176,11 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker run --rm chenp/synthadoc:latest synthadoc templates list
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-market-wiki --target /wikis --template research/market-research
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-market-wiki --target /wikis --template research/market-research
 ```
 
 </details>
@@ -193,10 +193,10 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-wiki --target /wikis --domain "Your domain description"
+```bat
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-wiki --target /wikis --domain "Your domain description"
 ```
 
 </details>
@@ -266,10 +266,10 @@ docker run -d \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
 ```
 
 </details>
@@ -290,7 +290,7 @@ If it is missing from the list, it exited — check why:
 docker logs history-of-computing
 ```
 
-**Check the health endpoint** (on Windows, type `curl.exe`):
+**Check the health endpoint:**
 
 ```bash
 curl http://localhost:7070/health
@@ -553,11 +553,11 @@ docker run -d \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker rm -f history-of-computing
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
 ```
 
 </details>
@@ -579,7 +579,7 @@ docker inspect --format='{{.State.Health.Status}}' history-of-computing
 # healthy | starting | unhealthy
 ```
 
-If the status is `unhealthy`, check the logs (see below) and try the health endpoint directly (on Windows, type `curl.exe`):
+If the status is `unhealthy`, check the logs (see below) and try the health endpoint directly:
 
 ```bash
 curl http://localhost:7070/health
@@ -600,11 +600,11 @@ docker run -d \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker pull chenp/synthadoc:1.4.2
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:1.4.2
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.4.2
 ```
 
 </details>
@@ -638,13 +638,13 @@ docker run -d \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker pull chenp/synthadoc:latest
 docker stop history-of-computing
 docker rm history-of-computing
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
 ```
 
 </details>
@@ -697,11 +697,11 @@ docker start history-of-computing
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker stop history-of-computing
-Compress-Archive -Path "$HOME\wikis\history-of-computing" -DestinationPath "history-of-computing-backup-$(Get-Date -Format yyyyMMdd).zip"
+tar -czf history-of-computing-backup.tar.gz -C "%USERPROFILE%\wikis" history-of-computing
 docker start history-of-computing
 ```
 
@@ -761,11 +761,11 @@ curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/syn
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-cd "$HOME\wikis"
-curl.exe -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
+```bat
+cd /d "%USERPROFILE%\wikis"
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
 ```
 
 </details>
@@ -774,7 +774,8 @@ Add the wiki path to `~/wikis/.env` (alongside your API key), then start:
 
 ```bash
 # ~/wikis/.env
-WIKI_PATH=/home/yourname/wikis/history-of-computing   # macOS: /Users/yourname/wikis/...
+# macOS: WIKI_PATH=/Users/yourname/wikis/history-of-computing
+WIKI_PATH=/home/yourname/wikis/history-of-computing
 MINIMAX_API_KEY=sk-...
 ```
 
@@ -807,12 +808,12 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-mkdir -Force "$HOME\wikis"
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install ai-research --target /wikis --demo --port 7071
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install ai-research --target /wikis --demo --port 7071
 ```
 
 </details>
@@ -825,11 +826,11 @@ curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthad
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-cd "$HOME\wikis"
-curl.exe -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
+```bat
+cd /d "%USERPROFILE%\wikis"
+curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
 ```
 
 </details>
@@ -955,11 +956,11 @@ curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/syntha
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-cd "$HOME\wikis"
-curl.exe -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml
+```bat
+cd /d "%USERPROFILE%\wikis"
+curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml
 ```
 
 </details>
@@ -1100,10 +1101,10 @@ docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-hi
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-Copy-Item "$HOME\Downloads\synthadoc-backup-history-of-computing-20261010.zip" "$HOME\wikis\history-of-computing\"
+```bat
+copy "%USERPROFILE%\Downloads\synthadoc-backup-history-of-computing-20261010.zip" "%USERPROFILE%\wikis\history-of-computing\"
 docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
@@ -1117,10 +1118,10 @@ docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-hi
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker cp "$HOME\Downloads\synthadoc-backup-history-of-computing-20261010.zip" history-of-computing:/wiki/
+```bat
+docker cp "%USERPROFILE%\Downloads\synthadoc-backup-history-of-computing-20261010.zip" history-of-computing:/wiki/
 docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
@@ -1137,16 +1138,14 @@ docker exec history-of-computing synthadoc export --format json     > ~/wiki-exp
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker exec history-of-computing synthadoc export --format llms.txt | Out-File -Encoding utf8 "$HOME\wiki-export.txt"
-docker exec history-of-computing synthadoc export --format json | Out-File -Encoding utf8 "$HOME\wiki-export.json"
+```bat
+docker exec history-of-computing synthadoc export --format llms.txt > "%USERPROFILE%\wiki-export.txt"
+docker exec history-of-computing synthadoc export --format json > "%USERPROFILE%\wiki-export.json"
 ```
 
 </details>
-
-`Out-File -Encoding utf8` avoids the UTF-16 output that `>` produces in Windows PowerShell 5.1.
 
 For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
 `/wiki/` so it lands on the host:
@@ -1187,7 +1186,7 @@ Building images requires **Docker Desktop** — `wslc` is runtime-only and canno
 2. Run the installer — it uses your existing WSL2 backend automatically
 3. After install, open a new terminal and verify:
 
-```powershell
+```bat
 docker --version
 docker buildx version
 ```
@@ -1198,9 +1197,9 @@ The `Dockerfile` lives at the **repo root** — the top-level `synthadoc/` folde
 not the `docker/` subfolder (which only contains Compose files and examples).
 Run the build from that directory:
 
-```powershell
-# In PowerShell, cd to the repo root first
-cd C:\Users\you\Documents\my_workspace\synthadoc
+```bat
+REM cd to the repo root first (/d also switches drive letters)
+cd /d C:\Users\you\Documents\my_workspace\synthadoc
 
 docker build --no-cache -t synthadoc:local .
 ```
@@ -1228,17 +1227,17 @@ If you see `(N/N) FINISHED` at the top and no `ERROR` lines, the image built suc
 
 You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise install the built-in demo using the image you just built:
 
-```powershell
-mkdir -Force "$HOME\wikis"
-docker run --rm -v "$HOME\wikis:/wikis" synthadoc:local synthadoc install history-of-computing --target /wikis --demo
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" synthadoc:local synthadoc install history-of-computing --target /wikis --demo
 ```
 
 This creates `%USERPROFILE%\wikis\history-of-computing\` pre-populated with demo content, so you have real pages to query straight away.
 
 #### Step 4 — Create a .env file
 
-```powershell
-notepad "$HOME\wikis\.env"
+```bat
+notepad "%USERPROFILE%\wikis\.env"
 ```
 
 Add your key and save (see [API Key Setup](#api-key-setup)):
@@ -1246,22 +1245,19 @@ Add your key and save (see [API Key Setup](#api-key-setup)):
 ```bash
 # %USERPROFILE%\wikis\.env  (keep outside the wiki folder)
 MINIMAX_API_KEY=sk-...
-TAVILY_API_KEY=tvly-...   # optional
+# optional — enables web search ingest
+TAVILY_API_KEY=tvly-...
 ```
+
+Comments must be on their own line: `docker run --env-file` does not strip text after `#` on a value line.
 
 Select the matching provider in `history-of-computing\.synthadoc\config.toml` (Quick Start Step 3).
 
 #### Step 5 — Run the container
 
-**PowerShell** (single line):
+Single line, because backslash continuation does not work in Command Prompt:
 
-```powershell
-docker run -d --name synthadoc-test -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" synthadoc:local
-```
-
-**cmd.exe** (single line; backslash continuation does not work in cmd):
-
-```
+```bat
 docker run -d --name synthadoc-test -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" synthadoc:local
 ```
 
@@ -1269,15 +1265,15 @@ Stop any locally running `synthadoc serve` instance for that wiki before startin
 
 #### Step 6 — Verify it started
 
-```powershell
-# Check the container is running
+```bat
+REM Check the container is running
 docker ps
 
-# Check startup logs
+REM Check startup logs
 docker logs synthadoc-test
 
-# Hit the health endpoint (curl.exe, not the PowerShell curl alias)
-curl.exe http://localhost:7070/health
+REM Hit the health endpoint (curl ships with Windows 10 and later)
+curl http://localhost:7070/health
 ```
 
 Expected response:
@@ -1287,20 +1283,20 @@ Expected response:
 
 #### Step 7 — Run a quick ingest test
 
-```powershell
-# Drop a small test file into raw_sources on the host
-Set-Content -Path "$HOME\wikis\history-of-computing\raw_sources\docker-test.txt" -Value "Synthadoc Docker test document."
+```bat
+REM Drop a small test file into raw_sources on the host
+echo Synthadoc Docker test document.> "%USERPROFILE%\wikis\history-of-computing\raw_sources\docker-test.txt"
 
-# Ingest it from inside the container (no -w needed — SYNTHADOC_WIKI=/wiki is set)
+REM Ingest it from inside the container (no -w needed, SYNTHADOC_WIKI=/wiki is set)
 docker exec synthadoc-test synthadoc ingest raw_sources/docker-test.txt
 
-# Check the job completed
+REM Check the job completed
 docker exec synthadoc-test synthadoc jobs list --sort created_at --order desc
 ```
 
 #### Step 8 — Tear down
 
-```powershell
+```bat
 docker stop synthadoc-test
 docker rm synthadoc-test
 ```
@@ -1312,9 +1308,9 @@ The wiki files on the host are untouched — only the container is removed.
 When you change the Python source and want to test it in Docker, remove the
 old container, rebuild the image from the repo root, then re-run Step 5:
 
-```powershell
+```bat
 docker rm -f synthadoc-test
-cd C:\Users\you\Documents\my_workspace\synthadoc
+cd /d C:\Users\you\Documents\my_workspace\synthadoc
 docker build --no-cache -t synthadoc:local .
 ```
 
@@ -1341,12 +1337,12 @@ docker run -d \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
+```bat
 docker stop history-of-computing
 docker rm history-of-computing
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
 ```
 
 </details>
@@ -1372,7 +1368,7 @@ Another process (or a running `synthadoc serve` for this wiki) is already on tha
 
 ```bash
 docker logs history-of-computing        # check for startup errors
-curl http://localhost:7070/health       # Windows: curl.exe
+curl http://localhost:7070/health
 ```
 
 If the server started but `/health` does not respond, the wiki may have failed validation (e.g. corrupted database). Check the logs and try `synthadoc status -w /wiki` inside the container.

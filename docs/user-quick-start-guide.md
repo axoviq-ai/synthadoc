@@ -4072,9 +4072,11 @@ Register each wiki as a separate entry. Synthadoc prefixes every tool descriptio
 
 **Claude Code / custom agents (HTTP/SSE):**
 
-```powershell
-synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
-synthadoc serve -w "C:\wikis\ai-research"             # port 7071
+```bat
+REM port 7070
+synthadoc serve -w "C:\wikis\history-of-computing"
+REM port 7071
+synthadoc serve -w "C:\wikis\ai-research"
 ```
 
 ```json
@@ -4096,7 +4098,7 @@ Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and m
 
 Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alone:
 
-```powershell
+```bat
 (Get-Command synthadoc).Source
 ```
 
@@ -4131,13 +4133,13 @@ Claude Code supports both SSE (recommended — connects to a running server) and
 
 **Step 1 — Start the Synthadoc server**
 
-```powershell
+```bat
 synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
 ```
 
 **Step 2 — Register the MCP server**
 
-```powershell
+```bat
 claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
 ```
 
@@ -4145,7 +4147,7 @@ claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7
 
 **Step 3 — Verify**
 
-```powershell
+```bat
 claude mcp list
 ```
 
@@ -4153,7 +4155,7 @@ claude mcp list
 
 **Step 4 — Test in a Claude Code session**
 
-```powershell
+```bat
 claude
 ```
 
@@ -4163,7 +4165,7 @@ Ask: `What's the status of my wiki?` — Claude Code calls `synthadoc_status` di
 
 Use this if you don't want to manage a separate server process:
 
-```powershell
+```bat
 claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe" -- serve -w "C:\Users\<you>\wikis\history-of-computing" --mcp-only
 ```
 
@@ -4704,7 +4706,7 @@ New in v1.4.2: run the demo wiki in a container instead of `synthadoc serve`. **
 
 **Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11).
 
-Commands are shown for **Linux / macOS**. On Windows, use the single-line commands in the **Windows (PowerShell)** blocks, because `\` line continuation and `~` in `-v` paths don't work there.
+Commands are shown for **Linux / macOS**. On Windows, use the single-line `cmd.exe` commands in the **Windows (Command Prompt)** blocks, because `\` line continuation and `~` in `-v` paths don't work there. (In PowerShell, replace `%USERPROFILE%` with `$env:USERPROFILE`.)
 
 ### Step 1 — Create the demo wiki
 
@@ -4717,11 +4719,11 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-mkdir -Force "$HOME\wikis"
-docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
 ```
 
 </details>
@@ -4732,13 +4734,16 @@ docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install
 
 ### Step 2 — Put your API key in a `.env` file
 
-Create `~/wikis/.env` with any text editor (Windows: `notepad "$HOME\wikis\.env"`). Keep it outside the wiki folder and never commit it. For example, to use MiniMax:
+Create `~/wikis/.env` with any text editor (Windows: `notepad "%USERPROFILE%\wikis\.env"`). Keep it outside the wiki folder and never commit it. For example, to use MiniMax:
 
 ```bash
 # ~/wikis/.env
 MINIMAX_API_KEY=sk-...
-TAVILY_API_KEY=tvly-...   # optional, enables web search ingest
+# optional, enables web search ingest
+TAVILY_API_KEY=tvly-...
 ```
+
+Keep comments on their own line; `--env-file` does not strip a trailing `# …` from a value.
 
 Then select the **same provider** in `~/wikis/history-of-computing/.synthadoc/config.toml`: under `[agents]`, comment out the active `default =` line and uncomment the matching one (see [Appendix C](#appendix-c--switching-llm-providers)):
 
@@ -4758,10 +4763,10 @@ docker run -d --name history-of-computing \
 ```
 
 <details>
-<summary>Windows (PowerShell)</summary>
+<summary>Windows (Command Prompt)</summary>
 
-```powershell
-docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
 ```
 
 </details>
@@ -4772,7 +4777,7 @@ Use the wiki's port on both sides of `-p` (7070 for the demo). The Obsidian plug
 
 ```bash
 docker ps                                  # the container is listed
-curl http://localhost:7070/health          # {"status": "ok", ...}  (Windows: curl.exe)
+curl http://localhost:7070/health          # {"status": "ok", ...}
 ```
 
 Open the Web UI at `http://localhost:7070/app`. To use Obsidian, open `~/wikis/history-of-computing` as a vault (the plugin is already installed) and click the Synthadoc bookmark icon to confirm it is connected.
