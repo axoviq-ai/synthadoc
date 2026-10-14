@@ -1,10 +1,14 @@
 # docker/compose/single-wiki.yml
 # Single Synthadoc wiki on port 7070.
 #
-# Usage:
-#   cp docker/compose/single-wiki.yml docker-compose.yml
-#   # Edit WIKI_PATH and API key env vars, then:
-#   docker compose up -d
+# Usage (run in the folder that holds your .env, e.g. ~/wikis):
+#   Download:  curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
+#              (Windows PowerShell: use curl.exe instead of curl)
+#   .env:      WIKI_PATH=<absolute path to the wiki>  plus your LLM API key, e.g.
+#              WIKI_PATH=/home/yourname/wikis/history-of-computing
+#              MINIMAX_API_KEY=sk-...
+#              (Windows: WIKI_PATH=C:/Users/yourname/wikis/history-of-computing, forward slashes)
+#   Start:     docker compose up -d
 #
 # To ingest a file:
 #   docker compose exec sd-server synthadoc ingest raw_sources/myfile.pdf
@@ -24,12 +28,10 @@ services:
       # On Windows: use the WSL2 filesystem path for best performance,
       #   e.g. /home/yourname/wikis/my-wiki  (NOT /mnt/c/Users/...)
       - ${WIKI_PATH:-./my-wiki}:/wiki
-    environment:
-      # LLM provider API key — pass via .env file, never hardcode here.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # Uncomment for other providers:
-      # - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+    # API keys (MINIMAX_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, TAVILY_API_KEY, …)
+    # are loaded from .env next to this file — never hardcode them here.
+    env_file:
+      - .env
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:7070/health')"]

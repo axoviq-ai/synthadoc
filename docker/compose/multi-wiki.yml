@@ -13,8 +13,13 @@
 #
 # ─── SETUP ────────────────────────────────────────────────────────────────────
 #
+# 0. Download this file into the folder that holds your .env (e.g. ~/wikis):
+#      curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
+#      (Windows PowerShell: use curl.exe instead of curl)
+#
 # 1. Set wiki paths and API key in .env (same folder as this file):
-#      ANTHROPIC_API_KEY=sk-ant-...
+#      MINIMAX_API_KEY=sk-...
+#      (or ANTHROPIC_API_KEY, GEMINI_API_KEY, … — keep comments on their own line)
 #      WIKI_A_PATH=/home/yourname/wikis/history-of-computing
 #      WIKI_B_PATH=/home/yourname/wikis/ai-research
 #      On Windows: use forward slashes (C:/Users/...) not backslashes
@@ -62,8 +67,8 @@ services:
     configs:
       - source: cross_wiki_registry
         target: /home/synthadoc/.synthadoc/wikis.json
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - .env   # API keys — loaded from .env next to this file
 
   sd-server-b:
     image: chenp/synthadoc:latest
@@ -80,8 +85,8 @@ services:
       - "7071:7071"
     volumes:
       - ${WIKI_B_PATH:-./wiki-b}:/wiki
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - .env   # API keys — loaded from .env next to this file
 
 # Cross-wiki registry — tells the coordinator how to reach each wiki.
 # host must be the Compose service name (not localhost).

@@ -279,26 +279,71 @@ The Obsidian plugin is bundled inside the package. New wikis created with `synth
 
 For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
+Commands are shown for **Linux / macOS**. On Windows, expand the **Windows (Command Prompt)** block for single-line `cmd.exe` versions: `\` line continuation and `~` in `-v` paths don't work there. (In PowerShell, replace `%USERPROFILE%` with `$env:USERPROFILE`.)
+
+**1. Create the wiki** in a one-off container. It lands in `~/wikis/history-of-computing`; note the port it prints, e.g. `7070`. `docker run` downloads the image on first use. Run `docker pull chenp/synthadoc:latest` later to update a cached image.
+
 ```bash
-# 1. Create the wiki in a one-off container — no Python needed on the host.
-#    It lands in ~/wikis/history-of-computing; note the port it prints, e.g. 7070
 mkdir -p ~/wikis
 docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
   synthadoc install history-of-computing --target /wikis --demo
+```
 
-# 2. Put your LLM key in .env (never on the command line), e.g. GEMINI_API_KEY=...
-#    and select that provider in ~/wikis/history-of-computing/.synthadoc/config.toml
+<details>
+<summary>Windows (Command Prompt)</summary>
 
-# 3. Run the server in a container — same port on both sides
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+```
+
+</details>
+
+**2. Put your LLM API key in `~/wikis/.env`**, never on the command line. Create it with any text editor (Windows: `notepad "%USERPROFILE%\wikis\.env"`). For example, to use MiniMax:
+
+```bash
+# ~/wikis/.env
+MINIMAX_API_KEY=sk-...
+# optional — enables web search ingest
+TAVILY_API_KEY=tvly-...
+```
+
+Keep comments on their own line; `--env-file` does not strip a trailing `# …` from a value.
+
+Then select the **same provider** in `~/wikis/history-of-computing/.synthadoc/config.toml`. Under `[agents]`, comment out the active `default =` line and uncomment the matching one:
+
+```toml
+[agents]
+default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
+```
+
+**3. Run the server in a container**, using the same port on both sides of `-p`:
+
+```bash
 docker run -d --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
-  -p 7070:7070 --env-file .env \
+  -p 7070:7070 \
+  --env-file ~/wikis/.env \
   chenp/synthadoc:latest
+```
 
-# 4. Use it — Web UI at http://localhost:7070/app, or the CLI inside the container
+<details>
+<summary>Windows (Command Prompt)</summary>
+
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+</details>
+
+**4. Use it.** Open the Web UI at `http://localhost:7070/app`, or run the CLI inside the container (same on every platform):
+
+```bash
 docker exec history-of-computing synthadoc query "Who was Alan Turing?"
 docker exec history-of-computing synthadoc lint run --wait
 ```
+
+After editing `config.toml`, run `docker restart history-of-computing`. After changing `.env`, remove and re-create the container (`docker rm -f history-of-computing`, then step 3 again), because `restart` does not re-read `.env`.
 
 See **[docs/docker-deploy.md](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md)** for the full deployment guide: architecture, API key setup, platform-native runtimes, Docker Compose (single wiki, multi-wiki with cross-wiki queries, Ollama sidecar), CI/CD, file permissions, security, and maintenance.
 
