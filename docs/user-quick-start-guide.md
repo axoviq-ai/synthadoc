@@ -10,6 +10,8 @@ major engine feature. No setup beyond following the steps below is required.
 > install synthadoc (production or development), set your API key, install the demo wiki, and start the engine.
 > Then come back here.
 >
+> **Using Docker instead (no Python on the host)?** Follow [Appendix M — Run the Demo in Docker](#appendix-m--run-the-demo-in-docker) to create and start the demo wiki. Then run every `synthadoc …` command in this guide as `docker exec history-of-computing synthadoc …` (no `-w` needed), and add `-it` for interactive workflows. Steps that use Obsidian or the Web UI work unchanged.
+>
 > **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc templates sync history-of-computing --force` instead. This updates all pre-built demo pages and source files to the latest template, including pages with citation markers added in recent releases. `--force` only overwrites demo template files — your own ingested pages and `.synthadoc/` config and audit data are never touched.
 
 ---
@@ -4696,19 +4698,23 @@ For full architecture detail, API reference, and graceful degradation behaviour 
 
 ## Appendix M — Run the Demo in Docker
 
-New in v1.4.2: the same demo wiki can run in a container instead of `synthadoc serve`. Use this when you want an isolated runtime, a shared team server, or a CI/CD pipeline. The wiki files stay on your host, so Obsidian works exactly as in the steps above.
+New in v1.4.2: run the demo wiki in a container instead of `synthadoc serve`. **No Python, pip, or `synthadoc` install is needed on the host**; every command below runs in a container. Use this when you want an isolated runtime, a shared team server, or a CI/CD pipeline. The wiki files stay on your host, so Obsidian works exactly as in the main steps.
 
 > **Full guide:** [Docker Deployment Guide](docker-deploy.md) covers Docker Compose (multi-wiki and cross-wiki queries, Ollama sidecar), CI/CD, Linux file permissions, security, and troubleshooting.
 
-**Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11). This appendix reuses the demo wiki you already installed. If you are starting with Docker only (no Python on the host), create the wiki in a one-off container instead; see [Docker Deployment Guide — Step 2](docker-deploy.md#step-2--install-a-wiki).
+**Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11).
 
-### Step 1 — Stop the native server
+### Step 1 — Create the demo wiki
 
-The container uses the same port as the demo wiki, so stop the native server first:
+Run `synthadoc install` in a one-off container that mounts the parent folder; the wiki is written to `~/wikis/history-of-computing` on the host:
 
 ```bash
-synthadoc stop -w history-of-computing
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
 ```
+
+> **Already installed the demo with pip?** Skip the install. If its native server is running, stop it first (`synthadoc stop -w history-of-computing`), because the container uses the same port.
 
 ### Step 2 — Put your API key in a `.env` file
 
@@ -4729,7 +4735,7 @@ docker run -d --name history-of-computing \
   chenp/synthadoc:latest
 ```
 
-Use the wiki's port on both sides of `-p` (7070 for the demo). The Obsidian plugin, the Web UI, and MCP clients then keep using `localhost:7070` without any changes.
+Use the wiki's port on both sides of `-p` (7070 for the demo). The Obsidian plugin, the Web UI, and MCP clients then use `localhost:7070` without any changes.
 
 ### Step 4 — Verify
 
@@ -4738,11 +4744,11 @@ docker ps                                  # the container is listed
 curl http://localhost:7070/health          # {"status": "ok", ...}
 ```
 
-Open the Web UI at `http://localhost:7070/app`, and click the Synthadoc bookmark icon in Obsidian to confirm that the plugin is connected.
+Open the Web UI at `http://localhost:7070/app`. To use Obsidian, open `~/wikis/history-of-computing` as a vault (the plugin is already installed) and click the Synthadoc bookmark icon to confirm it is connected.
 
 ### Step 5 — Run CLI commands inside the container
 
-The container is preconfigured for the mounted wiki, so `-w` is not needed:
+The container is preconfigured for the mounted wiki, so `-w` is not needed. This is how you follow every CLI step in this guide:
 
 ```bash
 docker exec history-of-computing synthadoc status
@@ -4754,11 +4760,11 @@ docker exec history-of-computing synthadoc lint run --wait
 docker exec -it history-of-computing synthadoc workflow run --name content-health
 ```
 
-### Step 6 — Go back to the native server
+### Step 6 — Stop or remove the container
 
 ```bash
-docker stop history-of-computing && docker rm history-of-computing
-synthadoc serve -w history-of-computing --background
+docker stop history-of-computing          # stop; `docker start history-of-computing` resumes it
+docker rm history-of-computing            # remove the container
 ```
 
-Your pages, audit trail, and config are untouched. They live in the host folder, not in the container.
+Your pages, audit trail, and config are untouched; they live in the host folder, not in the container. pip users can switch back to the native server at any time with `synthadoc serve -w history-of-computing --background`.
