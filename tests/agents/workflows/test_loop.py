@@ -734,3 +734,114 @@ async def test_loop_retries_unrecoverable_native_markup_then_reports_tag_error()
     assert "truncated" not in final_text
     retries = [e for e in events if e["data"].get("tool") == "_parse_retry"]
     assert len(retries) == 2
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 hardening: protocol footer, framed tool results, drift logging
+# ---------------------------------------------------------------------------
+
+import json as _json
+import logging as _logging
+
+from synthadoc.agents.workflows._loop import _example_call, _protocol_footer, _tool_result_message
+
+
+async def _run(replies, tool_fns, provider_cfg=None):
+    """Run the loop with scripted replies; return (events, systems_seen, messages_seen)."""
+    ctx, _ = _make_ctx()
+    it = iter(replies)
+    systems, msgs = [], []
+
+    async def _complete(messages, system=None, **_kw):
+        systems.append(system)
+        msgs.append(list(messages))
+        return CompletionResponse(text=next(it), input_tokens=1, output_tokens=1)
+
+    provider = MagicMock()
+    provider.complete = _complete
+    provider._config = provider_cfg
+    events = [e async for e in run_tool_call_loop(
+        system_prompt="WORKFLOW RULES", initial_message="go", tool_fns=tool_fns,
+        provider=provider, ctx=ctx,
+    )]
+    return events, systems, msgs
+
+
+async def test_system_prompt_ends_with_protocol_footer_naming_real_tools():
+    async def tool_read(slug):
+        return {"ok": True}
+
+    _, systems, _ = await _run(["done"], {"tool_read": tool_read})
+    system = systems[0]
+    assert system.startswith("WORKFLOW RULES")
+    footer = system[len("WORKFLOW RULES"):]
+    assert "TOOL-CALL PROTOCOL" in footer
+    assert "Tool names: tool_read" in footer
+    assert "<tool_call>" in footer and "Do NOT use" in footer
+    assert '{"tool_call": {"name": "tool_read", "input": {"slug": "alan-turing"}}}' in footer
+
+
+async def test_tool_result_is_labelled_and_followed_by_format_reminder():
+    async def my_tool(x):
+        return {"doubled": x * 2}
+
+    _, _, msgs = await _run(
+        ['{"tool_call": {"name": "my_tool", "input": {"x": 2}}}', "done"], {"my_tool": my_tool},
+    )
+    result_msg = msgs[1][-1]
+    assert result_msg.role == "user"
+    label, body, _, reminder = result_msg.content.split("\n", 3)
+    assert label == "Result of my_tool:"
+    assert _json.loads(body) == {"doubled": 4}
+    assert reminder.startswith('Next: reply with exactly one {"tool_call"')
+
+
+def test_tool_result_message_lists_all_tools_for_batched_calls():
+    text = _tool_result_message([{"tool": "a", "result": {"x": 1}}, {"tool": "b", "result": None}])
+    assert text.startswith("Results of a, b:\n")
+    assert _json.loads(text.split("\n")[1]) == [
+        {"tool": "a", "result": {"x": 1}}, {"tool": "b", "result": None},
+    ]
+
+
+def test_example_call_prefers_slug_tool_then_required_params():
+    async def list_pages(scope):
+        return {}
+
+    async def read_page(slug, verbose=False):
+        return {}
+
+    async def run_lint():
+        return {}
+
+    assert _json.loads(_example_call({"list_pages": list_pages, "read_page": read_page})) == {
+        "tool_call": {"name": "read_page", "input": {"slug": "alan-turing"}}}
+    assert _json.loads(_example_call({"list_pages": list_pages})) == {
+        "tool_call": {"name": "list_pages", "input": {"scope": "<scope>"}}}
+    assert _json.loads(_example_call({"run_lint": run_lint})) == {
+        "tool_call": {"name": "run_lint", "input": {}}}
+    assert "<tool_name>" in _protocol_footer({})
+
+
+async def test_native_format_recovery_is_logged_with_model(caplog):
+    cfg = MagicMock(provider="minimax", model="MiniMax-M3")
+
+    async def tool_propose_and_apply(**kwargs):
+        return {"status": "applied"}
+
+    with caplog.at_level(_logging.WARNING, logger="synthadoc.agents.workflows._loop"):
+        await _run([_MINIMAX_REPLY, "done"], {"tool_propose_and_apply": tool_propose_and_apply}, cfg)
+    drift = [r for r in caplog.records if "format drift" in r.getMessage()]
+    assert len(drift) == 1
+    assert "minimax/MiniMax-M3" in drift[0].getMessage()
+    assert "tool_propose_and_apply" in drift[0].getMessage()
+
+
+async def test_parse_retries_and_exhaustion_are_logged(caplog):
+    broken = 'x]<]minimax[>[<tool_call> name": "t", "input": {broken'
+    with caplog.at_level(_logging.WARNING, logger="synthadoc.agents.workflows._loop"):
+        await _run([broken] * 3, {}, MagicMock(provider="minimax", model="MiniMax-M3"))
+    retries = [r for r in caplog.records if "parse failure" in r.getMessage()]
+    stopped = [r for r in caplog.records if "workflow stopped" in r.getMessage()]
+    assert len(retries) == 2 and "minimax/MiniMax-M3" in retries[0].getMessage()
+    assert len(stopped) == 1 and stopped[0].levelno == _logging.ERROR

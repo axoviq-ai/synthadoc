@@ -9,7 +9,9 @@ The LLM protocol expected here:
 """
 from __future__ import annotations
 
+import inspect
 import json
+import logging
 import re
 from typing import TYPE_CHECKING, AsyncGenerator, Awaitable, Callable
 
@@ -33,6 +35,8 @@ _NATIVE_MARKUP_RE = re.compile(r"\]<\]minimax\[>\[|</?(?:minimax:)?tool_call>", 
 _BARE_CALL_RE = re.compile(
     r'"?name"\s*:\s*"([A-Za-z_]\w*)"\s*,\s*"(?:input|arguments)"\s*:\s*(?=[{"])'
 )
+
+_log = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 40
 _MAX_PARSE_RETRIES = 2
@@ -155,6 +159,84 @@ def _parse_all_tool_calls(text: str) -> list[tuple[str, dict]]:
     return _parse_wire_calls(text) or _parse_native_calls(text)
 
 
+def _model_label(provider: object) -> str:
+    """Return 'provider/model' for log messages, best effort."""
+    cfg = getattr(provider, "_config", None)
+    name = getattr(cfg, "provider", "") or type(provider).__name__
+    model = getattr(cfg, "model", "")
+    return f"{name}/{model}" if model else str(name)
+
+
+def _example_call(tool_fns: dict[str, Callable[..., Awaitable[dict]]]) -> str:
+    """Build a valid example call from a real tool signature.
+
+    Prefers a tool that takes ``slug`` (rendered with a realistic value); otherwise
+    uses the first tool and its required parameters as ``<name>`` placeholders.
+    """
+    def params(fn: Callable) -> list[inspect.Parameter]:
+        try:
+            return [p for p in inspect.signature(fn).parameters.values()
+                    if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+        except (TypeError, ValueError):
+            return []
+
+    for name, fn in tool_fns.items():
+        if any(p.name == "slug" for p in params(fn)):
+            return json.dumps({"tool_call": {"name": name, "input": {"slug": "alan-turing"}}})
+    if not tool_fns:
+        return '{"tool_call": {"name": "<tool_name>", "input": {}}}'
+    name, fn = next(iter(tool_fns.items()))
+    required = {p.name: f"<{p.name}>" for p in params(fn) if p.default is p.empty}
+    return json.dumps({"tool_call": {"name": name, "input": required}})
+
+
+def _protocol_footer(tool_fns: dict[str, Callable[..., Awaitable[dict]]]) -> str:
+    """Return the tool-call protocol restated at the END of the system prompt.
+
+    Workflow prompts state the wire format once near the top of a long prompt.
+    Models trained on native function calling drift back to their own syntax
+    as the conversation grows, so the rule is repeated here, closest to where
+    the model generates, with a concrete example and the native formats it
+    must not use.
+    """
+    names = ", ".join(tool_fns) if tool_fns else "(see above)"
+    return (
+        "\n\n━━━ TOOL-CALL PROTOCOL (applies to every reply) ━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Your tools are reachable ONLY through this text protocol. To call one, reply "
+        "with exactly one JSON object and nothing else:\n"
+        '{"tool_call": {"name": "<tool_name>", "input": {<arguments as JSON>}}}\n'
+        f"Example: {_example_call(tool_fns)}\n"
+        f"Tool names: {names}\n"
+        "- Do NOT use any built-in function-calling syntax such as <tool_call>, "
+        "<invoke>, [TOOL_CALL], or XML tags. They are not connected to any tool here, "
+        "and the workflow fails.\n"
+        '- Inside JSON string values, escape double quotes as \\" and line breaks as \\n '
+        "(this matters for long page content).\n"
+        "- Reply with plain text (no JSON) only when the workflow instructions say to "
+        "finish; plain text ends the workflow."
+    )
+
+
+def _tool_result_message(combined: list[dict]) -> str:
+    """Frame tool results and restate the reply format for the next turn.
+
+    Results used to be sent back as bare JSON in a user message, which looks
+    like nothing models are trained on. Labelling the result and repeating the
+    expected reply keeps the protocol in the model's most recent context.
+    """
+    if len(combined) == 1:
+        label = f"Result of {combined[0]['tool']}:"
+        body = json.dumps(combined[0]["result"], ensure_ascii=False, default=str)
+    else:
+        label = "Results of " + ", ".join(c["tool"] for c in combined) + ":"
+        body = json.dumps(combined, ensure_ascii=False, default=str)
+    return (
+        f"{label}\n{body}\n\n"
+        'Next: reply with exactly one {"tool_call": {"name": ..., "input": {...}}} JSON '
+        "object, or with plain text only if the workflow instructions say to finish."
+    )
+
+
 async def run_tool_call_loop(
     system_prompt: str,
     initial_message: str,
@@ -187,6 +269,8 @@ async def run_tool_call_loop(
         budget:          Maximum number of tool calls before the loop is
                          forcibly terminated.
     """
+    system_prompt = system_prompt + _protocol_footer(tool_fns)
+    model = _model_label(provider)
     messages: list[Message] = [Message(role="user", content=initial_message)]
     tool_count = 0
     parse_retries = 0
@@ -203,12 +287,24 @@ async def run_tool_call_loop(
         response = await provider.complete(messages, system=system_prompt, max_tokens=max_tokens)
         text = response.text.strip()
 
-        all_calls = _parse_all_tool_calls(text)
+        all_calls = _parse_wire_calls(text)
+        if not all_calls:
+            all_calls = _parse_native_calls(text)
+            if all_calls:
+                _log.warning(
+                    "workflow tool-call format drift: %s used %s; recovered %d call(s): %s",
+                    model, _tag_format(text), len(all_calls),
+                    ", ".join(name for name, _ in all_calls),
+                )
 
         # Retry when the response looks like a tool call attempt but didn't parse.
         # See _looks_like_tool_attempt for the four failure modes it detects.
         if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
+            _log.warning(
+                "workflow tool-call parse failure: %s (attempt %d/%d, format=%s): %.200r",
+                model, parse_retries, _MAX_PARSE_RETRIES, _tag_format(text) or "malformed JSON", text,
+            )
             _reason = (
                 "used an unsupported tag/XML format instead of JSON"
                 if _tag_format(text) is not None
@@ -327,25 +423,18 @@ async def run_tool_call_loop(
                 combined.append({"tool": tool_name, "result": tool_result})
 
             messages.append(Message(role="assistant", content=text))
-            # Single call: return the result dict directly (backward-compatible format).
-            # Multiple calls: return the list so the LLM sees all results at once.
-            # Use json.dumps (not str()) so the LLM receives standard JSON instead of
-            # Python repr — double-quoted keys, null/true/false instead of None/True/False.
-            if len(combined) == 1:
-                messages.append(Message(
-                    role="user",
-                    content=json.dumps(combined[0]["result"], ensure_ascii=False, default=str),
-                ))
-            else:
-                messages.append(Message(
-                    role="user",
-                    content=json.dumps(combined, ensure_ascii=False, default=str),
-                ))
+            # Labelled result(s) as standard JSON (json.dumps, not str()), followed
+            # by a one-line reminder of the reply format.
+            messages.append(Message(role="user", content=_tool_result_message(combined)))
 
         else:
             # Retries exhausted — if this still looks like a failed tool call,
             # emit a user-friendly error instead of raw JSON.
             if _looks_like_tool_attempt(text):
+                _log.error(
+                    "workflow stopped: %s never produced a parseable tool call after %d retries",
+                    model, _MAX_PARSE_RETRIES,
+                )
                 recommended = max_tokens * 2
                 _text_lower = text.lower()
                 _fmt = _tag_format(text)
