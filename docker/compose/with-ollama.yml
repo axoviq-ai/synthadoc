@@ -3,17 +3,15 @@
 #
 # Requirements: Docker host with a GPU, or CPU-only Ollama (slower).
 #
-# Usage:
-#   docker compose -f docker/compose/with-ollama.yml up -d
+# Usage (run in the folder that holds your .env, e.g. ~/wikis):
+#   curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml   (Windows PowerShell: curl.exe)
+#   .env: WIKI_PATH=<absolute path to the wiki>   (Windows: C:/Users/... with forward slashes)
+#   docker compose -f with-ollama.yml up -d
 #   # Pull a model into Ollama first:
-#   docker compose -f docker/compose/with-ollama.yml exec ollama \
-#     ollama pull llama3.2
+#   docker compose -f with-ollama.yml exec ollama ollama pull llama3.2
 #
-# Then set your wiki's config.toml:
-#   [agents.default]
-#   provider = "ollama"
-#   model = "llama3.2"
-#   base_url = "http://ollama:11434"
+# Then, in your wiki's config.toml, replace the active `default =` line under [agents] with:
+#   default = { provider = "ollama", model = "llama3.2", base_url = "http://ollama:11434" }
 
 services:
   sd-server:
@@ -21,7 +19,7 @@ services:
     container_name: synthadoc-wiki
     restart: unless-stopped
     ports:
-      # HOST_PORT:7070 — 7070 is fixed inside the container; change the left side to avoid conflicts.
+      # Use the wiki's [server] port from its .synthadoc/config.toml on both sides.
       - "7070:7070"
     volumes:
       - ${WIKI_PATH:-./my-wiki}:/wiki

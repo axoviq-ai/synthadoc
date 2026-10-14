@@ -4704,6 +4704,8 @@ New in v1.4.2: run the demo wiki in a container instead of `synthadoc serve`. **
 
 **Prerequisites:** Docker Desktop or Docker Engine, the Apple `container` tool (macOS 26+, Apple Silicon), or WSL Containers (`wslc`, Windows 11).
 
+Commands are shown for **Linux / macOS**. On Windows, use the single-line commands in the **Windows (PowerShell)** blocks, because `\` line continuation and `~` in `-v` paths don't work there.
+
 ### Step 1 — Create the demo wiki
 
 Run `synthadoc install` in a one-off container that mounts the parent folder; the wiki is written to `~/wikis/history-of-computing` on the host:
@@ -4714,15 +4716,35 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
   synthadoc install history-of-computing --target /wikis --demo
 ```
 
+<details>
+<summary>Windows (PowerShell)</summary>
+
+```powershell
+mkdir -Force "$HOME\wikis"
+docker run --rm -v "$HOME\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+```
+
+</details>
+
+`docker run` downloads the image on first use; run `docker pull chenp/synthadoc:latest` later to update it.
+
 > **Already installed the demo with pip?** Skip the install. If its native server is running, stop it first (`synthadoc stop -w history-of-computing`), because the container uses the same port.
 
 ### Step 2 — Put your API key in a `.env` file
 
-Create `~/wikis/.env`, keep it outside the wiki folder, and never commit it. It needs the key for the provider selected in `~/wikis/history-of-computing/.synthadoc/config.toml` (see [Appendix C](#appendix-c--switching-llm-providers)):
+Create `~/wikis/.env` with any text editor (Windows: `notepad "$HOME\wikis\.env"`). Keep it outside the wiki folder and never commit it. For example, to use MiniMax:
 
 ```bash
-GEMINI_API_KEY=AI...
-# TAVILY_API_KEY=tvly-...   # optional, enables web search ingest
+# ~/wikis/.env
+MINIMAX_API_KEY=sk-...
+TAVILY_API_KEY=tvly-...   # optional, enables web search ingest
+```
+
+Then select the **same provider** in `~/wikis/history-of-computing/.synthadoc/config.toml`: under `[agents]`, comment out the active `default =` line and uncomment the matching one (see [Appendix C](#appendix-c--switching-llm-providers)):
+
+```toml
+[agents]
+default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
 ```
 
 ### Step 3 — Start the container
@@ -4735,13 +4757,22 @@ docker run -d --name history-of-computing \
   chenp/synthadoc:latest
 ```
 
+<details>
+<summary>Windows (PowerShell)</summary>
+
+```powershell
+docker run -d --name history-of-computing -v "$HOME\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "$HOME\wikis\.env" chenp/synthadoc:latest
+```
+
+</details>
+
 Use the wiki's port on both sides of `-p` (7070 for the demo). The Obsidian plugin, the Web UI, and MCP clients then use `localhost:7070` without any changes.
 
 ### Step 4 — Verify
 
 ```bash
 docker ps                                  # the container is listed
-curl http://localhost:7070/health          # {"status": "ok", ...}
+curl http://localhost:7070/health          # {"status": "ok", ...}  (Windows: curl.exe)
 ```
 
 Open the Web UI at `http://localhost:7070/app`. To use Obsidian, open `~/wikis/history-of-computing` as a vault (the plugin is already installed) and click the Synthadoc bookmark icon to confirm it is connected.
@@ -4766,5 +4797,7 @@ docker exec -it history-of-computing synthadoc workflow run --name content-healt
 docker stop history-of-computing          # stop; `docker start history-of-computing` resumes it
 docker rm history-of-computing            # remove the container
 ```
+
+After editing `config.toml`, run `docker restart history-of-computing`. After changing `.env`, remove and re-create the container (Step 3), because `restart` does not re-read `.env`.
 
 Your pages, audit trail, and config are untouched; they live in the host folder, not in the container. pip users can switch back to the native server at any time with `synthadoc serve -w history-of-computing --background`.
