@@ -640,3 +640,97 @@ async def test_loop_mandatory_next_tool_exhausted_after_one_retry():
     assert any(e["event"] == "final_text" for e in results)
     # call_count should be bounded: scan (1) + plain text (2) + enforcement (3) + final plain text (4)
     assert call_count <= 5, f"Loop did not terminate promptly: {call_count} calls"
+
+
+# ---------------------------------------------------------------------------
+# Native tool-call markup (MiniMax) and robust JSON decoding
+# ---------------------------------------------------------------------------
+
+# Shape observed from MiniMax in the contradiction resolver: prose, then native
+# markup with the opening '{"' lost, and a page rewrite containing braces.
+_MINIMAX_REPLY = (
+    'The two new warnings are overstated. Let me use Strategy 1 again.'
+    ']<]minimax[>[<tool_call> ]<]minimax[>[<tool_call> ]<]minimax[>['
+    'name": "tool_propose_and_apply", "input": {"slug": "transistor-and-microchip", '
+    '"new_content": "# Transistor\\n\\nThe \\"tyranny of numbers\\" {braces} here.", '
+    '"strategy_name": "Strategy 1 — Content rewrite", "rationale": "Attempt 2"}}}'
+)
+
+
+def test_parse_recovers_minimax_native_tool_call():
+    calls = _parse_all_tool_calls(_MINIMAX_REPLY)
+    assert len(calls) == 1
+    name, tool_input = calls[0]
+    assert name == "tool_propose_and_apply"
+    assert tool_input["slug"] == "transistor-and-microchip"
+    assert "{braces}" in tool_input["new_content"]
+
+
+def test_parse_wire_format_with_deep_nesting_and_braces_in_strings():
+    text = '{"tool_call": {"name": "t", "input": {"a": {"b": {"c": [1, {"d": "}{"}]}}}}}'
+    assert _parse_all_tool_calls(text) == [("t", {"a": {"b": {"c": [1, {"d": "}{"}]}}})]
+
+
+def test_parse_native_markup_with_string_encoded_arguments():
+    text = '<tool_call>{"name": "my_tool", "arguments": "{\\"x\\": 1}"}</tool_call>'
+    assert _parse_all_tool_calls(text) == [("my_tool", {"x": 1})]
+
+
+def test_parse_ignores_bare_name_input_in_prose_without_markup():
+    text = 'The tool takes "name": "my_tool", "input": {"x": 1} as its arguments.'
+    assert _parse_all_tool_calls(text) == []
+
+
+async def test_loop_executes_minimax_native_tool_call():
+    """The MiniMax reply runs the tool instead of being dumped as final text."""
+    ctx, events = _make_ctx()
+    replies = iter([_MINIMAX_REPLY, "All pages resolved."])
+
+    async def _complete(messages, system=None, temperature=0.0, max_tokens=4096):
+        return CompletionResponse(text=next(replies), input_tokens=1, output_tokens=1)
+
+    applied = []
+
+    async def tool_propose_and_apply(**kwargs):
+        applied.append(kwargs["slug"])
+        return {"status": "applied"}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = [e async for e in run_tool_call_loop(
+        system_prompt="s", initial_message="m",
+        tool_fns={"tool_propose_and_apply": tool_propose_and_apply},
+        provider=provider, ctx=ctx,
+    )]
+
+    assert applied == ["transistor-and-microchip"]
+    final = [e for e in results if e["event"] == "final_text"]
+    assert final[-1]["data"]["text"] == "All pages resolved."
+    assert "minimax" not in final[-1]["data"]["text"]
+
+
+async def test_loop_retries_unrecoverable_native_markup_then_reports_tag_error():
+    """Native markup that cannot be recovered is retried, never dumped raw."""
+    ctx, events = _make_ctx()
+    broken = 'Fixing now.]<]minimax[>[<tool_call> name": "tool_x", "input": {truncated'
+    calls = 0
+
+    async def _complete(messages, system=None, temperature=0.0, max_tokens=4096):
+        nonlocal calls
+        calls += 1
+        return CompletionResponse(text=broken, input_tokens=1, output_tokens=1)
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = [e async for e in run_tool_call_loop(
+        system_prompt="s", initial_message="m", tool_fns={}, provider=provider, ctx=ctx,
+    )]
+
+    assert calls == 3  # initial + 2 format-reminder retries
+    final_text = [e for e in results if e["event"] == "final_text"][-1]["data"]["text"]
+    assert "`<tool_call>`" in final_text
+    assert "truncated" not in final_text
+    retries = [e for e in events if e["data"].get("tool") == "_parse_retry"]
+    assert len(retries) == 2

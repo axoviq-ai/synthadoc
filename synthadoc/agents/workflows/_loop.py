@@ -19,11 +19,19 @@ if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
     from synthadoc.providers.base import LLMProvider
 
-# Matches {"tool_call": {"name": "<name>", "input": {<flat-or-one-level-nested dict>}}}
-_TOOL_CALL_RE = re.compile(
-    r'\{\s*"tool_call"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"input"\s*:\s*'
-    r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})\s*\}\s*\}',
-    re.DOTALL,
+# Start of a wire-format tool call: {"tool_call": ...  The object itself is
+# decoded with json.JSONDecoder.raw_decode, so "input" may nest to any depth and
+# string values may contain braces (e.g. a page rewrite with code blocks).
+_TOOL_CALL_START_RE = re.compile(r'\{\s*"tool_call"\s*:')
+_JSON_DECODER = json.JSONDecoder()
+
+# Native tool-call markup some models emit instead of the JSON wire format,
+# e.g. MiniMax: ']<]minimax[>[<tool_call> ]<]minimax[>[name": "x", "input": {...}}'
+_NATIVE_MARKUP_RE = re.compile(r"\]<\]minimax\[>\[|</?(?:minimax:)?tool_call>", re.IGNORECASE)
+# A bare call inside native markup: "name": "<tool>", "input"|"arguments": {...}
+# (the opening '{"' is often lost in the markup, so the leading quote is optional).
+_BARE_CALL_RE = re.compile(
+    r'"?name"\s*:\s*"([A-Za-z_]\w*)"\s*,\s*"(?:input|arguments)"\s*:\s*(?=[{"])'
 )
 
 _CHUNK_SIZE = 40
@@ -63,33 +71,88 @@ def _looks_like_tool_attempt(text: str) -> bool:
         text.startswith("{")
         or '{"tool_call"' in text
         or t in _STUB_RESPONSES
-        or "[tool_call]" in t
-        or "<invoke name=" in t
+        or _tag_format(text) is not None
     )
+
+
+def _tag_format(text: str) -> str | None:
+    """Return a display label for an unsupported tool-call tag format in *text*, else None."""
+    t = text.lower()
+    if "[tool_call]" in t:
+        return "`[TOOL_CALL]`"
+    if "<invoke name=" in t:
+        return "`<invoke>`"
+    if _NATIVE_MARKUP_RE.search(text):
+        return "`<tool_call>`"
+    return None
+
+
+def _decode_input(raw: object) -> dict | None:
+    """Normalise a tool input: a dict, or a JSON-encoded dict string (OpenAI-style)."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _parse_wire_calls(text: str) -> list[tuple[str, dict]]:
+    """Decode every ``{"tool_call": {"name": ..., "input": {...}}}`` object in *text*."""
+    results: list[tuple[str, dict]] = []
+    pos = 0
+    while (match := _TOOL_CALL_START_RE.search(text, pos)) is not None:
+        try:
+            obj, end = _JSON_DECODER.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            pos = match.end()
+            continue
+        pos = end
+        call = obj.get("tool_call") if isinstance(obj, dict) else None
+        # "input" is required — a call without it is malformed and must trigger a retry.
+        if isinstance(call, dict) and isinstance(call.get("name"), str) and "input" in call:
+            tool_input = _decode_input(call["input"])
+            if tool_input is not None:
+                results.append((call["name"], tool_input))
+    return results
+
+
+def _parse_native_calls(text: str) -> list[tuple[str, dict]]:
+    """Recover tool calls from native tool-call markup (e.g. MiniMax ``<tool_call>``).
+
+    Only used when such markup is present, so ordinary prose that happens to
+    mention ``"name": ...`` is never treated as a tool call.
+    """
+    if not _NATIVE_MARKUP_RE.search(text):
+        return []
+    cleaned = _NATIVE_MARKUP_RE.sub(" ", text)
+    results: list[tuple[str, dict]] = []
+    pos = 0
+    while (match := _BARE_CALL_RE.search(cleaned, pos)) is not None:
+        try:
+            raw, end = _JSON_DECODER.raw_decode(cleaned, match.end())
+        except json.JSONDecodeError:
+            pos = match.end()
+            continue
+        pos = end
+        tool_input = _decode_input(raw)
+        if tool_input is not None:
+            results.append((match.group(1), tool_input))
+    return results
 
 
 def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     """Return ``(tool_name, tool_input_dict)`` when *text* contains a tool call, else ``None``."""
-    match = _TOOL_CALL_RE.search(text)
-    if not match:
-        return None
-    try:
-        tool_input = json.loads(match.group(2))
-    except json.JSONDecodeError:
-        return None
-    return match.group(1), tool_input
+    calls = _parse_all_tool_calls(text)
+    return calls[0] if calls else None
 
 
 def _parse_all_tool_calls(text: str) -> list[tuple[str, dict]]:
-    """Return ALL ``(tool_name, tool_input_dict)`` pairs found in *text*."""
-    results = []
-    for match in _TOOL_CALL_RE.finditer(text):
-        try:
-            tool_input = json.loads(match.group(2))
-            results.append((match.group(1), tool_input))
-        except json.JSONDecodeError:
-            pass
-    return results
+    """Return ALL ``(tool_name, tool_input_dict)`` pairs found in *text*.
+
+    Prefers the JSON wire format; falls back to native tool-call markup.
+    """
+    return _parse_wire_calls(text) or _parse_native_calls(text)
 
 
 async def run_tool_call_loop(
@@ -146,11 +209,9 @@ async def run_tool_call_loop(
         # See _looks_like_tool_attempt for the four failure modes it detects.
         if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
-            _text_lower = text.lower()
-            _used_tag_format = "[tool_call]" in _text_lower or "<invoke name=" in _text_lower
             _reason = (
                 "used an unsupported tag/XML format instead of JSON"
-                if _used_tag_format
+                if _tag_format(text) is not None
                 else "may have been cut off by the token limit"
             )
             await ctx.send_sse_event(
@@ -170,7 +231,7 @@ async def run_tool_call_loop(
                         "Your previous response could not be parsed as a valid tool call "
                         f"({_reason}). "
                         "Respond with ONLY a single JSON object — no prose, no explanation, "
-                        "no [TOOL_CALL] tags, no <invoke> tags, no XML, no markdown fences:\n"
+                        "no [TOOL_CALL] tags, no <invoke> or <tool_call> tags, no XML, no markdown fences:\n"
                         '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
                     ),
                 )
@@ -287,8 +348,8 @@ async def run_tool_call_loop(
             if _looks_like_tool_attempt(text):
                 recommended = max_tokens * 2
                 _text_lower = text.lower()
-                if "[tool_call]" in _text_lower or "<invoke name=" in _text_lower:
-                    _fmt = "`[TOOL_CALL]`" if "[tool_call]" in _text_lower else "`<invoke>`"
+                _fmt = _tag_format(text)
+                if _fmt is not None:
                     err = (
                         f"⚠ The workflow could not continue because the model used an "
                         f"unsupported tag format ({_fmt}) for tool calls instead "
