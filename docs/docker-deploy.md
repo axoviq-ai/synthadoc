@@ -83,6 +83,8 @@ Host machine
 
 All runtimes use the same OCI image — no separate image per platform.
 
+**No Python needed on the host.** Every `synthadoc` command in this guide, including creating a wiki, runs inside a container. Besides a container runtime you only need a text editor (to set the LLM provider in `config.toml`) and, optionally, Obsidian.
+
 ---
 
 ## API Key Setup
@@ -118,26 +120,40 @@ docker pull chenp/synthadoc:latest
 
 ### Step 2 — Install a wiki
 
-Before starting the container you need a wiki folder on the host to mount. This one-time step uses the `synthadoc` CLI on the host (`pip install synthadoc`), which creates the wiki folder, assigns its port, and installs the Obsidian plugin into the vault. After that, the server runs in Docker and you do not need `synthadoc serve` on the host. Pick one of three paths:
+The container serves a wiki folder that lives on the host, so create that folder first. You don't need Python or `synthadoc` on the host. Run `synthadoc install` in a **one-off container** that mounts the *parent* folder (`~/wikis`); it writes the new wiki there and exits (`--rm`):
+
+```bash
+mkdir -p ~/wikis        # create the parent first (on Linux, Docker would otherwise create it owned by root)
+```
 
 **Option A — Demo wiki** (used in this guide): pre-populated with sample pages, ready to query immediately:
 
 ```bash
-synthadoc install history-of-computing --target ~/wikis --demo
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
 ```
 
 **Option B — Template wiki**: scaffolded for a specific domain. Browse the 30 available templates first, then install:
 
 ```bash
-synthadoc templates list
-synthadoc install my-market-wiki --target ~/wikis --template research/market-research
+docker run --rm chenp/synthadoc:latest synthadoc templates list
+
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install my-market-wiki --target /wikis --template research/market-research
 ```
 
-**Option C — Custom domain wiki**: no template; provide a `--domain` description and Synthadoc scaffolds from scratch:
+**Option C — Custom domain wiki**: no template; provide a `--domain` description:
 
 ```bash
-synthadoc install my-wiki --target ~/wikis --domain "Your domain description"
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install my-wiki --target /wikis --domain "Your domain description"
 ```
+
+Install makes no LLM call, so no API key is needed for this step. `/wikis` is only the path inside the one-off container; the wiki is created on the host at `~/wikis/<name>`.
+
+> **Installing a second wiki?** Each one-off container starts with an empty wiki registry, so `install` always assigns port 7070. Pass a free port explicitly for every additional wiki, e.g. `--port 7071`.
+
+> **Already have `synthadoc` installed on the host?** `synthadoc install history-of-computing --target ~/wikis --demo` does the same thing. Its registry also assigns the next free port automatically.
 
 ---
 
@@ -149,7 +165,7 @@ Wiki 'history-of-computing' installed.
   Plugin Obsidian plugin ready
 ```
 
-Note the assigned port (`7070` above) — you will use it in Step 4. **Do not run `synthadoc serve`** — instead you will start a Docker container in Steps 4 and 5.
+Note the assigned port (`7070` above) — you will use it in Step 4. Ignore any "Next steps" that mention `synthadoc use` or `synthadoc serve`; with Docker you start a container in Step 4 instead.
 
 ### Step 3 — Set your LLM provider
 
@@ -637,6 +653,16 @@ docker compose exec sd-server synthadoc ingest raw_sources/report.pdf
 
 Copy `docker/compose/multi-wiki.yml` to your working directory. It is pre-configured for the two demo wikis used in this guide (`history-of-computing` on 7070, `ai-research` on 7071). If you are using different wikis or ports, do a search-and-replace — the header comment in the file tells you exactly what to change.
 
+**Step 0 — Install both demo wikis** (skip if you already have two wikis). The second wiki needs an explicit `--port`, because a one-off container cannot see which ports earlier installs took:
+
+```bash
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install ai-research --target /wikis --demo --port 7071
+```
+
 **Step 1 — Set `.env`**
 
 ```bash
@@ -684,7 +710,7 @@ Cross-wiki queries fan out a single question across multiple wiki containers and
 
 By default, the coordinator picks which wikis to search automatically: it reads each wiki's domain description from the registry and asks the LLM to select the most relevant ones for your question. You do not need to configure anything beyond starting the containers.
 
-In Docker Compose, containers on the same network reach each other by **service name** rather than `localhost`. The registry entry for each wiki stores the service-name URL (e.g. `http://legal-wiki:7070`) set at install time, so the coordinator resolves peers correctly without any extra steps.
+In Docker Compose, containers on the same network reach each other by **service name** rather than `localhost`. `multi-wiki.yml` gives the coordinator (`sd-server-a`) a cross-wiki registry through its `configs:` block, mounted at `/home/synthadoc/.synthadoc/wikis.json`. Each peer entry has a `host` set to its service name (`sd-server-a`, `sd-server-b`), so the coordinator reaches peers without any extra steps. If you rename services, wikis, or ports, update that block to match.
 
 **Step 1 — Start the multi-wiki stack**
 
@@ -725,7 +751,7 @@ If a peer was unreachable, it is flagged inline: `⚠ ai-research offline`. The 
 If a peer container is stopped, the coordinator degrades gracefully: it answers from the wikis that responded and notes which were unreachable. Restart a stopped wiki and re-query to include it:
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml start legal-wiki
+docker compose -f docker/compose/multi-wiki.yml start sd-server-b
 ```
 
 **CLI alternative**
@@ -733,8 +759,8 @@ docker compose -f docker/compose/multi-wiki.yml start legal-wiki
 You can also run a cross-wiki query from the command line by targeting the coordinator container:
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
-  synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks?"
+docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
+  synthadoc query --cross-wiki "How did early computing hardware influence AI research?"
 ```
 
 **Optional: keyword-based routing override**
@@ -742,7 +768,7 @@ docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
 For large stacks (three or more wikis) where you want deterministic wiki selection rather than LLM-based routing, you can create `CROSS_WIKI_ROUTING.md` in the coordinator container's config directory. This is a plain-text file that maps keywords to wiki groups:
 
 ```bash
-docker compose -f docker/compose/multi-wiki.yml exec finance-wiki \
+docker compose -f docker/compose/multi-wiki.yml exec sd-server-a \
   synthadoc cross-wiki routing init   # scaffold the file, then edit to taste
 ```
 
@@ -981,10 +1007,12 @@ If you see `(N/N) FINISHED` at the top and no `ERROR` lines, the image built suc
 
 #### Step 3 — Create a test wiki
 
-You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise install the built-in demo:
+You need a wiki on disk for the container to mount. If you already have one, skip this. Otherwise install the built-in demo using the image you just built:
 
 ```bash
-synthadoc install history-of-computing --target ~/wikis --demo
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis synthadoc:local \
+  synthadoc install history-of-computing --target /wikis --demo
 ```
 
 This creates `~/wikis/history-of-computing/` pre-populated with demo content, so you have real pages to query straight away.

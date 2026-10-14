@@ -290,8 +290,11 @@ The Obsidian plugin is bundled inside the package. New wikis created with `synth
 For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
 ```bash
-# 1. Create the wiki on the host (one time) — note the port it prints, e.g. 7070
-synthadoc install history-of-computing --target ~/wikis --demo
+# 1. Create the wiki in a one-off container — no Python needed on the host.
+#    It lands in ~/wikis/history-of-computing; note the port it prints, e.g. 7070
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
 
 # 2. Put your LLM key in .env (never on the command line), e.g. GEMINI_API_KEY=...
 #    and select that provider in ~/wikis/history-of-computing/.synthadoc/config.toml
