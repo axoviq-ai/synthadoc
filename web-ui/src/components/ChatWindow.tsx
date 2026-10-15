@@ -206,6 +206,13 @@ export function ChatWindow({
                 )}
                 {error && <p className="error-banner" role="alert">{error}</p>}
             </div>
+            {streaming && (
+                <div className="streaming-footer-indicator" aria-live="polite" aria-label="Synthadoc is working">
+                    <div className="bubble-thinking">
+                        <span /><span /><span />
+                    </div>
+                </div>
+            )}
             <div className="input-dock">
                 <HintChips hints={hints} onSelect={(h) => { setInput(h); setTimeout(() => inputRef.current?.focus(), 0); }} />
                 <div className="input-options">
