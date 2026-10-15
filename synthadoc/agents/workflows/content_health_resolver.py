@@ -263,6 +263,23 @@ def _section_excerpt(content: str, issues: list[dict], max_chars: int = 800) -> 
     return result[:max_chars] + ("..." if len(result) > max_chars else "")
 
 
+def _extract_md_from_response(text: str) -> str:
+    """Strip tool-call artifacts and narrative from a CLI provider response.
+
+    opencode/claude-code may include shell command output and a summary
+    sentence before or after the rewritten markdown.  Find the first H1
+    heading and return everything from there to the last non-empty line.
+    """
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^# \S", ln)), None)
+    if start is None:
+        return text.strip()
+    end = len(lines)
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    return "\n".join(lines[start:end])
+
+
 class ContentHealthResolverWorkflow(AgenticWorkflow):
     """Detect and fix wiki content quality issues interactively."""
 
@@ -622,14 +639,20 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             yield {"event": "token", "data": {"text": f"\n--- {slug} ---\nIssues: {issues_summary}\n"}}
 
             prompt = (
-                f"Wiki page '{slug}':\n\n{page.content}\n\n"
-                f"Detected issues: {page.content_health_issues}\n\n"
-                "Rewrite ONLY the affected sections to fix these structural issues. "
-                "Do NOT change factual content. Return ONLY the complete rewritten page markdown."
+                "You are a wiki editor. The full page content is provided below.\n"
+                "Do NOT read any files or use any tools — all content is already here.\n"
+                "Do NOT include explanations, commentary, or summaries.\n\n"
+                f"Page slug: {slug}\n\n"
+                f"Current content:\n\n{page.content}\n\n"
+                f"Structural issues to fix: {page.content_health_issues}\n\n"
+                "Rewrite the page to fix ONLY these structural issues "
+                "(remove duplicate sections, expand thin/empty sections). "
+                "Do NOT change factual content. "
+                "Output ONLY the complete corrected markdown, starting with '# '."
             )
             from synthadoc.skills.base import Message as _Msg
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
-            proposed = _resp.text
+            proposed = _extract_md_from_response(_resp.text)
 
             before_excerpt = _section_excerpt(page.content, page.content_health_issues)
             after_excerpt = _section_excerpt(proposed, page.content_health_issues)
