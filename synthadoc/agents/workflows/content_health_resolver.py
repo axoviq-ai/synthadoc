@@ -568,8 +568,13 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         skipped: list[str] = []
 
         for _sev, _count, slug, page in flagged:
+            _counts: dict[tuple, int] = {}
+            for _i in page.content_health_issues:
+                _k = (_i["type"], _i["severity"])
+                _counts[_k] = _counts.get(_k, 0) + 1
             issues_summary = ", ".join(
-                f"{i['type']} ({i['severity']})" for i in page.content_health_issues[:3]
+                f"{t} ({s}){' ×' + str(n) if n > 1 else ''}"
+                for (t, s), n in list(_counts.items())[:3]
             )
             yield {"event": "token", "data": {"text": f"\n--- {slug} ---\nIssues: {issues_summary}\n"}}
 
