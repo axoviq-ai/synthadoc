@@ -4500,7 +4500,8 @@ port 7070                      ── map  ──▶   7070    synthadoc serve -
 | **Symmetric port mapping** | The server reads `[server] port` from the wiki's `config.toml`; mapping `-p 7070:7070` keeps the Obsidian plugin, Web UI, and scripts unchanged between Docker and native `synthadoc serve` |
 | **HTTP API + Web UI + MCP on one port** | The default `CMD` runs without `--http-only`, so `/app` (Web UI) and `/mcp` (MCP over HTTP) are served alongside the REST API. MCP stdio is not used in containers |
 | **Secrets via environment only** | API keys are passed with `--env-file`; nothing is baked into the image |
-| **Non-root** | Runs as uid/gid 1000 (`synthadoc`); see the guide's Linux file-permission appendix for hosts with a different uid |
+| **Non-root** | Runs as uid/gid 1000 (`synthadoc`) with a real, user-owned home (`useradd --create-home`), so CLI commands that write `~/.synthadoc/` work in the container; see the guide's Linux file-permission appendix for hosts with a different uid |
+| **No host Python** | Wikis are created by a one-off container that mounts the *parent* folder: `docker run --rm -v ~/wikis:/wikis chenp/synthadoc synthadoc install <name> --target /wikis [--demo \| --template …]`. Each one-off container starts with an empty registry, so additional wikis need an explicit `--port` |
 
 ### `serve --host`
 
@@ -4535,6 +4536,12 @@ Two-stage build on `python:3.12-slim`:
 4. pushes `chenp/synthadoc:<version>` and `chenp/synthadoc:latest` to Docker Hub (`DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets).
 
 Sequencing after PyPI guarantees that the image never references an unpublished version.
+
+The workflow can also be started manually (**Actions → Publish Docker Image → Run workflow**, input `tag`, e.g. `1.4.2`). It builds the selected branch's `Dockerfile` against that already-released PyPI version and re-pushes `:<tag>` and `:latest`. Use it for image-only fixes (for example, Dockerfile changes) without cutting a new PyPI release.
+
+### Upgrading a container deployment
+
+Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `plugin upgrade` and `templates sync` iterate the host wiki registry, which does not exist in a container, so they are unavailable there. Refreshing demo or template content is currently pip-only.
 
 ### Container-related fixes shipped with Docker support
 
