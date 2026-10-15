@@ -220,6 +220,49 @@ def _format_fix_list(fixes: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _section_excerpt(content: str, issues: list[dict], max_chars: int = 800) -> str:
+    """Return a diff excerpt focused on the sections referenced by issues.
+
+    Extracts each affected heading and its body from *content*, separated by
+    '---' dividers.  Falls back to a plain head-truncation when no heading
+    locations are present (e.g. unclosed_code_block, broken_list_nesting).
+    """
+    target_headings = {
+        i.get("location", "")
+        for i in issues
+        if i.get("location") and not i["location"].startswith("line ")
+    }
+    if not target_headings:
+        return content[:max_chars] + ("..." if len(content) > max_chars else "")
+
+    lines = content.splitlines(keepends=True)
+    captured: list[str] = []
+    total = 0
+    i = 0
+    while i < len(lines) and total < max_chars:
+        m = re.match(r"^(#{1,6})\s+(.*)", lines[i].rstrip())
+        if m and m.group(2).strip() in target_headings:
+            level = len(m.group(1))
+            j = i + 1
+            while j < len(lines):
+                nm = re.match(r"^(#{1,6})\s", lines[j].rstrip())
+                if nm and len(nm.group(1)) <= level:
+                    break
+                j += 1
+            block = "".join(lines[i:j]).rstrip()
+            captured.append(block)
+            total += len(block)
+            i = j
+        else:
+            i += 1
+
+    if not captured:
+        return content[:max_chars] + ("..." if len(content) > max_chars else "")
+
+    result = "\n\n---\n\n".join(captured)
+    return result[:max_chars] + ("..." if len(result) > max_chars else "")
+
+
 class ContentHealthResolverWorkflow(AgenticWorkflow):
     """Detect and fix wiki content quality issues interactively."""
 
@@ -588,8 +631,8 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
             proposed = _resp.text
 
-            before_excerpt = page.content[:400] + ("..." if len(page.content) > 400 else "")
-            after_excerpt = proposed[:400] + ("..." if len(proposed) > 400 else "")
+            before_excerpt = _section_excerpt(page.content, page.content_health_issues)
+            after_excerpt = _section_excerpt(proposed, page.content_health_issues)
             diff_msg = (
                 f"**{slug}** — {issues_summary}\n\n"
                 f"**BEFORE:**\n```\n{before_excerpt}\n```\n\n"
