@@ -674,6 +674,16 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
             proposed = _extract_md_from_response(_resp.text)
 
+            if _is_draft(proposed):
+                yield {"event": "token", "data": {
+                    "text": (
+                        f"⛔ {slug}: proposed content contains planning notes "
+                        f"— skipped to prevent wiki corruption.\n"
+                    )
+                }}
+                skipped.append(slug)
+                continue
+
             # For small fixes (≤3 issues) show the affected sections side-by-side;
             # for large rewrites the LLM restructures the page so section names
             # no longer align — fall back to plain head-truncation of each version.
@@ -684,13 +694,8 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             else:
                 before_excerpt = page.content[:_max] + ("..." if len(page.content) > _max else "")
                 after_excerpt = proposed[:_max] + ("..." if len(proposed) > _max else "")
-            draft_warning = (
-                "\n\n⚠️ **The proposed content may contain LLM planning notes — "
-                "review carefully before approving.**"
-                if _is_draft(proposed) else ""
-            )
             diff_msg = (
-                f"**{slug}** — {issues_summary}{draft_warning}\n\n"
+                f"**{slug}** — {issues_summary}\n\n"
                 f"**BEFORE** ({len(page.content)} chars):\n```\n{before_excerpt}\n```\n\n"
                 f"**AFTER** ({len(proposed)} chars):\n```\n{after_excerpt}\n```"
             )
