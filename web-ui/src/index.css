@@ -879,6 +879,16 @@ body {
     27% { transform: translateY(-5px); opacity: 1; }
 }
 
+/* ─── Sticky streaming indicator (always in viewport while workflow runs) ─ */
+.streaming-footer-indicator {
+    display: flex;
+    align-items: center;
+    padding: 0.35rem 1rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--messages-bg);
+    flex-shrink: 0;
+}
+
 /* ─── Connecting state ─────────────────────────── */
 .connecting { padding: 1rem 1.25rem; color: var(--text-faint); font-size: 0.9rem; }
 

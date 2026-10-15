@@ -774,3 +774,61 @@ async def test_complete_detail_dict_does_not_crash():
         # Must raise RuntimeError (not AttributeError)
         with pytest.raises(RuntimeError):
             await provider.complete([Message(role="user", content="hi")])
+
+
+# ── OpencodeProvider: subprocess serialisation lock ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_opencode_concurrent_calls_are_serialised():
+    """Concurrent complete() calls are serialised by the class-level lock.
+
+    When N coroutines call complete() at the same time, no two subprocess
+    calls overlap.  This prevents the FreeTierError that opencode returns
+    when concurrent subprocesses race on its internal SQLite session DB.
+    """
+    import json
+    from synthadoc.providers.base import Message
+
+    # Reset the class-level lock so each test run starts clean.
+    from synthadoc.providers.coding_tool import OpencodeProvider as _OC
+    _OC._subprocess_lock = None
+
+    provider = _make_opencode_provider()
+
+    good_output = "\n".join([
+        json.dumps({"type": "text", "data": "ok"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 1, "output": 1}}),
+    ]).encode()
+
+    active_count = 0
+    max_active = 0
+
+    original_popen = _make_mock_proc
+
+    def _tracking_popen(*args, **kwargs):
+        nonlocal active_count, max_active
+        active_count += 1
+        max_active = max(max_active, active_count)
+        proc = _make_mock_proc(good_output, b"", returncode=0)
+        original_communicate = proc.communicate
+
+        def _communicate_and_decrement(*a, **kw):
+            nonlocal active_count
+            result = original_communicate(*a, **kw)
+            active_count -= 1
+            return result
+
+        proc.communicate = _communicate_and_decrement
+        return proc
+
+    msg = [Message(role="user", content="hi")]
+    with patch(_POPEN_PATCH, side_effect=_tracking_popen):
+        # Launch 5 concurrent calls.
+        results = await asyncio.gather(*[provider.complete(msg) for _ in range(5)])
+
+    assert all(r.text == "ok" for r in results)
+    assert max_active == 1, (
+        f"Expected at most 1 concurrent subprocess, got {max_active} — "
+        "lock is not serialising calls"
+    )

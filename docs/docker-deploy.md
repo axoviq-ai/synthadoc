@@ -234,7 +234,7 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "anthropic", model = "claude-opus-4-8" }
 # default = { provider = "deepseek",  model = "deepseek-v4-flash" }
 # default = { provider = "ollama",    model = "llama3.2" }
-# default = { provider = "claude-code" }
+# NOTE: opencode / claude-code providers require a local binary — not supported in Docker
 # ...
 ```
 
@@ -251,6 +251,8 @@ default = { provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled"
 ```
 
 Then make sure `~/wikis/.env` contains the API key for the provider you selected (e.g. `MINIMAX_API_KEY=...` for MiniMax, `ANTHROPIC_API_KEY=...` for Anthropic); see [API Key Setup](#api-key-setup) above. The provider in `config.toml` and the key in `.env` must match. If the expected key is missing, the container exits immediately on startup.
+
+> **CLI providers (`opencode`, `claude-code`) are not supported inside Docker.** These providers work by shelling out to a local binary on the host machine. Inside a container neither binary is available, so Synthadoc will fail to start with `[ERR-PROV-003]`. Use any API-based provider instead (Anthropic, Gemini, OpenAI, etc.). If you want a **no-API-key, locally-run** option, use the Ollama sidecar — see [Ollama sidecar](#ollama-sidecar) below.
 
 ### Step 4 — Start the container
 

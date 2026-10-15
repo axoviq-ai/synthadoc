@@ -391,6 +391,20 @@ class OpencodeProvider(CodingToolCLIProvider):
     _DB_LOCKED_MAX_RETRIES = 3
     _DB_LOCKED_BASE_DELAY = 2.0  # seconds; doubled on each retry (2 → 4 → 8)
 
+    # Process-wide lock: serialise all opencode subprocess calls so concurrent
+    # jobs never race on opencode's internal SQLite session database.  Racing
+    # calls can trigger a "FreeTierError" from opencode.ai even for paid users
+    # because opencode's session-init code fails to acquire the DB write lock
+    # and falls back to an unauthenticated cloud request.  One call at a time
+    # eliminates the race without requiring config changes from the user.
+    _subprocess_lock: asyncio.Lock | None = None
+
+    @classmethod
+    def _get_subprocess_lock(cls) -> asyncio.Lock:
+        if cls._subprocess_lock is None:
+            cls._subprocess_lock = asyncio.Lock()
+        return cls._subprocess_lock
+
     def _build_command(self, binary: str) -> list[str]:
         cmd = [binary, "run", "--format", "json"]
         if self._model:
@@ -418,13 +432,15 @@ class OpencodeProvider(CodingToolCLIProvider):
 
         silent_retried = False
         db_lock_retries = 0
+        lock = self._get_subprocess_lock()
 
         while True:
             try:
-                return await super().complete(
-                    messages, system=system,
-                    temperature=temperature, max_tokens=max_tokens,
-                )
+                async with lock:
+                    return await super().complete(
+                        messages, system=system,
+                        temperature=temperature, max_tokens=max_tokens,
+                    )
             except ValueError as exc:
                 if not silent_retried and "no text content" in str(exc):
                     silent_retried = True
