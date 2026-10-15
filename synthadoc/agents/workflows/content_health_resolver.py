@@ -263,6 +263,18 @@ def _section_excerpt(content: str, issues: list[dict], max_chars: int = 800) -> 
     return result[:max_chars] + ("..." if len(result) > max_chars else "")
 
 
+_DRAFT_RE = re.compile(
+    r"^\s*(TODO|FIXME|Expand to\b|Hmm[,.\s]|Wait[,.\s]|I'll\b|I will\b|Let me\b"
+    r"|existing content|combine existing|add more content|placeholder)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _is_draft(text: str) -> bool:
+    """Return True if the text contains LLM planning/thinking artifacts."""
+    return bool(_DRAFT_RE.search(text))
+
+
 def _extract_md_from_response(text: str) -> str:
     """Strip tool-call artifacts and narrative from a CLI provider response.
 
@@ -638,17 +650,25 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             )
             yield {"event": "token", "data": {"text": f"\n--- {slug} ---\nIssues: {issues_summary}\n"}}
 
+            _issues_text = "\n".join(
+                f"- {i['type']} at '{i['location']}': {i['description']}"
+                for i in page.content_health_issues
+            )
             prompt = (
-                "You are a wiki editor. The full page content is provided below.\n"
-                "Do NOT read any files or use any tools — all content is already here.\n"
-                "Do NOT include explanations, commentary, or summaries.\n\n"
-                f"Page slug: {slug}\n\n"
-                f"Current content:\n\n{page.content}\n\n"
-                f"Structural issues to fix: {page.content_health_issues}\n\n"
-                "Rewrite the page to fix ONLY these structural issues "
-                "(remove duplicate sections, expand thin/empty sections). "
-                "Do NOT change factual content. "
-                "Output ONLY the complete corrected markdown, starting with '# '."
+                "You are a wiki page editor producing a final, publishable document.\n"
+                "OUTPUT RULES — every line you write must follow all of these:\n"
+                "  • Every line is final, publishable wiki markdown.\n"
+                "  • No planning notes, no TODO comments, no 'Hmm', no 'Wait',\n"
+                "    no 'I'll', no 'Let me', no 'existing content', no reasoning.\n"
+                "  • No placeholders like '[expand here]' or 'add more content'.\n"
+                "  • Do NOT read any files or use any tools — all content is below.\n\n"
+                "TASK: Fix the structural issues listed below.\n"
+                "  1. Duplicate sections: keep the best version, delete the rest.\n"
+                "  2. Thin/empty sections: expand with relevant factual content.\n"
+                "  3. Do NOT alter any factual claims.\n\n"
+                f"Issues to fix:\n{_issues_text}\n\n"
+                f"Current page content:\n\n{page.content}\n\n"
+                "Your ENTIRE response must be the corrected markdown starting with '# '."
             )
             from synthadoc.skills.base import Message as _Msg
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
@@ -664,8 +684,13 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             else:
                 before_excerpt = page.content[:_max] + ("..." if len(page.content) > _max else "")
                 after_excerpt = proposed[:_max] + ("..." if len(proposed) > _max else "")
+            draft_warning = (
+                "\n\n⚠️ **The proposed content may contain LLM planning notes — "
+                "review carefully before approving.**"
+                if _is_draft(proposed) else ""
+            )
             diff_msg = (
-                f"**{slug}** — {issues_summary}\n\n"
+                f"**{slug}** — {issues_summary}{draft_warning}\n\n"
                 f"**BEFORE** ({len(page.content)} chars):\n```\n{before_excerpt}\n```\n\n"
                 f"**AFTER** ({len(proposed)} chars):\n```\n{after_excerpt}\n```"
             )
