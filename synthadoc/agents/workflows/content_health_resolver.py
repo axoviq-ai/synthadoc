@@ -513,6 +513,20 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             yield {"event": "final_text", "data": {"text": text}}
             return
 
+        # Always run a fresh scan so the workflow finds issues even when lint
+        # has not yet run and frontmatter flags are absent or stale.
+        from dataclasses import asdict as _asdict
+        from synthadoc.agents.content_health_scanner import scan_page as _scan_page
+        yield {"event": "token", "data": {"text": "Scanning pages for content health issues…\n"}}
+        for _slug in ctx.store.list_pages():
+            _page = ctx.store.read_page(_slug)
+            if _page is None or _page.status != LifecycleState.ACTIVE:
+                continue
+            _new = [_asdict(i) for i in _scan_page(_slug, _page.content or "")]
+            if _new != (_page.content_health_issues or []):
+                _page.content_health_issues = _new
+                ctx.store.write_page(_slug, _page)
+
         _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         flagged = []
         for slug in ctx.store.list_pages():
@@ -565,7 +579,9 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 "Rewrite ONLY the affected sections to fix these structural issues. "
                 "Do NOT change factual content. Return ONLY the complete rewritten page markdown."
             )
-            proposed = await provider.complete(prompt)
+            from synthadoc.skills.base import Message as _Msg
+            _resp = await provider.complete([_Msg(role="user", content=prompt)])
+            proposed = _resp.text
 
             before_excerpt = page.content[:400] + ("..." if len(page.content) > 400 else "")
             after_excerpt = proposed[:400] + ("..." if len(proposed) > 400 else "")
