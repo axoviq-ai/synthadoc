@@ -639,7 +639,26 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         fixed: list[str] = []
         skipped: list[str] = []
 
+        # CLI providers (opencode, claude-code) are agentic — they read files,
+        # plan before writing, and hallucinate new sections when the issue list
+        # is long.  API providers follow the prompt reliably and don't need this
+        # guard.  This path is CLI-only, so the cap applies only there.
+        _MAX_ISSUES_AUTO_FIX = 6
+
         for _sev, _count, slug, page in flagged:
+            if slug in SYSTEM_PAGE_SLUGS or slug.endswith("-index") or slug.endswith("-dashboard"):
+                yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped (meta/navigation page)\n"}}
+                skipped.append(slug)
+                continue
+            if len(page.content_health_issues) > _MAX_ISSUES_AUTO_FIX:
+                yield {"event": "token", "data": {
+                    "text": (
+                        f"⏭ {slug}: {len(page.content_health_issues)} issues — too many for "
+                        f"safe auto-fix (limit {_MAX_ISSUES_AUTO_FIX}), needs human review.\n"
+                    )
+                }}
+                skipped.append(slug)
+                continue
             _counts: dict[tuple, int] = {}
             for _i in page.content_health_issues:
                 _k = (_i["type"], _i["severity"])
@@ -655,20 +674,27 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 for i in page.content_health_issues
             )
             prompt = (
-                "You are a wiki page editor producing a final, publishable document.\n"
-                "OUTPUT RULES — every line you write must follow all of these:\n"
-                "  • Every line is final, publishable wiki markdown.\n"
-                "  • No planning notes, no TODO comments, no 'Hmm', no 'Wait',\n"
-                "    no 'I'll', no 'Let me', no 'existing content', no reasoning.\n"
-                "  • No placeholders like '[expand here]' or 'add more content'.\n"
-                "  • Do NOT read any files or use any tools — all content is below.\n\n"
-                "TASK: Fix the structural issues listed below.\n"
-                "  1. Duplicate sections: keep the best version, delete the rest.\n"
-                "  2. Thin/empty sections: expand with relevant factual content.\n"
-                "  3. Do NOT alter any factual claims.\n\n"
+                "You are a surgical wiki editor. Your job is MINIMAL targeted fixes only.\n\n"
+                "ABSOLUTE RULES — violating any one is a failure:\n"
+                "  • Output ONLY final publishable wiki markdown. No reasoning, no planning,\n"
+                "    no TODO, no 'Hmm', no 'I'll', no annotations, no commentary.\n"
+                "  • PRESERVE every existing section heading EXACTLY — same text, same # level,\n"
+                "    including any dates or years in parentheses. Do not 'correct' headings.\n"
+                "  • PRESERVE the section ORDER exactly as in the original.\n"
+                "  • Do NOT add new top-level or second-level sections.\n"
+                "  • Do NOT rename, merge, split, or reorder any sections.\n"
+                "  • Do NOT alter factual claims in sections you are not fixing.\n"
+                "  • Do NOT read files or use tools — all content is provided below.\n\n"
+                "PERMITTED CHANGES (only these, only where the issue list directs):\n"
+                "  1. Duplicate sections: keep the most complete occurrence (most words and/or\n"
+                "     citations); delete the others. Place the kept version where the first\n"
+                "     occurrence was. Do NOT merge or rewrite — keep it verbatim.\n"
+                "  2. Thin/empty sections: add factual prose UNDER the existing heading.\n"
+                "     The heading text must remain unchanged.\n\n"
                 f"Issues to fix:\n{_issues_text}\n\n"
-                f"Current page content:\n\n{page.content}\n\n"
-                "Your ENTIRE response must be the corrected markdown starting with '# '."
+                f"Page content (copy it, apply only the fixes above, output the result):\n\n"
+                f"{page.content}\n\n"
+                "Your ENTIRE response is the corrected page starting with '# '."
             )
             from synthadoc.skills.base import Message as _Msg
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
@@ -687,7 +713,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             # For small fixes (≤3 issues) show the affected sections side-by-side;
             # for large rewrites the LLM restructures the page so section names
             # no longer align — fall back to plain head-truncation of each version.
-            _max = 800
+            _max = 2000
             if len(page.content_health_issues) <= 3:
                 before_excerpt = _section_excerpt(page.content, page.content_health_issues, _max)
                 after_excerpt = _section_excerpt(proposed, page.content_health_issues, _max)
