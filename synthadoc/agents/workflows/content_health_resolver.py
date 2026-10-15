@@ -654,12 +654,20 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             _resp = await provider.complete([_Msg(role="user", content=prompt)])
             proposed = _extract_md_from_response(_resp.text)
 
-            before_excerpt = _section_excerpt(page.content, page.content_health_issues)
-            after_excerpt = _section_excerpt(proposed, page.content_health_issues)
+            # For small fixes (≤3 issues) show the affected sections side-by-side;
+            # for large rewrites the LLM restructures the page so section names
+            # no longer align — fall back to plain head-truncation of each version.
+            _max = 800
+            if len(page.content_health_issues) <= 3:
+                before_excerpt = _section_excerpt(page.content, page.content_health_issues, _max)
+                after_excerpt = _section_excerpt(proposed, page.content_health_issues, _max)
+            else:
+                before_excerpt = page.content[:_max] + ("..." if len(page.content) > _max else "")
+                after_excerpt = proposed[:_max] + ("..." if len(proposed) > _max else "")
             diff_msg = (
                 f"**{slug}** — {issues_summary}\n\n"
-                f"**BEFORE:**\n```\n{before_excerpt}\n```\n\n"
-                f"**AFTER:**\n```\n{after_excerpt}\n```"
+                f"**BEFORE** ({len(page.content)} chars):\n```\n{before_excerpt}\n```\n\n"
+                f"**AFTER** ({len(proposed)} chars):\n```\n{after_excerpt}\n```"
             )
             gate = await tool_confirm(ctx, message=diff_msg, yes_label="Approve", no_label="Skip this page")
             if gate.get("confirmed"):
