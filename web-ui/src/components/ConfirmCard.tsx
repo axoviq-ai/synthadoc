@@ -115,7 +115,24 @@ export default function ConfirmCard({
         }}>
             {/* Render message as markdown so **bold**, `code`, etc. display correctly */}
             <div className="bubble-md" style={{ marginBottom: diff ? 0 : 10 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message}</ReactMarkdown>
+                <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                        pre: ({ children, ...props }) => (
+                            <pre {...props} style={{
+                                maxHeight: 280,
+                                overflowY: "auto",
+                                padding: "8px 12px",
+                                background: "var(--bg-notice, #141826)",
+                                borderRadius: 4,
+                                fontSize: "0.78rem",
+                                lineHeight: 1.5,
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                            }}>{children}</pre>
+                        ),
+                    }}
+                >{message}</ReactMarkdown>
             </div>
 
             {/* Syntax-highlighted diff viewer — only shown for diff-review confirms */}
