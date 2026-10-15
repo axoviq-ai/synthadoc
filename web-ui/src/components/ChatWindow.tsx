@@ -172,15 +172,25 @@ export function ChatWindow({
                     ? <Hero mode={mode} resolvedDark={resolvedDark} />
                     : (
                         <div className="messages-list">
-                            {messages.map((m) => (
-                                <MessageBubble
-                                    key={m.id}
-                                    msg={m}
-                                    wikiName={wikiName}
-                                    maxResults={maxResults}
-                                    onChipClick={handleChipClick}
-                                />
-                            ))}
+                            {messages
+                                // While streaming, hide the trailing empty assistant bubble —
+                                // the sticky footer indicator already shows the waiting state.
+                                .filter((m, i) => !(
+                                    streaming &&
+                                    i === messages.length - 1 &&
+                                    m.role === "assistant" &&
+                                    !m.text
+                                ))
+                                .map((m) => (
+                                    <MessageBubble
+                                        key={m.id}
+                                        msg={m}
+                                        wikiName={wikiName}
+                                        maxResults={maxResults}
+                                        onChipClick={handleChipClick}
+                                    />
+                                ))
+                            }
                         </div>
                     )
                 }
