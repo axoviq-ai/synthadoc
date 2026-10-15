@@ -9,6 +9,7 @@ import pytest
 
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
+from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 
@@ -23,12 +24,17 @@ def _make_ctx(store):
     return ctx
 
 
+_CLEAN_CONTENT = "# Page\n\n## Introduction\n\n" + " ".join(["word"] * 60) + "\n"
+_DUPED_CONTENT = "# Page\n\n## Intro\nOld.\n\n## Intro\nDup.\n"
+
+
 def _make_page(slug, with_issues=False):
     issues = []
     if with_issues:
         issues = [{"type": "duplicate_section", "severity": "critical",
                    "location": "## Intro", "description": "Appears 3 times"}]
-    return WikiPage(title=slug.title(), tags=[], content="# Page\n\n## Intro\nOld.\n\n## Intro\nDup.\n",
+    content = _DUPED_CONTENT if with_issues else _CLEAN_CONTENT
+    return WikiPage(title=slug.title(), tags=[], content=content,
                     status="active", confidence="", sources=[],
                     content_health_issues=issues)
 
@@ -58,7 +64,9 @@ async def test_cli_provider_user_approves_fix(tmp_path):
 
     fixed_content = "# Page\n\n## Intro\n" + " ".join(["word"] * 60) + "\n"
     provider = MagicMock()
-    provider.complete = AsyncMock(return_value=fixed_content)
+    provider.complete = AsyncMock(
+        return_value=CompletionResponse(text=fixed_content, input_tokens=0, output_tokens=0)
+    )
 
     wf = ContentHealthResolverWorkflow()
     events = []
