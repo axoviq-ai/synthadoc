@@ -159,3 +159,33 @@ def scan_pages(
         for slug, content in pages.items()
         if (issues := scan_page(slug, content, thin_section_min_words))
     }
+
+
+def refresh_wiki_health_issues(
+    store: "WikiStorage",
+    slugs: "list[str] | None" = None,
+    thin_section_min_words: int = 50,
+    skip_slugs: "frozenset[str]" = frozenset(),
+) -> int:
+    """Scan all active pages and write back any whose content_health_issues changed.
+
+    Returns the count of pages updated.  Pass *slugs* to restrict to a subset;
+    omit it (or pass None) to scan the whole wiki.  Pages in *skip_slugs* and
+    pages that are not ACTIVE are always skipped.
+    """
+    from dataclasses import asdict
+    from synthadoc.storage.wiki import LifecycleState
+
+    updated = 0
+    for slug in (slugs if slugs is not None else store.list_pages()):
+        if slug in skip_slugs:
+            continue
+        page = store.read_page(slug)
+        if page is None or page.status != LifecycleState.ACTIVE:
+            continue
+        new_issues = [asdict(i) for i in scan_page(slug, page.content or "", thin_section_min_words)]
+        if new_issues != (page.content_health_issues or []):
+            page.content_health_issues = new_issues
+            store.write_page(slug, page)
+            updated += 1
+    return updated

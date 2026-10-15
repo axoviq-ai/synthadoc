@@ -587,17 +587,9 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
 
         # Always run a fresh scan so the workflow finds issues even when lint
         # has not yet run and frontmatter flags are absent or stale.
-        from dataclasses import asdict as _asdict
-        from synthadoc.agents.content_health_scanner import scan_page as _scan_page
+        from synthadoc.agents.content_health_scanner import refresh_wiki_health_issues as _refresh
         yield {"event": "token", "data": {"text": "Scanning pages for content health issues…\n"}}
-        for _slug in ctx.store.list_pages():
-            _page = ctx.store.read_page(_slug)
-            if _page is None or _page.status != LifecycleState.ACTIVE:
-                continue
-            _new = [_asdict(i) for i in _scan_page(_slug, _page.content or "")]
-            if _new != (_page.content_health_issues or []):
-                _page.content_health_issues = _new
-                ctx.store.write_page(_slug, _page)
+        _refresh(ctx.store)
 
         _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         flagged = []
