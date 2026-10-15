@@ -10,7 +10,7 @@ import pytest
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
 from synthadoc.providers.base import CompletionResponse
-from synthadoc.storage.wiki import WikiPage, WikiStorage
+from synthadoc.storage.wiki import LifecycleState, WikiPage, WikiStorage
 
 
 def _make_ctx(store):
@@ -35,7 +35,7 @@ def _make_page(slug, with_issues=False):
                    "location": "## Intro", "description": "Appears 3 times"}]
     content = _DUPED_CONTENT if with_issues else _CLEAN_CONTENT
     return WikiPage(title=slug.title(), tags=[], content=content,
-                    status="active", confidence="", sources=[],
+                    status=LifecycleState.ACTIVE, confidence="", sources=[],
                     content_health_issues=issues)
 
 
