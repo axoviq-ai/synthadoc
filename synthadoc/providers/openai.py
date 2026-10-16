@@ -87,6 +87,28 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
 
+# OpenAI's GPT-5-era and newer models (gpt-5*, gpt-6*, …, o1/o3/o4…) reject the
+# deprecated max_tokens parameter and any non-default temperature with HTTP 400.
+_OPENAI_FIXED_SAMPLING_RE = re.compile(r"^(?:gpt-(?:[5-9]|\d{2,})|o\d)")
+
+
+def _sampling_kwargs(provider: str, model: str, temperature: float, max_tokens: int) -> dict:
+    """Return the token-limit and temperature arguments for chat.completions.create().
+
+    Only the native OpenAI API needs special handling. It deprecated
+    ``max_tokens`` in favour of ``max_completion_tokens`` (accepted by every
+    current model), and GPT-5-era and newer models accept only the default
+    temperature. OpenAI-compatible providers that share this class (Gemini,
+    Groq, MiniMax, DeepSeek, Qwen) keep ``max_tokens`` and ``temperature``.
+    """
+    if provider != "openai":
+        return {"temperature": temperature, "max_tokens": max_tokens}
+    kwargs: dict = {"max_completion_tokens": max_tokens}
+    if not _OPENAI_FIXED_SAMPLING_RE.match(model):
+        kwargs["temperature"] = temperature
+    return kwargs
+
+
 def _extract_last_json(s: str) -> str:
     """Extract the last complete JSON object or array from s using brace matching.
 
@@ -197,7 +219,8 @@ class OpenAIProvider(LLMProvider):
             try:
                 return await self._client.chat.completions.create(
                     model=self._config.model, messages=msgs,
-                    temperature=temperature, max_tokens=max_tokens,
+                    **_sampling_kwargs(self._config.provider, self._config.model,
+                                       temperature, max_tokens),
                     timeout=self._timeout,
                     **({"extra_body": self._extra_body} if self._extra_body else {}),
                 )
@@ -392,7 +415,8 @@ class OpenAIProvider(LLMProvider):
         logger.info("complete_stream: max_tokens=%d model=%s", max_tokens, self._config.model)
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
-            temperature=temperature, max_tokens=max_tokens,
+            **_sampling_kwargs(self._config.provider, self._config.model,
+                               temperature, max_tokens),
             timeout=self._timeout, stream=True,
             stream_options={"include_usage": True},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
