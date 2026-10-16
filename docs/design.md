@@ -1683,13 +1683,16 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 
 | Provider  | Example model             | Input (per token) | Output (per token) |
 | --------- | ------------------------- | ----------------- | ------------------ |
-| Anthropic | claude-haiku-4-5-20251001 | $0.000001         | $0.000005          |
-| Anthropic | claude-sonnet-4-6         | $0.000003         | $0.000015          |
-| Anthropic | claude-opus-4-7           | $0.000005         | $0.000025          |
+| Anthropic | claude-haiku-5-5          | $0.0000001        | $0.0000005         |
+| Anthropic | claude-sonnet-5-5         | $0.000002         | $0.00001           |
+| Anthropic | claude-opus-5-5           | $0.000004         | $0.00002           |
 | OpenAI    | gpt-4o-mini               | $0.00000015       | $0.0000006         |
 | Gemini    | gemini-2.5-flash          | $0.0000003        | $0.0000025         |
-| Groq      | llama-3.3-70b-versatile   | $0.00000059       | $0.00000079        |
+| Groq      | openai/gpt-oss-20b        | $0.000000075      | $0.0000003         |
 | MiniMax   | MiniMax-M3                | $0.0000003        | $0.0000012         |
+| DeepSeek  | deepseek-flash            | $0.0000003        | $0.0000012         |
+
+Rates are refreshed each release (last: 2026-10-16). Tiered and date-scheduled prices (e.g. Claude Haiku 5.5 above 100K prompt tokens, Gemini promotional rates) record the current base rate, with the tier or change date noted in a comment.
 
 **Special cases:**
 

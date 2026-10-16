@@ -3718,11 +3718,14 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }               # Groq (paid, $0.075/$0.30 per 1M)
 # default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
 # default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
-# default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
-# default = { provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }       # DeepSeek thinking mode (chain-of-thought; replaces deepseek-reasoner)
+# default = { provider = "deepseek",  model = "deepseek-flash" }                                 # DeepSeek V4.1 Flash (very affordable, non-thinking)
+# default = { provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }          # DeepSeek thinking mode (chain-of-thought)
 # default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
-# default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet (high quality)
-# default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus (highest quality)
+# default = { provider = "anthropic", model = "claude-sonnet-5-5" }                 # Anthropic Sonnet 5.5 (high quality)
+# default = { provider = "anthropic", model = "claude-opus-5-5" }                   # Anthropic Opus 5.5 (highest quality)
+# default = { provider = "anthropic", model = "claude-haiku-5-5" }                  # Anthropic Haiku 5.5 (fastest, cheapest)
+# default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet 4.6 (previous generation)
+# default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus 4.8 (previous generation)
 # default = { provider = "openai",    model = "gpt-4o-mini" }                       # OpenAI
 # default = { provider = "ollama",    model = "llama3.2" }                          # Ollama (local, GPU required)
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
@@ -3739,7 +3742,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
-> - **DeepSeek:** Very affordable cloud API. Use `deepseek-v4-flash` for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning (the latter replaces the deprecated `deepseek-reasoner`). Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
+> - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
 
