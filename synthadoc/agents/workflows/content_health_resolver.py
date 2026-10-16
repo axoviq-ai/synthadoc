@@ -220,6 +220,78 @@ def _format_fix_list(fixes: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _section_excerpt(content: str, issues: list[dict], max_chars: int = 800) -> str:
+    """Return a diff excerpt focused on the sections referenced by issues.
+
+    Extracts each affected heading and its body from *content*, separated by
+    '---' dividers.  Falls back to a plain head-truncation when no heading
+    locations are present (e.g. unclosed_code_block, broken_list_nesting).
+    """
+    target_headings = {
+        i.get("location", "")
+        for i in issues
+        if i.get("location") and not i["location"].startswith("line ")
+    }
+    if not target_headings:
+        return content[:max_chars] + ("..." if len(content) > max_chars else "")
+
+    lines = content.splitlines(keepends=True)
+    captured: list[str] = []
+    total = 0
+    i = 0
+    while i < len(lines) and total < max_chars:
+        m = re.match(r"^(#{1,6})\s+(.*)", lines[i].rstrip())
+        if m and m.group(2).strip() in target_headings:
+            level = len(m.group(1))
+            j = i + 1
+            while j < len(lines):
+                nm = re.match(r"^(#{1,6})\s", lines[j].rstrip())
+                if nm and len(nm.group(1)) <= level:
+                    break
+                j += 1
+            block = "".join(lines[i:j]).rstrip()
+            captured.append(block)
+            total += len(block)
+            i = j
+        else:
+            i += 1
+
+    if not captured:
+        return content[:max_chars] + ("..." if len(content) > max_chars else "")
+
+    result = "\n\n---\n\n".join(captured)
+    return result[:max_chars] + ("..." if len(result) > max_chars else "")
+
+
+_DRAFT_RE = re.compile(
+    r"^\s*(TODO|FIXME|Expand to\b|Hmm[,.\s]|Wait[,.\s]|I'll\b|I will\b|Let me\b"
+    r"|existing content|combine existing|add more content|placeholder)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _is_draft(text: str) -> bool:
+    """Return True if the text contains LLM planning/thinking artifacts."""
+    return bool(_DRAFT_RE.search(text))
+
+
+def _extract_md_from_response(text: str) -> str:
+    """Strip tool-call artifacts and narrative from a CLI provider response.
+
+    opencode/claude-code may include shell command output and a summary
+    sentence before or after the rewritten markdown.  Find the first H1
+    heading and return everything from there to the last non-empty line.
+    """
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^# \S", ln)), None)
+    if start is None:
+        return text.strip()
+    end = len(lines)
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    return "\n".join(lines[start:end])
+
+
 class ContentHealthResolverWorkflow(AgenticWorkflow):
     """Detect and fix wiki content quality issues interactively."""
 
@@ -513,6 +585,12 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             yield {"event": "final_text", "data": {"text": text}}
             return
 
+        # Always run a fresh scan so the workflow finds issues even when lint
+        # has not yet run and frontmatter flags are absent or stale.
+        from synthadoc.agents.content_health_scanner import refresh_wiki_health_issues as _refresh
+        yield {"event": "token", "data": {"text": "Scanning pages for content health issues…\n"}}
+        _refresh(ctx.store)
+
         _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         flagged = []
         for slug in ctx.store.list_pages():
@@ -553,26 +631,91 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         fixed: list[str] = []
         skipped: list[str] = []
 
+        # CLI providers (opencode, claude-code) are agentic — they read files,
+        # plan before writing, and hallucinate new sections when the issue list
+        # is long.  API providers follow the prompt reliably and don't need this
+        # guard.  This path is CLI-only, so the cap applies only there.
+        _MAX_ISSUES_AUTO_FIX = 6
+
         for _sev, _count, slug, page in flagged:
+            if slug in SYSTEM_PAGE_SLUGS or slug.endswith("-index") or slug.endswith("-dashboard"):
+                yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped (meta/navigation page)\n"}}
+                skipped.append(slug)
+                continue
+            if len(page.content_health_issues) > _MAX_ISSUES_AUTO_FIX:
+                yield {"event": "token", "data": {
+                    "text": (
+                        f"⏭ {slug}: {len(page.content_health_issues)} issues — too many for "
+                        f"safe auto-fix (limit {_MAX_ISSUES_AUTO_FIX}), needs human review.\n"
+                    )
+                }}
+                skipped.append(slug)
+                continue
+            _counts: dict[tuple, int] = {}
+            for _i in page.content_health_issues:
+                _k = (_i["type"], _i["severity"])
+                _counts[_k] = _counts.get(_k, 0) + 1
             issues_summary = ", ".join(
-                f"{i['type']} ({i['severity']})" for i in page.content_health_issues[:3]
+                f"{t} ({s}){' ×' + str(n) if n > 1 else ''}"
+                for (t, s), n in list(_counts.items())[:3]
             )
             yield {"event": "token", "data": {"text": f"\n--- {slug} ---\nIssues: {issues_summary}\n"}}
 
-            prompt = (
-                f"Wiki page '{slug}':\n\n{page.content}\n\n"
-                f"Detected issues: {page.content_health_issues}\n\n"
-                "Rewrite ONLY the affected sections to fix these structural issues. "
-                "Do NOT change factual content. Return ONLY the complete rewritten page markdown."
+            _issues_text = "\n".join(
+                f"- {i['type']} at '{i['location']}': {i['description']}"
+                for i in page.content_health_issues
             )
-            proposed = await provider.complete(prompt)
+            prompt = (
+                "You are a surgical wiki editor. Your job is MINIMAL targeted fixes only.\n\n"
+                "ABSOLUTE RULES — violating any one is a failure:\n"
+                "  • Output ONLY final publishable wiki markdown. No reasoning, no planning,\n"
+                "    no TODO, no 'Hmm', no 'I'll', no annotations, no commentary.\n"
+                "  • PRESERVE every existing section heading EXACTLY — same text, same # level,\n"
+                "    including any dates or years in parentheses. Do not 'correct' headings.\n"
+                "  • PRESERVE the section ORDER exactly as in the original.\n"
+                "  • Do NOT add new top-level or second-level sections.\n"
+                "  • Do NOT rename, merge, split, or reorder any sections.\n"
+                "  • Do NOT alter factual claims in sections you are not fixing.\n"
+                "  • Do NOT read files or use tools — all content is provided below.\n\n"
+                "PERMITTED CHANGES (only these, only where the issue list directs):\n"
+                "  1. Duplicate sections: keep the most complete occurrence (most words and/or\n"
+                "     citations); delete the others. Place the kept version where the first\n"
+                "     occurrence was. Do NOT merge or rewrite — keep it verbatim.\n"
+                "  2. Thin/empty sections: add factual prose UNDER the existing heading.\n"
+                "     The heading text must remain unchanged.\n\n"
+                f"Issues to fix:\n{_issues_text}\n\n"
+                f"Page content (copy it, apply only the fixes above, output the result):\n\n"
+                f"{page.content}\n\n"
+                "Your ENTIRE response is the corrected page starting with '# '."
+            )
+            from synthadoc.skills.base import Message as _Msg
+            _resp = await provider.complete([_Msg(role="user", content=prompt)])
+            proposed = _extract_md_from_response(_resp.text)
 
-            before_excerpt = page.content[:400] + ("..." if len(page.content) > 400 else "")
-            after_excerpt = proposed[:400] + ("..." if len(proposed) > 400 else "")
+            if _is_draft(proposed):
+                yield {"event": "token", "data": {
+                    "text": (
+                        f"⛔ {slug}: proposed content contains planning notes "
+                        f"— skipped to prevent wiki corruption.\n"
+                    )
+                }}
+                skipped.append(slug)
+                continue
+
+            # For small fixes (≤3 issues) show the affected sections side-by-side;
+            # for large rewrites the LLM restructures the page so section names
+            # no longer align — fall back to plain head-truncation of each version.
+            _max = 2000
+            if len(page.content_health_issues) <= 3:
+                before_excerpt = _section_excerpt(page.content, page.content_health_issues, _max)
+                after_excerpt = _section_excerpt(proposed, page.content_health_issues, _max)
+            else:
+                before_excerpt = page.content[:_max] + ("..." if len(page.content) > _max else "")
+                after_excerpt = proposed[:_max] + ("..." if len(proposed) > _max else "")
             diff_msg = (
                 f"**{slug}** — {issues_summary}\n\n"
-                f"**BEFORE:**\n```\n{before_excerpt}\n```\n\n"
-                f"**AFTER:**\n```\n{after_excerpt}\n```"
+                f"**BEFORE** ({len(page.content)} chars):\n```\n{before_excerpt}\n```\n\n"
+                f"**AFTER** ({len(proposed)} chars):\n```\n{after_excerpt}\n```"
             )
             gate = await tool_confirm(ctx, message=diff_msg, yes_label="Approve", no_label="Skip this page")
             if gate.get("confirmed"):
