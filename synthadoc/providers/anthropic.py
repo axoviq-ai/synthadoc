@@ -2,19 +2,16 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import asyncio
-import re
 from typing import AsyncGenerator, Optional
 import anthropic as anthropic_lib
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
-# Claude 4.x models (claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5, …) deprecated
-# the temperature parameter; earlier models still accept it.
-_CLAUDE4_RE = re.compile(r"^claude-(?:opus|sonnet|haiku)-4-")
-
-
-def _supports_temperature(model: str) -> bool:
-    return not bool(_CLAUDE4_RE.match(model))
+# temperature is never sent. Claude 4.7 and later return HTTP 400 for a non-default
+# temperature, and anthropic SDK >= 1.0 removed the parameter from messages.create()
+# and messages.stream() (passing it raises TypeError). Every supported model uses
+# the API default; the ``temperature`` argument stays in the signatures only because
+# it is part of the shared LLMProvider interface.
 
 # RateLimitError (429) is not retried — quota exhaustion needs a provider switch or wait.
 # InternalServerError covers transient 500/529 overload; retry with backoff.
@@ -39,8 +36,6 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
-        if _supports_temperature(self._config.model):
-            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         # stream=True tells the Anthropic API this is a streaming request, which is
@@ -86,8 +81,6 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
-        if _supports_temperature(self._config.model):
-            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         async with self._client.messages.stream(**kwargs) as stream:

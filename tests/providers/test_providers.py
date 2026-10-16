@@ -55,67 +55,6 @@ def test_anthropic_provider_init_with_timeout():
 
 
 @pytest.mark.asyncio
-async def test_anthropic_provider_complete_passes_temperature_for_legacy_model():
-    """Legacy claude-3 models support temperature — it must appear in kwargs."""
-    cfg = AgentConfig(provider="anthropic", model="claude-3-opus-20240229")
-    provider = AnthropicProvider(api_key="test-key", config=cfg)
-    captured: dict = {}
-
-    async def capture(**kwargs):
-        captured.update(kwargs)
-        return _make_stream()
-
-    with patch.object(provider._client.messages, "create", side_effect=capture):
-        await provider.complete(
-            messages=[Message(role="user", content="hi")],
-            temperature=0.7,
-        )
-    assert "temperature" in captured
-    assert captured["temperature"] == 0.7
-
-
-@pytest.mark.asyncio
-async def test_anthropic_provider_stream_passes_temperature_and_system_for_legacy_model():
-    """complete_stream on a legacy claude-3 model must include temperature and system kwargs."""
-    cfg = AgentConfig(provider="anthropic", model="claude-3-sonnet-20240229")
-    provider = AnthropicProvider(api_key="test-key", config=cfg)
-    captured: dict = {}
-
-    event = MagicMock()
-    event.type = "content_block_delta"
-    event.delta = MagicMock(text="hello")
-
-    class _FakeStream:
-        def __init__(self): self._done = False
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): pass
-        def __aiter__(self): return self
-        async def __anext__(self):
-            if self._done:
-                raise StopAsyncIteration
-            self._done = True
-            return event
-
-    def fake_stream(**kwargs):
-        captured.update(kwargs)
-        return _FakeStream()
-
-    provider._client.messages.stream = fake_stream
-    tokens = []
-    async for tok in provider.complete_stream(
-        messages=[Message(role="user", content="hi")],
-        system="You are helpful.",
-        temperature=0.5,
-    ):
-        tokens.append(tok)
-
-    assert tokens == ["hello"]
-    assert "temperature" in captured
-    assert captured["temperature"] == 0.5
-    assert captured.get("system") == "You are helpful."
-
-
-@pytest.mark.asyncio
 async def test_anthropic_provider_propagates_rate_limit_immediately():
     """RateLimitError must not be retried — it should propagate on the first attempt."""
     import anthropic
