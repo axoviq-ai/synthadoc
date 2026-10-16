@@ -804,6 +804,8 @@ body {
 .bubble-md code { background: var(--code-inline-bg); border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.85em; font-family: "Fira Code", "Cascadia Code", monospace; }
 .bubble-md pre { background: var(--code-bg); border-radius: 6px; padding: 0.7rem 0.9rem; overflow-x: auto; margin: 0; }
 .bubble-md pre code { background: none; padding: 0; font-size: 0.82rem; color: var(--code-fg); }
+/* Confirm-card code blocks: scrollable vertically, wrapping text */
+.confirm-card .bubble-md pre { max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
 .code-block-wrap { position: relative; margin: 0.5rem 0; }
 .code-block-wrap pre { border-radius: 6px; }
 .code-copy-btn { position: absolute; top: 6px; right: 8px; background: var(--copy-btn-bg); border: 1px solid var(--copy-btn-border); color: var(--text-muted); border-radius: 4px; padding: 2px 8px; font-size: 0.72rem; cursor: pointer; transition: background 0.15s; }
