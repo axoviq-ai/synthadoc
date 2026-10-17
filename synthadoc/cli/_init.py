@@ -243,6 +243,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
 # default = {{ provider = "qwen",      model = "qwen-plus" }}                                  # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "qwen",      model = "qwen-plus", thinking = "disabled" }}           # same, with thinking suppressed (faster, lower latency)
+# default = {{ provider = "qwen",      model = "qwen3.8-flash" }}                              # Bailian free-tier — set DASHSCOPE_API_KEY + QWEN_BASE_URL=https://ws-<id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
