@@ -2729,3 +2729,86 @@ async def test_force_reingest_create_existing_slug_bypasses_staging(tmp_wiki, ca
     cand = tmp_wiki / "wiki" / "candidates" / "alan-turing.md"
     assert not cand.exists(), "force re-ingest of existing slug must not stage to candidates/"
     assert (tmp_wiki / "wiki" / "alan-turing.md").exists()
+
+
+# ── Re-ingesting one source of a multi-source page ───────────────────────────
+
+def _two_source_page():
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    return WikiPage(
+        title="Internet", tags=[], status=LifecycleState.ACTIVE, confidence="", sources=[
+            SourceRef(file="raw_sources/a.txt", hash="h1", size=10, ingested="2026-10-01"),
+            SourceRef(file="raw_sources/b.txt", hash="h2", size=10, ingested="2026-10-02"),
+        ],
+        content="# Internet\n\n## ARPANET\nText that came from source A.\n\n## Flag Day\nText that came from source B.\n",
+    )
+
+
+def test_reingesting_one_source_never_wipes_other_sources_text():
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    page = _two_source_page()
+    _merge_section_into_page(page, "## ARPANET\nUpdated text from source A.", "raw_sources/a.txt",
+                             "h1b", 12, False)
+    assert "Text that came from source B." in page.content
+    assert "Updated text from source A." in page.content
+
+
+def test_reingesting_the_only_source_replaces_its_body():
+    """Session transcripts: one source owns the page, so a re-ingest replaces it."""
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    page = WikiPage(title="S", tags=[], status=LifecycleState.ACTIVE, confidence="",
+                    sources=[SourceRef(file="session.jsonl", hash="h", size=1, ingested="2026-10-01")],
+                    content="# S\n\nOld summary of the session.\n")
+    _merge_section_into_page(page, "# S\n\nNew summary of the session.", "session.jsonl", "h2", 1, False)
+    assert page.content == "# S\n\nNew summary of the session."
+
+
+def test_update_section_with_existing_heading_folds_into_it():
+    """A new source's section reusing a heading merges into it instead of duplicating it."""
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    page = _two_source_page()
+    _merge_section_into_page(page, "## Flag Day\nEvery host switched to TCP/IP on 1 January 1983.",
+                             "raw_sources/c.txt", "h3", 10, False)
+    assert page.content.count("## Flag Day") == 1
+    assert page.content.index("Every host switched") < len(page.content)
+    assert "Text that came from source B." in page.content
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_lists_existing_section_headings(tmp_wiki, cache):
+    """The update decision sees each candidate page's ## headings so it can reuse them."""
+    import itertools
+    from unittest.mock import AsyncMock
+    p = AsyncMock()
+    p.complete.side_effect = itertools.cycle([
+        CompletionResponse(text='{"entities":["AI winter"],"concepts":[],"tags":["history"]}',
+                           input_tokens=1, output_tokens=1),
+        CompletionResponse(text='{"action":"flag","target":"ai-history","new_slug":"","update_content":""}',
+                           input_tokens=1, output_tokens=1),
+    ])
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("ai-history", WikiPage(
+        title="AI History", tags=["history"], status="active", confidence="high", sources=[],
+        content="# AI History\n\n## First AI Winter (1974–1980)\nFunding fell.\n\n## Deep Learning\nAlexNet.\n"))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    source = tmp_wiki / "raw_sources" / "winter.md"
+    source.write_text("The AI winter of the 1970s followed the Lighthill report.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), audit_db=audit,
+                        cache=cache, max_pages=15)
+    await agent.run(str(source))
+
+    decision_prompt = next(c.kwargs["messages"][0].content for c in p.complete.call_args_list
+                           if "Decide how to handle" in c.kwargs["messages"][0].content)
+    assert "[ai-history] status=active | sections: First AI Winter (1974–1980) ; Deep Learning:" in decision_prompt
+    assert "copied exactly" in decision_prompt
+
+
+def test_section_headings_lists_h2_outside_code():
+    from synthadoc.agents.content_health_scanner import section_headings
+    content = "# T\n\n## A\nx\n\n### A1\ny\n\n```\n## not a heading\n```\n\n## B\nz\n"
+    assert section_headings(content) == ["A", "B"]

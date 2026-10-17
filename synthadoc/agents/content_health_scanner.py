@@ -34,6 +34,11 @@ _REFERENCE_HEADINGS: frozenset[str] = frozenset({
 })
 
 
+def section_headings(content: str, level: int = 2) -> list[str]:
+    """Headings of *level* in *content*, in order, ignoring fenced code blocks."""
+    return [s.heading for s in _section_spans(_strip_code_blocks(content).split("\n")) if s.level == level]
+
+
 def resolvable_issues(issues: list[dict]) -> list[dict]:
     """The subset of stored issues the content-health resolver can act on."""
     return [i for i in issues if i.get("type") not in REPORT_ONLY_ISSUE_TYPES]
