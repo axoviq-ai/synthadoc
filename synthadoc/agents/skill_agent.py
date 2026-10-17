@@ -132,6 +132,14 @@ class SkillAgent:
     def list_skills(self) -> list[SkillMeta]:
         return list(self._registry.values())
 
+    def _skill_for_file(self, s: str) -> SkillMeta | None:
+        """Skill whose extension (or non-URL prefix) trigger matches lowercased local source *s*."""
+        for meta in self._registry.values():
+            for ext in meta.triggers.extensions:
+                if s.endswith(ext) or s.startswith(ext):
+                    return meta
+        return None
+
     def detect_skill(self, source: str) -> SkillMeta:
         s = _normalize_url(source).lower()
         is_url = s.startswith("http://") or s.startswith("https://")
@@ -139,15 +147,16 @@ class SkillAgent:
         # For URL sources, longest prefix wins so that specific skills
         # (e.g. youtube prefix "https://www.youtube.com/") beat the generic url
         # skill (prefix "https://"). Non-URL sources use first-match as before.
+        if not is_url:
+            file_skill = self._skill_for_file(s)
+            if file_skill is not None:
+                return file_skill
         best_url: tuple[int, SkillMeta] | None = None
-        for meta in self._registry.values():
-            for ext in meta.triggers.extensions:
-                if is_url:
+        if is_url:
+            for meta in self._registry.values():
+                for ext in meta.triggers.extensions:
                     if s.startswith(ext) and (best_url is None or len(ext) > best_url[0]):
                         best_url = (len(ext), meta)
-                else:
-                    if s.endswith(ext) or s.startswith(ext):
-                        return meta
         if best_url:
             return best_url[1]
         # Pass 2: intent match — longest match wins so that more-specific intents
@@ -210,6 +219,10 @@ class SkillAgent:
         # even when the path contains words that match an intent trigger
         # (e.g. "pdf" in "turing-enigma.pdf" matching the PDF skill intent).
         if re.match(r'^[a-z]:[/\\]', s) or s.startswith('/'):
+            return True
+        # Relative file paths too: "raw_sources/report.pdf" contains the PDF
+        # skill's intent "pdf" but is a file, because a skill handles its extension.
+        if self._skill_for_file(s) is not None:
             return True
         try:
             meta = self.detect_skill(source)

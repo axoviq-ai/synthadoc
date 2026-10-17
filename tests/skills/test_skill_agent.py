@@ -187,8 +187,22 @@ def test_needs_path_resolution_returns_true_for_absolute_paths_with_skill_extens
     assert agent.needs_path_resolution(
         "/home/user/wiki/raw_sources/paper.pdf"
     ) is True
-    # Relative path with .pdf should still go through intent check (no change)
+    # A phrase that merely mentions the format is still an intent, not a file
     assert agent.needs_path_resolution("pdf document about AI") is False
+
+
+@pytest.mark.parametrize("source", [
+    "raw_sources/turing-enigma-decryption.pdf",   # was queued unresolved and died: Errno 2
+    "raw_sources/report.docx",
+    "raw_sources/slides.pptx",
+    "notes.pdf",
+])
+def test_needs_path_resolution_true_for_relative_paths_with_skill_extension(tmp_wiki, source):
+    """'pdf'/'docx'/'pptx' are intent triggers, but a source ending in a skill's
+    extension is a file and must be resolved against the wiki root."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    assert agent.needs_path_resolution(source) is True
 
 
 def test_needs_path_resolution_returns_false_for_web_search_intent(tmp_wiki):
