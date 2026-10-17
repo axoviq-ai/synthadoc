@@ -2125,7 +2125,7 @@ async def test_lint_report_cli_path_clean_wiki(tmp_path):
     assert "Lint Report" in token_text
     assert "2026-08-13" in token_text
     # Timestamp-based sections with no items must show "(none)"
-    assert token_text.count("(none)") == 4  # contradicted, warnings, orphans, citations
+    assert token_text.count("(none)") == 5  # contradicted, warnings, orphans, citations, short sections
     # Zero-only summary lines are omitted (dangling and broken citations)
     assert "Dangling" not in token_text
     assert "Broken citations" not in token_text

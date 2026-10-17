@@ -21,6 +21,24 @@ class ContentIssue:
     description: str
 
 
+# Issue types the content-health resolver can never fix, because fixing them means
+# writing new facts. They stay on the page (and in the lint report) for a human
+# editor, but are not offered to the resolver or counted for its hint chip.
+REPORT_ONLY_ISSUE_TYPES: frozenset[str] = frozenset({"thin_section"})
+
+# Reference and link sections are short by nature and never flagged as thin.
+# Compared after _normalise_heading.
+_REFERENCE_HEADINGS: frozenset[str] = frozenset({
+    "see also", "sources", "references", "further reading", "external links",
+    "related", "related pages", "bibliography", "notes", "citations",
+})
+
+
+def resolvable_issues(issues: list[dict]) -> list[dict]:
+    """The subset of stored issues the content-health resolver can act on."""
+    return [i for i in issues if i.get("type") not in REPORT_ONLY_ISSUE_TYPES]
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -41,25 +59,52 @@ def _strip_code_blocks(content: str) -> str:
     return re.sub(r"```.*?```", lambda m: "\n" * m.group().count("\n"), content, flags=re.DOTALL)
 
 
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)")
+
+
+@dataclass
+class Section:
+    """One heading and its own body (up to the next heading of any level).
+
+    ``start`` is the heading's line index and ``end`` the index of the next
+    heading (or EOF), so ``lines[start + 1:end]`` is the body.
+    """
+    heading: str
+    level: int
+    start: int
+    end: int
+
+
+def _section_spans(lines: list[str]) -> list[Section]:
+    """Return every heading in *lines* with its line range (see :class:`Section`)."""
+    heads = [(i, m) for i, line in enumerate(lines) if (m := _HEADING_RE.match(line))]
+    return [
+        Section(heading=m.group(2).strip(), level=len(m.group(1)), start=i,
+                end=heads[k + 1][0] if k + 1 < len(heads) else len(lines))
+        for k, (i, m) in enumerate(heads)
+    ]
+
+
 def _extract_sections(clean: str) -> list[tuple[str, str, int]]:
     """Return [(heading_text, body_text, heading_level)] for all headings."""
     lines = clean.split("\n")
-    sections: list[tuple[str, str, int]] = []
-    i = 0
-    while i < len(lines):
-        m = re.match(r"^(#{1,6})\s+(.*)", lines[i])
-        if m:
-            level = len(m.group(1))
-            heading = m.group(2).strip()
-            body_lines: list[str] = []
-            i += 1
-            while i < len(lines) and not re.match(r"^#{1,6}\s+", lines[i]):
-                body_lines.append(lines[i])
-                i += 1
-            sections.append((heading, "\n".join(body_lines), level))
-        else:
-            i += 1
-    return sections
+    return [(s.heading, "\n".join(lines[s.start + 1:s.end]), s.level) for s in _section_spans(lines)]
+
+
+def _has_subsections(sections: list[tuple[str, str, int]], k: int) -> bool:
+    """True when section *k* is directly followed by a deeper heading (its sub-section)."""
+    return k + 1 < len(sections) and sections[k + 1][2] > sections[k][2]
+
+
+def _subtree_word_count(sections: list[tuple[str, str, int]], k: int) -> int:
+    """Words in section *k*'s own body plus all of its sub-sections."""
+    level = sections[k][2]
+    total = len(sections[k][1].split())
+    for _heading, body, sub_level in sections[k + 1:]:
+        if sub_level <= level:
+            break
+        total += len(body.split())
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -86,24 +131,28 @@ def scan_page(slug: str, content: str, thin_section_min_words: int = 50) -> list
                 description=f"Section '{headings[0]}' appears {len(headings)} times",
             ))
 
-    # 2. empty_section and thin_section — H1 is the page title, not a content section
-    for heading, body, level in sections:
+    # 2. empty_section and thin_section — H1 is the page title, not a content section.
+    # A heading whose content lives in its sub-sections is a parent, not empty, and
+    # its length includes those sub-sections.
+    for k, (heading, body, level) in enumerate(sections):
         if level < 2:
             continue
-        words = body.split()
-        if not words:
+        has_subsections = _has_subsections(sections, k)
+        word_count = _subtree_word_count(sections, k)
+        if not body.split() and not has_subsections:
             issues.append(ContentIssue(
                 type="empty_section",
                 severity="critical",
                 location=heading,
                 description=f"Section '## {heading}' has no content",
             ))
-        elif len(words) < thin_section_min_words:
+        elif (word_count < thin_section_min_words
+                and _normalise_heading(heading) not in _REFERENCE_HEADINGS):
             issues.append(ContentIssue(
                 type="thin_section",
                 severity="high",
                 location=heading,
-                description=f"Section '## {heading}' has only {len(words)} words (min {thin_section_min_words})",
+                description=f"Section '## {heading}' has only {word_count} words (min {thin_section_min_words})",
             ))
 
     # 3. unclosed_code_block — odd fence count on original content

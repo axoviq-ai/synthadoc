@@ -42,7 +42,8 @@ Output: {
   "adversarial_warnings": [{"slug": str, "count": int}],
   "orphan_slugs": [str],
   "broken_citations": int,
-  "broken_citation_pages": [{"slug": str, "count": int}]
+  "broken_citation_pages": [{"slug": str, "count": int}],
+  "thin_section_pages": [{"slug": str, "count": int}]
 }
 
 ## Tool-call wire format
@@ -82,6 +83,10 @@ When you have a final message for the user, respond with plain text only (no JSO
 
    **Broken Citations**
    List each as "- [[slug]]  (N broken citation(s))".
+   If none: "(none)"
+
+   **Short Sections (need a human editor)**
+   List each as "- [[slug]]  (N short section(s))".
    If none: "(none)"
 
 Plain text ends the workflow. Use it ONLY in step 3 or on error. All
@@ -151,7 +156,8 @@ class LintReportWorkflow(AgenticWorkflow):
         3. Format a plain-text report following the system prompt §step 3 layout:
              ### Lint Report (timestamp)
              Summary block (dangling, orphans, contradictions, broken citations)
-             Contradicted Pages / Adversarial Warnings / Orphan Pages / Broken Citations
+             Contradicted Pages / Adversarial Warnings / Orphan Pages / Broken Citations /
+             Short Sections
 
         The ``provider`` and ``question`` arguments are accepted for interface
         compatibility but unused — no LLM call is needed for a read-only
@@ -249,6 +255,18 @@ class LintReportWorkflow(AgenticWorkflow):
         else:
             bcite_lines.append("(none)")
         parts.append("\n".join(bcite_lines))
+
+        # Short sections — the content-health resolver cannot fix these
+        thin_pages: list[dict] = report.get("thin_section_pages", [])
+        thin_lines: list[str] = ["**Short Sections (need a human editor)**"]
+        if thin_pages:
+            for item in thin_pages:
+                n = item.get("count", 0)
+                label = "section" if n == 1 else "sections"
+                thin_lines.append(f"- [[{item['slug']}]]  ({n} short {label})")
+        else:
+            thin_lines.append("(none)")
+        parts.append("\n".join(thin_lines))
 
         text = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": text}}

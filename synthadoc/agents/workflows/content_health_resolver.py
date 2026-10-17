@@ -12,23 +12,27 @@ import functools
 import re
 from typing import Awaitable, Callable
 
+from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
 from synthadoc.agents.workflows.tools.content_health_tools import (
+    SEVERITY_ORDER,
+    tool_apply_content_health_fix,
     tool_dismiss_content_health_issues,
     tool_find_content_health_issues,
     tool_get_page_content,
     tool_list_content_health_fixes,
+    tool_merge_duplicate_sections,
     tool_rollback_content_health_fix,
-    tool_write_content_health_fix,
 )
 from synthadoc.storage.wiki import LifecycleState, SYSTEM_PAGE_SLUGS
 
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
-Your task is to fix content quality issues on wiki pages — duplicate sections,
-empty sections, thin sections, unclosed code blocks, orphaned headings, and
-broken list nesting. Only ACTIVE pages are processed.
+Your task is to fix structural content issues on wiki pages — duplicate sections,
+empty sections, unclosed code blocks, orphaned headings, and broken list nesting.
+Only ACTIVE pages are processed. Thin sections are not part of this workflow: they
+need new facts, so the lint report lists them for a human editor.
 
 ━━━ TOOL-CALL WIRE FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Emit EXACTLY this JSON object (no markdown fences, no XML, no prose) to call a tool:
@@ -46,6 +50,15 @@ find_content_health_issues
                       "top_severity": str, "issues": [...]}]}
   Pages are pre-sorted: critical first, then by issue count descending.
 
+merge_duplicate_sections
+  Fix ALL duplicate_section issues on a page in one call, without you rewriting it.
+  Python folds every later copy of a duplicated heading into the first one, keeping
+  every sentence. The tool shows the user the real diff, waits for approval and
+  writes the page itself — do NOT call write_content_health_fix for duplicates.
+  Input:  {"slug": str}
+  Output: {"status": "success"|"cancelled"|"error", "slug": str, "merged": [str],
+           "skipped": [str], "remaining_issues": int, ...}
+
 get_page_content
   Read the raw markdown content and existing issues for a page.
   Input:  {"slug": str}
@@ -53,16 +66,18 @@ get_page_content
            "issues": [{"type": str, "severity": str, "location": str, "description": str}]}
 
 write_content_health_fix
-  Apply a content-health fix. A snapshot is taken before writing.
-  MANDATORY SEQUENCE (enforced): get_page_content(slug) → confirm → write_content_health_fix(slug)
+  Propose a content-health fix. The tool shows the user the real diff between the
+  current page and your content, waits for approval, then snapshots and writes.
+  You do not write the approval card yourself.
+  MANDATORY SEQUENCE (enforced): get_page_content(slug) → write_content_health_fix(slug)
   • You MUST have called get_page_content for this EXACT slug first.
   • The content argument MUST be the get_page_content response with ONLY structural
     fixes applied — never invented or recalled from training.
-  • You MUST call confirm with a side-by-side diff BEFORE every call to this tool.
   • The slug MUST be one returned by find_content_health_issues in this session.
   Input:  {"slug": str, "content": str, "issues_fixed": [str]}
-  Output: {"status": "success"|"error", "slug": str, "snapshot_index": int,
+  Output: {"status": "success"|"cancelled"|"error", "slug": str, "snapshot_index": int,
            "remaining_issues": int, "fix_record": dict}
+  status="cancelled": the user skipped this page — move on to the next slug.
 
 list_content_health_fixes
   List all pages previously fixed or dismissed by this workflow, sorted newest first.
@@ -84,19 +99,15 @@ rollback_content_health_fix
            (snapshot rollback) | "restored_issues": int (dismissal undone), "message": str}
 
 dismiss_content_health_issues
-  Dismiss issues that CANNOT be fixed by this workflow (e.g. all remaining
-  issues are 'thin_section' which require adding factual prose — prohibited here).
+  Dismiss issues that CANNOT be fixed by a structural change (fixing them would
+  require writing new factual prose — prohibited here).
   Clears content_health_issues from frontmatter so the hint chip stops surfacing
   this page. Does NOT modify page content or create a snapshot.
-  ALWAYS call notify FIRST to explain the dismissal, then call this tool.
+  ALWAYS call notify FIRST to explain the dismissal, then call this tool. The user
+  approves each dismissal; status="cancelled" means the issues stay flagged.
   Input:  {"slug": str, "reason": str}
   Output: {"status": "success"|"error", "slug": str, "dismissed_count": int,
            "remaining_issues": int, "reason": str}
-
-confirm
-  Send a confirmation card to the UI and wait up to 120 seconds.
-  Input:  {"message": str, "yes_label": str, "no_label": str}
-  Output: {"confirmed": bool}
 
 notify
   Send a non-blocking notice (does NOT terminate the workflow).
@@ -126,13 +137,13 @@ STEP 3 — Per-page loop.
 
   For EACH slug in pages[] (in order):
 
-  Duplicate sections whose copies contain DIFFERENT sentences cannot be merged by
-  dropping a copy. write_content_health_fix rejects any rewrite that loses a
-  sentence. Either keep every sentence from every copy, or treat those issues as
-  unfixable (3e). Never ask the user a question in plain text mid-run: plain text
-  ends the workflow.
+  3a. DUPLICATES FIRST: if the page's issues include duplicate_section, call
+      merge_duplicate_sections(slug). It handles every duplicate on the page,
+      including copies with different text, and asks the user itself.
+      If it returns remaining_issues=0 or status="cancelled" → page done, next slug.
+      Otherwise continue with 3b for the remaining issues.
 
-  3a. Call get_page_content using the EXACT slug string from the pages[] entry.
+  3b. Call get_page_content using the EXACT slug string from the pages[] entry.
       Copy the slug character-for-character from the find_content_health_issues
       result — do not alter it in any way.
       If the result has status="error":
@@ -141,48 +152,38 @@ STEP 3 — Per-page loop.
       → Do NOT invent or generate any content for it.
       → Move on to the next slug in the discovery list.
 
-  3b. DEEP ANALYSIS:
+  3c. DEEP ANALYSIS:
       Read the full content (from the get_page_content result) and all reported
-      issues carefully. Compose a rewrite that ONLY fixes structural issues —
-      never alter factual content. Base your rewrite ENTIRELY on the content
-      returned by get_page_content — do not add information from other sources.
+      issues carefully. Compose a rewrite that ONLY fixes structural issues:
+        - empty_section: remove the heading (it has no text and no sub-sections)
+        - orphaned_heading: turn the stray H1 into an H2 (or a plain line)
+        - unclosed_code_block: close the code fence
+        - broken_list_nesting: fix the list indentation
+      Never add, remove or reword sentences — write_content_health_fix rejects
+      any rewrite that loses a sentence. Base the rewrite ENTIRELY on the
+      get_page_content result.
 
-  3c. Call confirm with a SIDE-BY-SIDE DIFF message:
-      message should contain ONLY:
-        - "BEFORE:" with the affected sections (current state from get_page_content)
-        - "AFTER:" with the proposed rewrite of those sections
-        - A line listing the issue types being addressed
-      Do NOT include "yes_label" or "no_label" text in the message field —
-      those are separate JSON fields in the tool call: yes_label="Approve", no_label="Skip this page".
-
-      If confirmed → proceed to 3d.
-      If not confirmed AND user said "stop" → output final summary, stop.
-      If not confirmed → skip page (no snapshot, no write), continue to next.
-
-  3d. On approval:
-      Call write_content_health_fix using the SAME slug from the pages[] entry,
+  3d. Call write_content_health_fix using the SAME slug from the pages[] entry,
         content=<rewritten content based on get_page_content result>,
         issues_fixed=[<list of "type xN" strings>]
-      If remaining_issues > 0 and ALL remaining issues are unfixable (e.g. thin_section):
-        proceed to 3e for those remaining issues.
-      Else if remaining_issues > 0: call notify(level="warning", message=...)
+      The user sees the real diff and approves or skips it.
+      If status="cancelled" → page skipped, continue to the next slug.
+      If status="error", nothing was written: follow its error message
+        (usually: leave those issues for 3e) — never retry the same content.
+      If remaining_issues > 0: proceed to 3e for those remaining issues.
       Output summary line: "<slug>: N issues fixed. Snapshot saved — say
         'roll back <slug>' to undo."
 
-  3e. DISMISSAL — when ALL issues on a page (or all REMAINING issues after 3d) are
-      structurally unfixable by this workflow (all are 'thin_section', or fixing them
-      would require inventing factual content):
+  3e. DISMISSAL — only for issues that no structural change can fix (fixing them
+      would require writing new factual sentences). Duplicate sections are NEVER
+      dismissed: merge_duplicate_sections fixes them.
       1. Call notify(level="warning", message="<slug>: N issue(s) cannot be fixed
-         automatically. [Explain what type they are and why human editing is needed.
-         Tell the user exactly which sections need expanding and by how many words.]")
-      2. Call dismiss_content_health_issues(slug=<slug>,
-           reason="<brief reason, e.g. 'all issues are thin_section requiring human editing'>")
+         automatically. [Explain which issues and why human editing is needed.]")
+      2. Call dismiss_content_health_issues(slug=<slug>, reason="<brief reason>").
+         The user approves it; status="cancelled" means the issues stay flagged.
       3. Output summary line: "<slug>: N issue(s) dismissed — requires human editing."
 
-      When to use 3e (NEVER write invented content instead):
-      - All issues are type 'thin_section'
-      - Fixing any issue would require adding new factual sentences
-      - Any issue cannot be resolved by structural reformatting alone
+  Never ask the user a question in plain text mid-run: plain text ends the workflow.
 
 STEP 4 — Final summary (plain text only):
   "Content Health Resolver — Complete
@@ -191,7 +192,7 @@ STEP 4 — Final summary (plain text only):
   - **<slug>**: <issues> → Snapshot saved
   ...
   ⚠️ Dismissed — requires human editing (N pages):
-  - **<slug>**: <issue types> → A human editor must expand these sections
+  - **<slug>**: <issue types> → <what a human editor must do>
   ...
   ⏭ Skipped (N pages): <slug>, ...
 
@@ -202,9 +203,9 @@ STEP 4 — Final summary (plain text only):
 
 1. NEVER output plain text while work remains — plain text terminates the workflow.
 2. NEVER modify factual content — only fix structural/formatting issues.
-3. ALWAYS follow the exact per-page sequence: get_page_content → confirm → write_content_health_fix.
+3. ALWAYS follow the exact per-page sequence: merge_duplicate_sections (if duplicates) →
+   get_page_content → write_content_health_fix.
    Skipping get_page_content means you are writing content you invented, not the real page.
-   Skipping confirm means the user cannot review changes before they are applied.
 4. NEVER call write_content_health_fix with a slug that was not returned by
    find_content_health_issues. Only process pages from the discovery list.
 5. NEVER invent or guess page content. The content you pass to write_content_health_fix
@@ -239,49 +240,6 @@ def _format_fix_list(fixes: list[dict]) -> str:
             )
         lines.append(f"- {fix['slug']} — {when} — " + "; ".join(parts))
     return "\n".join(lines)
-
-
-def _section_excerpt(content: str, issues: list[dict], max_chars: int = 800) -> str:
-    """Return a diff excerpt focused on the sections referenced by issues.
-
-    Extracts each affected heading and its body from *content*, separated by
-    '---' dividers.  Falls back to a plain head-truncation when no heading
-    locations are present (e.g. unclosed_code_block, broken_list_nesting).
-    """
-    target_headings = {
-        i.get("location", "")
-        for i in issues
-        if i.get("location") and not i["location"].startswith("line ")
-    }
-    if not target_headings:
-        return content[:max_chars] + ("..." if len(content) > max_chars else "")
-
-    lines = content.splitlines(keepends=True)
-    captured: list[str] = []
-    total = 0
-    i = 0
-    while i < len(lines) and total < max_chars:
-        m = re.match(r"^(#{1,6})\s+(.*)", lines[i].rstrip())
-        if m and m.group(2).strip() in target_headings:
-            level = len(m.group(1))
-            j = i + 1
-            while j < len(lines):
-                nm = re.match(r"^(#{1,6})\s", lines[j].rstrip())
-                if nm and len(nm.group(1)) <= level:
-                    break
-                j += 1
-            block = "".join(lines[i:j]).rstrip()
-            captured.append(block)
-            total += len(block)
-            i = j
-        else:
-            i += 1
-
-    if not captured:
-        return content[:max_chars] + ("..." if len(content) > max_chars else "")
-
-    result = "\n\n---\n\n".join(captured)
-    return result[:max_chars] + ("..." if len(result) > max_chars else "")
 
 
 _DRAFT_RE = re.compile(
@@ -336,8 +294,9 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
-    GATED_TOOLS: frozenset[str] = frozenset({"write_content_health_fix"})
-    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"write_content_health_fix"})
+    # Writes are approved inside the tools (Pattern A), from the real diff: see
+    # tool_apply_content_health_fix and tool_merge_duplicate_sections. The model
+    # never writes the approval card, so it cannot misdescribe a change.
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
@@ -418,11 +377,11 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             f"{slug_bullet_list}\n\n"
             f"STEP 1: Call find_content_health_issues(slug='') to get full issue details.\n\n"
             f"STEP 2: Call notify with a summary that lists exactly: {slug_comma_list}\n\n"
-            f"STEP 3: For EACH slug in this exact list — {slug_comma_list} — call:\n"
-            f"  a. get_page_content(slug=\"<exact slug from list above>\")\n"
-            f"  b. compose a structural fix\n"
-            f"  c. confirm with BEFORE/AFTER diff\n"
-            f"  d. write_content_health_fix(slug=\"<exact slug>\", ...)\n\n"
+            f"STEP 3: For EACH slug in this exact list — {slug_comma_list}:\n"
+            f"  a. if it has duplicate_section issues: merge_duplicate_sections(slug=\"<exact slug>\")\n"
+            f"  b. for any remaining issues: get_page_content(slug=\"<exact slug>\")\n"
+            f"  c. compose a structural fix\n"
+            f"  d. write_content_health_fix(slug=\"<exact slug>\", ...) — the user approves the diff\n\n"
             f"CRITICAL: The ONLY valid slug values are: {slug_comma_list}\n"
             f"Do NOT call any tool with a slug not in that list.\n"
             f"Do NOT pause mid-task. Plain text ONLY in the final summary."
@@ -450,7 +409,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                     page = ctx.store.read_page(slug)
                     if (page is not None
                             and page.status == LifecycleState.ACTIVE
-                            and page.content_health_issues):
+                            and resolvable_issues(page.content_health_issues)):
                         self._prediscovered_slugs.append(slug)
                 except Exception as exc:
                     _logger.debug("content-health pre-discovery: skip %r — %s", slug, exc)
@@ -558,7 +517,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                         "discovery list."
                     ),
                 }
-            return await tool_write_content_health_fix(ctx, slug=slug, content=content,
+            return await tool_apply_content_health_fix(ctx, slug=slug, content=content,
                                                        issues_fixed=issues_fixed)
 
         async def _rollback(slug: str) -> dict:
@@ -579,14 +538,47 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                             "message": f"Rollback of '{slug}' cancelled by the user. Do not retry it."}
             return await tool_rollback_content_health_fix(ctx, slug)
 
+        async def _dismiss(slug: str, reason: str) -> dict:
+            # Dismissing leaves the text alone but hides the page from the resolver,
+            # so the user approves it like any other change.
+            page = ctx.store.read_page(slug) if ctx.store is not None else None
+            issues = resolvable_issues(page.content_health_issues) if page else []
+            listed = "\n".join(f"- {i.get('type')} at '{i.get('location')}'" for i in issues)
+            gate = await tool_confirm(
+                ctx,
+                message=(
+                    f"**{slug}** — dismiss {len(issues)} issue(s) for a human editor?\n\n"
+                    f"{listed}\n\nReason: {reason}\n\n"
+                    "The page text is not changed; the issues stop being offered to this "
+                    f"workflow. Say 'roll back {slug}' later to bring them back."
+                ),
+                yes_label="Dismiss", no_label="Keep flagged",
+            )
+            if not gate.get("confirmed"):
+                return {"status": "cancelled",
+                        "message": f"Dismissal of '{slug}' declined by the user; its issues stay flagged."}
+            return await tool_dismiss_content_health_issues(ctx, slug, reason)
+
+        async def _merge_duplicates(slug: str) -> dict:
+            if found_slugs and slug not in found_slugs:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"Workflow violation: '{slug}' was not returned by "
+                        "find_content_health_issues. Only process pages from the "
+                        "discovery list."
+                    ),
+                }
+            return await tool_merge_duplicate_sections(ctx, slug)
+
         return {
             "find_content_health_issues": _find_issues,
+            "merge_duplicate_sections": _merge_duplicates,
             "get_page_content": _get_content,
             "write_content_health_fix": _write_fix,
-            "dismiss_content_health_issues": functools.partial(tool_dismiss_content_health_issues, ctx),
+            "dismiss_content_health_issues": _dismiss,
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),
             "rollback_content_health_fix": _rollback,
-            "confirm": functools.partial(tool_confirm, ctx),
             "notify": functools.partial(tool_notify, ctx),
         }
 
@@ -599,7 +591,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         question: str,
         provider: "LLMProvider",  # type: ignore[name-defined]
     ):
-        """CLI-provider path: Python-driven gather → LLM analysis → tool_confirm → write.
+        """CLI-provider path: Python-driven gather → merge / LLM analysis → approve diff → write.
 
         Called server-side when the provider is a CodingToolCLIProvider (claude-code,
         opencode).  All output and confirmations go through SSE events so they reach
@@ -631,29 +623,30 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         yield {"event": "token", "data": {"text": "Scanning pages for content health issues…\n"}}
         _refresh(ctx.store)
 
-        _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         flagged = []
         for slug in ctx.store.list_pages():
             page = ctx.store.read_page(slug)
-            if page is None or page.status != LifecycleState.ACTIVE or not page.content_health_issues:
+            if page is None or page.status != LifecycleState.ACTIVE:
                 continue
-            top_sev = min(_SEVERITY_ORDER.get(i["severity"], 9) for i in page.content_health_issues)
-            flagged.append((top_sev, -len(page.content_health_issues), slug, page))
+            issues = resolvable_issues(page.content_health_issues)
+            if issues:
+                top_sev = min(SEVERITY_ORDER.get(i["severity"], 9) for i in issues)
+                flagged.append((top_sev, -len(issues), slug, issues))
         flagged.sort()
 
         # Filter to --slug if given
         slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
         if slug_match:
             requested = slug_match.group(1).lower()
-            flagged = [(s, c, sl, pg) for s, c, sl, pg in flagged if sl == requested]
+            flagged = [entry for entry in flagged if entry[2] == requested]
 
         if not flagged:
             yield {"event": "final_text", "data": {"text": "No active pages with content issues found."}}
             return
 
         counts: dict[str, int] = {}
-        for _, _, _, pg in flagged:
-            for issue in pg.content_health_issues:
+        for *_, issues in flagged:
+            for issue in issues:
                 counts[issue["severity"]] = counts.get(issue["severity"], 0) + 1
 
         summary_parts = [f"{v} {k}" for k, v in sorted(counts.items())]
@@ -677,22 +670,44 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         # guard.  This path is CLI-only, so the cap applies only there.
         _MAX_ISSUES_AUTO_FIX = 6
 
-        for _sev, _count, slug, page in flagged:
+        for _sev, _count, slug, issues in flagged:
             if slug in SYSTEM_PAGE_SLUGS or slug.endswith("-index") or slug.endswith("-dashboard"):
                 yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped (meta/navigation page)\n"}}
                 skipped.append(slug)
                 continue
-            if len(page.content_health_issues) > _MAX_ISSUES_AUTO_FIX:
+
+            # Duplicates are merged in Python (no LLM), same tool as the API path.
+            if any(i["type"] == "duplicate_section" for i in issues):
+                merge = await tool_merge_duplicate_sections(ctx, slug)
+                if merge.get("status") == "cancelled":
+                    skipped.append(slug)
+                    yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped.\n"}}
+                    continue
+                if merge.get("merged"):
+                    fixed.append(slug)
+                    yield {"event": "token", "data": {"text": (
+                        f"✅ {slug}: merged duplicate sections ({', '.join(merge['merged'])}). "
+                        f"Snapshot #{merge.get('snapshot_index', '?')} saved.\n"
+                    )}}
+                page = ctx.store.read_page(slug)
+                issues = resolvable_issues(page.content_health_issues) if page else []
+                if not issues:
+                    continue
+            page = ctx.store.read_page(slug)
+            if page is None:
+                continue
+
+            if len(issues) > _MAX_ISSUES_AUTO_FIX:
                 yield {"event": "token", "data": {
                     "text": (
-                        f"⏭ {slug}: {len(page.content_health_issues)} issues — too many for "
+                        f"⏭ {slug}: {len(issues)} issues — too many for "
                         f"safe auto-fix (limit {_MAX_ISSUES_AUTO_FIX}), needs human review.\n"
                     )
                 }}
                 skipped.append(slug)
                 continue
             _counts: dict[tuple, int] = {}
-            for _i in page.content_health_issues:
+            for _i in issues:
                 _k = (_i["type"], _i["severity"])
                 _counts[_k] = _counts.get(_k, 0) + 1
             issues_summary = ", ".join(
@@ -703,26 +718,24 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
 
             _issues_text = "\n".join(
                 f"- {i['type']} at '{i['location']}': {i['description']}"
-                for i in page.content_health_issues
+                for i in issues
             )
             prompt = (
                 "You are a surgical wiki editor. Your job is MINIMAL targeted fixes only.\n\n"
                 "ABSOLUTE RULES — violating any one is a failure:\n"
                 "  • Output ONLY final publishable wiki markdown. No reasoning, no planning,\n"
                 "    no TODO, no 'Hmm', no 'I'll', no annotations, no commentary.\n"
-                "  • PRESERVE every existing section heading EXACTLY — same text, same # level,\n"
-                "    including any dates or years in parentheses. Do not 'correct' headings.\n"
+                "  • Keep EVERY sentence exactly as written. Do not add, remove or reword\n"
+                "    sentences; a rewrite that loses a sentence is rejected.\n"
+                "  • PRESERVE every heading you are not fixing EXACTLY — same text, same # level.\n"
                 "  • PRESERVE the section ORDER exactly as in the original.\n"
-                "  • Do NOT add new top-level or second-level sections.\n"
-                "  • Do NOT rename, merge, split, or reorder any sections.\n"
-                "  • Do NOT alter factual claims in sections you are not fixing.\n"
+                "  • Do NOT add new sections.\n"
                 "  • Do NOT read files or use tools — all content is provided below.\n\n"
                 "PERMITTED CHANGES (only these, only where the issue list directs):\n"
-                "  1. Duplicate sections: keep the most complete occurrence (most words and/or\n"
-                "     citations); delete the others. Place the kept version where the first\n"
-                "     occurrence was. Do NOT merge or rewrite — keep it verbatim.\n"
-                "  2. Thin/empty sections: add factual prose UNDER the existing heading.\n"
-                "     The heading text must remain unchanged.\n\n"
+                "  1. empty_section: delete the empty heading.\n"
+                "  2. orphaned_heading: change the stray '# ' heading to '## '.\n"
+                "  3. unclosed_code_block: add the missing closing ``` fence.\n"
+                "  4. broken_list_nesting: fix the list indentation.\n\n"
                 f"Issues to fix:\n{_issues_text}\n\n"
                 f"Page content (copy it, apply only the fixes above, output the result):\n\n"
                 f"{page.content}\n\n"
@@ -742,40 +755,22 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 skipped.append(slug)
                 continue
 
-            # For small fixes (≤3 issues) show the affected sections side-by-side;
-            # for large rewrites the LLM restructures the page so section names
-            # no longer align — fall back to plain head-truncation of each version.
-            _max = 2000
-            if len(page.content_health_issues) <= 3:
-                before_excerpt = _section_excerpt(page.content, page.content_health_issues, _max)
-                after_excerpt = _section_excerpt(proposed, page.content_health_issues, _max)
-            else:
-                before_excerpt = page.content[:_max] + ("..." if len(page.content) > _max else "")
-                after_excerpt = proposed[:_max] + ("..." if len(proposed) > _max else "")
-            diff_msg = (
-                f"**{slug}** — {issues_summary}\n\n"
-                f"**BEFORE** ({len(page.content)} chars):\n```\n{before_excerpt}\n```\n\n"
-                f"**AFTER** ({len(proposed)} chars):\n```\n{after_excerpt}\n```"
+            result = await tool_apply_content_health_fix(
+                ctx, slug=slug, content=proposed, issues_fixed=[i["type"] for i in issues],
             )
-            gate = await tool_confirm(ctx, message=diff_msg, yes_label="Approve", no_label="Skip this page")
-            if gate.get("confirmed"):
-                result = await tool_write_content_health_fix(
-                    ctx, slug=slug, content=proposed,
-                    issues_fixed=[i["type"] for i in page.content_health_issues],
-                )
-                if result["status"] == "success":
-                    snapshot_idx = result.get("snapshot_index", "?")
+            if result["status"] == "success":
+                if slug not in fixed:
                     fixed.append(slug)
-                    yield {"event": "token", "data": {
-                        "text": f"✅ {slug}: fixed. Snapshot #{snapshot_idx} saved.\n"
-                    }}
-                else:
-                    yield {"event": "token", "data": {
-                        "text": f"⚠ {slug}: write failed — {result.get('error')}\n"
-                    }}
-            else:
+                yield {"event": "token", "data": {
+                    "text": f"✅ {slug}: fixed. Snapshot #{result.get('snapshot_index', '?')} saved.\n"
+                }}
+            elif result["status"] == "cancelled":
                 skipped.append(slug)
                 yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped.\n"}}
+            else:
+                yield {"event": "token", "data": {
+                    "text": f"⚠ {slug}: not written — {result.get('error')}\n"
+                }}
 
         final_summary = (
             f"\nContent Health Resolver — Complete\n"

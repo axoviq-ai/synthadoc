@@ -3643,7 +3643,7 @@ All eight workflows support both standard API providers (Anthropic, OpenAI, Gemi
 | **BrokenCitationResolverWorkflow** | "fix broken citations", "check citation integrity" | Pattern B (declarative) | LLM drives tool-call loop | Pure Python — fuzzy match pre-computed by tool |
 | **ContradictionResolverWorkflow** | "resolve contradictions", "fix contradicted pages" | Per-page diff approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per page rewrite) |
 | **OrphanResolverWorkflow** | "resolve orphan pages", "fix orphaned pages" | Per-orphan approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per link insertion) |
-| **ContentHealthResolverWorkflow** | "run content health resolver", "fix content issues" | Per-page side-by-side diff approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per page analysis and rewrite) |
+| **ContentHealthResolverWorkflow** | "run content health resolver", "fix content issues" | Per-page real-diff approval | LLM drives tool-call loop; duplicates merged in Python | Python merge + bounded LLM call (one `provider.complete()` per page for other structural fixes) |
 | **LintReportWorkflow** | "run lint", "show lint report" | None (read-only) | LLM drives tool-call loop | Pure Python — sequential run→read→format |
 | **ScaffoldWorkflow** | "run scaffold", "regenerate scaffold" | Pattern A (embedded in tool) | LLM drives tool-call loop | Pure Python — Pattern A confirm preserved inside tool |
 
@@ -4233,17 +4233,17 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 
 ## 40. Content Health Resolver Workflow
 
-The content health resolver is the 8th agentic maintenance workflow. It detects content quality issues in wiki pages — duplicate sections, thin or empty sections, broken markdown structure, and LLM-assessed semantic issues — and repairs them interactively with side-by-side diff approval and lifecycle snapshot rollback.
+The content health resolver is the 8th agentic maintenance workflow. It detects content quality issues in wiki pages — duplicate sections, thin or empty sections, and broken markdown structure — and repairs the structural ones interactively, with approval of the real diff and lifecycle snapshot rollback. It never writes new facts.
 
 **Two-phase design:**
 
-- **Phase 1 — Heuristic scanner** (`content_health_scanner.py`): pure-Python regex scan, no LLM. Detects six issue types: `duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`. Results stored in `WikiPage.content_health_issues`; count exposed via `lifecycle_summary["content_health"]`. Runs in three places:
+- **Phase 1 — Heuristic scanner** (`content_health_scanner.py`): pure-Python regex scan, no LLM. Detects six issue types: `duplicate_section`, `empty_section`, `thin_section`, `unclosed_code_block`, `orphaned_heading`, `broken_list_nesting`. A heading whose content lives in sub-sections is not `empty_section`, and `thin_section` counts sub-section words and skips reference headings (*See Also*, *Sources*, *References*, …). `thin_section` is in `REPORT_ONLY_ISSUE_TYPES`: it stays in frontmatter and the lint report's **Short Sections** list, but `resolvable_issues()` hides it from the resolver, its discovery, and the hint-chip count (`count_content_health_issues(exclude_types=…)`). Results stored in `WikiPage.content_health_issues`; count exposed via `lifecycle_summary["content_health"]`. Runs in three places:
   - **Post-ingest** — synchronously in `on_ingest_complete` on changed pages (original trigger).
   - **Post-workflow-write** — immediately after `tool_apply_citation_fixes`, `tool_apply_link_fixes`, and `tool_propose_and_apply` write a page, via `_rescan_content_health()` in `_tools.py`. Catches structural issues introduced by LLM rewrites from other workflows (contradiction resolver, orphan resolver, broken citation/wikilink resolver) that bypass the ingest pipeline.
   - **During lint** — `LintAgent._run_content_health_scan()` sweeps all active pages on `scope=all` lint runs, writing back only pages whose issue list changed. Acts as a ground-truth refresh and catches any issues that slipped through the other two triggers.
-- **Phase 2 — LLM deep analysis**: runs when the user launches the workflow. Reads pre-flagged pages, sorts by severity (`critical` → `high` → `medium` → `low`), runs one bounded LLM call per page to produce a refined issue list and proposed section rewrite.
+- **Phase 2 — Repair**: runs when the user launches the workflow. Reads pre-flagged pages and sorts them by severity (`critical` → `high` → `medium` → `low`). Duplicate sections are merged deterministically by `merge_duplicate_sections()` (`content_health_fixes.py`, no LLM): later copies fold into the first, paragraphs repeated word for word are dropped, and copies with sub-sections are left for a human. Remaining structural issues get one bounded LLM rewrite per page.
 
-**Per-page loop:** LLM analysis → side-by-side BEFORE/AFTER diff → user approves → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner to confirm clean → summary line.
+**Per-page loop:** Python merge and/or LLM rewrite → sentence-preservation check (`dropped_sentences()`; any lost sentence rejects the write before the user is asked) → approval card with the real unified diff (`unified_diff_preview()` → `tool_confirm(diff=…)`) → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner → summary line. Approval cards are built from the actual content inside the tools (Pattern A), never written by the model; dismissals and model-initiated rollbacks also ask first.
 
 **Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
 
@@ -4253,18 +4253,20 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
 
-**Workflow class:** `ContentHealthResolverWorkflow` — `NAME = "content-health"`, `CLI_ARGS = "[--slug SLUG]"`, `GATED_TOOLS = {"write_content_health_fix"}`, `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`. Registered in `ROUTED_WORKFLOWS` after `OrphanResolverWorkflow` and before `IngestLintWorkflow`.
+**Workflow class:** `ContentHealthResolverWorkflow` — `NAME = "content-health"`, `CLI_ARGS = "[--slug SLUG]"`, `GATED_TOOLS = frozenset()` (writes approve their own real diff), `SUPPORTS_CLI_PROVIDER = True`, `RERUN_HINT = "Run content health resolver"`. Registered in `ROUTED_WORKFLOWS` after `OrphanResolverWorkflow` and before `IngestLintWorkflow`.
 
 **Tool set** (`synthadoc/agents/workflows/tools/content_health_tools.py`):
 
 | Tool | Description |
 | --- | --- |
 | `find_content_health_issues` | Returns active pages with heuristic issues, pre-sorted critical-first then by issue count; `slug=""` scans the whole wiki |
-| `get_page_content` | Returns the full page body for LLM analysis |
-| `write_content_health_fix` | Gated write: `snapshot_if_changed(reason="content-health-fix")` → write fix record → write page → re-scan |
+| `merge_duplicate_sections` | Python merge of every duplicate on the page → real-diff approval → write (no LLM) |
+| `get_page_content` | Returns the full page body (resolvable issues only) for LLM analysis |
+| `write_content_health_fix` | `tool_apply_content_health_fix`: sentence check → real-diff approval → `snapshot_if_changed(reason="content-health-fix")` → write fix record → write page → re-scan |
+| `dismiss_content_health_issues` | After user approval, clears resolvable issues without editing text; report-only issues stay |
 | `list_content_health_fixes` | Lists every recorded fix with timestamp and pre-fix snapshot index |
 | `rollback_content_health_fix` | Restores the pre-fix snapshot via `POST /pages/{slug}/rollback`, clears the fix record, restores issue flags |
-| `confirm` / `notify` | Shared `_tools.py` gate and progress events (`Begin`/`Cancel` opening gate; `Approve`/`Skip this page` per page) |
+| `notify` | Shared `_tools.py` progress events (approval cards are raised by the tools themselves) |
 
 **Intent routing inside the workflow:** `_parse_intent()` inspects the request — any request containing `list` shows the fix history; `roll back <slug>` rolls back one page; a bare `roll back` lists fixes and asks which page; `--slug SLUG` scopes the run to one page; anything else runs the full scan-and-fix loop.
 

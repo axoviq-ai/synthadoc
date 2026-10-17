@@ -248,3 +248,60 @@ async def test_write_fix_allows_merge_that_keeps_every_sentence(tmp_path):
 
     assert result["status"] == "success"
     assert store.read_page("ai").content.strip() == merged.strip()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_merge_tool_asks_then_writes_merged_content(tmp_path, monkeypatch, confirmed):
+    from synthadoc.agents.workflows.tools import content_health_tools as mod
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("ai", _make_page("ai", content=_DUP_DIFFERENT))
+
+    result = await mod.tool_merge_duplicate_sections(_make_ctx(store), slug="ai")
+
+    card, diff = confirm.call_args.kwargs["message"], confirm.call_args.kwargs["diff"]
+    assert "merge duplicate sections: Deep Learning" in card
+    assert "-## Deep Learning" in diff and "+AlphaGo beat Lee Sedol at Go in 2016." in diff
+    loaded = store.read_page("ai")
+    if confirmed:
+        assert result["status"] == "success" and result["merged"] == ["Deep Learning"]
+        assert loaded.content.count("## Deep Learning") == 1
+        assert "AlexNet" in loaded.content and "AlphaGo" in loaded.content
+        assert loaded.content_health_fix_record["issues_fixed"][0].startswith("duplicate_section x1")
+    else:
+        assert result["status"] == "cancelled"
+        assert loaded.content.strip() == _DUP_DIFFERENT.strip()
+
+
+@pytest.mark.asyncio
+async def test_merge_tool_without_duplicates_does_not_ask(tmp_path, monkeypatch):
+    from synthadoc.agents.workflows.tools import content_health_tools as mod
+    confirm = AsyncMock()
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _make_page("turing"))
+
+    result = await mod.tool_merge_duplicate_sections(_make_ctx(store), slug="turing")
+
+    assert result["merged"] == [] and result["status"] == "success"
+    confirm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_find_issues_leaves_out_report_only_pages(tmp_path):
+    from synthadoc.agents.workflows.tools.content_health_tools import tool_find_content_health_issues
+    store = WikiStorage(tmp_path / "wiki")
+    thin = {"type": "thin_section", "severity": "high", "location": "A", "description": "x"}
+    dup = {"type": "duplicate_section", "severity": "critical", "location": "B", "description": "y"}
+    store.write_page("only-thin", _make_page("only-thin", content_health_issues=[thin]))
+    store.write_page("mixed", _make_page("mixed", content_health_issues=[thin, dup]))
+
+    result = await tool_find_content_health_issues(_make_ctx(store))
+
+    assert [p["slug"] for p in result["pages"]] == ["mixed"]
+    assert result["pages"][0]["issues"] == [dup]
+    assert store.count_content_health_issues() == 2
+    from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES
+    assert store.count_content_health_issues(exclude_types=REPORT_ONLY_ISSUE_TYPES) == 1

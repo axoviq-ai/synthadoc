@@ -286,12 +286,17 @@ class WikiStorage:
                 count += 1
         return count
 
-    def count_content_health_issues(self) -> int:
-        """Return count of active pages with non-empty content_health_issues."""
+    def count_content_health_issues(self, exclude_types: frozenset[str] = frozenset()) -> int:
+        """Return count of active pages with content_health_issues.
+
+        Issues whose type is in *exclude_types* are ignored, e.g. the scanner's
+        REPORT_ONLY_ISSUE_TYPES when counting pages the resolver can work on.
+        """
         count = 0
         for slug in self.list_pages():
             page = self.read_page(slug)
-            if page is not None and page.status == LifecycleState.ACTIVE and page.content_health_issues:
+            if (page is not None and page.status == LifecycleState.ACTIVE
+                    and any(i.get("type") not in exclude_types for i in page.content_health_issues)):
                 count += 1
         return count
 

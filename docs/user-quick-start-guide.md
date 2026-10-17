@@ -2942,7 +2942,7 @@ Eight workflows are available, listed in the order the web UI will pre-prompt th
 | **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating          |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                |
 | **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
-| **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, thin/empty content, broken markdown structure) using heuristics on ingest; LLM deep-analysis on launch; side-by-side diff approval per page; snapshot saved before every write for rollback |
+| **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, empty sections, broken markdown structure) using heuristics on ingest; merges duplicates in Python and fixes the rest with one LLM rewrite per page; real diff approval per page; snapshot saved before every write for rollback. Thin sections are listed in the lint report for you to expand |
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                      |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                  |
 
@@ -3220,7 +3220,7 @@ If the wiki has no broken citations, the workflow reports: *"No broken citations
 
 ### Demo — content health resolver
 
-Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes them with your approval.
+Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes the structural ones with your approval. It never writes new facts: thin sections (under 50 words) are listed under **Short Sections** in the lint report for you to expand, and do not trigger the resolver on their own.
 
 **How it surfaces:** A fast heuristic scanner (no LLM) checks pages for known issue patterns in three situations: after every ingest on changed pages; immediately after any workflow fix is written (so structural problems introduced by the contradiction, orphan, or broken-citation resolver are caught right away); and during every full `synthadoc lint run`, which refreshes all active pages. If any issues are found:
 
@@ -3236,33 +3236,35 @@ The workflow announces what it found and the order it will work in (highest seve
 >
 > **Begin** / **Cancel**
 
-For each page, the agent runs a deep LLM analysis and presents a side-by-side diff:
+For each page, you approve the real change, shown as a coloured diff (red lines removed, green lines added):
+
+- **Duplicate sections** are merged in Python, with no LLM: later copies are folded into the first one. Every sentence is kept and only paragraphs repeated word for word are dropped, so the merged section may read repetitively and is worth a quick edit afterwards.
+- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence is rejected before you are asked.
 
 ```
-alan-turing
-
-  BEFORE                                    AFTER
-  ──────────────────────────────────────    ──────────────────────────────────────
-  ## Bletchley Park and Cryptanalysis       ## Bletchley Park and Cryptanalysis
-  [content]                                 [consolidated content]
-  ## Early Life and Education
-  [content]
-  ## Early Life and Education  ← duplicate
-  [duplicate content]
-
-  Issues addressed: duplicate_section ×3, thin_section ×1
+--- alan-turing (current)
++++ alan-turing (proposed)
+@@ -12,9 +12,7 @@
+ ## Early Life and Education
+ Turing was born in Maida Vale, London, in 1912.
++He attended Sherborne School from 1926.
+-
+-## Early Life and Education
+-He attended Sherborne School from 1926.
 ```
 
-> **Approve** / **Skip this page**
+> **Merge** (or **Approve**) / **Skip this page**
 
-Click **Approve**. The workflow saves a snapshot, applies the fix, re-validates with the heuristic scanner to confirm the page is clean, then summarises:
+Approve it. The workflow saves a snapshot, writes the page, re-runs the heuristic scanner, then summarises:
 
-> *alan-turing: 4 issues fixed (3 duplicate sections, 1 thin section).*
+> *alan-turing: 3 issues fixed (merged duplicate sections).*
 > *Snapshot #7 saved — say "roll back alan-turing" to undo.*
+
+If an issue cannot be fixed without writing new facts, the workflow asks before dismissing it. Dismissing leaves the text alone and stops offering the page to the resolver; "roll back <page>" brings the issues back.
 
 Skipped pages are left untouched (no snapshot, no write) and are listed in the final summary.
 
-**What the scanner flags:** `duplicate_section` and `empty_section` (critical), `thin_section` (fewer than 50 words) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
+**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 50 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
 
 **From the CLI:**
 

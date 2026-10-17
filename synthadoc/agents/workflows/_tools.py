@@ -327,10 +327,13 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
           "adversarial_warnings": [{"slug": str, "count": int}],
           "orphan_slugs": [str],
           "broken_citations": int,
-          "broken_citation_pages": [{"slug": str, "count": int}]
+          "broken_citation_pages": [{"slug": str, "count": int}],
+          "thin_section_pages": [{"slug": str, "count": int}]
         }
 
     "last_run" is an empty dict if no lint run has been recorded yet.
+    "thin_section_pages" lists sections below the minimum length; the
+    content-health resolver cannot fix them (they need new prose).
     """
     await ctx.send_sse_event(
         "tool_progress",
@@ -347,6 +350,7 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
 
     warned: list[dict] = []
     orphan_slugs: list[str] = []
+    thin_pages: list[dict] = []
     if ctx.store:
         for slug in ctx.store.list_pages():
             page = ctx.store.read_page(slug)
@@ -354,6 +358,9 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
                 warned.append({"slug": slug, "count": len(page.lint_warnings)})
             if page and page.orphan:
                 orphan_slugs.append(slug)
+            thin = sum(1 for i in (page.content_health_issues if page else []) if i.get("type") == "thin_section")
+            if thin:
+                thin_pages.append({"slug": slug, "count": thin})
         warned.sort(key=lambda x: x["count"], reverse=True)
         orphan_slugs.sort()
 
@@ -375,6 +382,7 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
             {"slug": slug, "count": len(issues)}
             for slug, issues in sorted(broken_cite_by_slug.items())
         ],
+        "thin_section_pages": thin_pages,
     }
 
 
@@ -817,6 +825,23 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     }
 
 
+def unified_diff_preview(slug: str, old: str, new: str, max_lines: int = 80) -> str:
+    """Unified diff of a page's current vs proposed content, for a confirm card.
+
+    Pass the result as ``tool_confirm(..., diff=...)``: the web UI renders it as a
+    coloured diff viewer, so the user approves the real change rather than a
+    description of it.
+    """
+    diff_lines = list(difflib.unified_diff(
+        old.splitlines(keepends=True), new.splitlines(keepends=True),
+        fromfile=f"{slug} (current)", tofile=f"{slug} (proposed)", n=3,
+    ))
+    preview = "".join(diff_lines[:max_lines])
+    if len(diff_lines) > max_lines:
+        preview += f"\n... ({len(diff_lines) - max_lines} more lines not shown)"
+    return preview
+
+
 async def tool_confirm(
     ctx: "WorkflowContext",
     message: str,
@@ -1003,15 +1028,7 @@ async def tool_propose_and_apply(
         return {"applied": False, "diff_preview": "",
                 "error": f"Page not found: {slug!r}"}
 
-    old_lines = (page.content or "").splitlines(keepends=True)
-    new_lines = new_content.splitlines(keepends=True)
-    diff_lines = list(difflib.unified_diff(
-        old_lines, new_lines,
-        fromfile=f"{slug} (current)", tofile=f"{slug} (proposed)", n=3,
-    ))
-    diff_preview = "".join(diff_lines[:80])
-    if len(diff_lines) > 80:
-        diff_preview += f"\n... ({len(diff_lines) - 80} more lines not shown)"
+    diff_preview = unified_diff_preview(slug, page.content or "", new_content)
 
     confirm_message = (
         f"**Strategy:** {strategy_name}\n\n"
