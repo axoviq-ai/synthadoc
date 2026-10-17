@@ -328,11 +328,12 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
           "orphan_slugs": [str],
           "broken_citations": int,
           "broken_citation_pages": [{"slug": str, "count": int}],
-          "thin_section_pages": [{"slug": str, "count": int}]
+          "thin_section_pages": [{"slug": str, "count": int, "sections": [str]}]
         }
 
     "last_run" is an empty dict if no lint run has been recorded yet.
-    "thin_section_pages" lists sections below the minimum length; the
+    "thin_section_pages" lists sections below the minimum length, each as the
+    scanner's description (heading, word count and minimum); the
     content-health resolver cannot fix them (they need new prose).
     """
     await ctx.send_sse_event(
@@ -358,9 +359,10 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
                 warned.append({"slug": slug, "count": len(page.lint_warnings)})
             if page and page.orphan:
                 orphan_slugs.append(slug)
-            thin = sum(1 for i in (page.content_health_issues if page else []) if i.get("type") == "thin_section")
+            thin = [i.get("description", "") for i in (page.content_health_issues if page else [])
+                    if i.get("type") == "thin_section"]
             if thin:
-                thin_pages.append({"slug": slug, "count": thin})
+                thin_pages.append({"slug": slug, "count": len(thin), "sections": thin})
         warned.sort(key=lambda x: x["count"], reverse=True)
         orphan_slugs.sort()
 

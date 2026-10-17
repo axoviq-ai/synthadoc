@@ -18,6 +18,18 @@ if TYPE_CHECKING:
 
 _log = __import__("logging").getLogger(__name__)
 
+# Short sections listed per page in the report; the rest are summarised as
+# "...and N more" (all of them stay in the page's content_health_issues).
+_THIN_SECTIONS_SHOWN = 5
+
+# Shown under a non-empty Short Sections list so the user knows what to do.
+_THIN_SECTIONS_ADVICE = (
+    "Synthadoc won't invent facts to lengthen these. Expand them by hand, or "
+    "ingest a source that covers the topic. The full list for each page is in "
+    "its `content_health_issues` property; the minimum is "
+    "`thin_section_min_words` under `[content_health]` in the config."
+)
+
 _SYSTEM_PROMPT = """\
 You are a wiki maintenance agent. Your task is to run a full lint pass and
 show the user a complete lint report when it finishes.
@@ -43,7 +55,7 @@ Output: {
   "orphan_slugs": [str],
   "broken_citations": int,
   "broken_citation_pages": [{"slug": str, "count": int}],
-  "thin_section_pages": [{"slug": str, "count": int}]
+  "thin_section_pages": [{"slug": str, "count": int, "sections": [str]}]
 }
 
 ## Tool-call wire format
@@ -86,12 +98,16 @@ When you have a final message for the user, respond with plain text only (no JSO
    If none: "(none)"
 
    **Short Sections (need a human editor)**
-   List each as "- [[slug]]  (N short section(s))".
-   If none: "(none)"
+   List each page as "- [[slug]]  (N short section(s))", followed by one
+   indented sub-bullet per entry of its "sections", copied verbatim
+   ("  - <section>"). Show at most {shown} sub-bullets per page; if there
+   are more, add "  - ...and N more".
+   After the list, add this paragraph verbatim: "{advice}"
+   If none: "(none)" (and no paragraph).
 
 Plain text ends the workflow. Use it ONLY in step 3 or on error. All
 intermediate steps must be tool calls, not prose.
-"""
+""".replace("{shown}", str(_THIN_SECTIONS_SHOWN)).replace("{advice}", _THIN_SECTIONS_ADVICE)
 
 
 class LintReportWorkflow(AgenticWorkflow):
@@ -264,6 +280,12 @@ class LintReportWorkflow(AgenticWorkflow):
                 n = item.get("count", 0)
                 label = "section" if n == 1 else "sections"
                 thin_lines.append(f"- [[{item['slug']}]]  ({n} short {label})")
+                sections: list[str] = item.get("sections", [])
+                thin_lines.extend(f"  - {s}" for s in sections[:_THIN_SECTIONS_SHOWN])
+                if len(sections) > _THIN_SECTIONS_SHOWN:
+                    thin_lines.append(f"  - ...and {len(sections) - _THIN_SECTIONS_SHOWN} more")
+            thin_lines.append("")
+            thin_lines.append(_THIN_SECTIONS_ADVICE)
         else:
             thin_lines.append("(none)")
         parts.append("\n".join(thin_lines))
