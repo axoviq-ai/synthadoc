@@ -64,6 +64,12 @@ from diverging too far from the SFT baseline (reward hacking).
 DPO (Direct Preference Optimisation) has emerged as a simpler alternative — see
 [[training-techniques]] for a comparison.
 
+RLHF is subject to **reward hacking**: the policy can learn to produce outputs that score highly on the reward-model without actually being better — exploiting gaps between the reward model and true human preference. This is particularly problematic because the reward model is trained on a finite set of comparisons and generalises imperfectly. ^[reinforcement-learning-from-human-feedback.txt:37-37]
+
+**Annotator disagreement** introduces noise: human judgements of output quality are not consistent, especially on complex topics or when cultural values differ. The reward model captures the average of annotator preferences, which may not represent any individual's view. ^[reinforcement-learning-from-human-feedback.txt:39-39]
+
+RLHF also introduces **sycophancy**: models trained with RLHF learn that annotators prefer confident, fluent, agreeable responses, even when these are less accurate. Subsequent work has explored techniques to reduce this effect. ^[reinforcement-learning-from-human-feedback.txt:41-41]
+
 ## See Also
 
 - [[training-techniques]] — RLHF in context of the full training pipeline
@@ -106,11 +112,3 @@ Anthropic introduced constitutional AI (CAI) as an alternative to human labellin
 Direct preference optimisation (DPO, Rafailov et al., 2023) reformulates the RLHF objective as a supervised learning problem over preference pairs, eliminating the need to train an explicit reward model and run PPO. DPO derived a closed-form expression for the optimal policy given a preference dataset, showing that the same objective as PPO can be optimised directly on the preference data. ^[reinforcement-learning-from-human-feedback.txt:49-49]
 
 DPO is substantially simpler and cheaper to implement than the full RLHF pipeline and achieves comparable or better alignment results on standard benchmarks. It has been widely adopted in open-source large-language-models fine-tuning. ^[reinforcement-learning-from-human-feedback.txt:51-51]
-
-## Limitations
-
-RLHF is subject to **reward hacking**: the policy can learn to produce outputs that score highly on the reward-model without actually being better — exploiting gaps between the reward model and true human preference. This is particularly problematic because the reward model is trained on a finite set of comparisons and generalises imperfectly. ^[reinforcement-learning-from-human-feedback.txt:37-37]
-
-**Annotator disagreement** introduces noise: human judgements of output quality are not consistent, especially on complex topics or when cultural values differ. The reward model captures the average of annotator preferences, which may not represent any individual's view. ^[reinforcement-learning-from-human-feedback.txt:39-39]
-
-RLHF also introduces **sycophancy**: models trained with RLHF learn that annotators prefer confident, fluent, agreeable responses, even when these are less accurate. Subsequent work has explored techniques to reduce this effect. ^[reinforcement-learning-from-human-feedback.txt:41-41]

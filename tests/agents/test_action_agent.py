@@ -2125,7 +2125,8 @@ async def test_lint_report_cli_path_clean_wiki(tmp_path):
     assert "Lint Report" in token_text
     assert "2026-08-13" in token_text
     # Timestamp-based sections with no items must show "(none)"
-    assert token_text.count("(none)") == 4  # contradicted, warnings, orphans, citations
+    assert token_text.count("(none)") == 5  # contradicted, warnings, orphans, citations, short sections
+    assert "thin_section_min_words" not in token_text  # advice only follows a non-empty list
     # Zero-only summary lines are omitted (dangling and broken citations)
     assert "Dangling" not in token_text
     assert "Broken citations" not in token_text
@@ -2180,6 +2181,60 @@ async def test_lint_report_cli_path_with_issues(tmp_path):
     assert "[[ada-lovelace]]" in token_text
     assert "4 broken citations" in token_text
     assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_lint_report_cli_path_lists_short_sections():
+    """Short sections are listed under each page, capped with "...and N more",
+    followed by the advice paragraph."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.lint_report import (
+        LintReportWorkflow, _THIN_SECTIONS_ADVICE, _THIN_SECTIONS_SHOWN,
+    )
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = LintReportWorkflow()
+
+    many = [f"Section '## Part {n}' has only {n} words (min 50)" for n in range(_THIN_SECTIONS_SHOWN + 2)]
+    lint_report = {
+        "last_run": {"timestamp": "2026-10-17"},
+        "thin_section_pages": [
+            {"slug": "open-source-movement", "count": 1,
+             "sections": ["Section '## Licensing' has only 23 words (min 50)"]},
+            {"slug": "ai-history", "count": len(many), "sections": many},
+        ],
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.lint_report.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "ok"}),
+    ), _patch(
+        "synthadoc.agents.workflows.lint_report.tool_get_lint_report",
+        new=_AsyncMock(return_value=lint_report),
+    ):
+        events = [evt async for evt in wf.run_for_cli_provider(ctx, "run lint", MagicMock())]
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "- [[open-source-movement]]  (1 short section)\n" \
+           "  - Section '## Licensing' has only 23 words (min 50)" in token_text
+    for shown in many[:_THIN_SECTIONS_SHOWN]:
+        assert f"  - {shown}" in token_text
+    assert many[_THIN_SECTIONS_SHOWN] not in token_text
+    assert "  - ...and 2 more" in token_text
+    assert token_text.rstrip().endswith(_THIN_SECTIONS_ADVICE)
+
+
+def test_lint_report_prompt_fills_short_section_placeholders():
+    """The system prompt carries the shown-per-page cap and the advice text."""
+    from synthadoc.agents.workflows.lint_report import (
+        _SYSTEM_PROMPT, _THIN_SECTIONS_ADVICE, _THIN_SECTIONS_SHOWN,
+    )
+
+    assert "{shown}" not in _SYSTEM_PROMPT and "{advice}" not in _SYSTEM_PROMPT
+    assert f"Show at most {_THIN_SECTIONS_SHOWN} sub-bullets" in _SYSTEM_PROMPT
+    assert _THIN_SECTIONS_ADVICE in _SYSTEM_PROMPT
 
 
 # ── ScaffoldWorkflow — CLI provider path ──────────────────────────────────────
@@ -3356,3 +3411,18 @@ def test_format_schedule_list_with_entries():
     result = _format_schedule_list([entry])
     assert "sched-abc" in result
     assert "0 6 * * *" in result
+
+
+def test_yes_after_workflow_question_routes_back_to_that_workflow():
+    """The loop's 'stopped on a question' suffix makes a bare 'yes' re-run the workflow."""
+    from synthadoc.agents.action_agent import _AFFIRMATIVE_RE, _find_rerun_hint_in_history
+    from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
+    history = [
+        {"role": "user", "content": "run content health resolver"},
+        {"role": "assistant", "content": (
+            "Should I go ahead?\n\nThe workflow has stopped. Type **yes** or click the "
+            '**"Run content health resolver"** hint chip to continue.')},
+    ]
+    assert _AFFIRMATIVE_RE.match("yes")
+    match = _find_rerun_hint_in_history(history)
+    assert match is not None and match[0] is ContentHealthResolverWorkflow

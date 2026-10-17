@@ -16,6 +16,10 @@ class CompletionResponse:
     text: str
     input_tokens: int
     output_tokens: int
+    # True when the provider stopped because it hit max_tokens (Anthropic
+    # stop_reason="max_tokens", OpenAI finish_reason="length"). The text is then
+    # incomplete and must not be treated as a finished answer.
+    truncated: bool = False
 
     @property
     def total_tokens(self) -> int:

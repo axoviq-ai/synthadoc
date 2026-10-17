@@ -2942,7 +2942,7 @@ Eight workflows are available, listed in the order the web UI will pre-prompt th
 | **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating          |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                |
 | **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
-| **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, thin/empty content, broken markdown structure) using heuristics on ingest; LLM deep-analysis on launch; side-by-side diff approval per page; snapshot saved before every write for rollback |
+| **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, empty sections, broken markdown structure) using heuristics on ingest; merges duplicates in Python and fixes the rest with one LLM rewrite per page; real diff approval per page; snapshot saved before every write for rollback. Thin sections are listed in the lint report for you to expand |
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                      |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                  |
 
@@ -3220,7 +3220,7 @@ If the wiki has no broken citations, the workflow reports: *"No broken citations
 
 ### Demo — content health resolver
 
-Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes them with your approval.
+Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes the structural ones with your approval. It never writes new facts: thin sections (under 50 words) are listed under **Short Sections** in the lint report — each with its heading and word count, up to five per page (the full list is in the page's `content_health_issues` property) — for you to expand by hand or by ingesting a source that covers the topic. They do not trigger the resolver on their own.
 
 **How it surfaces:** A fast heuristic scanner (no LLM) checks pages for known issue patterns in three situations: after every ingest on changed pages; immediately after any workflow fix is written (so structural problems introduced by the contradiction, orphan, or broken-citation resolver are caught right away); and during every full `synthadoc lint run`, which refreshes all active pages. If any issues are found:
 
@@ -3236,33 +3236,35 @@ The workflow announces what it found and the order it will work in (highest seve
 >
 > **Begin** / **Cancel**
 
-For each page, the agent runs a deep LLM analysis and presents a side-by-side diff:
+For each page, you approve the real change, shown as a coloured diff (red lines removed, green lines added):
+
+- **Duplicate sections** are merged in Python, with no LLM: later copies are folded into the first one. Every sentence is kept and only paragraphs repeated word for word are dropped, so the merged section may read repetitively and is worth a quick edit afterwards.
+- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence is rejected before you are asked.
 
 ```
-alan-turing
-
-  BEFORE                                    AFTER
-  ──────────────────────────────────────    ──────────────────────────────────────
-  ## Bletchley Park and Cryptanalysis       ## Bletchley Park and Cryptanalysis
-  [content]                                 [consolidated content]
-  ## Early Life and Education
-  [content]
-  ## Early Life and Education  ← duplicate
-  [duplicate content]
-
-  Issues addressed: duplicate_section ×3, thin_section ×1
+--- alan-turing (current)
++++ alan-turing (proposed)
+@@ -12,9 +12,7 @@
+ ## Early Life and Education
+ Turing was born in Maida Vale, London, in 1912.
++He attended Sherborne School from 1926.
+-
+-## Early Life and Education
+-He attended Sherborne School from 1926.
 ```
 
-> **Approve** / **Skip this page**
+> **Merge** (or **Approve**) / **Skip this page**
 
-Click **Approve**. The workflow saves a snapshot, applies the fix, re-validates with the heuristic scanner to confirm the page is clean, then summarises:
+Approve it. The workflow saves a snapshot, writes the page, re-runs the heuristic scanner, then summarises:
 
-> *alan-turing: 4 issues fixed (3 duplicate sections, 1 thin section).*
+> *alan-turing: 3 issues fixed (merged duplicate sections).*
 > *Snapshot #7 saved — say "roll back alan-turing" to undo.*
+
+If an issue cannot be fixed without writing new facts, the workflow asks before dismissing it. Dismissing leaves the text alone and stops offering the page to the resolver; "roll back <page>" brings the issues back.
 
 Skipped pages are left untouched (no snapshot, no write) and are listed in the final summary.
 
-**What the scanner flags:** `duplicate_section` and `empty_section` (critical), `thin_section` (fewer than 50 words) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
+**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 50 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
 
 **From the CLI:**
 
@@ -3718,11 +3720,14 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }               # Groq (paid, $0.075/$0.30 per 1M)
 # default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
 # default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
-# default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
-# default = { provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }       # DeepSeek thinking mode (chain-of-thought; replaces deepseek-reasoner)
+# default = { provider = "deepseek",  model = "deepseek-flash" }                                 # DeepSeek V4.1 Flash (very affordable, non-thinking)
+# default = { provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }          # DeepSeek thinking mode (chain-of-thought)
 # default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
-# default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet (high quality)
-# default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus (highest quality)
+# default = { provider = "anthropic", model = "claude-sonnet-5-5" }                 # Anthropic Sonnet 5.5 (high quality)
+# default = { provider = "anthropic", model = "claude-opus-5-5" }                   # Anthropic Opus 5.5 (highest quality)
+# default = { provider = "anthropic", model = "claude-haiku-5-5" }                  # Anthropic Haiku 5.5 (fastest, cheapest)
+# default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet 4.6 (previous generation)
+# default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus 4.8 (previous generation)
 # default = { provider = "openai",    model = "gpt-4o-mini" }                       # OpenAI
 # default = { provider = "ollama",    model = "llama3.2" }                          # Ollama (local, GPU required)
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
@@ -3739,7 +3744,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
-> - **DeepSeek:** Very affordable cloud API. Use `deepseek-v4-flash` for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning (the latter replaces the deprecated `deepseek-reasoner`). Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
+> - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
 

@@ -58,6 +58,8 @@ bridge the gap:
 - **RLHF** — [[reinforcement-learning-from-human-feedback]] refines behaviour using human
   preference signals; used in InstructGPT, ChatGPT, and Claude
 
+Raw pre-trained models do not naturally follow user instructions. The development of [[reinforcement-learning-from-human-feedback]] (RLHF), pioneered by instructgpt (Ouyang et al., 2022), addressed this gap. Models such as **claude-3** (Anthropic, 2024) and Meta's **LLaMA 2** further refined alignment techniques, incorporating constitutional AI, red-teaming, and extended RLHF pipelines. Alignment research became a central subfield alongside raw capability scaling.
+
 ## Context Windows
 
 Early LLMs were limited to 2K–4K token contexts. Modern models (GPT-4 Turbo, Claude 3,
@@ -148,10 +150,6 @@ The GPT series from OpenAI progressively demonstrated that scale — more parame
 - **GPT-2** (2019, 1.5B parameters) showed that a sufficiently large generative model could perform coherent text completion without task-specific training.
 - **GPT-3** (Brown et al., 2020, 175B parameters) demonstrated in-context-learning, performing novel tasks from a few examples provided in the prompt alone — a capability absent in smaller models.
 - **GPT-4** (2023) introduced multimodal capabilities, accepting both text and image inputs, and exhibited substantially improved reasoning and instruction following.
-
-### Instruction Tuning and Alignment
-
-Raw pre-trained models do not naturally follow user instructions. The development of [[reinforcement-learning-from-human-feedback]] (RLHF), pioneered by instructgpt (Ouyang et al., 2022), addressed this gap. Models such as **claude-3** (Anthropic, 2024) and Meta's **LLaMA 2** further refined alignment techniques, incorporating constitutional AI, red-teaming, and extended RLHF pipelines. Alignment research became a central subfield alongside raw capability scaling.
 
 ### Key Themes
 

@@ -56,29 +56,62 @@ async def test_cli_provider_no_issues_exits_cleanly(tmp_path):
     assert "no" in final[-1]["data"]["text"].lower()
 
 
+def _patch_confirm(confirmed: bool = True):
+    """Patch tool_confirm where the resolver and the content-health tools import it."""
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    resolver = patch("synthadoc.agents.workflows.content_health_resolver.tool_confirm", new=confirm)
+    tools = patch("synthadoc.agents.workflows.tools.content_health_tools.tool_confirm", new=confirm)
+    return confirm, resolver, tools
+
+
 @pytest.mark.asyncio
-async def test_cli_provider_user_approves_fix(tmp_path):
+async def test_cli_provider_merges_duplicates_without_llm(tmp_path):
     store = WikiStorage(tmp_path / "wiki")
     store.write_page("turing", _make_page("turing", with_issues=True))
     ctx = _make_ctx(store)
-
-    fixed_content = "# Page\n\n## Intro\n" + " ".join(["word"] * 60) + "\n"
     provider = MagicMock()
-    provider.complete = AsyncMock(
-        return_value=CompletionResponse(text=fixed_content, input_tokens=0, output_tokens=0)
-    )
+    provider.complete = AsyncMock()
 
-    wf = ContentHealthResolverWorkflow()
-    events = []
-    with patch(
-        "synthadoc.agents.workflows.content_health_resolver.tool_confirm",
-        new=AsyncMock(return_value={"confirmed": True}),
-    ):
-        async for event in wf.run_for_cli_provider(ctx, question="run content health", provider=provider):
-            events.append(event)
+    confirm, p_resolver, p_tools = _patch_confirm()
+    with p_resolver, p_tools:
+        events = [e async for e in
+                  ContentHealthResolverWorkflow().run_for_cli_provider(
+                      ctx, question="run content health", provider=provider)]
 
     loaded = store.read_page("turing")
+    assert loaded.content.count("## Intro") == 1
+    assert "Old." in loaded.content and "Dup." in loaded.content
     assert loaded.content_health_fix_record is not None
+    provider.complete.assert_not_called()
+    assert confirm.await_count == 2   # opening gate + the merge's own BEFORE/AFTER card
+    assert "Fixed: 1 page(s) — turing" in events[-1]["data"]["text"]
+
+
+@pytest.mark.asyncio
+async def test_cli_provider_user_approves_llm_fix(tmp_path):
+    """Non-duplicate structural issues still go through the LLM rewrite + confirm."""
+    store = WikiStorage(tmp_path / "wiki")
+    content = "# Page\n\n## Intro\n" + " ".join(["word"] * 60) + "\n\n# Stray Title\n"
+    store.write_page("turing", WikiPage(
+        title="Turing", tags=[], content=content, status=LifecycleState.ACTIVE,
+        confidence="", sources=[],
+        content_health_issues=[{"type": "orphaned_heading", "severity": "medium",
+                                "location": "line 6", "description": "H1 outside title"}]))
+    ctx = _make_ctx(store)
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=content.replace("# Stray Title", "## Stray Title"), input_tokens=0, output_tokens=0))
+
+    _, p_resolver, p_tools = _patch_confirm()
+    with p_resolver, p_tools:
+        _ = [e async for e in ContentHealthResolverWorkflow().run_for_cli_provider(
+            ctx, question="run content health", provider=provider)]
+
+    loaded = store.read_page("turing")
+    assert "## Stray Title" in loaded.content
+    assert loaded.content_health_fix_record is not None
+    prompt = provider.complete.call_args.args[0][0].content
+    assert "Keep EVERY sentence" in prompt and "add factual prose" not in prompt
 
 
 # ── list / roll back intents on the CLI-provider path ────────────────────────

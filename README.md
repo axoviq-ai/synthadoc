@@ -938,7 +938,7 @@ synthadoc workflow run --name broken-citation-resolver -w my-wiki
 # Fix citations on a single page only
 synthadoc workflow run --name broken-citation-resolver --slug my-page -w my-wiki
 
-# Content health resolver — fix duplicate sections, thin/empty sections, broken markdown structure
+# Content health resolver — merge duplicate sections, fix empty sections and broken markdown structure
 synthadoc workflow run --name content-health -w my-wiki
 
 # Fix content issues on a single page only
@@ -951,7 +951,7 @@ synthadoc workflow run --name content-health list -w my-wiki
 synthadoc workflow run --name content-health roll back alan-turing -w my-wiki
 ```
 
-The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. For each flagged page it runs one LLM analysis, shows a side-by-side BEFORE/AFTER diff, and writes only after you approve. A snapshot is saved before every write, so any fix can be rolled back later.
+The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 

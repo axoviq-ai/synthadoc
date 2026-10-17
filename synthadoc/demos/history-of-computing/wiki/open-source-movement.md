@@ -166,6 +166,10 @@ The first complete free Unix-like operating system emerged when [[linus-torvalds
 
 eric-s-raymond-esr later articulated the development model that had organically emerged in these projects in his essay "The Cathedral and the Bazaar," contrasting the closed, top-down development of proprietary software with the open, peer-reviewed approach of projects like linux. This framing helped popularize open source beyond the free software community and influenced how software companies approached development.
 
+Eric S. Raymond's influential essay *The Cathedral and the Bazaar* (formally presented in 1997) articulated the philosophical distinction between two models of software development. The 'cathedral' model — used by most proprietary and even some [[open-source-movement|open source]] projects at the time — featured top-down, carefully planned releases built by small groups of expert developers. The 'bazaar' model, exemplified by [[linux-v0-01|Linux]]'s development under [[linus-torvalds|Linus Torvalds]], embraced open participation, rapid release cycles, and the idea that 'given enough eyeballs, all bugs are shallow' (Linus's Law).
+
+Raymond's essay helped frame [[linux-v0-01|Linux]]'s success as evidence that decentralized, open development could produce software of equal or greater quality than closed, centrally managed efforts. It became a foundational text of the open source movement and influenced subsequent projects and corporate adoption strategies.
+
 ## Economic and Cultural Impact
 
 The open source model transformed software production economically by enabling companies to build products on shared foundations rather than reinventing core components, and culturally by establishing norms around transparency, meritocratic contribution, and community governance that continue to shape the technology industry today.
@@ -185,12 +189,6 @@ The combination of richard-stallman's gnu-project and [[linus-torvalds]]'s 1991 
 This combination transformed software production economics and culture. Rather than centralized, closed teams producing code as a tightly guarded artifact, open source showed that geographically distributed contributors, given shared infrastructure and a clear license (gnu-general-public-license and similar), could iterate faster, find bugs sooner, and adapt software to more use cases. The result became the dominant paradigm in servers, mobile platforms (Android), and embedded systems.
 
 The culture was further articulated by figures like eric-s-raymond in *The Cathedral and the Bazaar*, which argued that open development models were not just ethically preferable but technically superior — a claim that subsequent industry adoption broadly validated.
-
-## The Cathedral and the Bazaar
-
-Eric S. Raymond's influential essay *The Cathedral and the Bazaar* (formally presented in 1997) articulated the philosophical distinction between two models of software development. The 'cathedral' model — used by most proprietary and even some [[open-source-movement|open source]] projects at the time — featured top-down, carefully planned releases built by small groups of expert developers. The 'bazaar' model, exemplified by [[linux-v0-01|Linux]]'s development under [[linus-torvalds|Linus Torvalds]], embraced open participation, rapid release cycles, and the idea that 'given enough eyeballs, all bugs are shallow' (Linus's Law).
-
-Raymond's essay helped frame [[linux-v0-01|Linux]]'s success as evidence that decentralized, open development could produce software of equal or greater quality than closed, centrally managed efforts. It became a foundational text of the open source movement and influenced subsequent projects and corporate adoption strategies.
 
 ## GNU/Linux: Combining the Pieces
 

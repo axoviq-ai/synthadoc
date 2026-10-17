@@ -71,13 +71,13 @@ on code clarity over abstraction aligns with how many practitioners prefer to le
 
 Karpathy rejoined openai in 2023, working alongside figures including ilya-sutskever and sam-altman. In February 2024, he departed OpenAI and subsequently announced the founding of a new venture focused on AI education.
 
+After leaving Tesla in 2022, Karpathy returned to openai before departing again in 2024. His second tenure at the organization overlapped with the leadership era shaped by figures such as Sam Altman, Elon Musk, and ilya-sutskever. Karpathy continued to be known for educational content on deep learning and LLM internals during this period.
+
+After leaving Tesla, Karpathy briefly returned to openai in 2023 before departing again in 2024. He has since started a new venture, continuing his work in AI research and education. His time at OpenAI overlapped with figures such as sam-altman, elon-musk (as a co-founder), and ilya-sutskever.
+
 ## Education and Early Background
 
 Karpathy completed his undergraduate studies at the university-of-toronto and university-of-british-columbia before pursuing his PhD at stanford-university under Fei-Fei Li.
-
-## Return to OpenAI and Departure (2023–2024)
-
-After leaving Tesla in 2022, Karpathy returned to openai before departing again in 2024. His second tenure at the organization overlapped with the leadership era shaped by figures such as Sam Altman, Elon Musk, and ilya-sutskever. Karpathy continued to be known for educational content on deep learning and LLM internals during this period.
 
 ## Key Research Contributions
 
@@ -88,10 +88,6 @@ After leaving Tesla in 2022, Karpathy returned to openai before departing again 
 ## Education
 
 Karpathy completed his undergraduate studies at the university-of-toronto, followed by a master's degree at the university-of-british-columbia (UBC), before moving to Stanford for his PhD.
-
-## Return to OpenAI and Departure (2023–2024)
-
-After leaving Tesla, Karpathy briefly returned to openai in 2023 before departing again in 2024. He has since started a new venture, continuing his work in AI research and education. His time at OpenAI overlapped with figures such as sam-altman, elon-musk (as a co-founder), and ilya-sutskever.
 
 ## Tesla Contributions in Detail
 

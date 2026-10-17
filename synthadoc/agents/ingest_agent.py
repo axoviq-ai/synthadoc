@@ -15,6 +15,8 @@ from typing import Optional
 
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
+from synthadoc.agents.content_health_fixes import merge_duplicate_sections
+from synthadoc.agents.content_health_scanner import section_headings
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -84,7 +86,12 @@ _DECISION_PROMPT = (
     "RULE 2 — UPDATE: If the source adds new information about a subject ALREADY covered by an existing page,\n"
     "and there is no factual dispute, use action='update'.\n"
     "-> action='update', target=slug of page to extend,\n"
-    "   update_content=new ## section(s) to append (use [[slug]] links to related pages)\n\n"
+    "   update_content=new ## section(s) to append (use [[slug]] links to related pages)\n"
+    "   HEADINGS: each page below lists its existing ## sections. If the new information belongs\n"
+    "   to one of them, start that part with the SAME heading, copied exactly — it is merged into\n"
+    "   the existing section. Only write a new heading for a sub-topic the page does not cover.\n"
+    "   Never write a variant of an existing heading (e.g. 'First AI Winter (mid-1970s)' when\n"
+    "   'First AI Winter (1974–1980)' exists).\n\n"
     "RULE 2b — ENTITY PROFILE MUST CREATE: If the source is primarily a profile, case study, or\n"
     "comprehensive overview of ONE specific named entity — a company (with financials, team, products),\n"
     "a person (biography, career), a product, or an organization — always use action='create' with the\n"
@@ -158,6 +165,7 @@ _BOLD_BULLET_NUM_RE = re.compile(
 _FORMULA_LINE_RE = re.compile(
     r"^[A-Za-z_]\w*(?:\s+\w+)?\s*=\s*[^\n]{5,80}$", re.MULTILINE
 )
+_MAX_CONTEXT_HEADINGS = 40  # ## headings listed per candidate page in the decision prompt
 _KEY_DATA_MIN_ITEMS = 1  # only append section when at least this many items found
 
 # Matches any ^[filename:spec] where spec is not already a canonical N-N range.
@@ -400,6 +408,11 @@ def _source_in_page(page: "WikiPage", source: str) -> bool:
     return any(_files_match(s.file, source) for s in (page.sources or []))
 
 
+def _is_sole_source(page: "WikiPage", source: str) -> bool:
+    """Return True if *source* is the only source recorded in page.sources."""
+    return bool(page.sources) and all(_files_match(s.file, source) for s in page.sources)
+
+
 def _local_source_exists(file: str, wiki_root: "Path | None") -> bool:
     """Return True when a local (non-URL) source file still exists on disk.
 
@@ -469,14 +482,17 @@ def _merge_section_into_page(
 ) -> None:
     """Apply *section* to *page* and record the source reference.
 
-    When *source* is already recorded in page.sources (force re-ingest of the same
-    file), the body is replaced entirely so the source never accumulates duplicate
-    sections. Otherwise the section is appended as additional content.
+    When *source* is the page's only source (e.g. a re-ingested session transcript),
+    the body is replaced so the source never accumulates copies of itself.
+    Otherwise the section is appended and any heading it repeats is folded into
+    the existing one (:func:`merge_duplicate_sections`, which keeps every
+    sentence), so other sources' text is never replaced and re-ingests do not
+    stack duplicate sections.
     """
-    if _source_in_page(page, source):
+    if _is_sole_source(page, source):
         page.content = section
     else:
-        page.content = page.content.rstrip() + f"\n\n{section}"
+        page.content = merge_duplicate_sections(page.content.rstrip() + f"\n\n{section}").content
     _append_source_ref(page, SourceRef(
         file=source,
         hash=src_hash,
@@ -1086,7 +1102,9 @@ class IngestAgent(BaseAgent):
             if page:
                 snippet = page.content[:600].replace("\n", " ")
                 status_label = page.status if isinstance(page.status, str) else page.status.value
-                pages_ctx.append(f"[{r.slug}] status={status_label}: {snippet}")
+                headings = section_headings(page.content)[:_MAX_CONTEXT_HEADINGS]
+                sections = f" | sections: {' ; '.join(headings)}" if headings else ""
+                pages_ctx.append(f"[{r.slug}] status={status_label}{sections}: {snippet}")
         pages_str = "\n".join(pages_ctx) or "none"
 
         # Pass 3: decision (cached by text hash + candidate slugs + prompt hash)

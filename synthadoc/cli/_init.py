@@ -233,10 +233,13 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "gemini",    model = "gemini-3.5-flash-lite" }}    # free tier: budget option ($0.30/$2.50)
 # default = {{ provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }}  # paid, M3 with thinking off (faster, cheaper)
 # default = {{ provider = "groq",      model = "openai/gpt-oss-20b" }}  # paid, $0.075/$0.30 per 1M tokens
-# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
-# default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, highest quality (most capable)
-# default = {{ provider = "deepseek",  model = "deepseek-v4-flash" }}                          # paid, very cheap ($0.14/M in); text-only, no vision
-# default = {{ provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }}   # thinking/reasoning mode (replaces deepseek-reasoner)
+# default = {{ provider = "anthropic", model = "claude-sonnet-5-5" }}        # paid, high quality ($2/$10 per 1M tokens)
+# default = {{ provider = "anthropic", model = "claude-opus-5-5" }}          # paid, highest quality ($4/$20)
+# default = {{ provider = "anthropic", model = "claude-haiku-5-5" }}         # paid, fastest and cheapest Claude (from $0.10/$0.50)
+# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, previous generation ($3/$15)
+# default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, previous generation ($5/$25)
+# default = {{ provider = "deepseek",  model = "deepseek-flash" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
+# default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }}      # thinking/reasoning mode
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
 # default = {{ provider = "qwen",      model = "qwen-plus" }}                                  # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "qwen",      model = "qwen-plus", thinking = "disabled" }}           # same, with thinking suppressed (faster, lower latency)

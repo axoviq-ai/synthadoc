@@ -36,6 +36,8 @@ In 1944, Hopper was assigned to the Bureau of Ships Computation Project at Harva
 
 On 9 September 1947, operators of the Harvard Mark II traced a malfunction to a moth trapped in a relay. The insect was taped into the logbook with the note "First actual case of bug being found." Although the term "bug" for engineering defects predates this incident, the Mark II logbook entry is the event most directly associated with the popularization of "debugging" in computing. Hopper's contribution was spreading the term within the programming community, not coining it from scratch.
 
+While working on the Harvard Mark II in 1947, Hopper's team discovered a moth lodged in a relay, causing a malfunction. They taped the moth into the logbook with the annotation "first actual case of bug being found," providing the literal origin of the now-universal term [[debugging]].^[hopper-biography-usn.txt:13-13]
+
 ## UNIVAC I and the Eckert-Mauchly Years
 
 After the war, Hopper joined the Eckert-Mauchly Computer Corporation (later absorbed into Remington Rand), where she worked on the UNIVAC I, one of the first commercially produced electronic computers. Her collaboration with J. Presper Eckert and John Mauchly placed her at the center of early commercial computing in the United States.
@@ -60,10 +62,6 @@ Hopper retired from the Navy in 1986 with the rank of rear admiral, one of the f
 
 - hopper-biography-usn: U.S. Navy biographical entry on Grace Hopper.
 - first-compiler-controversy: Independent source challenging the A-0 "first compiler" attribution.
-
-## The Origin of "Debugging"
-
-While working on the Harvard Mark II in 1947, Hopper's team discovered a moth lodged in a relay, causing a malfunction. They taped the moth into the logbook with the annotation "first actual case of bug being found," providing the literal origin of the now-universal term [[debugging]].^[hopper-biography-usn.txt:13-13]
 
 ## UNIVAC I and the A-0 Compiler
 
