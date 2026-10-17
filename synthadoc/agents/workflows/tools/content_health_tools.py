@@ -182,7 +182,12 @@ async def tool_dismiss_content_health_issues(
 
 
 async def tool_list_content_health_fixes(ctx: "WorkflowContext") -> dict:
-    """Return all pages that have a content_health_fix_record, sorted by timestamp desc."""
+    """Return all pages that have a content_health_fix_record, sorted by timestamp desc.
+
+    ``action`` says what the workflow did: "fixed" (content rewritten, pre-fix
+    snapshot saved), "dismissed" (issues cleared, content unchanged, so there is no
+    snapshot), or "fixed+dismissed" (rewritten, then the remaining issues dismissed).
+    """
     if ctx.store is None:
         return {"status": _STATUS_ERR, "fixes": []}
     fixes = []
@@ -190,16 +195,32 @@ async def tool_list_content_health_fixes(ctx: "WorkflowContext") -> dict:
         page = ctx.store.read_page(slug)
         if page is not None and page.content_health_fix_record:
             record = page.content_health_fix_record
-            fixes.append({
+            fixed = _has_snapshot(record)
+            dismissed = "dismissed_at" in record
+            entry = {
                 "slug": slug,
                 "title": page.title,
+                "action": "fixed+dismissed" if fixed and dismissed else "dismissed" if dismissed else "fixed",
                 "fixed_at": record.get("timestamp", ""),
                 "issues_fixed": record.get("issues_fixed", []),
                 "snapshot_id": record.get("snapshot_id"),
                 "snapshot_index_before": record.get("snapshot_index_before"),
-            })
+            }
+            if dismissed:
+                entry.update({
+                    "dismissed_at": record.get("dismissed_at"),
+                    "dismissed_count": record.get("dismissed_count", 0),
+                    "dismissed_types": record.get("dismissed_types", []),
+                    "dismissed_reason": record.get("dismissed_reason", ""),
+                })
+            fixes.append(entry)
     fixes.sort(key=lambda r: r["fixed_at"], reverse=True)
     return {"fixes": fixes}
+
+
+def _has_snapshot(record: dict) -> bool:
+    """True when the record belongs to a content rewrite (a pre-fix snapshot exists)."""
+    return record.get("snapshot_id") is not None or "snapshot_index_before" in record
 
 
 async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) -> dict:
@@ -207,6 +228,10 @@ async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) ->
 
     Resolves the stored snapshot_id to its current index (since 1-based indices
     shift as new snapshots are added) then restores the page content.
+
+    A dismissal-only record has no snapshot because the content was never changed;
+    rolling it back undoes the dismissal (issues re-scanned from the current
+    content) and leaves the content as it is.
     """
     if ctx.store is None or ctx.audit_db is None:
         return {"status": _STATUS_ERR, "message": "No store or audit_db available"}
@@ -215,6 +240,23 @@ async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) ->
         return {"status": _STATUS_ERR, "message": f"Page '{slug}' not found"}
     if not page.content_health_fix_record:
         return {"status": _STATUS_ERR, "message": f"No content health fix recorded for '{slug}'"}
+
+    if not _has_snapshot(page.content_health_fix_record):
+        page.content_health_fix_record = None
+        page.content_health_issues = [asdict(i) for i in scan_page(slug, page.content)]
+        ctx.store.write_page(slug, page)
+        if ctx.bump_epoch:
+            ctx.bump_epoch()
+        restored = len(page.content_health_issues)
+        return {
+            "status": _STATUS_OK,
+            "slug": slug,
+            "restored_issues": restored,
+            "message": (
+                f"Dismissal undone for '{slug}': {restored} issue(s) restored. "
+                "Content was not changed (a dismissal never edits the page)."
+            ),
+        }
 
     stored_snapshot_id = page.content_health_fix_record.get("snapshot_id")
     stored_snapshot_index = page.content_health_fix_record.get("snapshot_index_before", 1)

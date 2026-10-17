@@ -65,16 +65,23 @@ write_content_health_fix
            "remaining_issues": int, "fix_record": dict}
 
 list_content_health_fixes
-  List all pages previously fixed by this workflow, sorted newest first.
+  List all pages previously fixed or dismissed by this workflow, sorted newest first.
+  action="fixed": content rewritten, pre-fix snapshot saved.
+  action="dismissed": issues cleared without editing the page, so there is NO snapshot
+  (report it as "dismissed — needs human editing", never as a fix with missing details).
+  action="fixed+dismissed": rewritten, then the remaining issues dismissed.
   Input:  {}
-  Output: {"fixes": [{"slug": str, "title": str, "fixed_at": str,
-                      "issues_fixed": [str], "snapshot_index_before": int}]}
+  Output: {"fixes": [{"slug": str, "title": str, "action": str, "fixed_at": str,
+                      "issues_fixed": [str], "snapshot_index_before": int|null,
+                      "dismissed_count": int, "dismissed_types": [str],
+                      "dismissed_reason": str}]}   (dismissed_* only when dismissed)
 
 rollback_content_health_fix
-  Roll back one page to its pre-fix snapshot.
+  Roll back one page: restores the pre-fix snapshot, or for a dismissal-only record
+  undoes the dismissal (issues restored, content unchanged).
   Input:  {"slug": str}
-  Output: {"status": "success"|"error", "slug": str, "rolled_back_to_snapshot": int,
-           "message": str}
+  Output: {"status": "success"|"error", "slug": str, "rolled_back_to_snapshot": int
+           (snapshot rollback) | "restored_issues": int (dismissal undone), "message": str}
 
 dismiss_content_health_issues
   Dismiss issues that CANNOT be fixed by this workflow (e.g. all remaining
@@ -212,11 +219,19 @@ def _format_fix_list(fixes: list[dict]) -> str:
         return "No content health fixes have been recorded yet."
     lines = [f"Content health fixes ({len(fixes)}):"]
     for fix in fixes:
-        issues = ", ".join(fix.get("issues_fixed") or []) or "issues fixed"
-        lines.append(
-            f"- {fix['slug']} — {fix.get('fixed_at') or 'unknown time'} — {issues} "
-            f"(pre-fix snapshot #{fix.get('snapshot_index_before')})"
-        )
+        when = fix.get("fixed_at") or "unknown time"
+        action = fix.get("action", "fixed")
+        parts = []
+        if action != "dismissed":
+            issues = ", ".join(fix.get("issues_fixed") or []) or "issues fixed"
+            parts.append(f"fixed: {issues} (pre-fix snapshot #{fix.get('snapshot_index_before')})")
+        if action != "fixed":
+            types = ", ".join(fix.get("dismissed_types") or []) or "issues"
+            parts.append(
+                f"dismissed {fix.get('dismissed_count', 0)} {types} — needs human editing"
+                + ("" if action == "fixed+dismissed" else " (no snapshot: content unchanged)")
+            )
+        lines.append(f"- {fix['slug']} — {when} — " + "; ".join(parts))
     return "\n".join(lines)
 
 
