@@ -118,3 +118,14 @@ async def test_server_error_is_retried_then_succeeds(monkeypatch):
     resp = await provider.complete([Message(role="user", content="hi")])
     assert resp.text == "Hello world"
     assert len(requests) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_reason,truncated", [("end_turn", False), ("max_tokens", True)])
+async def test_complete_reports_truncation_from_stop_reason(stop_reason, truncated):
+    body = _stream_body("claude-haiku-5-5", thinking=False).replace('"end_turn"', f'"{stop_reason}"')
+    provider, _ = _provider("claude-haiku-5-5", [
+        httpx2.Response(200, headers={"content-type": "text/event-stream"}, text=body)])
+    resp = await provider.complete([Message(role="user", content="hi")])
+    assert resp.text == "Hello world"
+    assert resp.truncated is truncated

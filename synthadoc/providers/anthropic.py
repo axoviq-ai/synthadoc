@@ -48,18 +48,21 @@ class AnthropicProvider(LLMProvider):
                 parts: list[str] = []
                 input_tokens = 0
                 output_tokens = 0
+                stop_reason = None
                 stream_resp = await self._client.messages.create(**kwargs)
                 async for event in stream_resp:
                     if event.type == "message_start":
                         input_tokens = event.message.usage.input_tokens
                     elif event.type == "message_delta" and hasattr(event, "usage"):
                         output_tokens = event.usage.output_tokens
+                        stop_reason = getattr(event.delta, "stop_reason", None) or stop_reason
                     elif (event.type == "content_block_delta"
                             and hasattr(event.delta, "text")):
                         parts.append(event.delta.text)
                 return CompletionResponse(text="".join(parts),
                                          input_tokens=input_tokens,
-                                         output_tokens=output_tokens)
+                                         output_tokens=output_tokens,
+                                         truncated=stop_reason == "max_tokens")
             except _RATE_LIMIT:
                 raise  # quota exhaustion — propagate immediately, no retry
             except _RETRYABLE as exc:

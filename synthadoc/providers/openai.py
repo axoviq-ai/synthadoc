@@ -395,7 +395,8 @@ class OpenAIProvider(LLMProvider):
             text = original_content
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
-                                  output_tokens=resp.usage.completion_tokens)
+                                  output_tokens=resp.usage.completion_tokens,
+                                  truncated=choice.finish_reason == "length")
 
     async def complete_stream(
         self, messages: list[Message], system: Optional[str] = None,

@@ -85,3 +85,21 @@ async def test_complete_stream_sends_provider_specific_sampling_args(provider, m
     tokens = [t async for t in p.complete_stream([Message(role="user", content="hi")], system="sys")]
     assert "".join(tokens) == "Hello world"
     assert {k: v for k, v in requests[0].items() if k in _SAMPLING_KEYS} == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish_reason,truncated", [("stop", False), ("length", True)])
+async def test_complete_reports_truncation_from_finish_reason(finish_reason, truncated):
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _completion("deepseek-flash")
+        body["choices"][0]["finish_reason"] = finish_reason
+        return httpx.Response(200, json=body)
+
+    p = OpenAIProvider(api_key="sk-test", config=AgentConfig(provider="deepseek", model="deepseek-flash"))
+    p._client = openai.AsyncOpenAI(
+        api_key="sk-test", base_url="http://fake/v1", max_retries=0,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    resp = await p.complete([Message(role="user", content="hi")])
+    assert resp.text == "Hello world"
+    assert resp.truncated is truncated

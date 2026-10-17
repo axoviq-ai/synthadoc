@@ -297,6 +297,42 @@ async def run_tool_call_loop(
                     ", ".join(name for name, _ in all_calls),
                 )
 
+        # A reply cut off at max_tokens with no complete tool call is never a final
+        # answer. Models can degenerate into repeating a token (Claude Haiku 5.5 once
+        # emitted 2,000+ "<br>" lines until the limit) and that must not reach the
+        # user as the workflow summary. Retry without echoing the text back, since
+        # the junk would only fill the context window.
+        truncated = getattr(response, "truncated", False) is True
+        if not all_calls and truncated and parse_retries < _MAX_PARSE_RETRIES:
+            parse_retries += 1
+            _log.warning(
+                "workflow reply truncated at max_tokens: %s (attempt %d/%d, %d output tokens): %.200r",
+                model, parse_retries, _MAX_PARSE_RETRIES, response.output_tokens, text,
+            )
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_parse_retry",
+                 "message": (
+                     f"⚠ Response hit the token limit (attempt {parse_retries}/{_MAX_PARSE_RETRIES}). "
+                     "Retrying…"
+                 )},
+            )
+            messages.append(Message(role="assistant", content="[reply cut off at the output token limit; omitted]"))
+            messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        f"Your previous reply was cut off at the output limit ({max_tokens} tokens) "
+                        "before it contained a complete tool call, so it was discarded. "
+                        "Continue the workflow from where it was: reply with exactly one JSON "
+                        "tool call, or the final plain-text summary if all work is done. "
+                        "Do not repeat characters, blank lines or HTML tags.\n"
+                        '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
+                    ),
+                )
+            )
+            continue
+
         # Retry when the response looks like a tool call attempt but didn't parse.
         # See _looks_like_tool_attempt for the four failure modes it detects.
         if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
@@ -430,7 +466,7 @@ async def run_tool_call_loop(
         else:
             # Retries exhausted — if this still looks like a failed tool call,
             # emit a user-friendly error instead of raw JSON.
-            if _looks_like_tool_attempt(text):
+            if truncated or _looks_like_tool_attempt(text):
                 _log.error(
                     "workflow stopped: %s never produced a parseable tool call after %d retries",
                     model, _MAX_PARSE_RETRIES,
