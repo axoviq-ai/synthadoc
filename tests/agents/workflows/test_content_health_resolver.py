@@ -318,3 +318,40 @@ def test_description_and_cli_args_set():
     assert ContentHealthResolverWorkflow.DESCRIPTION is not None
     assert ContentHealthResolverWorkflow.CLI_ARGS is not None
     assert "--slug" in ContentHealthResolverWorkflow.CLI_ARGS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_rollback_during_fix_run_requires_user_confirm(monkeypatch, confirmed):
+    """The model must not roll a page back on its own in the middle of a fix run."""
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    rollback = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    monkeypatch.setattr(mod, "tool_rollback_content_health_fix", rollback)
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("run content health resolver")
+    result = await wf.get_tool_fns(MagicMock())["rollback_content_health_fix"](slug="ai")
+
+    confirm.assert_awaited_once()
+    assert (rollback.await_count == 1) is confirmed
+    assert result["status"] == ("success" if confirmed else "cancelled")
+
+
+@pytest.mark.asyncio
+async def test_rollback_requested_by_user_runs_without_extra_confirm(monkeypatch):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    confirm = AsyncMock()
+    rollback = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    monkeypatch.setattr(mod, "tool_rollback_content_health_fix", rollback)
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("roll back artificial-intelligence-history")
+    await wf.get_tool_fns(MagicMock())["rollback_content_health_fix"](slug="artificial-intelligence-history")
+
+    confirm.assert_not_awaited()
+    rollback.assert_awaited_once()

@@ -7,6 +7,7 @@ available via natural language at any time, not just during a workflow run.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -71,6 +72,42 @@ async def tool_get_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     }
 
 
+_MD_LINE_PREFIX_RE = re.compile(r"^(?:\s*(?:[>*+-]|\d+[.)])\s+)+")
+_MD_INLINE_RE = re.compile(r"[*_`|]")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_MIN_SENTENCE_WORDS = 4
+
+
+def _normalise_prose(text: str) -> list[str]:
+    """Body lines (no headings) with list/quote markers and emphasis stripped, lowercased."""
+    lines = []
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        line = _MD_INLINE_RE.sub(" ", _MD_LINE_PREFIX_RE.sub("", line))
+        lines.append(" ".join(line.split()).lower())
+    return lines
+
+
+def _dropped_sentences(original: str, rewritten: str) -> list[str]:
+    """Sentences of *original* that no longer appear anywhere in *rewritten*.
+
+    Content-health fixes are structural only (headings, duplicates, empty
+    sections), so every prose sentence must survive. Headings are ignored because
+    fixes legitimately rename, merge or remove them; fragments shorter than
+    _MIN_SENTENCE_WORDS words are ignored as noise.
+    """
+    haystack = " ".join(_normalise_prose(rewritten))
+    dropped: list[str] = []
+    for line in _normalise_prose(original):
+        for sentence in _SENTENCE_SPLIT_RE.split(line):
+            sentence = sentence.strip()
+            if len(sentence.split()) >= _MIN_SENTENCE_WORDS and sentence not in haystack \
+                    and sentence not in dropped:
+                dropped.append(sentence)
+    return dropped
+
+
 async def tool_write_content_health_fix(
     ctx: "WorkflowContext",
     slug: str,
@@ -82,12 +119,33 @@ async def tool_write_content_health_fix(
     Snapshots the current content before writing, stores a fix_record keyed by
     the snapshot's stable DB id, then re-scans to verify the fix worked.
     The GATED_TOOLS confirm gate must be open before this tool is called.
+
+    Rejects (writes nothing) a rewrite that drops any prose sentence of the
+    current page: the model's own BEFORE/AFTER summary cannot be trusted to
+    report lost text, e.g. when duplicate sections hold different sentences.
     """
     if ctx.store is None or ctx.audit_db is None:
         return {"status": _STATUS_ERR, "error": "No store or audit_db available"}
     page = ctx.store.read_page(slug)
     if page is None:
         return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
+
+    dropped = _dropped_sentences(page.content, content)
+    if dropped:
+        shown = "; ".join(f'"{d[:120]}"' for d in dropped[:5])
+        return {
+            "status": _STATUS_ERR,
+            "slug": slug,
+            "dropped_sentences": len(dropped),
+            "error": (
+                f"Rejected — nothing was written. The rewrite removes {len(dropped)} "
+                f"sentence(s) that exist in the current page, e.g. {shown}. "
+                "Content-health fixes must keep every sentence. If duplicate sections "
+                "contain different text, keep all of it or leave those issues for a "
+                "human: dismiss the page (notify, then dismiss_content_health_issues) "
+                "instead of writing. Do not retry with the same content."
+            ),
+        }
 
     # Snapshot CURRENT content (pre-fix) so it can be restored on rollback.
     await ctx.audit_db.snapshot_if_changed(

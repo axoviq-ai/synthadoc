@@ -922,3 +922,21 @@ async def test_untruncated_plain_text_is_final_on_mock_providers():
     results, _ = await _run_loop(provider)
 
     assert [e["data"]["text"] for e in results if e["event"] == "final_text"] == ["Summary."]
+
+
+@pytest.mark.parametrize("text,expect_hint", [
+    ("Should I go ahead with the remaining six pages?", True),
+    ("Content Health Resolver — Complete.", False),
+])
+async def test_question_ending_names_rerun_hint_so_yes_routes_back(text, expect_hint):
+    """A plain-text question ends the workflow; name the rerun hint so 'yes' re-runs it."""
+    ctx, _ = _make_ctx()
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(text=text, input_tokens=1, output_tokens=1))
+    results = [e async for e in run_tool_call_loop(
+        system_prompt="sys", initial_message="go", tool_fns={}, provider=provider, ctx=ctx,
+        rerun_hint="Run content health resolver",
+    )]
+    final = [e["data"]["text"] for e in results if e["event"] == "final_text"][0]
+    assert final.startswith(text)
+    assert ('"Run content health resolver"** hint chip to continue' in final) is expect_hint

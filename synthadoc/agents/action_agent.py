@@ -644,6 +644,7 @@ class ActionAgent(BaseAgent):
                     if _rerun_hint:
                         _incomplete = (
                             "tool-call limit" in _final_text       # budget exhausted
+                            or "hint chip to continue" in _final_text  # stopped on a question
                             or "Skipped (" in _final_text           # orphan-resolver skipped list
                             or "⏭ Skipped" in _final_text
                             or "Unresolved (" in _final_text        # any workflow unresolved list

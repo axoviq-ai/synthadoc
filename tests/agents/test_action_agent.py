@@ -3356,3 +3356,18 @@ def test_format_schedule_list_with_entries():
     result = _format_schedule_list([entry])
     assert "sched-abc" in result
     assert "0 6 * * *" in result
+
+
+def test_yes_after_workflow_question_routes_back_to_that_workflow():
+    """The loop's 'stopped on a question' suffix makes a bare 'yes' re-run the workflow."""
+    from synthadoc.agents.action_agent import _AFFIRMATIVE_RE, _find_rerun_hint_in_history
+    from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
+    history = [
+        {"role": "user", "content": "run content health resolver"},
+        {"role": "assistant", "content": (
+            "Should I go ahead?\n\nThe workflow has stopped. Type **yes** or click the "
+            '**"Run content health resolver"** hint chip to continue.')},
+    ]
+    assert _AFFIRMATIVE_RE.match("yes")
+    match = _find_rerun_hint_in_history(history)
+    assert match is not None and match[0] is ContentHealthResolverWorkflow

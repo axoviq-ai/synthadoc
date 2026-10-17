@@ -126,6 +126,12 @@ STEP 3 — Per-page loop.
 
   For EACH slug in pages[] (in order):
 
+  Duplicate sections whose copies contain DIFFERENT sentences cannot be merged by
+  dropping a copy. write_content_health_fix rejects any rewrite that loses a
+  sentence. Either keep every sentence from every copy, or treat those issues as
+  unfixable (3e). Never ask the user a question in plain text mid-run: plain text
+  ends the workflow.
+
   3a. Call get_page_content using the EXACT slug string from the pages[] entry.
       Copy the slug character-for-character from the find_content_health_issues
       result — do not alter it in any way.
@@ -358,6 +364,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
 
     def build_initial_message(self, user_input: str) -> str:
         intent, slug = self._parse_intent(user_input)
+        self._intent = intent  # read by the rollback tool at call time
         if intent == "list":
             return (
                 "The user wants to see which pages have been fixed by the content health resolver.\n"
@@ -554,13 +561,31 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             return await tool_write_content_health_fix(ctx, slug=slug, content=content,
                                                        issues_fixed=issues_fixed)
 
+        async def _rollback(slug: str) -> dict:
+            # A rollback the user asked for ("roll back X") runs directly. During a
+            # fix run the model must not undo pages on its own, so ask first.
+            if getattr(self, "_intent", "fix") != "rollback":
+                gate = await tool_confirm(
+                    ctx,
+                    message=(
+                        f"Roll back **{slug}** to the version saved before its content-health "
+                        "fix? This replaces the page's current content (or, for a dismissal, "
+                        "restores its issues)."
+                    ),
+                    yes_label="Roll back", no_label="Keep current",
+                )
+                if not gate.get("confirmed"):
+                    return {"status": "cancelled",
+                            "message": f"Rollback of '{slug}' cancelled by the user. Do not retry it."}
+            return await tool_rollback_content_health_fix(ctx, slug)
+
         return {
             "find_content_health_issues": _find_issues,
             "get_page_content": _get_content,
             "write_content_health_fix": _write_fix,
             "dismiss_content_health_issues": functools.partial(tool_dismiss_content_health_issues, ctx),
             "list_content_health_fixes": functools.partial(tool_list_content_health_fixes, ctx),
-            "rollback_content_health_fix": functools.partial(tool_rollback_content_health_fix, ctx),
+            "rollback_content_health_fix": _rollback,
             "confirm": functools.partial(tool_confirm, ctx),
             "notify": functools.partial(tool_notify, ctx),
         }

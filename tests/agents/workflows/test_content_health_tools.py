@@ -204,3 +204,47 @@ def test_format_fix_list_shows_dismissals_as_dismissals():
     ])
     assert "zuse — t2 — dismissed 2 thin_section — needs human editing (no snapshot: content unchanged)" in text
     assert "turing — t1 — fixed: empty_section x1 (pre-fix snapshot #1)" in text
+
+
+_DUP_DIFFERENT = (
+    "# AI\n\n## Deep Learning\nAlexNet won ImageNet in 2012 by a wide margin.\n\n"
+    "## History\nThe field began at Dartmouth in 1956.\n\n"
+    "## Deep Learning\nAlphaGo beat Lee Sedol at Go in 2016.\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_write_fix_rejects_rewrite_that_drops_sentences(tmp_path):
+    """Keeping only the first copy of a duplicate heading loses text: nothing is written."""
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("ai", _make_page("ai", content=_DUP_DIFFERENT))
+    ctx = _make_ctx(store)
+    first_copy_only = _DUP_DIFFERENT.split("## Deep Learning\nAlphaGo")[0]
+
+    result = await tool_write_content_health_fix(
+        ctx, slug="ai", content=first_copy_only, issues_fixed=["duplicate_section x1"])
+
+    assert result["status"] == "error"
+    assert result["dropped_sentences"] == 1
+    assert "alphago beat lee sedol" in result["error"]
+    ctx.audit_db.snapshot_if_changed.assert_not_called()
+    loaded = store.read_page("ai")
+    assert "AlphaGo" in loaded.content and loaded.content_health_fix_record is None
+
+
+@pytest.mark.asyncio
+async def test_write_fix_allows_merge_that_keeps_every_sentence(tmp_path):
+    """Merging duplicate headings, re-wrapping and re-bulleting text is fine."""
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("ai", _make_page("ai", content=_DUP_DIFFERENT))
+    ctx = _make_ctx(store)
+    merged = (
+        "# AI\n\n## History\nThe field began at Dartmouth in 1956.\n\n"
+        "## Deep Learning\n- AlexNet won ImageNet in 2012 by a **wide** margin.\n"
+        "- AlphaGo beat Lee Sedol\n  at Go in 2016.\n"
+    )
+    result = await tool_write_content_health_fix(
+        ctx, slug="ai", content=merged, issues_fixed=["duplicate_section x1"])
+
+    assert result["status"] == "success"
+    assert store.read_page("ai").content.strip() == merged.strip()

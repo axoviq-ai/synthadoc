@@ -517,6 +517,15 @@ async def run_tool_call_loop(
                     yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
                 yield {"event": "final_text", "data": {"text": err}}
                 return
+            # Plain text ends the workflow. If the model ended by asking the user a
+            # question, a reply like "yes" would otherwise go to the query agent,
+            # which cannot run the workflow. Naming the rerun hint lets "yes" (or the
+            # chip) route back to this workflow.
+            if rerun_hint and text.rstrip().endswith("?"):
+                text += (
+                    f'\n\nThe workflow has stopped. Type **yes** or click the **"{rerun_hint}"** '
+                    "hint chip to continue."
+                )
             # Plain-text response — stream as token chunks, then emit final_text.
             for i in range(0, max(len(text), 1), _CHUNK_SIZE):
                 yield {"event": "token", "data": {"text": text[i : i + _CHUNK_SIZE]}}
