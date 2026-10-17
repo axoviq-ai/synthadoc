@@ -48,6 +48,10 @@ The [[von-neumann-architecture]] computers that run Internet infrastructure all 
 
 On 1 January 1983, known as "Flag Day," TCP/IP became the standard protocol for all ARPANET hosts, marking the transition from the earlier NCP protocol. This event unified the network and enabled the Internet to function across heterogeneous networks—computers and systems from different manufacturers running different software could now communicate seamlessly.
 
+On January 1, 1983, ARPANET officially switched from the older NCP protocol to TCP/IP in a coordinated cutover known as "Flag Day." This transition is widely regarded as the formal birth of the modern internet, as it established tcp-ip as the universal protocol suite enabling heterogeneous networks to interconnect. The cutover required every connected host to be reconfigured simultaneously, and its success demonstrated that TCP/IP could serve as a robust foundation for a growing global network.
+
+The formal transition of ARPANET from the older Network Control Protocol (NCP) to TCP/IP occurred on **1 January 1983**, an event known as "Flag Day." On that date, the entire ARPANET cut over to TCP/IP simultaneously, and the modern internet is generally dated to this event.
+
 ## Motivations Behind Packet Switching
 
 The development of packet switching was driven by both military and efficiency considerations:
@@ -64,6 +68,8 @@ Packet switching theory was developed independently by Paul Baran at RAND Corpor
 
 ## Flag Day (1983)
 On 1 January 1983, known as "Flag Day," TCP/IP became the universal protocol for ARPANET, marking the formal birth of the modern internet. This date is significant because it represents the transition from the original ARPANET protocols to the standardized TCP/IP protocol that enabled the internet to scale globally.
+
+On January 1, 1983 — known as "Flag Day" — ARPANET completed its transition to TCP/IP, with all connected hosts switching over simultaneously. This event unified the previously fragmented network protocols into a single standard and is widely regarded as the birth of the modern Internet as a globally interoperable network. The date also marked the operational separation of TCP into its transport layer (TCP) and addressing layer (IP), exactly as envisioned by vinton-cerf and robert-kahn in their 1974 design.
 
 ## Additional Context from Source
 
@@ -82,10 +88,6 @@ The practical spread of TCP/IP was driven in large part by [[unix-history|Berkel
 ## Design Principles and Legacy
 The Internet’s architecture emerged from deliberate design choices rooted in Cold War resilience requirements and academic ideals of open collaboration. Paul Baran’s work at RAND emphasized distributed, fault-tolerant networks; Donald Davies at the UK’s NPL independently coined the term *packet switching* and demonstrated its feasibility. These ideas converged in ARPANET, where decentralization ensured survivability, and interoperability was later cemented by the 1983 transition to TCP/IP across the network — a milestone that unified disparate networks into what became the modern Internet. This synthesis of military research, theoretical insight, and academic engineering laid the groundwork for global digital infrastructure.
 
-## Flag Day — 1 January 1983
-
-On January 1, 1983, ARPANET officially switched from the older NCP protocol to TCP/IP in a coordinated cutover known as "Flag Day." This transition is widely regarded as the formal birth of the modern internet, as it established tcp-ip as the universal protocol suite enabling heterogeneous networks to interconnect. The cutover required every connected host to be reconfigured simultaneously, and its success demonstrated that TCP/IP could serve as a robust foundation for a growing global network.
-
 ## Packet Switching
 
 Packet switching — the technique of breaking messages into small, independently routed packets rather than dedicating a continuous circuit — was developed independently by paul-baran at the rand-corporation and donald-davies at the UK's national-physical-laboratory. This approach replaced the circuit switching used by telephone networks and became a defining architectural choice of the internet.
@@ -94,14 +96,6 @@ Packet switching — the technique of breaking messages into small, independentl
 
 The concept of packet switching — breaking data into small, independently routed blocks rather than maintaining a dedicated circuit — was developed independently by paul-baran at the RAND Corporation in the United States and donald-davies at the UK's National Physical Laboratory (NPL) in the early 1960s. Their parallel work established the fundamental principle that would underpin all modern data networking.
 
-## Flag Day (1983)
-
-On January 1, 1983 — known as "Flag Day" — ARPANET completed its transition to TCP/IP, with all connected hosts switching over simultaneously. This event unified the previously fragmented network protocols into a single standard and is widely regarded as the birth of the modern Internet as a globally interoperable network. The date also marked the operational separation of TCP into its transport layer (TCP) and addressing layer (IP), exactly as envisioned by vinton-cerf and robert-kahn in their 1974 design.
-
-## Flag Day — 1 January 1983
-
-The formal transition of ARPANET from the older Network Control Protocol (NCP) to TCP/IP occurred on **1 January 1983**, an event known as "Flag Day." On that date, the entire ARPANET cut over to TCP/IP simultaneously, and the modern internet is generally dated to this event.
-
 ## Berkeley BSD Unix and TCP/IP Propagation
 
 The [[unix-history]] family of systems played a critical role in spreading TCP/IP beyond the research community. Berkeley BSD Unix incorporated the first widely distributed TCP/IP implementation in its networking stack (beginning with 4.2BSD in 1983 and maturing in 4.3BSD), which allowed universities and research labs to connect to ARPANET simply by running BSD Unix. This tight coupling between [[bell-laboratories]] Unix and Berkeley networking extensions made TCP/IP the de facto standard for internetworking long before formal standardization.
@@ -109,6 +103,8 @@ The [[unix-history]] family of systems played a critical role in spreading TCP/I
 ## Flag Day — January 1, 1983
 
 The formal birth of the modern internet is typically dated to **January 1, 1983**, known as "Flag Day," when [[internet-origins|ARPANET]] switched its network protocols from the older NCP (Network Control Protocol) to TCP/IP. This cutover, driven by Vinton Cerf and Robert Kahn's protocol suite published in 1974, unified the disparate networks connected to ARPANET under a common communication standard. After Flag Day, any network wishing to communicate with ARPANET was required to use TCP/IP, accelerating the protocol's global adoption.
+
+On 1 January 1983, ARPANET officially switched from the older network-control-program to TCP/IP in a coordinated event known as **Flag Day**. All connected nodes transitioned simultaneously, making TCP/IP the universal protocol of the network and marking the formal birth of the modern internet as a unified, interoperable network.
 
 ## Key Contributors Beyond ARPA
 
@@ -119,10 +115,6 @@ The shift from circuit switching (used by telephone networks, which required a d
 ## Flag Day — Birth of the Modern Internet (1983)
 
 On 1 January 1983 — known as "Flag Day" — [[internet-origins|ARPANET]] completed its cutover to TCP/IP, the protocol suite designed by Vinton Cerf and Robert Kahn in 1974. This transition is widely identified as the formal birth of the modern [[internet-origins|Internet]], as it unified the disparate networks connected to ARPANET under a single, scalable communication standard that remains the foundation of global networking today. The event demonstrated the practical viability of TCP/IP and enabled the exponential growth of interconnected networks throughout the 1980s and beyond.
-
-## Flag Day — January 1, 1983
-
-On 1 January 1983, ARPANET officially switched from the older network-control-program to TCP/IP in a coordinated event known as **Flag Day**. All connected nodes transitioned simultaneously, making TCP/IP the universal protocol of the network and marking the formal birth of the modern internet as a unified, interoperable network.
 
 ## ARPA and the Department of Defense
 

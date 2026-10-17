@@ -153,9 +153,9 @@ def test_gpt6_astra_rates():
 
 
 def test_gpt56_sol_rates():
-    """gpt-5.6-sol: $5/M input, $30/M output."""
+    """gpt-5.6-sol: $4/M input, $20/M output (promotional rate through at least 2026-11-21)."""
     cost = estimate_cost("gpt-5.6-sol", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 35.0) < 0.001
+    assert abs(cost - 24.0) < 0.001
 
 
 def test_gpt56_terra_rates():
@@ -265,15 +265,15 @@ def test_minimax_m25_highspeed_rates():
 
 
 def test_minimax_m27_rates():
-    """MiniMax-M2.7: $0.21/M input, $0.84/M output (revised 2026-09)."""
+    """MiniMax-M2.7: $0.30/M input, $1.20/M output (corrected 2026-10)."""
     cost = estimate_cost("MiniMax-M2.7", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 1.05) < 0.001
+    assert abs(cost - 1.50) < 0.001
 
 
 def test_minimax_m27_highspeed_rates():
-    """MiniMax-M2.7-highspeed: $0.42/M input, $1.68/M output (2× standard; revised 2026-09)."""
+    """MiniMax-M2.7-highspeed: $0.60/M input, $2.40/M output (2× standard; corrected 2026-10)."""
     cost = estimate_cost("MiniMax-M2.7-highspeed", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 2.10) < 0.001
+    assert abs(cost - 3.00) < 0.001
 
 
 def test_minimax_highspeed_costs_more_than_standard():
@@ -295,9 +295,9 @@ def test_deepseek_v4_flash_rates():
 
 
 def test_deepseek_v4_pro_rates():
-    """deepseek-v4-pro: $0.66/M input, $1.98/M output (peak rate, revised 2026-09)."""
+    """deepseek-v4-pro: $1.32/M input, $3.96/M output (peak rate; corrected 2026-10)."""
     cost = estimate_cost("deepseek-v4-pro", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 2.64) < 0.001
+    assert abs(cost - 5.28) < 0.001
 
 
 def test_deepseek_chat_alias_matches_v4_flash():
@@ -335,15 +335,15 @@ def test_qwen_turbo_rates():
 
 
 def test_qwen_flash_rates():
-    """qwen-flash: $0.25/M input, $1.50/M output."""
+    """qwen-flash: $0.05/M input, $0.40/M output (≤256K input; corrected 2026-10)."""
     cost = estimate_cost("qwen-flash", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 1.75) < 0.001
+    assert abs(cost - 0.45) < 0.001
 
 
 def test_qwen_plus_rates():
-    """qwen-plus: $0.40/M input, $1.60/M output."""
+    """qwen-plus: $0.40/M input, $1.20/M output (non-thinking; corrected 2026-10)."""
     cost = estimate_cost("qwen-plus", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 2.00) < 0.001
+    assert abs(cost - 1.60) < 0.001
 
 
 def test_qwen_max_rates():
@@ -380,14 +380,14 @@ def test_qwen38_max_rates():
 
 
 def test_qwen38_flash_rates():
-    """qwen3.8-flash: $0.14/M input, $0.42/M output (added 2026-08-26)."""
+    """qwen3.8-flash: $0.15/M input, $0.47/M output (corrected 2026-10)."""
     cost = estimate_cost("qwen3.8-flash", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 0.56) < 0.001
+    assert abs(cost - 0.62) < 0.001
 
 
 def test_qwen35_397b_rates():
-    """qwen3.5-397b: $0.60/M input, $3.60/M output."""
-    cost = estimate_cost("qwen3.5-397b", input_tokens=1_000_000, output_tokens=1_000_000)
+    """qwen3.5-397b-a17b: $0.60/M input, $3.60/M output (model ID corrected 2026-10)."""
+    cost = estimate_cost("qwen3.5-397b-a17b", input_tokens=1_000_000, output_tokens=1_000_000)
     assert abs(cost - 4.20) < 0.001
 
 
@@ -505,3 +505,34 @@ def test_flagship_hierarchy_across_providers():
            estimate_cost("MiniMax-M2.5", 1_000_000, 1_000_000)
     assert estimate_cost("kimi-k3", 1_000_000, 1_000_000) > \
            estimate_cost("kimi-k2.6", 1_000_000, 1_000_000)
+
+
+# ---------------------------------------------------------------------------
+# 2026-10 refresh: new models
+# ---------------------------------------------------------------------------
+
+def test_claude_55_family_rates():
+    """Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50 (≤100K prompt tier)."""
+    assert abs(estimate_cost("claude-opus-5-5", 1_000_000, 1_000_000) - 24.0) < 0.001
+    assert abs(estimate_cost("claude-sonnet-5-5", 1_000_000, 1_000_000) - 12.0) < 0.001
+    assert abs(estimate_cost("claude-haiku-5-5", 1_000_000, 1_000_000) - 0.60) < 0.001
+
+
+def test_claude_opus55_cheaper_than_opus5():
+    assert estimate_cost("claude-opus-5-5", 1_000_000, 1_000_000) < \
+           estimate_cost("claude-opus-5", 1_000_000, 1_000_000)
+
+
+def test_deepseek_flash_rates():
+    """deepseek-flash (DeepSeek-V4.1-Flash): $0.30/M input, $1.20/M output (peak)."""
+    cost = estimate_cost("deepseek-flash", input_tokens=1_000_000, output_tokens=1_000_000)
+    assert abs(cost - 1.50) < 0.001
+
+
+def test_new_models_are_priced_not_fallback():
+    """Every model added in the 2026-10 refresh has its own entry, not the fallback rate."""
+    from synthadoc.providers.pricing import _PRICING
+    for model in ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "deepseek-flash",
+                  "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gemini-4-argon", "qwen3.7-max",
+                  "qwen3.8-27b", "qwen/qwen3.8-27b", "MiniMax-M2.1"]:
+        assert model in _PRICING, model

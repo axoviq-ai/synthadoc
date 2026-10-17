@@ -76,6 +76,8 @@ include benchmark questions, inflating scores.
 
 **BIG-Bench Hard (BBH)** is a curated subset of 23 particularly challenging tasks from BIG-Bench where prior models lagged significantly behind human performance. Solving BBH tasks typically requires multi-step reasoning, making it a key benchmark for chain-of-thought and emergent reasoning evaluation.
 
+Beyond the Imitation Game ([[big-bench]], Srivastava et al., 2022) is a collaborative benchmark of 204 tasks designed to probe capabilities beyond standard NLP tasks — logical reasoning, causal reasoning, common sense, multilingual understanding, and more. BIG-Bench Hard (BBH) is a 23-task subset that frontier models at the time of publication could not reliably solve, preserving headroom for future evaluation. ^[llm-benchmarks-overview.txt:23-23]
+
 ## Common Knowledge and Reasoning Benchmarks
 
 - **HellaSwag** — a commonsense reasoning benchmark where models choose the most plausible continuation of a sentence. Known for being resistant to simple heuristics, it uses adversarial filtering against naive algorithms.
@@ -211,10 +213,6 @@ A common error in MMLU reporting concerns Gemini Ultra. Google's technical repor
 The primary metric is pass@1: the fraction of problems solved on the first attempt. A more lenient metric, pass@k, measures whether any of k sampled completions passes. HumanEval numbers in research papers almost always report pass@1 unless otherwise stated. ^[llm-benchmarks-overview.txt:17-17]
 
 HumanEval is relatively narrow — all problems are algorithmic rather than software engineering tasks — and models have been observed to memorise solutions from training data containing GitHub code. More recent code benchmarks ([[swe-bench]], [[livecodebench]]) use problems created after model training cutoffs to reduce contamination. ^[llm-benchmarks-overview.txt:19-19]
-
-## BIG-Bench and BIG-Bench Hard
-
-Beyond the Imitation Game ([[big-bench]], Srivastava et al., 2022) is a collaborative benchmark of 204 tasks designed to probe capabilities beyond standard NLP tasks — logical reasoning, causal reasoning, common sense, multilingual understanding, and more. BIG-Bench Hard (BBH) is a 23-task subset that frontier models at the time of publication could not reliably solve, preserving headroom for future evaluation. ^[llm-benchmarks-overview.txt:23-23]
 
 ## Commonsense Reasoning Benchmarks
 

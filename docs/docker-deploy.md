@@ -230,9 +230,12 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "gemini",    model = "gemini-2.5-flash" }
 # default = { provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }
+# default = { provider = "anthropic", model = "claude-sonnet-5-5" }
+# default = { provider = "anthropic", model = "claude-opus-5-5" }
+# default = { provider = "anthropic", model = "claude-haiku-5-5" }
 # default = { provider = "anthropic", model = "claude-sonnet-4-6" }
 # default = { provider = "anthropic", model = "claude-opus-4-8" }
-# default = { provider = "deepseek",  model = "deepseek-v4-flash" }
+# default = { provider = "deepseek",  model = "deepseek-flash" }
 # default = { provider = "ollama",    model = "llama3.2" }
 # NOTE: opencode / claude-code providers require a local binary — not supported in Docker
 # ...

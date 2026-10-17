@@ -12,8 +12,8 @@ def test_workflow_attributes():
     assert ContentHealthResolverWorkflow.NAME == "content-health"
     assert ContentHealthResolverWorkflow.RERUN_HINT == "Run content health resolver"
     assert ContentHealthResolverWorkflow.SUPPORTS_CLI_PROVIDER is True
-    assert "write_content_health_fix" in ContentHealthResolverWorkflow.GATED_TOOLS
-    assert "write_content_health_fix" in ContentHealthResolverWorkflow.GATED_TOOLS_PER_CALL
+    # Writes are approved inside the tools from the real diff, not via a model-called gate.
+    assert ContentHealthResolverWorkflow.GATED_TOOLS == frozenset()
 
 
 def test_match_re_fires_on_content_health():
@@ -38,7 +38,7 @@ async def test_system_prompt_contains_tool_inventory():
     for tool_name in ("get_page_content", "write_content_health_fix",
                       "dismiss_content_health_issues",
                       "list_content_health_fixes", "rollback_content_health_fix",
-                      "confirm", "notify"):
+                      "merge_duplicate_sections", "notify"):
         assert tool_name in prompt, f"Missing tool '{tool_name}' in system prompt"
 
 
@@ -48,63 +48,92 @@ def test_get_tool_fns_returns_expected_tools():
     tools = wf.get_tool_fns(ctx)
     expected = {
         "find_content_health_issues", "get_page_content", "write_content_health_fix",
-        "dismiss_content_health_issues",
+        "merge_duplicate_sections", "dismiss_content_health_issues",
         "list_content_health_fixes", "rollback_content_health_fix",
-        "confirm", "notify",
+        "notify",
     }
-    assert set(tools.keys()) == expected
+    assert set(tools.keys()) == expected   # no model-written "confirm" card
 
 
-def test_write_tool_is_gated():
-    """The GATED_TOOLS mechanism wraps write_content_health_fix with a confirm check."""
+def _wiki_with_stray_h1(tmp_path, slugs):
+    from synthadoc.storage.wiki import LifecycleState, WikiPage, WikiStorage
+    store = WikiStorage(tmp_path / "wiki")
+    issue = {"type": "orphaned_heading", "severity": "medium", "location": "line 5", "description": "x"}
+    for slug in slugs:
+        store.write_page(slug, WikiPage(
+            title=slug, tags=[], content="# T\n\nThe page body has one sentence.\n\n# Stray\n",
+            status=LifecycleState.ACTIVE, confidence="", sources=[], content_health_issues=[issue]))
     ctx = MagicMock()
-    wf = ContentHealthResolverWorkflow()
-    guarded = wf.build_guarded_tool_fns(ctx)
-    # write tool should be present and wrapped (different callable from raw)
-    assert "write_content_health_fix" in guarded
+    ctx.store = store
+    from unittest.mock import AsyncMock
+    ctx.audit_db.snapshot_if_changed = AsyncMock(return_value=True)
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"index": 1, "id": 7}])
+    return ctx
 
 
 @pytest.mark.asyncio
-async def test_gate_resets_after_each_write():
-    """write_content_health_fix gate must reset after every call so each page needs its own confirm."""
-    confirm_call_count = 0
+async def test_every_write_asks_the_user_with_the_real_diff(tmp_path, monkeypatch):
+    """Each page's write shows a diff computed from the actual content, then writes."""
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows.tools import content_health_tools as tools_mod
+    confirm = AsyncMock(return_value={"confirmed": True})
+    monkeypatch.setattr(tools_mod, "tool_confirm", confirm)
+    ctx = _wiki_with_stray_h1(tmp_path, ["page-a", "page-b"])
 
-    async def fake_write(slug, content, issues_fixed):
-        return {"status": "success", "slug": slug, "snapshot_index": 1, "remaining_issues": 0, "fix_record": {}}
-
-    async def fake_confirm(message, yes_label="Yes", no_label="No"):
-        nonlocal confirm_call_count
-        confirm_call_count += 1
-        return {"confirmed": True}
-
-    ctx = MagicMock()
     wf = ContentHealthResolverWorkflow()
-    tools = wf.get_tool_fns(ctx)
-    # Replace the real callables with fakes before building guarded fns.
-    tools["write_content_health_fix"] = fake_write
-    tools["confirm"] = fake_confirm
+    wf._prediscovered_slugs = ["page-a", "page-b"]
+    tools = wf.build_guarded_tool_fns(ctx)
+    for slug in ("page-a", "page-b"):
+        await tools["get_page_content"](slug=slug)
+        fixed = "# T\n\nThe page body has one sentence.\n\n## Stray\n"
+        result = await tools["write_content_health_fix"](
+            slug=slug, content=fixed, issues_fixed=["orphaned_heading x1"])
+        assert result["status"] == "success"
 
-    # Rebuild guarded fns using the patched tools dict directly via the mechanism.
-    from synthadoc.agents.workflows._base import _make_confirm_gatekeeper, _make_gated_tool
-    gate_open: list[bool] = [False]
-    guarded_confirm = _make_confirm_gatekeeper(fake_confirm, gate_open)
-    guarded_write = _make_gated_tool(
-        fake_write, "write_content_health_fix", gate_open, ctx, reset_after_call=True
-    )
+    assert confirm.await_count == 2
+    diff = confirm.call_args.kwargs["diff"]
+    assert "-# Stray" in diff and "+## Stray" in diff
 
-    # First write: gate is closed — fallback confirm fires, then write runs, gate resets.
-    await guarded_confirm("Ready?", yes_label="Begin", no_label="Cancel")  # STEP 2 confirm
-    assert gate_open[0] is True
-    await guarded_write(slug="page-a", content="...", issues_fixed=[])
-    assert gate_open[0] is False  # gate reset after write
 
-    # Second write: gate is closed again — must confirm again.
-    pre_count = confirm_call_count
-    await guarded_confirm("Approve page-b?", yes_label="Approve", no_label="Skip")
-    assert gate_open[0] is True
-    await guarded_write(slug="page-b", content="...", issues_fixed=[])
-    assert gate_open[0] is False  # gate reset again
-    assert confirm_call_count == pre_count + 1  # a second confirm was required
+@pytest.mark.asyncio
+async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows.tools import content_health_tools as tools_mod
+    confirm = AsyncMock(return_value={"confirmed": True})
+    monkeypatch.setattr(tools_mod, "tool_confirm", confirm)
+    ctx = _wiki_with_stray_h1(tmp_path, ["page-a"])
+
+    wf = ContentHealthResolverWorkflow()
+    wf._prediscovered_slugs = ["page-a"]
+    tools = wf.build_guarded_tool_fns(ctx)
+    await tools["get_page_content"](slug="page-a")
+    result = await tools["write_content_health_fix"](
+        slug="page-a", content="# T\n\n## Stray\n", issues_fixed=["orphaned_heading x1"])
+
+    assert result["status"] == "error" and result["dropped_sentences"] == 1
+    confirm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_dismiss_asks_the_user_first(monkeypatch, confirmed):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    dismiss = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    monkeypatch.setattr(mod, "tool_dismiss_content_health_issues", dismiss)
+    ctx = MagicMock()
+    ctx.store.read_page.return_value = MagicMock(content_health_issues=[
+        {"type": "empty_section", "location": "Key Figures"}, {"type": "thin_section", "location": "X"}])
+
+    result = await ContentHealthResolverWorkflow().get_tool_fns(ctx)["dismiss_content_health_issues"](
+        slug="ai", reason="needs new prose")
+
+    card = confirm.call_args.kwargs["message"]
+    assert "dismiss 1 issue(s)" in card and "empty_section at 'Key Figures'" in card
+    assert (dismiss.await_count == 1) is confirmed
+    assert result["status"] == ("success" if confirmed else "cancelled")
 
 
 @pytest.mark.asyncio
@@ -219,7 +248,7 @@ async def test_find_issues_excludes_unreadable_slugs():
 
 @pytest.mark.asyncio
 async def test_dismiss_clears_issues_and_sets_record():
-    """dismiss_content_health_issues clears content_health_issues and records the dismissal."""
+    """dismiss clears the resolvable issues, records the dismissal, keeps report-only ones."""
     from synthadoc.agents.workflows.tools.content_health_tools import (
         tool_dismiss_content_health_issues,
     )
@@ -227,9 +256,11 @@ async def test_dismiss_clears_issues_and_sets_record():
 
     store = MagicMock()
     page = MagicMock()
+    thin = {"type": "thin_section", "severity": "high"}
     page.content_health_issues = [
-        {"type": "thin_section", "severity": "high"},
-        {"type": "thin_section", "severity": "medium"},
+        {"type": "empty_section", "severity": "critical"},
+        {"type": "orphaned_heading", "severity": "medium"},
+        thin,
     ]
     page.content_health_fix_record = None
     store.read_page.return_value = page
@@ -239,16 +270,16 @@ async def test_dismiss_clears_issues_and_sets_record():
     ctx.bump_epoch = None
 
     result = await tool_dismiss_content_health_issues(
-        ctx, slug="grace-hopper", reason="all issues are thin_section requiring human editing"
+        ctx, slug="grace-hopper", reason="needs new prose"
     )
 
     assert result["status"] == "success"
     assert result["dismissed_count"] == 2
     assert result["remaining_issues"] == 0
-    assert page.content_health_issues == []
+    assert page.content_health_issues == [thin]   # stays for the lint report
     assert page.content_health_fix_record is not None
     assert page.content_health_fix_record["dismissed_count"] == 2
-    assert "thin_section" in page.content_health_fix_record["dismissed_types"]
+    assert set(page.content_health_fix_record["dismissed_types"]) == {"empty_section", "orphaned_heading"}
     store.write_page.assert_called_once_with("grace-hopper", page)
 
 
@@ -318,3 +349,40 @@ def test_description_and_cli_args_set():
     assert ContentHealthResolverWorkflow.DESCRIPTION is not None
     assert ContentHealthResolverWorkflow.CLI_ARGS is not None
     assert "--slug" in ContentHealthResolverWorkflow.CLI_ARGS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_rollback_during_fix_run_requires_user_confirm(monkeypatch, confirmed):
+    """The model must not roll a page back on its own in the middle of a fix run."""
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    rollback = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    monkeypatch.setattr(mod, "tool_rollback_content_health_fix", rollback)
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("run content health resolver")
+    result = await wf.get_tool_fns(MagicMock())["rollback_content_health_fix"](slug="ai")
+
+    confirm.assert_awaited_once()
+    assert (rollback.await_count == 1) is confirmed
+    assert result["status"] == ("success" if confirmed else "cancelled")
+
+
+@pytest.mark.asyncio
+async def test_rollback_requested_by_user_runs_without_extra_confirm(monkeypatch):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    confirm = AsyncMock()
+    rollback = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    monkeypatch.setattr(mod, "tool_rollback_content_health_fix", rollback)
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("roll back artificial-intelligence-history")
+    await wf.get_tool_fns(MagicMock())["rollback_content_health_fix"](slug="artificial-intelligence-history")
+
+    confirm.assert_not_awaited()
+    rollback.assert_awaited_once()

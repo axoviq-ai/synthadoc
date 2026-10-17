@@ -1017,6 +1017,46 @@ async def test_tool_get_lint_report_with_no_audit_db():
     assert result["orphan_slugs"] == []
 
 
+async def test_tool_get_lint_report_lists_short_sections_per_page():
+    """thin_section issues are returned per page with their descriptions;
+    other content-health issue types are left out."""
+    store = MagicMock()
+    store.list_pages = MagicMock(return_value=["thin-page", "clean-page"])
+
+    thin_page = MagicMock()
+    thin_page.lint_warnings = []
+    thin_page.orphan = False
+    thin_page.content = "Short page."
+    thin_page.sources = []
+    thin_page.content_health_issues = [
+        {"type": "thin_section", "location": "Origins",
+         "description": "Section '## Origins' has only 12 words (min 50)"},
+        {"type": "duplicate_section", "location": "History",
+         "description": "Section 'History' appears 2 times"},
+        {"type": "thin_section", "location": "Legacy",
+         "description": "Section '## Legacy' has only 30 words (min 50)"},
+    ]
+    clean_page = MagicMock()
+    clean_page.lint_warnings = []
+    clean_page.orphan = False
+    clean_page.content = "Clean page."
+    clean_page.sources = []
+    clean_page.content_health_issues = []
+    store.read_page = MagicMock(side_effect=lambda s: thin_page if s == "thin-page" else clean_page)
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_get_lint_report(ctx)
+
+    assert result["thin_section_pages"] == [{
+        "slug": "thin-page",
+        "count": 2,
+        "sections": [
+            "Section '## Origins' has only 12 words (min 50)",
+            "Section '## Legacy' has only 30 words (min 50)",
+        ],
+    }]
+
+
 # ---------------------------------------------------------------------------
 # tool_find_broken_wikilinks — page with no content branch (line 403)
 # ---------------------------------------------------------------------------

@@ -103,3 +103,41 @@ def test_content_issue_dataclass_fields():
     assert issue.severity == "critical"
     assert issue.location == "## Intro"
     assert issue.description == "Appears 3 times"
+
+
+# ── Parent headings, reference sections, report-only types ───────────────────
+
+_PARENT = (
+    "# AI\n\n## Early AI Programs\n\n"
+    "### Logic Theorist\n" + " ".join(["word"] * 30) + "\n\n"
+    "### ELIZA\n" + " ".join(["word"] * 30) + "\n"
+)
+
+
+def test_heading_with_only_subsections_is_not_empty():
+    types = {(i.type, i.location) for i in scan_page("ai", _PARENT)}
+    assert ("empty_section", "Early AI Programs") not in types
+
+
+def test_parent_length_includes_subsections():
+    # 0 own words + 60 in sub-sections: the parent is not thin, each child (30) is.
+    thin = [i.location for i in scan_page("ai", _PARENT) if i.type == "thin_section"]
+    assert "Early AI Programs" not in thin
+    assert thin == ["Logic Theorist", "ELIZA"]
+
+
+def test_heading_with_no_text_and_no_subsections_is_still_empty():
+    content = "# AI\n\n## Key Figures Added\n\n## Next\n" + " ".join(["word"] * 60) + "\n"
+    assert [i.location for i in scan_page("ai", content) if i.type == "empty_section"] == ["Key Figures Added"]
+
+
+def test_reference_sections_are_never_thin():
+    content = "# AI\n\n## See Also\n- [[turing]]\n\n## Sources\n- book\n\n## Notes\nShort.\n"
+    assert not [i for i in scan_page("ai", content) if i.type == "thin_section"]
+
+
+def test_resolvable_issues_drops_report_only_types():
+    from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES, resolvable_issues
+    issues = [{"type": "thin_section"}, {"type": "duplicate_section"}, {"type": "empty_section"}]
+    assert REPORT_ONLY_ISSUE_TYPES == {"thin_section"}
+    assert resolvable_issues(issues) == issues[1:]

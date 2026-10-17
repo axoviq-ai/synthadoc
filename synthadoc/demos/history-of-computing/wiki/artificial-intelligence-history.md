@@ -37,6 +37,10 @@ John McCarthy, Marvin Minsky, Claude Shannon, and Nathaniel Rochester organised 
 
 Progress stalled as the limits of early approaches became clear. The Lighthill Report (UK, 1973) criticised AI research as failing to deliver on its promises. Funding dried up in the US and UK. The core problem was combinatorial explosion: search-based methods that worked on toy problems failed catastrophically at real-world scale.
 
+The first AI winter followed a period of unmet expectations. Despite early optimism after Dartmouth and initial successes with Logic Theorist and GPS, AI systems proved limited in handling real-world complexity. Funding agencies (particularly ARPA and UK research councils) reduced investments as practical applications failed to materialize at scale. The field experienced reduced research activity and publication rates, though key research continued in select laboratories. This period highlighted the gap between AI's theoretical promises and the computational resources needed to achieve them.
+
+By the early 1970s, the gap between AI researchers' predictions and their systems' performance was impossible to ignore. The 1973 Lighthill Report, commissioned by the British Science Research Council, reviewed AI research and concluded it had failed to deliver general-purpose intelligent systems, triggering sharp UK funding cuts. DARPA similarly scaled back funding for speech recognition and machine translation. This period of reduced funding and dampened expectations is known as the first AI winter.
+
 ## Expert Systems and Second AI Winter (1980s)
 
 The 1980s saw a commercial revival through expert systems — rule-based programs encoding domain expert knowledge. Companies built billion-dollar businesses on systems like XCON (Digital Equipment Corp). But expert systems were brittle, expensive to maintain, and couldn't learn. A second AI winter followed in the late 1980s as their limitations became apparent.
@@ -64,6 +68,12 @@ The field experienced significant setbacks known as "AI winters" — periods of 
 ## Deep Learning Breakthrough
 Modern AI resurgence began around the 2010s with deep learning — neural networks with multiple layers capable of learning hierarchical representations from raw data. Enabled by increased computational power (GPUs) and massive datasets, deep learning achieved breakthroughs in image recognition, natural language processing, and game playing, fundamentally transforming the field's capabilities and applications.
 
+In 2012, **AlexNet**, a convolutional neural network built by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto, won the ImageNet Large Scale Visual Recognition Challenge by such a wide margin that it shocked the computer vision community. Its success rested on GPU training, large labelled datasets, and architectural innovations such as the ReLU activation function and dropout regularisation.
+
+Deep learning rapidly achieved state of the art in speech recognition, machine translation, and game playing. In 2016, DeepMind's **AlphaGo** defeated the world Go champion — a milestone many researchers had expected to be decades away.
+
+Large language models built on the transformer architecture (introduced 2017) brought AI capabilities into text generation, question answering, and code completion at scales that returned [[alan-turing]]'s 1950 question to the centre of public discourse.
+
 ## Early Programs and Limitations
 
 One of the most notable early AI programs was eliza (1964-1966), created by Joseph Weizenbaum at MIT. ELIZA simulated conversation using pattern-matching techniques, particularly mimicking a Rogerian psychotherapist. Despite its simplicity, ELIZA demonstrated both the appeal of machine intelligence and its significant limitations—users often attributed understanding to the program that did not actually exist.
@@ -88,6 +98,12 @@ After the AI winters, the field experienced a revival through statistical and ma
 
 Following the Dartmouth Conference, early AI research produced notable programs such as joseph-weizenbaum's ELIZA (1966), a natural language processing program that simulated a Rogerian psychotherapist. Despite initial optimism, the field encountered its first "AI winter" in the 1970s, when funding and interest declined due to unmet expectations and technical limitations.
 
+Following the dartmouth-conference, early AI research produced several landmark programs that demonstrated the potential — and limits — of machine intelligence. Allen Newell and Herbert Simon developed the **Logic Theorist** (1955), often considered the first AI program, which proved mathematical theorems from Bertrand Russell and Alfred North Whitehead's *Principia Mathematica*. Their follow-up, the **General Problem Solver** (GPS), extended this approach by attempting to model human problem-solving as search through a space of possible states.
+
+**ELIZA** (1964–1966), created by Joseph Weizenbaum at MIT, was one of the most famous early chatbots. It simulated a Rogerian psychotherapist by rephrasing user inputs as questions, and its surprisingly human-like responses led some users to attribute genuine understanding to the program — a phenomenon Weizenbaum himself found troubling and used to critique the overreach of AI claims.
+
+These early successes fueled waves of optimism that the field would quickly achieve general machine intelligence. When that promise failed to materialize, funding dried up and the field entered the **first AI winter** in the 1970s, as government agencies and researchers grew disillusioned with the gap between ambitious predictions and practical results. This cycle of optimism, disillusionment, and methodological recalibration — from symbolic search to expert systems, statistical methods, and ultimately deep learning — has recurred throughout the history of [[artificial-intelligence-history]] and continues to shape the field today.
+
 ## Early AI Programs
 
 ### Logic Theorist (1956)
@@ -98,10 +114,6 @@ Also created by Newell and Simon in 1957, GPS was designed to mimic human proble
 
 ### ELIZA (1966)
 Joseph Weizenbaum at MIT created ELIZA, a natural language processing program that simulated conversation through pattern matching. Originally designed as a therapeutic chatbot mimicking a Rogerian psychotherapist, ELIZA demonstrated early capabilities in human-computer dialogue and became a landmark in natural language AI research.
-
-## First AI Winter (1974–1980)
-
-The first AI winter followed a period of unmet expectations. Despite early optimism after Dartmouth and initial successes with Logic Theorist and GPS, AI systems proved limited in handling real-world complexity. Funding agencies (particularly ARPA and UK research councils) reduced investments as practical applications failed to materialize at scale. The field experienced reduced research activity and publication rates, though key research continued in select laboratories. This period highlighted the gap between AI's theoretical promises and the computational resources needed to achieve them.
 
 ## Key Figures Added
 
@@ -124,14 +136,6 @@ Following the Dartmouth Conference, researchers pursued symbolic AI grounded in 
 In 1966, Joseph Weizenbaum created eliza, a natural language program simulating a Rogerian psychotherapist. Though deliberately shallow — relying on pattern matching and scripted responses — ELIZA revealed strong human tendencies to anthropomorphize interaction, raising enduring questions about operational definitions of intelligence and the ethics of deceptive interface design.
 
 These early successes were followed by growing skepticism as promises outpaced capabilities, culminating in the first ai-winter — a period of reduced funding and interest beginning in the early 1970s, triggered by critiques like Weizenbaum’s *Computer Power and Human Reason* (1976) and reports highlighting limitations in scaling symbolic methods.
-
-## Early AI Programs and the First AI Winter
-
-Following the dartmouth-conference, early AI research produced several landmark programs that demonstrated the potential — and limits — of machine intelligence. Allen Newell and Herbert Simon developed the **Logic Theorist** (1955), often considered the first AI program, which proved mathematical theorems from Bertrand Russell and Alfred North Whitehead's *Principia Mathematica*. Their follow-up, the **General Problem Solver** (GPS), extended this approach by attempting to model human problem-solving as search through a space of possible states.
-
-**ELIZA** (1964–1966), created by Joseph Weizenbaum at MIT, was one of the most famous early chatbots. It simulated a Rogerian psychotherapist by rephrasing user inputs as questions, and its surprisingly human-like responses led some users to attribute genuine understanding to the program — a phenomenon Weizenbaum himself found troubling and used to critique the overreach of AI claims.
-
-These early successes fueled waves of optimism that the field would quickly achieve general machine intelligence. When that promise failed to materialize, funding dried up and the field entered the **first AI winter** in the 1970s, as government agencies and researchers grew disillusioned with the gap between ambitious predictions and practical results. This cycle of optimism, disillusionment, and methodological recalibration — from symbolic search to expert systems, statistical methods, and ultimately deep learning — has recurred throughout the history of [[artificial-intelligence-history]] and continues to shape the field today.
 
 ## Early NLP and Symbolic Systems
 
@@ -177,6 +181,10 @@ Also by allen-newell and herbert-simon, the General Problem Solver (GPS) general
 
 Created by joseph-weizenbaum at mit, ELIZA was an early natural-language program that simulated a Rogerian psychotherapist. By simple pattern matching and substitution, ELIZA produced surprisingly convincing dialogue, leading Weizenbaum himself to warn about the dangers of confusing apparent intelligence with genuine understanding — a tension that recurs throughout AI history.
 
+joseph-weizenbaum created ELIZA at MIT between 1964 and 1966, one of the earliest programs to attempt natural language processing. ELIZA used simple pattern-matching and substitution to simulate a Rogerian psychotherapist, often producing surprisingly human-seeming responses. Despite Weizenbaum's intent to demonstrate the superficiality of machine understanding, many users — including some of his colleagues — attributed genuine empathy to the program, raising early ethical questions about human attachment to computational systems.
+
+joseph-weizenbaum at mit created ELIZA, one of the earliest programs to attempt natural language processing. ELIZA used simple pattern-matching and substitution to simulate a Rogerian psychotherapist, often producing strikingly human-seeming responses despite having no understanding of the conversation. Weizenbaum was reportedly disturbed by how deeply users confided in the program, raising early ethical questions about anthropomorphism in computing.
+
 ## The First AI Winter (mid-1970s–early 1980s)
 
 Following the collapse of the perceptron-based connectionist program (Minsky and Papert, 1969), a 1973 Lighthill Report commissioned by the British government was highly critical of AI's progress, and DARPA cut back funding after years of unmet expectations. This convergence of academic critique, loss of institutional support, and a sense that AI had overpromised produced the **first AI winter** — a period of reduced funding and waning interest in the field, in which research continued in less visible corners but public optimism collapsed. The pattern of optimism, disappointment, and retrenchment would repeat in later decades as well.
@@ -187,10 +195,6 @@ Following the collapse of the perceptron-based connectionist program (Minsky and
 
 allen-newell and herbert-simon developed the Logic Theorist in 1955, often cited as the first AI program, followed by the General Problem Solver (GPS). Their work demonstrated that computers could perform reasoning tasks previously thought to require human intelligence, and it helped build momentum toward the dartmouth-conference.
 
-### ELIZA (1964–1966)
-
-joseph-weizenbaum created ELIZA at MIT between 1964 and 1966, one of the earliest programs to attempt natural language processing. ELIZA used simple pattern-matching and substitution to simulate a Rogerian psychotherapist, often producing surprisingly human-seeming responses. Despite Weizenbaum's intent to demonstrate the superficiality of machine understanding, many users — including some of his colleagues — attributed genuine empathy to the program, raising early ethical questions about human attachment to computational systems.
-
 ## First AI Winter (mid-1970s–early 1980s)
 
 Following the collapse of the Lighthill Report (1973) and funding cuts from DARPA and the British government, the field entered its first "AI winter." Early promises of machine translation and general problem-solving had fallen short of expectations, and the gap between optimistic projections and delivered capabilities led to widespread disillusionment. The pattern — ambitious claims, limited results, and retrenchment — became a recurring cycle in the field's history.
@@ -200,9 +204,6 @@ Following the collapse of the Lighthill Report (1973) and funding cuts from DARP
 The trajectory from symbolic, rule-based systems of the early decades toward data-driven approaches laid the groundwork for the deep learning revolution. Connectionist ideas, initially marginalized during the symbolic AI era, were revived through advances in neural network training algorithms (backpropagation), increases in computational power, and the availability of large datasets. This shift ultimately enabled breakthroughs in image recognition, natural language processing, and game-playing systems that defined contemporary AI.
 
 ## Early NLP and the First AI Programs
-
-### ELIZA (1964–1966)
-joseph-weizenbaum at mit created ELIZA, one of the earliest programs to attempt natural language processing. ELIZA used simple pattern-matching and substitution to simulate a Rogerian psychotherapist, often producing strikingly human-seeming responses despite having no understanding of the conversation. Weizenbaum was reportedly disturbed by how deeply users confided in the program, raising early ethical questions about anthropomorphism in computing.
 
 ### Logic Theorist and the Newell–Simon Programme
 allen-newell and herbert-simon developed the Logic Theorist (1956) and later the General Problem Solver (1957), demonstrating that machine reasoning could, in principle, emulate human problem-solving strategies. Their work ran in parallel with the dartmouth-conference effort and helped establish the cognitive science strand of [[artificial-intelligence-history]].
@@ -234,10 +235,6 @@ Andrew Ng has played a pivotal role in making artificial intelligence and machin
 
 In 1966, [[joseph-weizenbaum]] at MIT created ELIZA, a program that simulated a Rogerian psychotherapist by reflecting user statements back as questions. ELIZA operated by pattern matching and template substitution, with no genuine understanding of language semantics — yet users attributed understanding and empathy to it, a phenomenon Weizenbaum found troubling. His later book *Computer Power and Human Reason* (1976) argued against attributing understanding to machines. ELIZA demonstrated both human susceptibility to the *appearance* of intelligence and the limits of surface-level language processing.
 
-## First AI Winter (1974–1980)
-
-By the early 1970s, the gap between AI researchers' predictions and their systems' performance was impossible to ignore. The 1973 Lighthill Report, commissioned by the British Science Research Council, reviewed AI research and concluded it had failed to deliver general-purpose intelligent systems, triggering sharp UK funding cuts. DARPA similarly scaled back funding for speech recognition and machine translation. This period of reduced funding and dampened expectations is known as the first AI winter.
-
 ## Expert Systems and the Second AI Winter (1980s)
 
 Expert systems revived commercial AI in the 1980s by encoding domain knowledge as large rule sets. XCON, developed for Digital Equipment Corporation by John McDermott beginning in 1978, configured VAX computer orders using thousands of rules and reportedly saved DEC millions of dollars annually by the mid-1980s. A commercial AI industry grew around LISP machines (sold by Symbolics and LISP Machines Inc.), and Japan's Fifth Generation Computer project (announced 1982) aimed at massively parallel AI hardware.
@@ -247,11 +244,3 @@ That boom collapsed in the late 1980s: LISP machine hardware was displaced by co
 ## Neural Networks and the Statistical Turn
 
 The intellectual groundwork for the neural network revival was laid in 1986 when David Rumelhart, Geoffrey Hinton, and Ronald Williams published a clear exposition of the **backpropagation** algorithm for training multi-layer neural networks. The paper showed networks with hidden layers could learn internal representations that single-layer perceptrons could not. Through the 1990s and 2000s, the field shifted from symbolic AI toward statistical machine learning — support vector machines (Vladimir Vapnik), random forests, and kernel methods — driven by pattern recognition over large labelled datasets.
-
-## Deep Learning Breakthrough
-
-In 2012, **AlexNet**, a convolutional neural network built by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto, won the ImageNet Large Scale Visual Recognition Challenge by such a wide margin that it shocked the computer vision community. Its success rested on GPU training, large labelled datasets, and architectural innovations such as the ReLU activation function and dropout regularisation.
-
-Deep learning rapidly achieved state of the art in speech recognition, machine translation, and game playing. In 2016, DeepMind's **AlphaGo** defeated the world Go champion — a milestone many researchers had expected to be decades away.
-
-Large language models built on the transformer architecture (introduced 2017) brought AI capabilities into text generation, question answering, and code completion at scales that returned [[alan-turing]]'s 1950 question to the centre of public discourse.

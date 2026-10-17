@@ -845,3 +845,98 @@ async def test_parse_retries_and_exhaustion_are_logged(caplog):
     stopped = [r for r in caplog.records if "workflow stopped" in r.getMessage()]
     assert len(retries) == 2 and "minimax/MiniMax-M3" in retries[0].getMessage()
     assert len(stopped) == 1 and stopped[0].levelno == _logging.ERROR
+
+
+# ── Replies truncated at max_tokens ───────────────────────────────────────────
+
+_DEGENERATE = "<br>\n\n\n" * 2000   # Claude Haiku 5.5 content-health run, 2026-10-16
+
+
+async def _run_loop(provider, tool_fns=None, max_tokens=16384):
+    ctx, events = _make_ctx()
+    results = [e async for e in run_tool_call_loop(
+        system_prompt="sys", initial_message="go", tool_fns=tool_fns or {},
+        provider=provider, ctx=ctx, max_tokens=max_tokens,
+    )]
+    return results, events
+
+
+async def test_truncated_degenerate_reply_is_retried_and_never_shown():
+    """A max_tokens reply with no tool call is discarded and retried; the retry's answer is final."""
+    replies = [
+        CompletionResponse(text=_DEGENERATE, input_tokens=10, output_tokens=16384, truncated=True),
+        CompletionResponse(text="All done.", input_tokens=10, output_tokens=5),
+    ]
+    provider = MagicMock()
+    provider.complete = AsyncMock(side_effect=replies)
+
+    results, events = await _run_loop(provider)
+
+    finals = [e["data"]["text"] for e in results if e["event"] == "final_text"]
+    assert finals == ["All done."]
+    assert all("<br>" not in e["data"]["text"] for e in results if e["event"] == "token")
+    # The junk is not echoed back to the model; a short placeholder and a nudge are.
+    retry_msgs = provider.complete.call_args_list[1].args[0]
+    assert "<br>" not in "".join(m.content for m in retry_msgs)
+    assert "cut off at the output limit (16384 tokens)" in retry_msgs[-1].content
+    assert any(e["data"].get("tool") == "_parse_retry" for e in events)
+
+
+async def test_truncated_reply_after_retries_shows_token_limit_error():
+    """When every attempt is truncated the user gets the workflow_max_tokens hint, not the junk."""
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=_DEGENERATE, input_tokens=10, output_tokens=4096, truncated=True))
+
+    results, _ = await _run_loop(provider, max_tokens=4096)
+
+    finals = [e["data"]["text"] for e in results if e["event"] == "final_text"]
+    assert len(finals) == 1
+    assert "<br>" not in finals[0]
+    assert "workflow_max_tokens = 8192" in finals[0]
+    assert provider.complete.call_count == 3   # first attempt + 2 retries
+
+
+async def test_truncated_reply_with_complete_tool_call_still_runs_the_tool():
+    """Truncation after a complete JSON tool call (trailing junk) does not block the call."""
+    tool = AsyncMock(return_value={"ok": True})
+    provider = MagicMock()
+    provider.complete = AsyncMock(side_effect=[
+        CompletionResponse(text='{"tool_call": {"name": "my_tool", "input": {}}}\n<br>\n<br>',
+                           input_tokens=10, output_tokens=16384, truncated=True),
+        CompletionResponse(text="Finished.", input_tokens=10, output_tokens=5),
+    ])
+
+    results, _ = await _run_loop(provider, tool_fns={"my_tool": tool})
+
+    tool.assert_awaited_once()
+    assert [e["data"]["text"] for e in results if e["event"] == "final_text"] == ["Finished."]
+
+
+async def test_untruncated_plain_text_is_final_on_mock_providers():
+    """MagicMock responses (no real truncated attr) keep the plain-text-is-final behaviour."""
+    provider = MagicMock()
+    resp = MagicMock(text="Summary.", output_tokens=5)
+    provider.complete = AsyncMock(return_value=resp)
+
+    results, _ = await _run_loop(provider)
+
+    assert [e["data"]["text"] for e in results if e["event"] == "final_text"] == ["Summary."]
+
+
+@pytest.mark.parametrize("text,expect_hint", [
+    ("Should I go ahead with the remaining six pages?", True),
+    ("Content Health Resolver — Complete.", False),
+])
+async def test_question_ending_names_rerun_hint_so_yes_routes_back(text, expect_hint):
+    """A plain-text question ends the workflow; name the rerun hint so 'yes' re-runs it."""
+    ctx, _ = _make_ctx()
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(text=text, input_tokens=1, output_tokens=1))
+    results = [e async for e in run_tool_call_loop(
+        system_prompt="sys", initial_message="go", tool_fns={}, provider=provider, ctx=ctx,
+        rerun_hint="Run content health resolver",
+    )]
+    final = [e["data"]["text"] for e in results if e["event"] == "final_text"][0]
+    assert final.startswith(text)
+    assert ('"Run content health resolver"** hint chip to continue' in final) is expect_hint
