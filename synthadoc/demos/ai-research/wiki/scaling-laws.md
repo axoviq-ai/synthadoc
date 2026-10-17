@@ -88,8 +88,6 @@ Chinchilla itself trained a 70B-parameter model on 1.4T tokens, matching the com
 
 The Chinchilla finding became a central reference point for subsequent model training decisions, shifting the field's emphasis from training ever-larger models on fixed datasets toward balancing parameter count with data volume.
 
-## Chinchilla (Hoffmann et al., 2022)
-
 DeepMind's *Training Compute-Optimal Large Language Models* paper (Hoffmann, Borgeaud, Mensch, et al., 2022) revised the Kaplan et al. scaling prescription. By running a rigorous sweep over model sizes from 70M to 16B parameters trained on 5B to 500B tokens, the authors found that **N and D should scale roughly equally** for compute-optimal training — approximately 20 tokens per parameter.
 
 Key implications:

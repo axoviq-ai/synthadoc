@@ -36,6 +36,10 @@ Steve Wozniak designed the Apple II around the MOS 6502 processor. It was the fi
 
 IBM's decision to build the PC from off-the-shelf parts and publish the technical specifications was the most consequential business decision of the era. It licensed the operating system from Microsoft (MS-DOS) and the CPU from Intel. Within two years, dozens of manufacturers cloned the platform legally, creating a commodity hardware market. The architecture — x86 CPU, BIOS, DOS — became the default standard and still underlies most Windows machines today.
 
+IBM entered the personal computer market in August 1981 with the IBM Personal Computer. Rather than developing proprietary technology, IBM built the PC from commercially available components — the Intel 8088 processor, memory chips, and peripherals from multiple suppliers — and published the full technical specifications. This open architecture allowed other manufacturers to build IBM-compatible machines legally. ^[ceruzzi-history-modern-computing.txt:37-37]
+
+IBM licensed its operating system from [[microsoft]], which had acquired it (as QDOS) from Seattle Computer Products and adapted it as MS-DOS. The decision to license rather than own the operating system became one of the most consequential business errors in computing history: as dozens of clone manufacturers entered the market, IBM rapidly lost its ability to control the platform. The x86 architecture, running DOS and later Windows, became the enduring industry standard. ^[ceruzzi-history-modern-computing.txt:39-39]
+
 ## Graphical User Interface
 
 Xerox PARC developed the first practical GUI with the Alto (1973), but it was Apple's Macintosh (1984) that brought windows, icons, and a mouse to a mainstream audience. Microsoft followed with Windows 1.0 (1985). The GUI made [[programming-languages-overview]] tools accessible to users who would never write code.
@@ -56,6 +60,8 @@ On 16 December 1947, John Bardeen, Walter Brattain, and William Shockley at Bell
 
 In 1959, two engineers independently solved the problem of interconnecting many transistors on a single piece of semiconductor. Jack Kilby of Texas Instruments demonstrated the germanium IC, while Robert Noyce of Fairchild Semiconductor built the first silicon IC using a planar process. The integrated circuit collapsed entire circuits onto a single chip, enabling further miniaturisation and a dramatic drop in cost per logic gate.
 
+The next leap in miniaturisation came with the integrated circuit (IC), independently invented in 1959 by jack-kilby at texas-instruments and robert-noyce at fairchild-semiconductor. By fabricating multiple transistors on a single piece of semiconductor material, the IC made it possible to build complex circuits reliably and at scale.
+
 ### The Microprocessor (1971)
 
 The microprocessor — a full CPU on one IC — arrived in 1971 with Intel's 4004, a 4-bit chip designed for a Japanese calculator. By putting the arithmetic and control logic of a computer onto a single sliver of silicon, the microprocessor made it economically possible to build programmable machines for homes, schools, and small businesses rather than only for governments and large corporations.
@@ -72,10 +78,6 @@ The personal computer revolution rested on roughly two decades of hardware progr
 
 Early electronic computers such as [[eniac]] used thousands of vacuum tubes, which were bulky, power-hungry, and prone to failure. On 16 December 1947, john-bardeen, walter-brattain, and william-shockley at bell-labs demonstrated the first point-contact transistor, a semiconductor device that could amplify and switch signals while consuming far less power. The transistor rapidly displaced vacuum tubes in computer design.
 
-### The Integrated Circuit (1959)
-
-The next leap in miniaturisation came with the integrated circuit (IC), independently invented in 1959 by jack-kilby at texas-instruments and robert-noyce at fairchild-semiconductor. By fabricating multiple transistors on a single piece of semiconductor material, the IC made it possible to build complex circuits reliably and at scale.
-
 ### Moore's Law (1965)
 
 In 1965, gordon-moore, then at Fairchild Semiconductor, observed that the number of components per integrated circuit was doubling roughly every year (later revised to every two years). This trend, known as [[moore-s-law]], became the semiconductor industry's self-fulfilling roadmap for decades.
@@ -91,12 +93,6 @@ Transistor-based mainframes such as the ibm-7090 (introduced in 1959) proved tha
 ## VisiCalc and the First Killer App (1979)
 
 VisiCalc, the first electronic spreadsheet, was written by [[john-bardeen|Dan Bricklin]] and Bob Frankston for the [[apple-ii|Apple II]] and released in 1979. VisiCalc allowed users to perform financial calculations interactively, updating a grid of values automatically when any cell changed. It became the first example of what would be called a **killer application** — software so useful that people purchased hardware specifically to run it. VisiCalc drove Apple II sales and established the personal computer as a legitimate business tool, not merely a hobbyist curiosity. ^[ceruzzi-history-modern-computing.txt:33-33]
-
-## IBM PC and the Open Architecture (1981)
-
-IBM entered the personal computer market in August 1981 with the IBM Personal Computer. Rather than developing proprietary technology, IBM built the PC from commercially available components — the Intel 8088 processor, memory chips, and peripherals from multiple suppliers — and published the full technical specifications. This open architecture allowed other manufacturers to build IBM-compatible machines legally. ^[ceruzzi-history-modern-computing.txt:37-37]
-
-IBM licensed its operating system from [[microsoft]], which had acquired it (as QDOS) from Seattle Computer Products and adapted it as MS-DOS. The decision to license rather than own the operating system became one of the most consequential business errors in computing history: as dozens of clone manufacturers entered the market, IBM rapidly lost its ability to control the platform. The x86 architecture, running DOS and later Windows, became the enduring industry standard. ^[ceruzzi-history-modern-computing.txt:39-39]
 
 ## Macintosh and the Graphical User Interface (1984)
 

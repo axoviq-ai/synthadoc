@@ -44,9 +44,17 @@ The [[von-neumann-architecture]] that underlies modern computers shares conceptu
 
 See also: [[internet-origins]] for later developments his theoretical work enabled.
 
+Turing's legacy includes the ACM Turing Award, computing's highest honor, named in his honor. Additionally, his portrait appeared on the British £50 note, recognizing his enduring impact on computer science.
+
+The ACM Turing Award, established in 1966, is named in Turing's honour and is considered the highest distinction in computer science. In 2009, the British Prime Minister issued a formal apology for his treatment; in 2013 he received a posthumous royal pardon; and his portrait has appeared on the British £50 note since 2021. ^[turing-wikipedia-cc0.txt:45-45]
+
 ## Bletchley Park and Cryptanalysis
 
 During World War II, Turing worked at bletchley-park for the Government Code and Cypher School (GC&CS), where he became a central figure in breaking the German Enigma cipher. He designed the **Bombé** — an electromechanical device used to decipher encrypted German communications. His cryptanalytic work is estimated to have shortened the war in Europe by at least two years and saved over fourteen million lives.
+
+During World War II, Turing worked at Bletchley Park, the British signals intelligence headquarters, where he made critical contributions to breaking German Enigma machines. He designed the electromechanical BOMBE machine, which was instrumental in decrypting Enigma communications and significantly shortened the war.
+
+In 1939, Turing was recruited to bletchley-park (then known as Government Code and Cypher School) where he designed the Bombé machine—a pioneering cryptographic device used to decrypt the German enigma cipher. Historians estimate that this achievement shortened WWII by at least two years and saved over fourteen million lives.
 
 ## Post-War Work and Manchester University
 
@@ -58,6 +66,8 @@ Turing's legacy extends across multiple fields: theoretical computer science, cr
 
 ## Academic Background
 Turing studied mathematics at kings-college-cambridge, where he was influenced by David Hilbert's work on computability and the Entscheidungsproblem.
+
+Turing studied at King's College Cambridge, where his mathematical training shaped his approach to the [[alan-turing|Turing machine]] and his later work on computability in response to David Hilbert's Entscheidungsproblem (the question of whether every mathematical statement is decidable).
 
 ## Cryptanalysis Work
 At bletchley-park, working for the Government Code and Cypher School (GC&CS), Turing designed the Bombé machine to break the German Enigma cipher. This work built on the pioneering Polish cryptanalysis of Marian Rejewski, who had developed the earliest bomba machine before the war.
@@ -85,6 +95,12 @@ His persecution became a symbol of the treatment of LGBTQ+ individuals in academ
 
 Turing was born in 1912 in London, England. He attended Sherborne School before studying at King's College, Cambridge, where he distinguished himself in mathematics.
 
+Alan Mathison Turing was born on 23 June 1912 in London, England, and died on 7 June 1954 in Wilmslow, Cheshire, England. His childhood was marked by difficulties in conventional schooling, where he was considered an 'average to good' pupil but followed his own ideas. Despite struggling with handwriting and English, he won mathematics prizes and independently studied Einstein's relativity and Arthur Eddington's quantum mechanics, foreshadowing his later foundational contributions to theoretical computer science and artificial intelligence.
+
+His geniu drove him in his own directions rather than those required by teachers, demonstrating the independent thinking that would characterize his later groundbreaking work in computing theory.
+
+Alan Turing was born in London in 1912. He studied mathematics at [[kings-college-cambridge]] (King's College, Cambridge), graduating with first-class honours in 1934, and was elected a Fellow of King's College in 1935. ^[turing-wikipedia-cc0.txt:3-3]
+
 ## World War II Contributions
 
 During World War II, Turing played a critical role at Bletchley Park, designing the Bombes—a mechanical device used to decrypt German Enigma communications. His work was pivotal in Allied intelligence efforts.
@@ -97,13 +113,15 @@ After the war, Turing continued advancing early computer design, contributing to
 
 Turing was persecuted for his homosexuality, which led to his tragic death in 1954 in Wilmslow, England. Despite these hardships, his contributions laid the foundation for modern computing and artificial intelligence.
 
-## Bletchley Park and Cryptanalysis
-
-During World War II, Turing worked at Bletchley Park, the British signals intelligence headquarters, where he made critical contributions to breaking German Enigma machines. He designed the electromechanical BOMBE machine, which was instrumental in decrypting Enigma communications and significantly shortened the war.
-
 ## The Turing Test
 
 In 1950, Turing proposed the "imitation game" in his paper "Computing Machinery and Intelligence," which became known as the **Turing test** — a foundational concept in artificial intelligence that asks whether a machine can exhibit intelligent behavior indistinguishable from a human.
+
+In 1950, Turing proposed the concept now known as the **Turing Test** in his paper "Computing Machinery and Intelligence." The test asks whether a machine can engage in natural conversation such that a human interrogator cannot distinguish it from another human. This foundational concept remains a central reference point in artificial intelligence research and the acm-turing-award (named in his honor) recognizes major contributions to the field.[^source][
+
+After the war, Turing pioneered the concept of machine intelligence. In his 1950 paper "Computing Machinery and Intelligence," he introduced what became known as the **Turing Test** — a criterion for determining whether a machine can exhibit intelligent behavior indistinguishable from a human. This paper laid foundational work in the field of artificial intelligence.
+
+In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now known as the Turing Test — a measure of a machine's ability to exhibit intelligent behavior indistinguishable from that of a human. This idea remains a foundational concept in artificial intelligence.
 
 ## Stored-Program Computer Concept
 
@@ -123,12 +141,6 @@ Turing was awarded an OBE in 1946 for his crucial wartime work at bletchley-park
 
 ### Later Work
 After the war, Turing continued his work on early computers at the National Physical Laboratory and Manchester University. He also conducted pioneering work in mathematical biology, particularly in the field of biological morphogenesis — the process by which organisms develop their form and structure.
-
-## Early Life and Education
-
-Alan Mathison Turing was born on 23 June 1912 in London, England, and died on 7 June 1954 in Wilmslow, Cheshire, England. His childhood was marked by difficulties in conventional schooling, where he was considered an 'average to good' pupil but followed his own ideas. Despite struggling with handwriting and English, he won mathematics prizes and independently studied Einstein's relativity and Arthur Eddington's quantum mechanics, foreshadowing his later foundational contributions to theoretical computer science and artificial intelligence.
-
-His geniu drove him in his own directions rather than those required by teachers, demonstrating the independent thinking that would characterize his later groundbreaking work in computing theory.
 
 ## Early Life and Education
 
@@ -157,9 +169,13 @@ After the war, Turing contributed to the development of one of the first stored-
 ## Legacy: ACM Turing Award
 Turing's legacy in computing is honors through the ACM Turing Award, established in 1971 as computing's highest honor, recognizing contributions of lasting importance to the field.
 
+Turing's legacy continues through the **ACM Turing Award**, computing's highest honour, named in his recognition. This award represents his foundational impact on the field of computer science.
+
 ## World War II Cryptanalysis
 
 During World War II, Turing became one of the most important figures at Bletchley Park, working for the Government Code and Cypher School (GC CS). He designed the Bomb e machine, an electromechanical device used to crack the German Enigma cipher, significantly speeding up the decryption process. This work build on earlier pioneering contributions from Polish cryptanalysts Marian Rejewski, Jerzy Różzycki, and Henryk Zygalski, who had developed initial cryptanalytic techniques against Enigma before the war.
+
+During World War II, Turing became pivotal in breaking the German Enigma cipher at bletchley-park working for the Government Code and Cypher School (GC&CS). He designed the electromechanical Bombe machine, which drew on the earlier work of Polish cryptanalyst Marian Rejewski. The Bombe's purpose was to systematically test possible Enigma rotor settings and identify the daily encryption key used by the German military.
 
 ## Universal Turing Machine and Stored-Program Computing
 
@@ -169,14 +185,17 @@ Turing's conceptual work extended beyond the simple Turing machine to the idea o
 
 In addition to defining computability through the Turing machine, Turing proved that certain fundamental problems are undecidable — meaning no general algorithm can determine the answer. The halting problem, which asks whether a given program will eventually halt or run forever, cannot be solved by any Turing machine, establishing inherent limits on what computers can programmatically determine.
 
+Beyond introducing the Turing machine model, Turing proved the existence of undecidable problems — questions that cannot be answered by any algorithm. The most famous example is the **halting problem**: no general algorithm can determine whether an arbitrary program will eventually halt or run forever. This result has profound implications for the limits of computation and formal verification.
+
+In 1936, building on David Hilbert's Entscheidungsproblem, Turing proved that certain problems are algorithmically unsolvable — most famously the **halting problem**: no general algorithm can determine whether an arbitrary program will halt or run forever. This established fundamental limits of computation.
+
+In his 1936 paper "On Computable Numbers, with an Application to the Entscheidungsproblem," [[alan-turing]] proved that there is no general algorithmic method for determining whether a given Turing machine will eventually halt (the **halting problem**). This negative result — a response to david-hilbert's Entscheidungsproblem — demonstrated that certain mathematical questions are fundamentally undecidable, establishing a key boundary of computation.
+
 ## Bletchley Park and Enigma
 During World War II, Turing worked at bletchley-park (Bletchley Park, Buckinghamshire) for the Government Code and Cypher School (GC&CS). His most significant contribution was breaking the German Enigma cipher, a feat that shortened the war by an estimated two years and saved over fourteen million lives.[^source][
 
 ## The Bombe Machine
 Turing designed the **Bombe**, an electromechanical device used to decipher Enigma-encrypted messages. The Bombemachine systematically tested combinations of rotor settings on the Enigma machine, using logical deductions to eliminate impossible configurations and identify likely correct settings. This mechanical approach dramatically accelerated the codebreaking process.[^source][
-
-## The Turing Test
-In 1950, Turing proposed the concept now known as the **Turing Test** in his paper "Computing Machinery and Intelligence." The test asks whether a machine can engage in natural conversation such that a human interrogator cannot distinguish it from another human. This foundational concept remains a central reference point in artificial intelligence research and the acm-turing-award (named in his honor) recognizes major contributions to the field.[^source][
 
 ## Manchester Baby and Early Computers
 After the war, Turing worked at the University of Manchester where he contributed to the development of the **Manchester Baby (SSEM)**, one of the world's first stored-program computers. His work on the logical design of these early machines helped establish the principles underlying all modern computing.[^source][
@@ -184,21 +203,19 @@ After the war, Turing worked at the University of Manchester where he contribute
 ## Morphogenesis
 Beyond computing, Turing made significant contributions to mathematical biology through his work on **morphogenesis** - the process by which patterns and structures form in living organisms. His 1952 paper "The Chemical Basis of Morphogenesis" proposed reaction-diffusion equations that could explain how complex biological patterns emerge from simple chemical processes.[^source][
 
-## World War II Cryptanalysis
+In his later career, Turing turned to mathematical biology, publishing "The Chemical Basis of Morphogenesis" (1952), which proposed a model explaining how patterns such as spots and stripes form in biological systems through reaction-diffusion processes. This work established a new field at the intersection of mathematics and biology.
 
-During World War II, Turing became pivotal in breaking the German Enigma cipher at bletchley-park working for the Government Code and Cypher School (GC&CS). He designed the electromechanical Bombe machine, which drew on the earlier work of Polish cryptanalyst Marian Rejewski. The Bombe's purpose was to systematically test possible Enigma rotor settings and identify the daily encryption key used by the German military.
+In his final years, Turing turned to mathematical biology, publishing "The Chemical Basis of Morphogenesis" (1952), which proposed a reaction-diffusion model explaining how natural patterns such as animal coat markings could arise from simple chemical interactions.
 
 ## Universal Turing Machine
 
 Turing introduced the concept of the **universal Turing machine** — a theoretical construction where programs themselves are stored as data in the same memory as computational inputs. This revolutionary idea established the intellectual foundation for modern stored-program computers, where both instructions and data reside in the same address space, enabling computers to modify their own programs during execution.
 
-## Undecidability and the Halting Problem
+In the same 1936 paper "On Computable Numbers, with an Application to the Entscheidungsproblem," Turing introduced the **universal Turing machine** — a machine that can simulate any other Turing machine by reading its description from tape. This was a profound insight: a single, general-purpose machine could, in principle, execute any computable algorithm given the right program. The universal Turing machine is the theoretical ancestor of every stored-program computer and directly influenced the [[von-neumann-architecture]], in which both data and instructions reside in the same memory.
 
-Beyond introducing the Turing machine model, Turing proved the existence of undecidable problems — questions that cannot be answered by any algorithm. The most famous example is the **halting problem**: no general algorithm can determine whether an arbitrary program will eventually halt or run forever. This result has profound implications for the limits of computation and formal verification.
+Turing also introduced the concept of the **universal Turing machine**, a single machine capable of simulating any other Turing machine given its description and input. This idea laid the theoretical groundwork for the stored-program computer and directly influenced the design of later machines at bletchley-park and beyond.
 
-## Bletchley Park and Cryptanalysis
-
-In 1939, Turing was recruited to bletchley-park (then known as Government Code and Cypher School) where he designed the Bombé machine—a pioneering cryptographic device used to decrypt the German enigma cipher. Historians estimate that this achievement shortened WWII by at least two years and saved over fourteen million lives.
+The same 1936 paper introduced the concept of a **universal Turing machine**: a single machine capable of simulating any other Turing machine by reading its description as input. This insight presaged the stored-program architecture of modern computers and positioned Turing as a direct forerunner of the general-purpose computer.
 
 ## Artificial Intelligence Pioneering Work
 
@@ -208,10 +225,6 @@ After the war, Turing pioneered artificial intelligence, most notably through hi
 
 Turing contributed to the development of the Manchester Baby (SSEM), one of the world's first stored-program computers, working at the University of Manchester in the late 1940s.
 
-## Legacy
-
-Turing's legacy includes the ACM Turing Award, computing's highest honor, named in his honor. Additionally, his portrait appeared on the British £50 note, recognizing his enduring impact on computer science.
-
 ## Education and Early Work
 
 Turing studied at king's-college-cambridge, where he developed his foundational ideas on computation. In response to david-hilbert's Entscheidungsproblem, he introduced the turing-machine and proved the undecidability of the halting problem.
@@ -220,21 +233,27 @@ Turing studied at king's-college-cambridge, where he developed his foundational 
 
 During World War II, Turing worked at bletchley-park on breaking the German enigma-machine cipher. He built upon earlier cryptanalytic work by Polish mathematicians marian-rejewski, jerzy-różycki, and henryk-zygalski, who had reconstructed the Enigma machine and developed techniques for decryption. Turing designed the bombe, an electromechanical device that significantly accelerated the decryption process.
 
+During World War II, Turing joined the Government Code and Cypher School at bletchley-park, where he led efforts to break the German enigma-machine. Building on earlier work by Polish cryptanalysts marian-rejewski, jerzy-różycki, and henryk-zygalski, who had developed methods for exploiting Enigma's structural weaknesses, Turing designed the **bombe** — an electromechanical device that automated the search for daily Enigma settings by systematically eliminating impossible rotor configurations. The Bombe dramatically accelerated the decryption process, contributing to the Allied intelligence effort known as Ultra. His theoretical insights into computation, combined with this practical engineering achievement, represent the dual legacy that defines his place in both mathematics and military history.
+
+During World War II, [[alan-turing]] worked at bletchley-park, the British signals intelligence center, as part of the Government Code and Cypher School. There he designed the **Bombe**, an electromechanical device that automated the process of decrypting messages encoded by the German enigma machine. The Bombe systematically tested possible rotor settings, filtering out contradictions far faster than human cryptanalysts could. This work is credited with shortening the war by at least two years and saving countless lives.
+
+During World War II, Turing worked at bletchley-park — the headquarters of the Government Code and Cypher School — where he led efforts to break the German enigma cipher. Building on earlier work by Polish cryptanalyst marian-rejewski, Turing designed the **Bombe**, an electromechanical device that automated the search for daily Enigma key settings. His theoretical insights into computation and statistical patterns in German message traffic made the Bombe operationally viable, and the intelligence derived from Ultra decrypts is widely regarded as having shortened the war.
+
+During World War II, [[alan-turing]] worked at bletchley-park, the headquarters of the Government Code and Cypher School, where he played a leading role in breaking the German enigma cipher. Turing designed the **Bombe**, an electromechanical device that automated the process of searching for Enigma settings by exploiting known plaintext cribs. The Bombe's systematic elimination of impossible rotor configurations allowed Allied cryptanalysts to read vast quantities of German military communications. Historians credit this work with shortening the war by at least two years.
+
+During World War II, Turing worked at bletchley-park, the headquarters of the Government Code and Cypher School, where he led efforts to break the German machine cipher. Building on earlier Polish work by Marian Rejewski, Turing designed the **Bombe** — an electromechanical device that automated the search for Enigma rotor settings, dramatically accelerating the decryption process. The Bombe became one of the most significant wartime computing machines, foreshadowing the automated computation that would define the postwar era.
+
+The intelligence produced through this work is widely regarded as having shortened the war and influenced the subsequent development of [[computing-history-timeline|electronic computing]] in Britain and the United States.
+
+During the Second World War, Turing worked at the Government Code and Cypher School, where he became a central figure in the Allied effort to break the German Enigma machine cipher. Building on earlier work by Polish cryptanalysts Marian Rejewski, Jerzy Różycki, and Henryk Zygalski — who had first broken Enigma in the 1930s — Turing contributed analytical methods for tackling more complex variants of the cipher and designed the **Bombe**, an electromechanical device that automated the search for daily Enigma settings by exploiting known-plaintext attacks (the "crib" method). The Bombe's operation drew directly on Turing's theoretical training in logic and computation, and hundreds of Bombes were deployed across Britain during the war, dramatically accelerating the volume of decrypted traffic.
+
 ## World War II and Bletchley Park
 
 During World War II, Turing worked at Bletchley Park, the headquarters of the Government Code and Cypher School (GC&CS). His most consequential contribution was designing the **Bombe**, an electromechanical device used to crack the German Enigma cipher. The work at Bletchley Park is estimated to have shortened the war by two years and saved over fourteen million lives.
 
-## The Turing Test
-
-After the war, Turing pioneered the concept of machine intelligence. In his 1950 paper "Computing Machinery and Intelligence," he introduced what became known as the **Turing Test** — a criterion for determining whether a machine can exhibit intelligent behavior indistinguishable from a human. This paper laid foundational work in the field of artificial intelligence.
-
 ## Manchester Baby
 
 Turing contributed to the development of the Manchester Baby (SSEM), one of the first stored-program computers. His work on the theoretical foundations of computation translated into practical contributions to early computing hardware.
-
-## Legacy: ACM Turing Award
-
-Turing's legacy continues through the **ACM Turing Award**, computing's highest honour, named in his recognition. This award represents his foundational impact on the field of computer science.
 
 ## Contributions to Cryptanalysis and the Halting Problem
 
@@ -244,33 +263,51 @@ Beyond the Turing machine model, Turing proved the **halting problem undecidabil
 
 During World War II, Turing became a pivotal figure at bletchley-park, working for the British Government's Code and Cypher School (GC&CS). He designed the **Bombe**, an electromechanical device that significantly speed up the process of breaking Enigma encryptions. Turing's design built upon earlier work by Polish cryptanalyst **Marian Rejewski**, who had already cracked the Enigma cipher before the war. The successful decryption of German communications is estimated to have shortened the war by two to four years.
 
+During the Second World War, Turing joined the Government Code and Cypher School at [[bletchley-park]], the British codebreaking centre. He became one of the most important figures in the effort to break the German [[enigma]] cipher — an electro-mechanical rotor machine producing substitution ciphers of astronomical complexity. ^[turing-wikipedia-cc0.txt:15-17]
+
+Turing built on earlier work by Polish cryptanalysts Marian Rejewski, Jerzy Różycki, and Henryk Zygalski, who had partially solved earlier Enigma versions before the war. Drawing on their methods and developing new mathematical approaches, Turing designed the **Bombe**, an electromechanical machine that exploited cribs (known or guessed plaintext fragments) to narrow the rotor-setting search space. The Bombe ran multiple candidate configurations in parallel and rejected those producing contradictions. ^[turing-wikipedia-cc0.txt:19-19]
+
+By 1941, [[bletchley-park]] was decrypting large volumes of German naval, army, and air force traffic. The intelligence produced — codenamed Ultra — is estimated by historians to have shortened the Second World War in Europe by approximately one to two years, though the precise impact remains debated. The work remained classified until the 1970s, meaning Turing's wartime contributions were largely unknown to the public during his lifetime. ^[turing-wikipedia-cc0.txt:21-21]
+
 ## Wartime Work at Bletchley Park
 
 During World War II, [[alan-turing]] joined the Government Code and Cypher School at Bletchley Park, where he led efforts to break the German Enigma cipher. He designed and helped implement the **Bombe** — an electromechanical device that automated the process of searching for Enigma settings by exploiting known-plaintext attacks and the German procedural flaw of repeating message indicators. The Bombe replaced the earlier Polish "Bomba" and dramatically accelerated decryption throughput. Historians estimate that Turing's work on Enigma shortened the war by at least two years, potentially saving millions of lives.
+
+During World War II, [[alan-turing]] was a key figure at bletchley-park, the British signals intelligence centre run by the Government Code and Cypher School. He led efforts to break the German enigma cipher, developing the **Bombe** — an electromechanical device that automated the process of searching for Enigma daily settings. The Bombe significantly accelerated Allied codebreaking and is credited with shortening the war by providing critical intelligence from decrypted German communications.
 
 ## The Manchester Baby (SSEM)
 
 After the war, Turing moved to the [[manchester-baby|University of Manchester]] where he worked on the Manchester Baby (Small-Scale Experimental Machine, SSEM), one of the world's first stored-program computers, first run on June 21, 1948. His theoretical guidance helped shape the practical development of stored-program computing, building on the [[von-neumann-architecture]] model. This work is situated within the broader [[computing-history-timeline]] of early electronic computing.
 
+After the war, Turing joined the university-of-manchester, where he was involved with the Manchester Baby (Small-Scale Experimental Machine, SSEM), one of the earliest stored-program computers. This work bridged his theoretical contributions to computability with the practical realization of programmable electronic computing.
+
 ## The Turing Test and Artificial Intelligence
 
 In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now called the **Turing Test** (originally the "imitation game") — a test of a machine's ability to exhibit intelligent behavior indistinguishable from that of a human. This paper is considered foundational to the field of artificial intelligence and remains a touchstone in philosophical discussions of machine intelligence.
+
+In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now known as the turing-test (originally the "imitation game") — a criterion for machine intelligence based on a machine's ability to produce conversational responses indistinguishable from a human's. This proposal is widely considered the founding gesture of [[artificial-intelligence-history]] as a research discipline.
+
+In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now called the **Turing Test** — a test of a machine's ability to exhibit intelligent behaviour indistinguishable from a human. This contribution is widely regarded as the founding proposal of [[artificial-intelligence-history|artificial intelligence]] as a discipline. The [[alan-turing|ACM Turing Award]], established in 1966, is named in his honour and remains the most prestigious prize in computer science.
 
 ## Posthumous Recognition
 
 Turing's contributions were largely classified during his lifetime, and he received only limited public recognition before his death in 1954. In 1966, the ACM established the ACM Turing Award — often called the "Nobel Prize of Computing" — in his honor. In 2009, British Prime Minister Gordon Brown issued an official public apology for Turing's treatment, and in 2013, Queen Elizabeth II granted him a posthumous royal pardon. In 2017, the "Turing Law" posthumously pardoned all men convicted under historical anti-gay legislation in the UK. His likeness now appears on the £50 note, and his legacy is central to the history of [[computing-history-timeline|modern computing]].
 
-## Universal Turing Machine
+Turing's legacy has been formally honoured long after his death:
 
-In the same 1936 paper "On Computable Numbers, with an Application to the Entscheidungsproblem," Turing introduced the **universal Turing machine** — a machine that can simulate any other Turing machine by reading its description from tape. This was a profound insight: a single, general-purpose machine could, in principle, execute any computable algorithm given the right program. The universal Turing machine is the theoretical ancestor of every stored-program computer and directly influenced the [[von-neumann-architecture]], in which both data and instructions reside in the same memory.
+- **2013 Royal Pardon**: Queen Elizabeth II granted Turing a posthumous royal pardon, acknowledging the unjust treatment he received under historical anti-homosexuality laws.
+- **British 50-Pound Note (2021)**: Turing was featured on the UK's new £50 polymer banknote, becoming one of the few scientists to appear on British currency.
+- **acm-turing-award**: Named in his honour, this is the most prestigious award in computer science.
+
+These recognitions reflect Turing's enduring influence on computing, [[artificial-intelligence-history]], and the broader history of science.
+
+In 2013, [[alan-turing]] received a posthumous royal pardon from Queen Elizabeth II, formally acknowledging the unjust treatment he had received by the British government. In 2021, he was featured on the reverse of the new polymer British £50 note, cementing his status as one of the most celebrated figures in British scientific history.
+
+Turing's contributions were formally acknowledged long after his death in 1954. He received a **royal pardon** from the British government, and in 2021 he was featured on the **British 50-pound note**. The acm-turing-award, the most prestigious prize in computer science, is named in his honor.
 
 ## Wartime Cryptanalysis and the Polish Contribution
 
 At bletchley-park (the Government Code and Cypher School), Turing built directly on prior work by Polish cryptanalysts, most notably **Marian Rejewski**, who had broken early versions of the enigma cipher in the 1930s using mathematical methods including the exploitation of indicator doubles. The Polish insights — including the design of the Polish "Bomba" (Bomba kryptologiczna), which exploited known-plaintext relationships — provided a foundation that Turing and his team extended to design the British **Bombe**, an electromechanical device that systematically tested Enigma rotor settings to identify daily keys. The Bombe represented a critical scaling of Polish cryptanalytic techniques to handle the more complex wartime Enigma configurations.
-
-## Academic Background
-
-Turing studied at King's College Cambridge, where his mathematical training shaped his approach to the [[alan-turing|Turing machine]] and his later work on computability in response to David Hilbert's Entscheidungsproblem (the question of whether every mathematical statement is decidable).
 
 ## Wartime Cryptanalysis and Bletchley Park
 During World War II, Turing worked at bletchley-park for the Government Code and Cypher School, where he designed the electromechanical bombe to break the German enigma cipher. His contributions are widely credited with shortening the war by approximately two years and saving millions of lives.
@@ -281,30 +318,12 @@ After the war, Turing contributed to the design and programming of the [[manches
 ## Later Work and Legacy
 Turing's 1952 paper on morphogenesis pioneered mathematical biology, modeling biological pattern formation using reaction-diffusion equations. In recognition of his enduring impact, the Association for Computing Machinery established the acm-turing-award, its highest honor, often called the 'Nobel Prize of Computing.'
 
-## Undecidability and the Halting Problem
-In 1936, building on David Hilbert's Entscheidungsproblem, Turing proved that certain problems are algorithmically unsolvable — most famously the **halting problem**: no general algorithm can determine whether an arbitrary program will halt or run forever. This established fundamental limits of computation.
-
-## Universal Turing Machine
-Turing also introduced the concept of the **universal Turing machine**, a single machine capable of simulating any other Turing machine given its description and input. This idea laid the theoretical groundwork for the stored-program computer and directly influenced the design of later machines at bletchley-park and beyond.
-
 ## Cryptographic Collaboration
 At bletchley-park, Turing’s design of the bombe was informed by critical breakthroughs from Polish cryptanalysts, especially marian-rejewski, who had reverse-engineered the Enigma machine and shared their methods with British and French intelligence in 1939. Turing’s work thus stands on a transnational foundation of cryptographic insight.
 
 ## Bletchley Park and the Bombe
 
 During World War II, Turing worked at bletchley-park (home of the Government Code and Cypher School), where he played a leading role in breaking the Enigma cipher. He designed the Bombe, an electromechanical device that automated the process of searching for Enigma settings, dramatically accelerating codebreaking efforts. Historians credit this work with shortening WWII by at least two years.
-
-## The Manchester Baby (SSEM)
-
-After the war, Turing joined the university-of-manchester, where he was involved with the Manchester Baby (Small-Scale Experimental Machine, SSEM), one of the earliest stored-program computers. This work bridged his theoretical contributions to computability with the practical realization of programmable electronic computing.
-
-## The Turing Test
-
-In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now known as the Turing Test — a measure of a machine's ability to exhibit intelligent behavior indistinguishable from that of a human. This idea remains a foundational concept in artificial intelligence.
-
-## Morphogenesis
-
-In his later career, Turing turned to mathematical biology, publishing "The Chemical Basis of Morphogenesis" (1952), which proposed a model explaining how patterns such as spots and stripes form in biological systems through reaction-diffusion processes. This work established a new field at the intersection of mathematics and biology.
 
 ## Posthumous Pardon and Legacy
 
@@ -314,10 +333,6 @@ In 2013, Turing received a posthumous royal pardon for his 1952 conviction under
 
 In his 1936 paper "On Computable Numbers, with an Application to the entscheidungsproblem," Turing addressed a problem posed by david-hilbert — whether there exists a general algorithm to decide the truth of every mathematical statement. Turing proved that no such algorithm could exist, and in doing so introduced the **halting problem**: the demonstration that there is no general method to determine, for every possible program and input, whether the program will eventually halt or run forever. This result established fundamental limits on what mechanical computation can achieve, and it remains a cornerstone of theoretical computer science.
 
-## Wartime Codebreaking at Bletchley Park
-
-During World War II, Turing joined the Government Code and Cypher School at bletchley-park, where he led efforts to break the German enigma-machine. Building on earlier work by Polish cryptanalysts marian-rejewski, jerzy-różycki, and henryk-zygalski, who had developed methods for exploiting Enigma's structural weaknesses, Turing designed the **bombe** — an electromechanical device that automated the search for daily Enigma settings by systematically eliminating impossible rotor configurations. The Bombe dramatically accelerated the decryption process, contributing to the Allied intelligence effort known as Ultra. His theoretical insights into computation, combined with this practical engineering achievement, represent the dual legacy that defines his place in both mathematics and military history.
-
 ## Wartime Contributions at Bletchley Park
 
 During World War II, Turing worked at the Government Code and Cypher School at bletchley-park, where he led efforts to break the enigma cipher. He designed and helped implement the **Bombe**—an electromechanical device that automated the process of searching for Enigma settings, dramatically accelerating decryption. Historians credit the Bombe's success with shortening World War II by at least two years, saving countless lives.
@@ -326,15 +341,7 @@ During World War II, Turing worked at the Government Code and Cypher School at b
 
 After the war, Turing joined the university-of-manchester where he worked on early stored-program computers, including contributions related to the [[manchester-baby]]. This work helped establish the practical foundations of modern computing.
 
-## Posthumous Recognition
-
-Turing's legacy has been formally honoured long after his death:
-
-- **2013 Royal Pardon**: Queen Elizabeth II granted Turing a posthumous royal pardon, acknowledging the unjust treatment he received under historical anti-homosexuality laws.
-- **British 50-Pound Note (2021)**: Turing was featured on the UK's new £50 polymer banknote, becoming one of the few scientists to appear on British currency.
-- **acm-turing-award**: Named in his honour, this is the most prestigious award in computer science.
-
-These recognitions reflect Turing's enduring influence on computing, [[artificial-intelligence-history]], and the broader history of science.
+After the war, Turing joined the university-of-manchester, where he worked on early stored-program computers. He contributed to the development of the [[manchester-baby]] (Small-Scale Experimental Machine, SSEM), one of the world's first stored-program computers, which first ran on 21 June 1948. His theoretical work on the [[von-neumann-architecture]] also influenced the design of these early machines.
 
 ## Universal Turing Machine and the Stored-Program Concept
 
@@ -348,14 +355,6 @@ While Turing designed the **Bombe** — the electromechanical device used at ble
 
 Turing's 1936 paper was formulated as a response to **David Hilbert's** *Entscheidungsproblem* (decision problem), which asked whether there exists a general algorithm to decide the truth of any mathematical statement. Turing proved that no such algorithm exists by demonstrating the **undecidability of the halting problem** — showing that there is no mechanical procedure that can determine, for every possible program and input, whether the program will halt or run forever. This result, achieved independently by Alonzo Church, established a fundamental limit on computation.
 
-## Wartime Codebreaking at Bletchley Park
-
-During World War II, [[alan-turing]] worked at bletchley-park, the British signals intelligence center, as part of the Government Code and Cypher School. There he designed the **Bombe**, an electromechanical device that automated the process of decrypting messages encoded by the German enigma machine. The Bombe systematically tested possible rotor settings, filtering out contradictions far faster than human cryptanalysts could. This work is credited with shortening the war by at least two years and saving countless lives.
-
-## Posthumous Recognition
-
-In 2013, [[alan-turing]] received a posthumous royal pardon from Queen Elizabeth II, formally acknowledging the unjust treatment he had received by the British government. In 2021, he was featured on the reverse of the new polymer British £50 note, cementing his status as one of the most celebrated figures in British scientific history.
-
 ## The Turing Test and AI
 
 Turing's 1950 paper "Computing Machinery and Intelligence" proposed what is now known as the **Turing Test** — a test of a machine's ability to exhibit intelligent behavior indistinguishable from that of a human. This foundational contribution to artificial intelligence remains a central reference point in the field. The acm-turing-award, the highest honor in computer science, is named in his honor.
@@ -364,17 +363,7 @@ Turing's 1950 paper "Computing Machinery and Intelligence" proposed what is now 
 
 Turing joined the University of Manchester, where he worked on the manchester-baby-ssem (Small-Scale Experimental Machine), one of the earliest stored-program computers. His theoretical work on stored-program computing influenced the machine's design and the broader trajectory of computer architecture.
 
-## Undecidability and the Halting Problem
-
-In his 1936 paper "On Computable Numbers, with an Application to the Entscheidungsproblem," [[alan-turing]] proved that there is no general algorithmic method for determining whether a given Turing machine will eventually halt (the **halting problem**). This negative result — a response to david-hilbert's Entscheidungsproblem — demonstrated that certain mathematical questions are fundamentally undecidable, establishing a key boundary of computation.
-
-## Universal Turing Machine
-
-The same 1936 paper introduced the concept of a **universal Turing machine**: a single machine capable of simulating any other Turing machine by reading its description as input. This insight presaged the stored-program architecture of modern computers and positioned Turing as a direct forerunner of the general-purpose computer.
-
-## Wartime Codebreaking at Bletchley Park
-
-During World War II, Turing worked at bletchley-park — the headquarters of the Government Code and Cypher School — where he led efforts to break the German enigma cipher. Building on earlier work by Polish cryptanalyst marian-rejewski, Turing designed the **Bombe**, an electromechanical device that automated the search for daily Enigma key settings. His theoretical insights into computation and statistical patterns in German message traffic made the Bombe operationally viable, and the intelligence derived from Ultra decrypts is widely regarded as having shortened the war.
+After the war, Turing worked at the university-of-manchester, where he was involved in early stored-program computing. The [[manchester-baby]] (SSEM), developed at Manchester in 1948, was one of the world's first stored-program computers, and Turing's theoretical and practical contributions supported the broader British programme in this area.
 
 ## Institutional and Intellectual Context
 
@@ -390,17 +379,13 @@ Historians estimate that the Allied codebreaking effort at Bletchley Park, in wh
 
 After the war, Turing moved to the University of Manchester, where he was involved in the development of the [[manchester-baby]] (the Small-Scale Experimental Machine, SSEM) in 1948 — the world's first stored-program computer to run successfully. This marked a transition from the electromechanical codebreakers of Bletchley Park to the electronic stored-program architecture that would define the rest of the century.
 
-## The Turing Test and Artificial Intelligence
-
-In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now known as the turing-test (originally the "imitation game") — a criterion for machine intelligence based on a machine's ability to produce conversational responses indistinguishable from a human's. This proposal is widely considered the founding gesture of [[artificial-intelligence-history]] as a research discipline.
-
-## Morphogenesis
-
-In his final years, Turing turned to mathematical biology, publishing "The Chemical Basis of Morphogenesis" (1952), which proposed a reaction-diffusion model explaining how natural patterns such as animal coat markings could arise from simple chemical interactions.
-
 ## Posthumous Honors
 
 Turing died in 1954. In 1966, the acm-turing-award was established in his name by the Association for Computing Machinery and is considered the "Nobel Prize of Computing." In 2009, British Prime Minister Gordon Brown issued an official public apology for Turing's treatment under anti-homosexuality legislation, and in 2013 Queen Elizabeth II granted Turing a posthumous royal pardon.
+
+In 1966, the Association for Computing Machinery (ACM) established the **ACM Turing Award**, named in Turing's honour. It is widely regarded as the "Nobel Prize of Computing" and is awarded annually for contributions of lasting and major technical importance to the field of computer science.
+
+See also: [[computing-history-timeline]] for the broader context of Turing's era.
 
 ## Wartime Cryptanalysis at bletchley-park
 
@@ -410,17 +395,9 @@ During World War II, Turing worked at bletchley-park — the British codebreakin
 
 In 1936, Turing published his landmark paper introducing both the **Turing machine** and the **universal Turing machine**, establishing the theoretical foundations of computer science. Drawing on david-hilbert's Entscheidungsproblem, Turing proved that certain problems — most famously the halting problem — are undecidable, placing fundamental limits on what computation can solve. The universal Turing machine, which could simulate any other Turing machine given its description, directly anticipated the stored-program computer.
 
-## Wartime Codebreaking at Bletchley Park
-
-During World War II, [[alan-turing]] worked at bletchley-park, the headquarters of the Government Code and Cypher School, where he played a leading role in breaking the German enigma cipher. Turing designed the **Bombe**, an electromechanical device that automated the process of searching for Enigma settings by exploiting known plaintext cribs. The Bombe's systematic elimination of impossible rotor configurations allowed Allied cryptanalysts to read vast quantities of German military communications. Historians credit this work with shortening the war by at least two years.
-
 ## The Manchester Baby and Stored-Program Computing
 
 In 1948, the [[manchester-baby]] (Small-Scale Experimental Machine, SSEM) at the University of Manchester became the world's first stored-program computer to run successfully. Turing joined the University of Manchester, where his theoretical work on stored-program architecture directly informed the Manchester computing project's transition from the Baby to the full-scale Manchester Mark 1.
-
-## The Turing Test and Artificial Intelligence
-
-In his 1950 paper "Computing Machinery and Intelligence," Turing proposed what is now called the **Turing Test** — a test of a machine's ability to exhibit intelligent behaviour indistinguishable from a human. This contribution is widely regarded as the founding proposal of [[artificial-intelligence-history|artificial intelligence]] as a discipline. The [[alan-turing|ACM Turing Award]], established in 1966, is named in his honour and remains the most prestigious prize in computer science.
 
 ## Posthumous Honours
 
@@ -442,69 +419,25 @@ During World War II, [[alan-turing]] worked at bletchley-park — the headquarte
 
 Turing designed the **Bombe**, an electromechanical device that automated the process of searching for the daily settings of the Enigma machine. The Bombe exploited known plaintext attacks (cribs) to eliminate impossible rotor configurations at high speed, allowing cryptanalysts to recover German naval and military communications at an industrial scale.
 
-## Manchester and the Stored-Program Computer
-
-After the war, Turing joined the university-of-manchester, where he worked on early stored-program computers. He contributed to the development of the [[manchester-baby]] (Small-Scale Experimental Machine, SSEM), one of the world's first stored-program computers, which first ran on 21 June 1948. His theoretical work on the [[von-neumann-architecture]] also influenced the design of these early machines.
-
-## Posthumous Honors
-
-In 1966, the Association for Computing Machinery (ACM) established the **ACM Turing Award**, named in Turing's honour. It is widely regarded as the "Nobel Prize of Computing" and is awarded annually for contributions of lasting and major technical importance to the field of computer science.
-
-See also: [[computing-history-timeline]] for the broader context of Turing's era.
-
 ## Universal Turing Machine and Undecidability
 
 In the same 1936 paper ("On Computable Numbers, with an Application to the [[computing-history-timeline|Entscheidungsproblem]]"), Turing introduced the concept of the **Universal Turing Machine** — a machine capable of simulating any other Turing machine by reading its description from tape. This insight demonstrated that a single, general-purpose machine could execute any computable algorithm given the appropriate program, establishing the theoretical foundation for stored-program computers later embodied in [[konrad-zuse]]'s machines and the [[computing-history-timeline|von Neumann architecture]].
 
 Turing's proof in the same paper showed that the Entscheidungsproblem — posed by [[computing-history-timeline|David Hilbert]] — had no general solution, by demonstrating that no algorithm could decide whether an arbitrary mathematical statement was provable. This result established the field of **undecidability**, revealing intrinsic limits to mechanical computation.
 
-## Wartime Codebreaking at Bletchley Park
-
-During World War II, Turing worked at bletchley-park, the headquarters of the Government Code and Cypher School, where he led efforts to break the German machine cipher. Building on earlier Polish work by Marian Rejewski, Turing designed the **Bombe** — an electromechanical device that automated the search for Enigma rotor settings, dramatically accelerating the decryption process. The Bombe became one of the most significant wartime computing machines, foreshadowing the automated computation that would define the postwar era.
-
-The intelligence produced through this work is widely regarded as having shortened the war and influenced the subsequent development of [[computing-history-timeline|electronic computing]] in Britain and the United States.
-
-## Wartime Work at Bletchley Park
-
-During World War II, [[alan-turing]] was a key figure at bletchley-park, the British signals intelligence centre run by the Government Code and Cypher School. He led efforts to break the German enigma cipher, developing the **Bombe** — an electromechanical device that automated the process of searching for Enigma daily settings. The Bombe significantly accelerated Allied codebreaking and is credited with shortening the war by providing critical intelligence from decrypted German communications.
-
-## Connection to the Manchester Baby
-
-After the war, Turing worked at the university-of-manchester, where he was involved in early stored-program computing. The [[manchester-baby]] (SSEM), developed at Manchester in 1948, was one of the world's first stored-program computers, and Turing's theoretical and practical contributions supported the broader British programme in this area.
-
-## Posthumous Recognition
-
-Turing's contributions were formally acknowledged long after his death in 1954. He received a **royal pardon** from the British government, and in 2021 he was featured on the **British 50-pound note**. The acm-turing-award, the most prestigious prize in computer science, is named in his honor.
-
 ## The Halting Problem and Universal Machine
 
 In the same 1936 paper that introduced the [[alan-turing|Turing machine]], Turing also proved that there cannot exist a general algorithm that determines whether any given Turing machine will halt or run forever — the **halting problem**. This was a direct response to David Hilbert's *Entscheidungsproblem* (decision problem), and Turing's negative answer demonstrated that certain mathematical questions are fundamentally undecidable. The paper also introduced the concept of a **universal machine** — a single machine capable of simulating any other Turing machine given its description as input — which became the conceptual ancestor of the stored-program computer and the [[konrad-zuse|von Neumann architecture]].
 
-## Wartime Codebreaking at Bletchley Park
-
-During the Second World War, Turing worked at the Government Code and Cypher School, where he became a central figure in the Allied effort to break the German Enigma machine cipher. Building on earlier work by Polish cryptanalysts Marian Rejewski, Jerzy Różycki, and Henryk Zygalski — who had first broken Enigma in the 1930s — Turing contributed analytical methods for tackling more complex variants of the cipher and designed the **Bombe**, an electromechanical device that automated the search for daily Enigma settings by exploiting known-plaintext attacks (the "crib" method). The Bombe's operation drew directly on Turing's theoretical training in logic and computation, and hundreds of Bombes were deployed across Britain during the war, dramatically accelerating the volume of decrypted traffic.
-
 ## Dual Legacy
 
 Turing's career established him as both the founder of theoretical computation and a pivotal figure in cryptographic history. His abstract work on computability and his concrete wartime engineering on the Bombe represent two complementary strands of the origins of modern computing: the mathematical foundations of what a computer *could* in principle do, and the practical, high-stakes application of computation to intelligence work.
-
-## Early Life and Education
-
-Alan Turing was born in London in 1912. He studied mathematics at [[kings-college-cambridge]] (King's College, Cambridge), graduating with first-class honours in 1934, and was elected a Fellow of King's College in 1935. ^[turing-wikipedia-cc0.txt:3-3]
 
 ## Theoretical Work and Computability
 
 Turing's 1936 paper addressed a problem posed by David Hilbert — the Entscheidungsproblem — asking whether a definite method exists that can decide the truth of any mathematical assertion. Turing's answer defined an abstract computing device (the Turing machine) consisting of an infinite tape divided into cells, a read/write head, and a finite set of state-transition rules. He proved that certain problems, including the halting problem, are undecidable — no algorithm can solve them in all cases — establishing the theoretical limits of mechanical computation before any general-purpose computer had been built. ^[turing-wikipedia-cc0.txt:7-9]
 
 Turing also demonstrated the existence of a **universal Turing machine** capable of simulating any other Turing machine by reading its description as data. This concept of a stored program, where instructions and data share the same representation, was the intellectual precursor to stored-program computers that followed. ^[turing-wikipedia-cc0.txt:11-11]
-
-## Bletchley Park and the Enigma
-
-During the Second World War, Turing joined the Government Code and Cypher School at [[bletchley-park]], the British codebreaking centre. He became one of the most important figures in the effort to break the German [[enigma]] cipher — an electro-mechanical rotor machine producing substitution ciphers of astronomical complexity. ^[turing-wikipedia-cc0.txt:15-17]
-
-Turing built on earlier work by Polish cryptanalysts Marian Rejewski, Jerzy Różycki, and Henryk Zygalski, who had partially solved earlier Enigma versions before the war. Drawing on their methods and developing new mathematical approaches, Turing designed the **Bombe**, an electromechanical machine that exploited cribs (known or guessed plaintext fragments) to narrow the rotor-setting search space. The Bombe ran multiple candidate configurations in parallel and rejected those producing contradictions. ^[turing-wikipedia-cc0.txt:19-19]
-
-By 1941, [[bletchley-park]] was decrypting large volumes of German naval, army, and air force traffic. The intelligence produced — codenamed Ultra — is estimated by historians to have shortened the Second World War in Europe by approximately one to two years, though the precise impact remains debated. The work remained classified until the 1970s, meaning Turing's wartime contributions were largely unknown to the public during his lifetime. ^[turing-wikipedia-cc0.txt:21-21]
 
 ## The ACE and Stored-Program Computers
 
@@ -521,7 +454,3 @@ In 1950, Turing published "Computing Machinery and Intelligence" in the philosop
 In 1952, Turing was prosecuted under Victorian-era gross indecency laws for his relationship with another man. He was convicted and accepted chemical castration as an alternative to imprisonment. His security clearance was revoked, ending his access to classified government work. ^[turing-wikipedia-cc0.txt:39-39]
 
 Turing died on 7 June 1954 from cyanide poisoning. An inquest returned a verdict of suicide, though some researchers have questioned whether the death was accidental. He was 41 years old. ^[turing-wikipedia-cc0.txt:41-41]
-
-## Legacy
-
-The ACM Turing Award, established in 1966, is named in Turing's honour and is considered the highest distinction in computer science. In 2009, the British Prime Minister issued a formal apology for his treatment; in 2013 he received a posthumous royal pardon; and his portrait has appeared on the British £50 note since 2021. ^[turing-wikipedia-cc0.txt:45-45]

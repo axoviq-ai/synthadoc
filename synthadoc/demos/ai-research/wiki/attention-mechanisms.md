@@ -47,6 +47,28 @@ across multiple "heads", each learning different relationship patterns. The outp
 concatenated and projected back to the model dimension. Multi-head attention allows the
 model to jointly attend to information from different representation subspaces.
 
+Rather than performing a single attention function, the transformer applies multiple attention "heads" in parallel, each with its own learned projections for queries, keys, and values. The outputs are concatenated and linearly projected:
+
+```
+MultiHead(Q, K, V) = Concat(head_1, ..., head_h) W^O
+where head_i = Attention(Q W_i^Q, K W_i^K, V W_i^V)
+```
+
+Multi-head attention allows the model to attend to information from different representation subspaces at different positions simultaneously, a property a single attention head cannot capture.
+
+Multi-head attention applies multiple parallel attention heads, each operating on different learned linear projections of the queries, keys, and values. This allows the model to attend to information from different representation subspaces simultaneously. The outputs of all heads are concatenated and linearly projected to produce the final result. Multi-head attention is a core component of the [[transformer-architecture]], enabling models to capture diverse relationships in the input.
+
+Rather than performing a single attention function over the full dimensionality, the transformer applies multiple attention operations in parallel — each with its own learned projections for queries, keys, and values. This allows the model to jointly attend to information from different representation subspaces at different positions. The outputs of all heads are concatenated and linearly projected. Multi-head attention gives the [[transformer-architecture]] the ability to capture diverse relational patterns simultaneously, which single-head attention cannot.
+
+Rather than running a single attention function on the full model dimension, multi-head attention applies h parallel attention heads, each operating on a lower-dimensional projection of Q, K, and V. The outputs of all heads are concatenated and linearly projected back to the model dimension.
+
+```
+MultiHead(Q, K, V) = Concat(head_1, ..., head_h) · W_O
+where head_i = Attention(Q · W_Qi, K · W_Ki, V · W_Vi)
+```
+
+Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. Each head can learn to attend to different syntactic or semantic relationships.
+
 ## How Attention Changed Language Model Training
 
 Before self-attention, RNNs were forced to compress all context into a fixed-size hidden
@@ -76,29 +98,18 @@ Together, these properties enabled the shift from RNN-based models to the
 - [[transformer-architecture]] — the full architecture built on multi-head attention
 - [[large-language-models]] — models that rely on attention at every layer
 
-## Multi-Head Attention
-
-Rather than performing a single attention function, the transformer applies multiple attention "heads" in parallel, each with its own learned projections for queries, keys, and values. The outputs are concatenated and linearly projected:
-
-```
-MultiHead(Q, K, V) = Concat(head_1, ..., head_h) W^O
-where head_i = Attention(Q W_i^Q, K W_i^K, V W_i^V)
-```
-
-Multi-head attention allows the model to attend to information from different representation subspaces at different positions simultaneously, a property a single attention head cannot capture.
-
 ## Self-Attention vs Cross-Attention
 
 - **Self-attention** — queries, keys, and values all come from the same sequence. This is the mechanism used in encoder layers and in decoder-only models like the GPT family.
 - **Cross-attention** — queries come from one sequence (e.g., the decoder) while keys and values come from another (e.g., the encoder output). This is what connects the encoder and decoder in the original [[transformer-architecture]].
 
+In self-attention, Q, K, and V all come from the same sequence. This allows each position to attend to all other positions in the same sequence, capturing long-range dependencies without regard to distance.
+
+In cross-attention, Q comes from one sequence (e.g. the decoder) and K, V come from another sequence (e.g. the encoder output). This is how the decoder in the original [[transformer-architecture]] attends to the source sequence.
+
 ## Beyond NLP
 
 Although attention was introduced for neural-machine-translation (Bahdanau et al., 2014) and popularized by the [[transformer-architecture]] for NLP, it has since become foundational to vision transformers (ViTs), speech models, and multimodal systems that combine text, images, and audio. Attention is now considered a general-purpose sequence and set operator in deep learning.
-
-## Multi-Head Attention
-
-Multi-head attention applies multiple parallel attention heads, each operating on different learned linear projections of the queries, keys, and values. This allows the model to attend to information from different representation subspaces simultaneously. The outputs of all heads are concatenated and linearly projected to produce the final result. Multi-head attention is a core component of the [[transformer-architecture]], enabling models to capture diverse relationships in the input.
 
 ## Beyond Language
 
@@ -108,30 +119,9 @@ While attention mechanisms were developed for sequence-to-sequence models and be
 
 The division by sqrt(d_k) in the attention formula serves a critical role in training stability. Without this scaling, as the dimensionality of keys grows, the dot products QK^T tend to grow in magnitude, pushing the softmax function into regions of extremely small gradients. This makes optimisation difficult. By normalising by sqrt(d_k), the variance of the dot products is kept roughly constant, allowing gradients to flow effectively during backpropagation. This detail is often overlooked in introductory treatments but was crucial to making the [[transformer-architecture]] trainable at scale.
 
-## Multi-Head Attention
-
-Rather than performing a single attention function over the full dimensionality, the transformer applies multiple attention operations in parallel — each with its own learned projections for queries, keys, and values. This allows the model to jointly attend to information from different representation subspaces at different positions. The outputs of all heads are concatenated and linearly projected. Multi-head attention gives the [[transformer-architecture]] the ability to capture diverse relational patterns simultaneously, which single-head attention cannot.
-
 ## Broader Impact Beyond NLP
 
 While originally developed for sequence-to-sequence translation, attention has become foundational across modalities. Vision transformers (ViT) apply self-attention to patches of images, demonstrating that the same mechanism generalises beyond text. Multimodal systems that combine vision, audio, and language all rely on attention as a core building block, making it one of the most widely transferred architectural innovations in deep learning.
-
-## Multi-Head Attention
-
-Rather than running a single attention function on the full model dimension, multi-head attention applies h parallel attention heads, each operating on a lower-dimensional projection of Q, K, and V. The outputs of all heads are concatenated and linearly projected back to the model dimension.
-
-```
-MultiHead(Q, K, V) = Concat(head_1, ..., head_h) · W_O
-where head_i = Attention(Q · W_Qi, K · W_Ki, V · W_Vi)
-```
-
-Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. Each head can learn to attend to different syntactic or semantic relationships.
-
-## Self-Attention vs Cross-Attention
-
-In self-attention, Q, K, and V all come from the same sequence. This allows each position to attend to all other positions in the same sequence, capturing long-range dependencies without regard to distance.
-
-In cross-attention, Q comes from one sequence (e.g. the decoder) and K, V come from another sequence (e.g. the encoder output). This is how the decoder in the original [[transformer-architecture]] attends to the source sequence.
 
 ## Causal (Masked) Self-Attention
 

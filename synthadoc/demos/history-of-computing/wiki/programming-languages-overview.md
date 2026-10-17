@@ -71,19 +71,23 @@ The second generation introduced high-level languages that abstracted machine sp
 ### FORTRAN (1957)
 Developed by john-backus at ibm, FORTRAN pioneered optimized compilers for scientific computing. It was the first high-level language to achieve widespread adoption in technical and scientific fields, demonstrating that compiler-generated code could rival hand-written assembly in efficiency.
 
+Developed at IBM by John Backus, FORTRAN was the first widely adopted high-level language. Its optimizing compiler was a landmark achievement, demonstrating that automatically generated machine code could rival hand-written assembly in efficiency. FORTRAN established the viability of high-level languages for scientific computing and dominated that domain for decades.
+
 ### LISP (1958)
 Created by john-mccarthy at MIT, LISP introduced symbolic computation and automatic memory management through garbage collection. These innovations became foundational to artificial intelligence research and influenced modern functional programming paradigms.
+
+Developed by john-mccarthy at MIT, LISP (LISt Processing) was designed for symbolic computation and artificial intelligence research. Its key innovations included recursive function definitions, garbage collection, and the use of S-expressions for both code and data. LISP became the dominant language for AI research and influenced later languages like Scheme and Common Lisp. McCarthy received the acm-turing-award in 1971 for his contributions.
+
+Created by John McCarthy at mit, LISP introduced list-based symbolic computation and pioneered automatic garbage collection. Its design drew on Alonzo Church's lambda calculus as its theoretical foundation. LISP became the lingua franca of early [[artificial-intelligence-history|artificial intelligence]] research and remained influential in academic and AI contexts for decades.
 
 ### COBOL (1959)
 Developed by CODASYL for the united-states-department-of-defense, COBOL became the standard for business data processing. Its English-like syntax made it accessible to business professionals, establishing the pattern of domain-specific languages.
 
-## Third Generation: LISP and COBOL (Late 1950s)
-
-### LISP (1958)
-Developed by john-mccarthy at MIT, LISP (LISt Processing) was designed for symbolic computation and artificial intelligence research. Its key innovations included recursive function definitions, garbage collection, and the use of S-expressions for both code and data. LISP became the dominant language for AI research and influenced later languages like Scheme and Common Lisp. McCarthy received the acm-turing-award in 1971 for his contributions.
-
-### COBOL (1959)
 Created by a committee convened by the united-states-department-of-defense, COBOL (COmmon Business-Oriented Language) emphasized readability and self-documenting code for business data processing. Its English-like syntax and support for file handling made it widely adopted in government and commercial applications. COBOL's design reflected the needs of large-scale data processing rather than scientific computing.
+
+Designed under the direction of [[grace-hopper|Grace Hopper]], COBOL was built for business-oriented data processing. Its English-like syntax was deliberately crafted to make programs readable by non-technical managers, reflecting Hopper's lifelong conviction that programming should be accessible to domain experts rather than restricted to specialists.
+
+## Third Generation: LISP and COBOL (Late 1950s)
 
 ## Impact and Legacy
 These early high-level languages demonstrated that the trade-off between human readability and machine efficiency could be managed through compiler technology. [[grace-hopper]]'s earlier work on the A-0 System laid the groundwork for this transition. john-backus led the development of FORTRAN at IBM, which proved that compiled code could approach the efficiency of hand-written assembly. Together, FORTRAN, LISP, and COBOL established the three major paradigms—scientific, symbolic, and business—that shaped the programming landscape for decades.
@@ -102,18 +106,11 @@ The development of LISP marked a shift toward treating programs as data, a conce
 
 ## Key Pioneers and Milestones
 
-### FORTRAN (1957)
-Developed at IBM by John Backus, FORTRAN was the first widely adopted high-level language. Its optimizing compiler was a landmark achievement, demonstrating that automatically generated machine code could rival hand-written assembly in efficiency. FORTRAN established the viability of high-level languages for scientific computing and dominated that domain for decades.
-
-### LISP (1958)
-Created by John McCarthy at mit, LISP introduced list-based symbolic computation and pioneered automatic garbage collection. Its design drew on Alonzo Church's lambda calculus as its theoretical foundation. LISP became the lingua franca of early [[artificial-intelligence-history|artificial intelligence]] research and remained influential in academic and AI contexts for decades.
-
-### COBOL (1959)
-Designed under the direction of [[grace-hopper|Grace Hopper]], COBOL was built for business-oriented data processing. Its English-like syntax was deliberately crafted to make programs readable by non-technical managers, reflecting Hopper's lifelong conviction that programming should be accessible to domain experts rather than restricted to specialists.
-
 ## The Readability–Efficiency Tension
 
 The history of programming languages can be framed as a persistent tension between two goals: human readability and machine efficiency. Early high-level languages like FORTRAN, LISP, and COBOL each resolved this tension differently — FORTRAN prioritized runtime performance for scientific workloads, LISP favored expressive power for symbolic reasoning, and COBOL emphasized clarity for business stakeholders. This trade-off continues to shape language design today.
+
+Throughout the history of programming languages, a central tension has existed between human readability and machine efficiency. Early machine code and assembly languages prioritized direct hardware control but were difficult to write and maintain. High-level languages like FORTRAN, LISP, and COBOL introduced abstractions that made programming more accessible, but at the cost of less direct control over hardware. This trade-off continues to shape language design, with each generation of languages attempting to find new balances between expressiveness and performance. The work of figures like Backus, McCarthy, Church, and [[grace-hopper]] illustrates different points on this spectrum — from FORTRAN's focus on efficient numerical computation, to LISP's emphasis on symbolic expressiveness, to COBOL's readability for business applications.
 
 ## Third Generation: LISP and the Rise of Symbolic Computation (1958)
 John McCarthy developed LISP at MIT in 1958 as a language for artificial intelligence research. Its design centered on symbolic processing, recursion, and the revolutionary idea of 'code-as-data' — enabling programs to manipulate their own structure. LISP introduced automatic memory management via garbage-collection, a foundational innovation later adopted across many languages. McCarthy’s work built on theoretical foundations laid by [[alan-turing]] and alonzo-church, and was supported by early funding from DARPA and institutions like MIT and Stanford.
@@ -128,6 +125,8 @@ While FORTRAN was optimising numerical computation, john-mccarthy at mit develop
 ## COBOL and Business Data Processing (1959–1960)
 
 Building on the FLOW-MATIC language developed by [[grace-hopper]], the CODASYL committee (with Hopper's influence) created COBOL (Common Business-Oriented Language) in 1959–1960. COBOL's English-like syntax was deliberately designed to be readable by non-technical business managers, and it became the standard for commercial data processing — a role it maintained in mainframes for decades.
+
+In parallel with LISP, [[grace-hopper]] and a committee she chaired championed COBOL (Common Business-Oriented Language), which became the dominant language for business data processing. See [[grace-hopper]] for details on her broader contributions to programming language design.
 
 ## Key Figures in Early Language Design
 
@@ -173,13 +172,11 @@ The introduction of garbage collection was not merely a convenience — it refle
 
 LISP and fortran together illustrate the early divergence of language design: FORTRAN optimised for raw numerical performance and tight machine efficiency, while LISP prioritised expressiveness and abstraction for a class of problems where performance was secondary to representational power. This tension between human readability and machine efficiency, already visible in the shift from assembly-language to high-level notation, continued to shape language design in subsequent generations.
 
-## COBOL and Business Data Processing (1959–1960)
-
-In parallel with LISP, [[grace-hopper]] and a committee she chaired championed COBOL (Common Business-Oriented Language), which became the dominant language for business data processing. See [[grace-hopper]] for details on her broader contributions to programming language design.
-
-## LISP and Symbolic Computation (1958)
-
 While FORTRAN targeted numerical scientific computing, john-mccarthy at mit developed LISP in 1958, the second-oldest high-level language still in use today. LISP was grounded in the lambda calculus formulated by Alonzo Church, making it fundamentally suited to symbolic computation and artificial intelligence research. Its introduction demonstrated that high-level languages could serve domains far beyond numerical calculation, and it pioneered concepts such as recursion, garbage collection, and code-as-data that remain influential in language design.
+
+John McCarthy at MIT designed LISP (List Processing) in 1958, influenced by [[alonzo-church]]'s lambda calculus. LISP was built around lists as the primary data structure and introduced recursive function definitions, automatic memory management through garbage collection, and the concept that code and data have the same representation — a list can be both a program and data that programs manipulate. ^[wexelblat-history-of-programming-languages-1981.txt:19-19]
+
+LISP became the dominant language of [[artificial-intelligence-history|artificial intelligence]] research. Its flexibility and introspective capabilities made it well suited to symbolic AI tasks such as theorem proving, game playing, and natural language processing. McCarthy received the ACM Turing Award in 1971. ^[wexelblat-history-of-programming-languages-1981.txt:21-21]
 
 ## The Core Tension in Language Design
 
@@ -208,19 +205,9 @@ The development of early high-level languages was driven by several pioneering f
 - **Alonzo Church** developed the lambda calculus, a formal system for expressing computation that became a theoretical foundation for functional programming languages.
 - **Grace Hopper** championed the development of FLOW-MATIC in the 1950s, a business-oriented English-like language that directly influenced the design of COBOL. Her vision of human-readable programming was initially dismissed by contemporaries but ultimately transformed software development.
 
-## The Readability–Efficiency Tension
-
-Throughout the history of programming languages, a central tension has existed between human readability and machine efficiency. Early machine code and assembly languages prioritized direct hardware control but were difficult to write and maintain. High-level languages like FORTRAN, LISP, and COBOL introduced abstractions that made programming more accessible, but at the cost of less direct control over hardware. This trade-off continues to shape language design, with each generation of languages attempting to find new balances between expressiveness and performance. The work of figures like Backus, McCarthy, Church, and [[grace-hopper]] illustrates different points on this spectrum — from FORTRAN's focus on efficient numerical computation, to LISP's emphasis on symbolic expressiveness, to COBOL's readability for business applications.
-
 ## Web and Scripting Languages (1995–Present)
 
 JavaScript, created by Brendan Eich at Netscape in 1995, became the dominant language for client-side web interactivity. It was standardized as ecmascript (ECMA-262), with Node.js extending its runtime to server-side development. Alongside html and css, JavaScript forms the core triad of front-end web development. Its event-driven, prototype-based design and ubiquity in browsers made it one of the most widely deployed programming languages in history.
-
-## LISP and Symbolic Computation (1958)
-
-John McCarthy at MIT designed LISP (List Processing) in 1958, influenced by [[alonzo-church]]'s lambda calculus. LISP was built around lists as the primary data structure and introduced recursive function definitions, automatic memory management through garbage collection, and the concept that code and data have the same representation — a list can be both a program and data that programs manipulate. ^[wexelblat-history-of-programming-languages-1981.txt:19-19]
-
-LISP became the dominant language of [[artificial-intelligence-history|artificial intelligence]] research. Its flexibility and introspective capabilities made it well suited to symbolic AI tasks such as theorem proving, game playing, and natural language processing. McCarthy received the ACM Turing Award in 1971. ^[wexelblat-history-of-programming-languages-1981.txt:21-21]
 
 ## Structured Programming (1968–1970s)
 
