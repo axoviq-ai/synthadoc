@@ -143,11 +143,7 @@ def _parse_wire_calls(text: str) -> list[tuple[str, dict]]:
             tool_input = _decode_input(call["input"])
             if tool_input is not None:
                 if repaired:
-                    _log.warning(
-                        "_parse_wire_calls: repaired truncated tool-call JSON "
-                        "(missing closing brace(s)) for tool %r",
-                        call["name"],
-                    )
+                    _log.debug("_parse_wire_calls: repaired missing brace(s) for tool %r", call["name"])
                 results.append((call["name"], tool_input))
     return results
 
