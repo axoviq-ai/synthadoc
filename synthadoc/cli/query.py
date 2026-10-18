@@ -61,12 +61,14 @@ def _format_gap_callout(suggested_searches: list[str], wiki: str) -> str:
     )
 
 
-def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> None:
+def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int | None) -> None:
     """Stream the query response via SSE and print tokens as they arrive."""
     citations = []
     suggested = []
     knowledge_gap = False
-    params: dict = {"q": question, "timeout_seconds": timeout}
+    params: dict = {"q": question}
+    if timeout is not None:
+        params["timeout_seconds"] = timeout
     if no_cache:
         params["no_cache"] = "true"
     try:
@@ -88,9 +90,10 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
                 msg = data.get("message", "unknown error")
                 typer.echo(f"\nError: {msg}", err=True)
                 if "timed out" in msg.lower() and not _WORKFLOW_RE.search(question):
+                    _hint_t = (timeout * 2) if timeout is not None else 240
                     typer.echo(
                         f"Tip: local models on CPU-only machines are significantly slower than GPU-accelerated "
-                        f"or cloud inference. Pass --timeout {timeout * 2} to allow more time, or switch to a "
+                        f"or cloud inference. Pass --timeout {_hint_t} to allow more time, or switch to a "
                         f"cloud provider (e.g. gemini-2.5-flash-lite is free).",
                         err=True,
                     )
@@ -106,7 +109,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
         typer.echo(_format_gap_callout(suggested, wiki))
 
 
-def _stream_cross_wiki_query(wiki: str, question: str, timeout: int) -> None:
+def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> None:
     """Stream a cross-wiki query via SSE, handling cross-wiki-specific events."""
     citations: list[str] = []
     cross_wiki_offline: list[str] = []
@@ -114,7 +117,9 @@ def _stream_cross_wiki_query(wiki: str, question: str, timeout: int) -> None:
     cross_wiki_skip_reason = ""
     knowledge_gap = False
     suggested: list[str] = []
-    params: dict = {"q": question, "timeout_seconds": timeout}
+    params: dict = {"q": question}
+    if timeout is not None:
+        params["timeout_seconds"] = timeout
     try:
         for event_name, data in get_stream(wiki, "/cross-wiki/query/stream", timeout=timeout, **params):
             if event_name == "token":
@@ -197,7 +202,7 @@ def query_cmd(
     question: str = typer.Argument(..., help="Question to ask the wiki"),
     save: bool = typer.Option(False, "--save", help="Save answer as wiki page"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
-    timeout: int = typer.Option(60, "--timeout", help="Seconds to wait for the LLM (default 60; increase for slow providers)"),
+    timeout: Optional[int] = typer.Option(None, "--timeout", help="Seconds to wait for the LLM (default: client_stream_timeout_seconds from config, typically 120; increase for slow providers)"),
     no_stream: bool = typer.Option(False, "--no-stream", help="Use blocking endpoint (for scripts/pipes)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, always call LLM"),
     cross_wiki: bool = typer.Option(False, "--cross-wiki", help="Query across all relevant registered wikis"),
@@ -205,14 +210,16 @@ def query_cmd(
     """Query the wiki. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
-    if _WORKFLOW_RE.search(question) and timeout < _WORKFLOW_TIMEOUT:
+    if _WORKFLOW_RE.search(question) and (timeout is None or timeout < _WORKFLOW_TIMEOUT):
         timeout = _WORKFLOW_TIMEOUT
     if no_stream:
         if cross_wiki:
             result = post(wiki, "/cross-wiki/query", {"question": question, "history": []}, timeout=timeout, llm=True)
             print_cross_wiki_result(result, wiki)
             return
-        params = {"q": question, "timeout_seconds": timeout}
+        params: dict = {"q": question}
+        if timeout is not None:
+            params["timeout_seconds"] = timeout
         if no_cache:
             params["no_cache"] = "true"
         result = get(wiki, "/query", timeout=timeout, **params)
