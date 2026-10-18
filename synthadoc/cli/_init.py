@@ -241,12 +241,11 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "deepseek",  model = "deepseek-flash" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
 # default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }}      # thinking/reasoning mode
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
-# default = {{ provider = "qwen",      model = "qwen-plus" }}                                  # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
-# default = {{ provider = "qwen",      model = "qwen-plus", thinking = "disabled" }}           # same, with thinking suppressed (faster, lower latency)
-# NOTE: qwen3.8-flash and qwen3.8-max have thinking ON by default; always use thinking="disabled"
+# NOTE: all Qwen DashScope models have thinking ON by default; always use thinking="disabled"
 #       for synthadoc — thinking mode causes timeouts on large wiki contexts (tested 2026-10-17).
 # default = {{ provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }}      # free tier + $0.15/$0.47 per 1M — set QWEN_API_KEY (recommended)
 # default = {{ provider = "qwen",      model = "qwen3.8-max",   thinking = "disabled" }}      # free tier + $2.00/$6.00 per 1M, flagship MoE — set QWEN_API_KEY
+# default = {{ provider = "qwen",      model = "qwen-plus",     thinking = "disabled" }}      # paid, higher quality — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
