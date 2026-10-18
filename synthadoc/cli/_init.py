@@ -327,6 +327,12 @@ session_retention_days = 30
 # avoid routing unrelated follow-ups through the action agent.
 # clarify_lookback = 5
 
+[content_health]
+# Minimum word count for a section to be considered non-thin.
+# Sections with fewer words are flagged as "thin" during lint and ingest.
+# Lower this value for wikis with intentionally short reference sections (e.g. glossaries).
+# thin_section_min_words = 50
+
 [security]
 # Automatically scan all wiki pages for sensitive data (API keys, emails, SSNs,
 # credit cards, phone numbers, generic secrets) on a weekly schedule.
