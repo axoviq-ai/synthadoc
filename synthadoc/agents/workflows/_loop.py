@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 # string values may contain braces (e.g. a page rewrite with code blocks).
 _TOOL_CALL_START_RE = re.compile(r'\{\s*"tool_call"\s*:')
 _JSON_DECODER = json.JSONDecoder()
+# Maximum unclosed braces we'll attempt to repair (guards against runaway repair on prose).
+_MAX_BRACE_REPAIR = 5
 
 # Native tool-call markup some models emit instead of the JSON wire format,
 # e.g. MiniMax: ']<]minimax[>[<tool_call> ]<]minimax[>[name": "x", "input": {...}}'
@@ -101,22 +103,52 @@ def _decode_input(raw: object) -> dict | None:
     return raw if isinstance(raw, dict) else None
 
 
+def _repair_truncated_json(text: str, start: int) -> dict | None:
+    """Try to repair a JSON object truncated by missing closing braces.
+
+    Some models (e.g. qwen3.8-max) consistently emit the outer closing brace(s)
+    short.  We count the brace imbalance and append the missing ones, then
+    attempt a full parse.  Only repairs up to _MAX_BRACE_REPAIR braces so that
+    genuine prose with a stray ``{`` is never mis-recovered.
+    """
+    fragment = text[start:]
+    opens = fragment.count("{") - fragment.count("}")
+    if opens <= 0 or opens > _MAX_BRACE_REPAIR:
+        return None
+    try:
+        return json.loads(fragment + "}" * opens)
+    except json.JSONDecodeError:
+        return None
+
+
 def _parse_wire_calls(text: str) -> list[tuple[str, dict]]:
     """Decode every ``{"tool_call": {"name": ..., "input": {...}}}`` object in *text*."""
     results: list[tuple[str, dict]] = []
     pos = 0
     while (match := _TOOL_CALL_START_RE.search(text, pos)) is not None:
+        repaired = False
         try:
             obj, end = _JSON_DECODER.raw_decode(text, match.start())
+            pos = end
         except json.JSONDecodeError:
+            # Attempt to recover a trailing-brace-short truncation before giving up.
+            obj = _repair_truncated_json(text, match.start())
+            repaired = obj is not None
             pos = match.end()
+        if obj is None:
             continue
-        pos = end
         call = obj.get("tool_call") if isinstance(obj, dict) else None
         # "input" is required — a call without it is malformed and must trigger a retry.
         if isinstance(call, dict) and isinstance(call.get("name"), str) and "input" in call:
             tool_input = _decode_input(call["input"])
             if tool_input is not None:
+                if repaired:
+                    _log.warning(
+                        "_parse_wire_calls: repaired truncated tool-call JSON "
+                        "(missing closing brace(s)) for tool %r — model may need"
+                        " thinking=disabled or a more constrained output prompt",
+                        call["name"],
+                    )
                 results.append((call["name"], tool_input))
     return results
 
@@ -503,16 +535,37 @@ async def run_tool_call_loop(
                         "`[agents]` of your `config.toml`."
                     )
                 else:
-                    err = (
-                        "⚠ The workflow could not continue because the model's response was "
-                        "repeatedly truncated or malformed.\n\n"
-                        "**Likely cause:** the model hit its token limit while generating a "
-                        "large tool call (e.g. outputting a full page's content).\n\n"
-                        f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
-                        f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
-                        f"and re-run the workflow:\n\n"
-                        f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
-                    )
+                    # Distinguish two failure modes:
+                    # (a) brace-imbalanced JSON — model stopped before closing outer braces;
+                    #     repair is attempted automatically but the model kept repeating it.
+                    # (b) genuine token-limit truncation (response.truncated is True).
+                    _opens = text.count("{") - text.count("}")
+                    _brace_short = 0 < _opens <= _MAX_BRACE_REPAIR and not truncated
+                    if _brace_short:
+                        err = (
+                            "⚠ The workflow could not continue because the model repeatedly "
+                            "produced JSON missing its closing brace(s) — a known quirk of "
+                            "some free-tier Qwen DashScope models (e.g. `qwen3.8-max`, "
+                            "`qwen3.8-flash`).\n\n"
+                            "**Fix options:**\n"
+                            "1. Re-run the workflow (sometimes succeeds on a fresh attempt).\n"
+                            "2. Switch to a model with more reliable JSON generation for "
+                            "agentic workflows — `qwen-plus` (paid) or any Anthropic / Gemini "
+                            "model works well:\n\n"
+                            "```toml\n[agents]\ndefault = { provider = \"qwen\", "
+                            "model = \"qwen-plus\", thinking = \"disabled\" }\n```"
+                        )
+                    else:
+                        err = (
+                            "⚠ The workflow could not continue because the model's response was "
+                            "repeatedly truncated or malformed.\n\n"
+                            "**Likely cause:** the model hit its token limit while generating a "
+                            "large tool call (e.g. outputting a full page's content).\n\n"
+                            f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                            f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                            f"and re-run the workflow:\n\n"
+                            f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
+                        )
                 for i in range(0, max(len(err), 1), _CHUNK_SIZE):
                     yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
                 yield {"event": "final_text", "data": {"text": err}}
