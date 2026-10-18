@@ -1336,7 +1336,7 @@ Required environment variables per provider:
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
 | `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes                                          |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
-| `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — 1M free tokens (90-day trial), then paid DashScope                   | Model-dependent                       |
+| `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
 ### Coding tool CLI providers — no API key needed
