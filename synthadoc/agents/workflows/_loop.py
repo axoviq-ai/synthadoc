@@ -145,8 +145,7 @@ def _parse_wire_calls(text: str) -> list[tuple[str, dict]]:
                 if repaired:
                     _log.warning(
                         "_parse_wire_calls: repaired truncated tool-call JSON "
-                        "(missing closing brace(s)) for tool %r — free-tier model quirk; "
-                        "consider switching to qwen-plus or another provider for workflows",
+                        "(missing closing brace(s)) for tool %r",
                         call["name"],
                     )
                 results.append((call["name"], tool_input))
@@ -544,16 +543,10 @@ async def run_tool_call_loop(
                     if _brace_short:
                         err = (
                             "⚠ The workflow could not continue because the model repeatedly "
-                            "produced JSON missing its closing brace(s) — a known quirk of "
-                            "some free-tier Qwen DashScope models (e.g. `qwen3.8-max`, "
-                            "`qwen3.8-flash`).\n\n"
-                            "**Fix options:**\n"
-                            "1. Re-run the workflow (sometimes succeeds on a fresh attempt).\n"
-                            "2. Switch to a model with more reliable JSON generation for "
-                            "agentic workflows — `qwen-plus` (paid) or any Anthropic / Gemini "
-                            "model works well:\n\n"
-                            "```toml\n[agents]\ndefault = { provider = \"qwen\", "
-                            "model = \"qwen-plus\", thinking = \"disabled\" }\n```"
+                            "produced JSON missing its closing brace(s).\n\n"
+                            "**Fix:** Re-run the workflow — the repair logic handles this "
+                            "automatically on most attempts. If it keeps failing, try a "
+                            "different model in `[agents]` of your `config.toml`."
                         )
                     else:
                         err = (
