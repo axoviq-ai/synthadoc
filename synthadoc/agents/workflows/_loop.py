@@ -542,11 +542,11 @@ async def run_tool_call_loop(
                     _brace_short = 0 < _opens <= _MAX_BRACE_REPAIR and not truncated
                     if _brace_short:
                         err = (
-                            "⚠ The workflow could not continue because the model repeatedly "
-                            "produced JSON missing its closing brace(s).\n\n"
-                            "**Fix:** Re-run the workflow — the repair logic handles this "
-                            "automatically on most attempts. If it keeps failing, try a "
-                            "different model in `[agents]` of your `config.toml`."
+                            "⚠ The workflow could not continue. The model repeatedly produced "
+                            "JSON missing its closing brace(s); automatic repair was attempted "
+                            f"but the model kept returning the same malformed output after "
+                            f"{_MAX_PARSE_RETRIES} retries.\n\n"
+                            "**Fix:** Try a different model in `[agents]` of your `config.toml`."
                         )
                     else:
                         err = (
