@@ -3703,7 +3703,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                     | No              |
 | `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token               | Yes             |
 | `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                | Yes             |
-| `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
+| `qwen`        | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — 1M free tokens (90-day trial), then paid | Model-dependent |
 | `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
 | `opencode`    | _(none)_            | Yes — free via Opencode Zen, no API key           | No              |
@@ -3743,7 +3743,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **MiniMax:** no free tier. M3 supports multimodal (text + image) and a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
-> - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
+> - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` or `DASHSCOPE_API_KEY` (both accepted; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Free-tier models: `qwen3.8-flash` (fast), `qwen3.8-max` (flagship MoE), or paid `qwen-plus` / `qwen-max`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
 > - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---

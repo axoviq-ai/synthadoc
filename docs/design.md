@@ -1336,7 +1336,7 @@ Required environment variables per provider:
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
 | `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes                                          |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
-| `qwen`      | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid DashScope                                      | Model-dependent                       |
+| `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — 1M free tokens (90-day trial), then paid DashScope                   | Model-dependent                       |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
 ### Coding tool CLI providers — no API key needed
@@ -4795,7 +4795,7 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 - **Session history sidebar** — the left navigation bar is now server-driven (`GET /sessions`) and shows sessions as a 2-level collapsible tree. Multi-turn sessions display a turn count badge and expand to show each follow-up question. Clicking any item restores the full conversation history via `GET /sessions/{id}/messages`. Two new API endpoints: `GET /sessions` and `GET /sessions/{session_id}/messages`.
 - **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
 - **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
-- **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
+- **Qwen provider routing** — model names matching `qwen<digits>.<digits>-<letter>` (e.g. `qwen3.8-flash`, `qwen3.8-max`), `qwen-<letter>` (e.g. `qwen-plus`, `qwen-max`), `qwq-`, or `kimi-` route to DashScope cloud API; all other names (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. Both `QWEN_API_KEY` and `DASHSCOPE_API_KEY` are accepted.
 
 ### v0.7.0 (Community Edition)
 
