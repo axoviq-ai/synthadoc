@@ -151,7 +151,10 @@ STEP 4 — Per-page fix loop
 STEP 5 — Final summary
   ⚠ Do NOT output any plain text yet.
   FIRST call get_wiki_status() — this fetches live lifecycle counts.
-  THEN call find_broken_citations() to get current broken citation count.
+  THEN call find_broken_citations to get current broken citation count:
+    - Single-page mode: call find_broken_citations(page_slug=<slug>) — the SAME slug from the initial message.
+    - Full-wiki mode:   call find_broken_citations() (no arguments).
+  NEVER call find_broken_citations() without a page_slug in single-page mode.
   THEN output a single plain-text summary.
 
   For every citation you fixed or removed, include the before/after detail
@@ -191,6 +194,8 @@ STEP 5 — Final summary
 4. new_citation=null is a valid, required action for malformed and out_of_range issues.
    Skipping apply_citation_fixes because no fuzzy match was found is WRONG — use null.
 5. Re-verification (step 4c) uses find_broken_citations(page_slug=slug), not run_lint.
+6. In single-page mode, EVERY find_broken_citations call (steps 1, 4c, 5) must include the page_slug.
+   NEVER call find_broken_citations() without a page_slug in single-page mode — not even in STEP 5.
 """.replace("$$FUZZY_CUTOFF$$", str(_FUZZY_MATCH_CUTOFF))
 
 
