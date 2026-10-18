@@ -360,43 +360,6 @@ async def run_tool_call_loop(
             )
             continue
 
-        # Retry when the response looks like a tool call attempt but didn't parse.
-        # See _looks_like_tool_attempt for the four failure modes it detects.
-        if not all_calls and _looks_like_tool_attempt(text) and parse_retries < _MAX_PARSE_RETRIES:
-            parse_retries += 1
-            _log.warning(
-                "workflow tool-call parse failure: %s (attempt %d/%d, format=%s): %.200r",
-                model, parse_retries, _MAX_PARSE_RETRIES, _tag_format(text) or "malformed JSON", text,
-            )
-            _reason = (
-                "used an unsupported tag/XML format instead of JSON"
-                if _tag_format(text) is not None
-                else "may have been cut off by the token limit"
-            )
-            await ctx.send_sse_event(
-                "tool_progress",
-                {"tool": "_parse_retry",
-                 "message": (
-                     f"⚠ Response could not be parsed (attempt {parse_retries}/{_MAX_PARSE_RETRIES}) "
-                     f"— {_reason}. "
-                     "Retrying with a reminder to use the correct format…"
-                 )},
-            )
-            messages.append(Message(role="assistant", content=text))
-            messages.append(
-                Message(
-                    role="user",
-                    content=(
-                        "Your previous response could not be parsed as a valid tool call "
-                        f"({_reason}). "
-                        "Respond with ONLY a single JSON object — no prose, no explanation, "
-                        "no [TOOL_CALL] tags, no <invoke> or <tool_call> tags, no XML, no markdown fences:\n"
-                        '{"tool_call": {"name": "<name>", "input": {<kwargs>}}}'
-                    ),
-                )
-            )
-            continue
-
         parse_retries = 0
 
         # Mandatory-next-tool enforcement.
@@ -495,8 +458,8 @@ async def run_tool_call_loop(
             # emit a user-friendly error instead of raw JSON.
             if truncated or _looks_like_tool_attempt(text):
                 _log.error(
-                    "workflow stopped: %s never produced a parseable tool call after %d retries",
-                    model, _MAX_PARSE_RETRIES,
+                    "workflow stopped: %s produced an unparseable tool-call response: %.200r",
+                    model, text,
                 )
                 recommended = max_tokens * 2
                 _text_lower = text.lower()
@@ -509,52 +472,33 @@ async def run_tool_call_loop(
                         "This is a model-specific behaviour — some models (e.g. MiniMax-M2.5) "
                         "default to their own tool-call syntax rather than the JSON protocol "
                         "required for agentic workflows.\n\n"
-                        "**Fix options:**\n"
-                        "1. Re-run the workflow (a fresh attempt sometimes succeeds — the "
-                        "format reminder is injected automatically after each failure).\n"
-                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
-                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
-                        "`[agents]` of your `config.toml`."
+                        "**Fix:** Switch to a different model in `[agents]` of your `config.toml`."
                     )
                 elif _text_lower in _STUB_RESPONSES:
                     err = (
-                        "⚠ The workflow could not continue because the model repeatedly "
-                        f"returned an empty or stub response (`{text}`) instead of a tool call.\n\n"
-                        "This is a model-specific behaviour — some reasoning models "
-                        "(e.g. MiniMax-M2.5) do not reliably follow the JSON wire-format "
-                        "tool-call protocol required for agentic workflows.\n\n"
-                        "**Fix options:**\n"
-                        "1. Re-run the workflow (a fresh attempt sometimes succeeds).\n"
-                        "2. Switch to an Anthropic or OpenAI model for agentic workflows "
-                        "(`contradiction-resolver`, `orphan-resolver`, etc.) in "
-                        "`[agents]` of your `config.toml`."
+                        "⚠ The workflow could not continue because the model returned an empty "
+                        f"or stub response (`{text}`) instead of a tool call.\n\n"
+                        "This is a model-specific behaviour — some models do not reliably follow "
+                        "the JSON wire-format tool-call protocol required for agentic workflows.\n\n"
+                        "**Fix:** Try a different model in `[agents]` of your `config.toml`."
+                    )
+                elif truncated:
+                    err = (
+                        "⚠ The workflow could not continue because the model's response was "
+                        "truncated at the token limit before completing a tool call.\n\n"
+                        "**Likely cause:** the model hit its output token limit while generating "
+                        "a large tool call (e.g. outputting a full page's content).\n\n"
+                        f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                        f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                        f"and re-run the workflow:\n\n"
+                        f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
                     )
                 else:
-                    # Distinguish two failure modes:
-                    # (a) brace-imbalanced JSON — model stopped before closing outer braces;
-                    #     repair is attempted automatically but the model kept repeating it.
-                    # (b) genuine token-limit truncation (response.truncated is True).
-                    _opens = text.count("{") - text.count("}")
-                    _brace_short = 0 < _opens <= _MAX_BRACE_REPAIR and not truncated
-                    if _brace_short:
-                        err = (
-                            "⚠ The workflow could not continue. The model repeatedly produced "
-                            "JSON missing its closing brace(s); automatic repair was attempted "
-                            f"but the model kept returning the same malformed output after "
-                            f"{_MAX_PARSE_RETRIES} retries.\n\n"
-                            "**Fix:** Try a different model in `[agents]` of your `config.toml`."
-                        )
-                    else:
-                        err = (
-                            "⚠ The workflow could not continue because the model's response was "
-                            "repeatedly truncated or malformed.\n\n"
-                            "**Likely cause:** the model hit its token limit while generating a "
-                            "large tool call (e.g. outputting a full page's content).\n\n"
-                            f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
-                            f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
-                            f"and re-run the workflow:\n\n"
-                            f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
-                        )
+                    err = (
+                        "⚠ The workflow could not continue because the model produced a "
+                        "malformed tool-call response that could not be parsed.\n\n"
+                        "**Fix:** Try a different model in `[agents]` of your `config.toml`."
+                    )
                 for i in range(0, max(len(err), 1), _CHUNK_SIZE):
                     yield {"event": "token", "data": {"text": err[i : i + _CHUNK_SIZE]}}
                 yield {"event": "final_text", "data": {"text": err}}
