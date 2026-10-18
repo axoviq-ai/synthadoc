@@ -145,8 +145,8 @@ def _parse_wire_calls(text: str) -> list[tuple[str, dict]]:
                 if repaired:
                     _log.warning(
                         "_parse_wire_calls: repaired truncated tool-call JSON "
-                        "(missing closing brace(s)) for tool %r — model may need"
-                        " thinking=disabled or a more constrained output prompt",
+                        "(missing closing brace(s)) for tool %r — free-tier model quirk; "
+                        "consider switching to qwen-plus or another provider for workflows",
                         call["name"],
                     )
                 results.append((call["name"], tool_input))
