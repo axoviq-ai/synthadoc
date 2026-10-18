@@ -90,9 +90,10 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int | None)
                 msg = data.get("message", "unknown error")
                 typer.echo(f"\nError: {msg}", err=True)
                 if "timed out" in msg.lower() and not _WORKFLOW_RE.search(question):
+                    _hint_t = (timeout * 2) if timeout is not None else 240
                     typer.echo(
                         f"Tip: local models on CPU-only machines are significantly slower than GPU-accelerated "
-                        f"or cloud inference. Pass --timeout {timeout * 2} to allow more time, or switch to a "
+                        f"or cloud inference. Pass --timeout {_hint_t} to allow more time, or switch to a "
                         f"cloud provider (e.g. gemini-2.5-flash-lite is free).",
                         err=True,
                     )
