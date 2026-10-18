@@ -102,6 +102,9 @@ def get_stream(wiki: str, path: str, timeout: int | None = None, **params):
     import json as _json
     url, cfg = _server_info(wiki)
     t = timeout if timeout is not None else cfg.server.client_stream_timeout_seconds
+    # Keep server-side LLM timeout in sync with the HTTP client timeout so the
+    # server doesn't cancel before the client gives up (or vice-versa).
+    params.setdefault("timeout_seconds", t)
     full_url = f"{url}{path}"
     try:
         with httpx.Client(timeout=t) as client:

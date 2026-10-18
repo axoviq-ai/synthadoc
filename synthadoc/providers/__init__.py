@@ -65,21 +65,34 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "qwen":
         import re as _re
-        # DashScope model names: qwen-plus, qwen-max, qwen-turbo, qwq-32b …
+        # DashScope model names: qwen-plus, qwen3.8-flash, qwq-32b, kimi-k3 …
         # Ollama model names:    qwen3.5, qwen3:8b, qwen2.5:72b …
-        _is_dashscope = bool(_re.match(r'^(qwen|qwq)-[a-z]', agent_cfg.model or ""))
-        key = os.environ.get("QWEN_API_KEY", "").strip()
+        # Rule: DashScope names always have a letter-named suffix after a hyphen;
+        # Ollama names use a colon (qwen3:8b) or no hyphen (qwen3.5).
+        _is_dashscope = bool(_re.match(r'^(qwen[\d.]*-[a-z]|qwq-|kimi-)', agent_cfg.model or ""))
+        # Accept DASHSCOPE_API_KEY as an alias so workspace-specific Bailian
+        # endpoints (which use that name in their sample code) work without renaming.
+        key = (
+            os.environ.get("QWEN_API_KEY", "").strip()
+            or os.environ.get("DASHSCOPE_API_KEY", "").strip()
+        )
+        # QWEN_BASE_URL lets users point at a workspace-specific MaaS endpoint,
+        # e.g. https://ws-<id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+        # (used by Bailian free-tier and dedicated-endpoint deployments).
+        _default_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url = os.environ.get("QWEN_BASE_URL", "").strip() or _default_url
         if _is_dashscope and key:
             from synthadoc.providers.openai import OpenAIProvider
             cfg_with_url = AgentConfig(
                 provider="qwen", model=agent_cfg.model,
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                base_url=base_url,
                 thinking=agent_cfg.thinking,
             )
             return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
         elif _is_dashscope and not key:
             raise E.MissingApiKeyError(
-                "QWEN_API_KEY", "Qwen (DashScope)", "https://bailian.console.aliyun.com/"
+                "QWEN_API_KEY (or DASHSCOPE_API_KEY)", "Qwen (DashScope)",
+                "https://bailian.console.aliyun.com/"
             )
         else:
             from synthadoc.providers.ollama import OllamaProvider
