@@ -82,7 +82,7 @@ def _patch_toml(path: Path, section: str, pairs: dict) -> None:
 
 def _strip_bom(text: str) -> str:
     """Remove UTF-8 BOM (U+FEFF) if present at the start of text."""
-    return text.lstrip("﻿")
+    return text.lstrip(chr(0xFEFF))
 
 
 def _extract_body(text: str) -> str:
