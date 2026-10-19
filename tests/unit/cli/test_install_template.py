@@ -182,6 +182,110 @@ def test_sanitize_domain_exactly_max_len_unchanged():
 
 
 # ---------------------------------------------------------------------------
+# Demo upgrade (--upgrade flag)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def fake_demo_tree(tmp_path, monkeypatch):
+    """Set up a fake demo template and an installed wiki that mirrors an
+    older version (with binary source files).
+
+    Template raw_sources/ has:
+      notes.md          — unchanged existing file
+      data.csv          — NEW file not in the installed wiki
+      report.md         — replacement for report.pdf (same stem, new ext)
+
+    Installed wiki raw_sources/ has:
+      notes.md          — unchanged
+      report.pdf        — superseded by report.md in the template
+      user-added.txt    — user-added; must NOT be touched
+    """
+    import json
+    import synthadoc.cli.install as install_mod
+
+    # Template directory (acts as the current demo package)
+    tmpl_src = tmp_path / "tmpl" / "raw_sources"
+    tmpl_src.mkdir(parents=True)
+    (tmpl_src / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    (tmpl_src / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (tmpl_src / "report.md").write_text("# Report\n", encoding="utf-8")
+
+    # Installed wiki directory
+    wiki_dir = tmp_path / "wiki"
+    wiki_src = wiki_dir / "raw_sources"
+    wiki_src.mkdir(parents=True)
+    (wiki_src / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    (wiki_src / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+    (wiki_src / "user-added.txt").write_text("my custom data\n", encoding="utf-8")
+
+    # Registry pointing to the installed wiki
+    reg_file = tmp_path / "wikis.json"
+    reg_file.write_text(
+        json.dumps({"test-demo": {"path": str(wiki_dir), "demo": "test-demo", "installed": "2026-10-01", "port": 7070}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install_mod, "_REGISTRY", reg_file)
+    monkeypatch.setattr(install_mod, "_DEMOS", {"test-demo": tmp_path / "tmpl"})
+
+    return {"wiki_dir": wiki_dir, "wiki_src": wiki_src, "tmpl_src": tmpl_src}
+
+
+def test_upgrade_removes_superseded_binary_and_adds_new_files(fake_demo_tree):
+    """--upgrade removes report.pdf (superseded), copies report.md and data.csv in."""
+    wiki_src = fake_demo_tree["wiki_src"]
+    result = runner.invoke(app, ["install", "test-demo", "--upgrade"])
+    assert result.exit_code == 0, result.output
+    assert not (wiki_src / "report.pdf").exists(), "superseded binary must be removed"
+    assert (wiki_src / "report.md").exists(), "replacement file must be added"
+    assert (wiki_src / "data.csv").exists(), "new template file must be added"
+
+
+def test_upgrade_preserves_user_added_files(fake_demo_tree):
+    """--upgrade must not touch files that are not in the template."""
+    wiki_src = fake_demo_tree["wiki_src"]
+    runner.invoke(app, ["install", "test-demo", "--upgrade"])
+    assert (wiki_src / "user-added.txt").exists(), "user-added file must be preserved"
+
+
+def test_upgrade_preserves_unchanged_template_files(fake_demo_tree):
+    """--upgrade must not remove files present in both template and wiki."""
+    wiki_src = fake_demo_tree["wiki_src"]
+    runner.invoke(app, ["install", "test-demo", "--upgrade"])
+    assert (wiki_src / "notes.md").exists(), "unchanged file must survive"
+
+
+def test_upgrade_errors_on_non_demo_wiki(tmp_path, monkeypatch):
+    """--upgrade must refuse if the wiki is not a demo."""
+    import json
+    import synthadoc.cli.install as install_mod
+    reg_file = tmp_path / "wikis.json"
+    reg_file.write_text(
+        json.dumps({"plain-wiki": {"path": str(tmp_path / "plain-wiki"), "demo": None, "installed": "2026-10-01", "port": 7070}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install_mod, "_REGISTRY", reg_file)
+    result = runner.invoke(app, ["install", "plain-wiki", "--upgrade"])
+    assert result.exit_code != 0
+
+
+def test_upgrade_errors_on_unregistered_wiki(tmp_path, monkeypatch):
+    """--upgrade must refuse if the wiki name is not in the registry."""
+    import synthadoc.cli.install as install_mod
+    reg_file = tmp_path / "wikis.json"
+    reg_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(install_mod, "_REGISTRY", reg_file)
+    result = runner.invoke(app, ["install", "ghost-wiki", "--upgrade"])
+    assert result.exit_code != 0
+
+
+def test_upgrade_suggests_reingest(fake_demo_tree):
+    """--upgrade output mentions re-ingest when files changed."""
+    result = runner.invoke(app, ["install", "test-demo", "--upgrade"])
+    assert result.exit_code == 0, result.output
+    assert "ingest" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
 # Domain resolution — CLI integration tests
 # ---------------------------------------------------------------------------
 
