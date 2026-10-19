@@ -67,7 +67,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd obsidian-plugin && npm install && npm run build && npm test
+      - run: cd obsidian-plugin && npm ci && npm run build && npm test
       - run: python scripts/sync_plugin.py
       - name: Fail if compiled plugin files are not committed
         shell: bash
