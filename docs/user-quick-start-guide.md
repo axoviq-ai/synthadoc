@@ -1,4 +1,4 @@
-﻿# Synthadoc User Quick-Start Guide
+# Synthadoc User Quick-Start Guide
 
 **Version: v1.4.2 (Community Edition)**
 

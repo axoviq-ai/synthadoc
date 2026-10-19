@@ -89,7 +89,9 @@ def sync_cmd(
       + wiki/<stub>.md    — new stubs added; existing pages never removed
       ~ wiki/<stub>.md    — updated only when --force AND sources: [] (never ingested)
 
-    For demo wikis, applies the same sync logic as 'synthadoc demo sync'.
+    For demo wikis, syncs raw_sources (removes superseded binary files replaced
+    by plain-text equivalents in the current package, copies in new files) and
+    updates wiki pages and dashboard.
 
     Use this after upgrading synthadoc to pick up updated guidelines, seeds,
     and new stub pages without reinstalling.
@@ -283,9 +285,27 @@ def _sync_demo_wiki(
     """Sync a demo wiki against its bundled template. Mirrors the legacy demo sync logic."""
     updated: list[str] = []
 
-    # 1. raw_sources: additive copy
+    # 1. raw_sources: sync template files and remove superseded ones.
+    #
+    #    "Superseded" means the installed wiki has a file whose stem matches a
+    #    template file but with a different extension — e.g. report.pdf when the
+    #    template now ships report.md.  These were bundled with the demo (not
+    #    user-created), so removing them is always safe.  User-added files (stems
+    #    with no matching template entry) are never touched.
     demo_sources = demo_template / "raw_sources"
     installed_sources = wiki_root / "raw_sources"
+    installed_sources.mkdir(exist_ok=True)
+
+    tmpl_by_stem: dict[str, Path] = {
+        f.stem: f for f in demo_sources.rglob("*") if f.is_file()
+    }
+    tmpl_names = {f.name for f in tmpl_by_stem.values()}
+
+    for existing in list(installed_sources.rglob("*")):
+        if existing.is_file() and existing.stem in tmpl_by_stem and existing.name not in tmpl_names:
+            existing.unlink()
+            updated.append(f"  - raw_sources/{existing.relative_to(installed_sources)}  (superseded)")
+
     for src in demo_sources.rglob("*"):
         if not src.is_file():
             continue

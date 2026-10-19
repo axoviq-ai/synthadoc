@@ -1,0 +1,15 @@
+Model,Organisation,Release,Parameters,MMLU (5-shot),HumanEval,Context Window,Open Weights
+GPT-3,OpenAI,2020-06,175B,~43%,—,4K,No
+BERT-Large,Google,2018-10,340M,—,—,512,Yes
+GPT-4,OpenAI,2023-03,Undisclosed,86.4%,67.0%,128K,No
+LLaMA 2 70B,Meta,2023-07,70B,68.9%,29.9%,4K,Yes
+Llama 3 70B,Meta,2024-04,70B,82.0%,81.7%,8K,Yes
+Claude 3 Opus,Anthropic,2024-03,Undisclosed,86.8%,84.9%,200K,No
+Gemini Ultra,Google,2023-12,Undisclosed,90.0%,74.4%,32K,No
+Mistral 7B,Mistral,2023-09,7B,60.1%,30.5%,8K,Yes
+
+Notes
+MMLU,Massive Multitask Language Understanding — 57 subjects, 5-shot unless noted.
+HumanEval,Python code generation — pass@1 rate on 164 problems.
+Gemini Ultra MMLU,"The 90.0% figure uses CoT@32 (32 samples with majority vote). Standard 5-shot gives 83.7% — below GPT-4's 86.4% on the same protocol."
+Context Window,As of initial release; many models have since expanded via API updates.
