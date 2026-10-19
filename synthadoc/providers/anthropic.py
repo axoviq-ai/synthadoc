@@ -20,6 +20,10 @@ _RATE_LIMIT = (anthropic_lib.RateLimitError,)
 _MAX_RETRIES = 3
 
 
+def _system_block(text: str) -> list[dict]:
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
 class AnthropicProvider(LLMProvider):
     def __init__(self, api_key: str, config: AgentConfig, timeout: int = 0) -> None:
         # timeout=0 means "use the SDK default" (600 s); any positive value caps the call.
@@ -37,8 +41,7 @@ class AnthropicProvider(LLMProvider):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
         if system:
-            kwargs["system"] = [{"type": "text", "text": system,
-                                  "cache_control": {"type": "ephemeral"}}]
+            kwargs["system"] = _system_block(system)
         # stream=True tells the Anthropic API this is a streaming request, which is
         # required for long-running calls (scaffold, large ingests, etc.).
         # We accumulate the chunks here so callers get the same CompletionResponse.
@@ -93,8 +96,7 @@ class AnthropicProvider(LLMProvider):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
         if system:
-            kwargs["system"] = [{"type": "text", "text": system,
-                                  "cache_control": {"type": "ephemeral"}}]
+            kwargs["system"] = _system_block(system)
         async with self._client.messages.stream(**kwargs) as stream:
             async for event in stream:
                 # message_start carries input_tokens; message_delta carries cumulative output_tokens.
