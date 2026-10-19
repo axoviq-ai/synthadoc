@@ -123,96 +123,11 @@ from synthadoc.cli.plugin import (  # noqa: E402
 
 
 
-def _upgrade_demo_sources(name: str) -> None:
-    """Sync raw_sources from the current demo template into an installed demo wiki.
-
-    - Removes files whose stem exists in the template but with a different
-      extension (superseded binary → plain-text replacements).
-    - Copies all current template files into raw_sources/, overwriting same-name files.
-    - Never touches files whose stem does not appear in the template (user-added).
-    """
-    registry = _read_registry()
-    if name not in registry:
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"'{name}' is not installed.",
-            "Run 'synthadoc list' to see installed wikis.",
-        )
-    entry = registry[name]
-    if not entry.get("demo"):
-        E.cli_error(
-            E.WIKI_INVALID,
-            f"'{name}' is not a demo wiki — --upgrade only applies to demo wikis.",
-            "Use 'synthadoc install <name> --demo' to install a fresh demo.",
-        )
-    if name not in _DEMOS:
-        E.cli_error(
-            E.WIKI_DEMO_NOT_FOUND,
-            f"No current demo template for '{name}'.",
-            f"Available demos: {', '.join(_DEMOS)}",
-        )
-
-    wiki_src = Path(entry["path"]) / "raw_sources"
-    tmpl_src = _DEMOS[name] / "raw_sources"
-
-    if not tmpl_src.exists():
-        E.cli_error(E.WIKI_INVALID, f"Demo template for '{name}' has no raw_sources directory.", "")
-
-    wiki_src.mkdir(exist_ok=True)
-
-    # stem → Path for every file currently in the template
-    tmpl_by_stem: dict[str, Path] = {f.stem: f for f in tmpl_src.iterdir() if f.is_file()}
-    tmpl_names = {f.name for f in tmpl_by_stem.values()}
-
-    removed: list[str] = []
-    added: list[str] = []
-    updated: list[str] = []
-
-    # Remove superseded files: same stem as a template file but different extension
-    for existing in list(wiki_src.iterdir()):
-        if existing.is_file() and existing.stem in tmpl_by_stem and existing.name not in tmpl_names:
-            existing.unlink()
-            removed.append(existing.name)
-
-    # Copy all template files into wiki raw_sources
-    for stem, src in tmpl_by_stem.items():
-        dst = wiki_src / src.name
-        if dst.exists():
-            updated.append(src.name)
-        else:
-            added.append(src.name)
-        shutil.copy2(src, dst)
-
-    if removed:
-        typer.echo(f"Removed {len(removed)} superseded file(s):")
-        for f in removed:
-            typer.echo(f"  - {f}")
-    if added:
-        typer.echo(f"Added {len(added)} new file(s):")
-        for f in added:
-            typer.echo(f"  + {f}")
-    if updated:
-        typer.echo(f"Updated {len(updated)} existing file(s):")
-        for f in updated:
-            typer.echo(f"  ~ {f}")
-
-    if not removed and not added and not updated:
-        typer.echo(f"'{name}' raw_sources are already up to date.")
-        return
-
-    typer.echo()
-    typer.echo(f"'{name}' raw_sources upgraded.")
-    if removed or added:
-        typer.echo(f"Re-ingest to update wiki pages:")
-        typer.echo(f"  synthadoc ingest raw_sources/ --batch -w {name}")
-
-
 @app.command("install")
 def install_cmd(
     name: str = typer.Argument(help="Name for the new wiki"),
-    target: Optional[str] = typer.Option(None, "--target", "-t", help="Parent directory to install into (required for new installs)"),
+    target: str = typer.Option(..., "--target", "-t", help="Parent directory to install into"),
     demo: bool = typer.Option(False, "--demo", "-d", help="Install from a demo template matching <name>"),
-    upgrade: bool = typer.Option(False, "--upgrade", help="Upgrade an installed demo wiki's raw_sources from the current template"),
     domain: Optional[str] = typer.Option(
         None, "--domain",
         help=(
@@ -238,20 +153,7 @@ def install_cmd(
       synthadoc install my-research --target ~/wikis
 
       synthadoc install history-of-computing --target ~/wikis --demo
-
-      synthadoc install history-of-computing --upgrade
     """
-    if upgrade:
-        _upgrade_demo_sources(name)
-        return
-
-    if target is None:
-        E.cli_error(
-            E.WIKI_INVALID,
-            "--target is required when installing a new wiki.",
-            "Example: synthadoc install my-wiki --target ~/wikis",
-        )
-
     dest = (Path(target) / name).resolve()
 
     # Registry check first - same name cannot be installed twice regardless of --target path

@@ -318,6 +318,82 @@ class TestSyncCLI:
         assert result.exit_code == 0
 
 
+# ── _sync_demo_wiki: raw_sources superseded-binary removal ───────────────────
+
+@pytest.fixture()
+def fake_demo_tree(tmp_path, monkeypatch):
+    """Demo template and installed wiki with a superseded binary source file.
+
+    Template raw_sources/:
+      notes.md      — unchanged
+      data.csv      — new file not in the wiki
+      report.md     — replacement for report.pdf (same stem, new ext)
+
+    Installed wiki raw_sources/:
+      notes.md      — unchanged
+      report.pdf    — superseded
+      user-added.txt — user-created; must never be touched
+    """
+    import json
+    import synthadoc.cli.install as install_mod
+
+    tmpl_src = tmp_path / "tmpl" / "raw_sources"
+    tmpl_src.mkdir(parents=True)
+    (tmpl_src / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    (tmpl_src / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (tmpl_src / "report.md").write_text("# Report\n", encoding="utf-8")
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_src = wiki_dir / "raw_sources"
+    wiki_src.mkdir(parents=True)
+    (wiki_src / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    (wiki_src / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+    (wiki_src / "user-added.txt").write_text("my custom data\n", encoding="utf-8")
+
+    reg_file = tmp_path / "wikis.json"
+    reg_file.write_text(
+        json.dumps({"test-demo": {"path": str(wiki_dir), "demo": "test-demo", "installed": "2026-10-01", "port": 7070}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install_mod, "_REGISTRY", reg_file)
+    monkeypatch.setattr(install_mod, "_DEMOS", {"test-demo": tmp_path / "tmpl"})
+
+    return {"wiki_dir": wiki_dir, "wiki_src": wiki_src}
+
+
+class TestSyncDemoRawSources:
+    def _sync(self, fake_demo_tree):
+        from synthadoc.cli.templates import _sync_demo_wiki
+        import synthadoc.cli.install as install_mod
+        wiki_dir = fake_demo_tree["wiki_dir"]
+        demo_template = install_mod._DEMOS["test-demo"]
+        return _sync_demo_wiki(wiki_root=wiki_dir, demo_template=demo_template, force=False)
+
+    def test_superseded_binary_removed(self, fake_demo_tree):
+        self._sync(fake_demo_tree)
+        assert not (fake_demo_tree["wiki_src"] / "report.pdf").exists()
+
+    def test_replacement_file_added(self, fake_demo_tree):
+        self._sync(fake_demo_tree)
+        assert (fake_demo_tree["wiki_src"] / "report.md").exists()
+
+    def test_new_template_file_added(self, fake_demo_tree):
+        self._sync(fake_demo_tree)
+        assert (fake_demo_tree["wiki_src"] / "data.csv").exists()
+
+    def test_unchanged_file_preserved(self, fake_demo_tree):
+        self._sync(fake_demo_tree)
+        assert (fake_demo_tree["wiki_src"] / "notes.md").exists()
+
+    def test_user_added_file_never_touched(self, fake_demo_tree):
+        self._sync(fake_demo_tree)
+        assert (fake_demo_tree["wiki_src"] / "user-added.txt").exists()
+
+    def test_removal_reported_in_changelog(self, fake_demo_tree):
+        updated = self._sync(fake_demo_tree)
+        assert any("report.pdf" in line for line in updated)
+
+
 # ── demo sync deprecation ─────────────────────────────────────────────────────
 
 class TestDemoSyncDeprecation:
