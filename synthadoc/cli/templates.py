@@ -2,6 +2,8 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import json
+import os
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -19,6 +21,32 @@ from synthadoc.cli._utils import (
 
 template_app = typer.Typer(help="Browse and manage domain templates.")
 app.add_typer(template_app, name="templates")
+
+
+# ── Origin helpers ────────────────────────────────────────────────────────────
+
+def _read_origin(wiki_root: Path) -> dict:
+    """Read .synthadoc/origin.json; return {} if absent or unreadable."""
+    origin_file = wiki_root / ".synthadoc" / "origin.json"
+    if origin_file.exists():
+        try:
+            return json.loads(origin_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _fallback_wiki_root() -> Optional[Path]:
+    """Return a wiki root from SYNTHADOC_WIKI env var or CWD, or None."""
+    env_wiki = os.environ.get("SYNTHADOC_WIKI", "").strip()
+    if env_wiki:
+        p = Path(env_wiki)
+        if p.is_dir():
+            return p
+    cwd = Path.cwd()
+    if (cwd / ".synthadoc" / "config.toml").exists():
+        return cwd
+    return None
 
 
 @template_app.command("list")
@@ -123,8 +151,13 @@ def _do_sync(name: Optional[str], force: bool) -> None:
             if (e.get("category") and e.get("template")) or n in _DEMOS
         ]
         if not targets:
-            typer.echo("No template or demo wikis found. Nothing to sync.")
-            raise typer.Exit(0)
+            # Docker fallback: no registry — use SYNTHADOC_WIKI or CWD
+            wiki_root = _fallback_wiki_root()
+            if wiki_root is None:
+                typer.echo("No template or demo wikis found. Nothing to sync.")
+                raise typer.Exit(0)
+            _do_sync_from_origin(wiki_root, force)
+            return
 
     any_changes = False
     for target in targets:
@@ -175,6 +208,73 @@ def _do_sync(name: Optional[str], force: bool) -> None:
 
     if not any_changes:
         typer.echo("Already up to date - nothing to sync.")
+
+
+def _do_sync_from_origin(wiki_root: Path, force: bool) -> None:
+    """Sync a single wiki using its .synthadoc/origin.json — Docker path."""
+    from synthadoc.cli.install import _DEMOS
+    from synthadoc.core.template_engine import get_template_path
+
+    origin = _read_origin(wiki_root)
+    origin_type = origin.get("type")
+
+    if origin_type == "template":
+        ref = origin.get("ref", "")
+        # Validate the ref still exists in this version of Synthadoc
+        try:
+            get_template_path(ref)
+        except (ValueError, FileNotFoundError):
+            typer.echo(
+                f"Error: template '{ref}' not found in this version of Synthadoc.\n"
+                f"  Recorded in .synthadoc/origin.json — check for a typo.\n"
+                f"  Run 'synthadoc templates list' to see available templates.\n"
+                f"  To fix: synthadoc templates set-origin <correct-ref>",
+                err=True,
+            )
+            raise typer.Exit(1)
+        wiki_name = wiki_root.name
+        updated = _sync_template_wiki(
+            wiki_root=wiki_root,
+            template_ref=ref,
+            wiki_name=wiki_name,
+            force=force,
+        )
+        if updated:
+            typer.echo(f"{wiki_name}:")
+            for line in updated:
+                typer.echo(line)
+        else:
+            typer.echo(f"{wiki_name}: already up to date")
+
+    elif origin_type == "demo":
+        demo_name = origin.get("name", "")
+        if demo_name not in _DEMOS:
+            typer.echo(
+                f"Error: demo '{demo_name}' not found in this version of Synthadoc.\n"
+                f"  Recorded in .synthadoc/origin.json — check for a typo.\n"
+                f"  To fix: synthadoc templates set-origin <correct-demo-name>",
+                err=True,
+            )
+            raise typer.Exit(1)
+        wiki_name = wiki_root.name
+        updated = _sync_demo_wiki(
+            wiki_root=wiki_root,
+            demo_template=_DEMOS[demo_name],
+            force=force,
+        )
+        if updated:
+            typer.echo(f"{wiki_name}:")
+            for line in updated:
+                typer.echo(line)
+        else:
+            typer.echo(f"{wiki_name}: already up to date")
+
+    else:
+        typer.echo(
+            "No template or demo origin found for this wiki. Nothing to sync.\n"
+            "  (Custom wikis are not installed from a template and have nothing to sync.)"
+        )
+        raise typer.Exit(0)
 
 
 # ── Template-wiki sync ────────────────────────────────────────────────────────
@@ -365,3 +465,69 @@ def _sync_demo_wiki(
             updated.append(f"  ~ wiki/{src.name}  (type: backfilled)")
 
     return updated
+
+
+# ── set-origin ────────────────────────────────────────────────────────────────
+
+@template_app.command("set-origin")
+def set_origin_cmd(
+    ref: str = typer.Argument(
+        help=(
+            "Template ref (e.g. finance/investment) or demo name "
+            "(e.g. history-of-computing)."
+        )
+    ),
+) -> None:
+    """Record which template or demo this wiki was installed from.
+
+    Use this if .synthadoc/origin.json is missing or contains the wrong ref —
+    for example, after manually creating a wiki or after a registry corruption.
+
+    \b
+    Examples:
+      synthadoc templates set-origin finance/investment
+      synthadoc templates set-origin history-of-computing
+    """
+    from synthadoc.cli.install import _DEMOS
+    from synthadoc.core.template_engine import get_template_path
+
+    wiki_root = _fallback_wiki_root()
+    if wiki_root is None:
+        typer.echo(
+            "Error: could not determine the wiki directory.\n"
+            "  Set SYNTHADOC_WIKI or run from inside a wiki directory.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if "/" in ref:
+        # Template ref
+        try:
+            get_template_path(ref)
+        except (ValueError, FileNotFoundError):
+            typer.echo(
+                f"Error: template '{ref}' not found in this version of Synthadoc.\n"
+                f"  Run 'synthadoc templates list' to see available templates.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        origin = {"type": "template", "ref": ref}
+        label = f"template '{ref}'"
+    else:
+        # Demo name
+        if ref not in _DEMOS:
+            typer.echo(
+                f"Error: demo '{ref}' not found in this version of Synthadoc.\n"
+                f"  Available demos: {', '.join(_DEMOS) or '(none)'}",
+                err=True,
+            )
+            raise typer.Exit(1)
+        origin = {"type": "demo", "name": ref}
+        label = f"demo '{ref}'"
+
+    from datetime import date
+    origin["installed"] = date.today().isoformat()
+    origin_file = wiki_root / ".synthadoc" / "origin.json"
+    origin_file.parent.mkdir(parents=True, exist_ok=True)
+    origin_file.write_text(json.dumps(origin, indent=2), encoding="utf-8", newline="\n")
+    typer.echo(f"Origin set to {label} in {origin_file}")

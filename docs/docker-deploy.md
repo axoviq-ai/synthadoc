@@ -660,7 +660,28 @@ Then refresh the Obsidian plugin stored in the vault so it matches the new serve
 docker exec history-of-computing synthadoc plugin install
 ```
 
-> `synthadoc plugin upgrade` and `synthadoc templates sync`, the upgrade commands for pip installs, read the host wiki registry, which does not exist inside a container. They fail with "No wikis registered" or "is not registered". Use `plugin install` as shown above. Refreshing demo or template content (`templates sync`) is not currently available for container-only setups.
+You can also use `plugin upgrade` and `templates sync` directly inside the container — they fall back to `SYNTHADOC_WIKI` (set to `/wiki` in the image) automatically:
+
+```bash
+# Upgrade the Obsidian plugin in the running container
+docker exec history-of-computing synthadoc plugin upgrade
+
+# Re-sync wiki content from the original template or demo
+docker exec history-of-computing synthadoc templates sync
+
+# Force a full re-sync (overwrites local changes)
+docker exec history-of-computing synthadoc templates sync --force
+```
+
+These commands read `.synthadoc/origin.json` (written at install time) to determine which template or demo to sync from. If that file is missing or corrupted, restore it with:
+
+```bash
+# Restore origin for a template-based wiki (e.g. ai-research)
+docker exec history-of-computing synthadoc templates set-origin ai-research/main
+
+# Restore origin for a demo-based wiki (e.g. history-of-computing)
+docker exec history-of-computing synthadoc templates set-origin history-of-computing
+```
 
 ### Stop and restart
 

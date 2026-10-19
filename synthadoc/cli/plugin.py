@@ -297,7 +297,37 @@ def plugin_upgrade_cmd():
 
     registry = _read_registry()
     if not registry:
-        typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
+        # Docker fallback: no registry — upgrade the single wiki from SYNTHADOC_WIKI or CWD
+        import os
+        env_wiki = os.environ.get("SYNTHADOC_WIKI", "").strip()
+        wiki_path: Path | None = None
+        if env_wiki:
+            p = Path(env_wiki)
+            if p.is_dir():
+                wiki_path = p
+        if wiki_path is None:
+            cwd = Path.cwd()
+            if (cwd / ".synthadoc" / "config.toml").exists():
+                wiki_path = cwd
+        if wiki_path is None:
+            typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
+            raise typer.Exit(0)
+        try:
+            copied = _install_plugin_into(wiki_path)
+            if copied:
+                _install_dataview(wiki_path)
+                _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
+                _set_reading_view_default(wiki_path)
+                _patch_workspace_reading_view(wiki_path)
+                typer.echo(f"Upgraded 1 wiki(s):")
+                typer.echo(f"  {wiki_path}")
+                typer.echo()
+                typer.echo("Restart Obsidian (or reopen the vault) for the changes to take effect.")
+            else:
+                typer.echo("No plugin files found - run: python scripts/sync_plugin.py")
+        except Exception as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1)
         raise typer.Exit(0)
 
     upgraded: list[str] = []

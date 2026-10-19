@@ -99,6 +99,23 @@ def test_plugin_install_missing_plugin_src(tmp_path):
 
 # ── plugin upgrade ────────────────────────────────────────────────────────────
 
+def test_plugin_upgrade_docker_fallback(tmp_path, monkeypatch):
+    """In Docker (empty registry), upgrade falls back to SYNTHADOC_WIKI env var."""
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+    monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki))
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin._read_registry", return_value={}),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"),
+    ):
+        result = runner.invoke(app, ["plugin", "upgrade"])
+
+    assert result.exit_code == 0, result.output
+    assert (wiki / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists()
+
+
 def test_plugin_upgrade_no_registry(tmp_path):
     src = _make_plugin_src(tmp_path)
 
