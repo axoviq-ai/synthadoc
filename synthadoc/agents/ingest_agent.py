@@ -41,6 +41,8 @@ class IngestResult:
     tokens_used: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
     cache_hits: int = 0
     skipped: bool = False
@@ -1149,6 +1151,8 @@ class IngestAgent(BaseAgent):
             result.tokens_used += resp2.total_tokens
             result.input_tokens += resp2.input_tokens
             result.output_tokens += resp2.output_tokens
+            result.cache_read_tokens += resp2.cache_read_tokens
+            result.cache_write_tokens += resp2.cache_write_tokens
             decisions = _parse_json_response(resp2.text)
             await self._cache.set(ck2, decisions)
 

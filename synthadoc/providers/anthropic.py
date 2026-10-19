@@ -101,7 +101,10 @@ class AnthropicProvider(LLMProvider):
             async for event in stream:
                 # message_start carries input_tokens; message_delta carries cumulative output_tokens.
                 if event.type == "message_start":
-                    self.last_stream_input_tokens = event.message.usage.input_tokens
+                    usage = event.message.usage
+                    self.last_stream_input_tokens = usage.input_tokens
+                    self.last_stream_cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+                    self.last_stream_cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
                 elif event.type == "message_delta" and hasattr(event, "usage"):
                     self.last_stream_output_tokens = event.usage.output_tokens
                 elif (event.type == "content_block_delta"

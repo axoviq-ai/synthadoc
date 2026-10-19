@@ -37,6 +37,8 @@ class LLMProvider(ABC):
     # Providers that cannot report streaming usage leave these at 0.
     last_stream_input_tokens: int = 0
     last_stream_output_tokens: int = 0
+    last_stream_cache_read_tokens: int = 0
+    last_stream_cache_write_tokens: int = 0
 
     @abstractmethod
     async def complete(self, messages: list[Message], system: Optional[str] = None,
