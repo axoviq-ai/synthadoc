@@ -43,6 +43,24 @@ def _write_registry(data: dict) -> None:
     _REGISTRY.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
 
 
+def _write_origin(wiki_root: Path, *, demo: Optional[str], template: Optional[str]) -> None:
+    """Write .synthadoc/origin.json recording how this wiki was installed.
+
+    Used by ``templates sync`` and ``plugin upgrade`` in Docker where the
+    host registry (~/.synthadoc/wikis.json) is not available.
+    """
+    origin: dict[str, str] = {"installed": date.today().isoformat()}
+    if demo:
+        origin.update({"type": "demo", "name": demo})
+    elif template:
+        origin.update({"type": "template", "ref": template})
+    else:
+        origin["type"] = "custom"
+    origin_file = wiki_root / ".synthadoc" / "origin.json"
+    origin_file.parent.mkdir(parents=True, exist_ok=True)
+    origin_file.write_text(json.dumps(origin, indent=2), encoding="utf-8", newline="\n")
+
+
 def _get_reserved_ports() -> set[int]:
     """Return all ports currently assigned to registered wikis.
 
@@ -289,6 +307,7 @@ def install_cmd(
            if template else {}),
     }
     _write_registry(registry)
+    _write_origin(dest, demo=name if demo else None, template=template)
 
     # -- Obsidian plugin -------------------------------------------------------
     _plugin_ok = False

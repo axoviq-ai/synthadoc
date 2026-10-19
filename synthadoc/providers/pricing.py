@@ -143,13 +143,21 @@ _FALLBACK: tuple[float, float] = (3.00e-6, 3.00e-6)
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int,
-                  is_local: bool = False) -> float:
+                  is_local: bool = False,
+                  cache_read_tokens: int = 0,
+                  cache_write_tokens: int = 0) -> float:
     """Return estimated cost in USD for a single LLM call.
 
     Pass is_local=True for Ollama (always $0.00).
+    Pass cache_read_tokens / cache_write_tokens for Anthropic prompt-caching
+    calls; input_tokens should be the non-cached portion only.
     Unknown models use a conservative fallback rate.
     """
     if is_local:
         return 0.0
     rates = _PRICING.get(model, _FALLBACK)
-    return input_tokens * rates[0] + output_tokens * rates[1]
+    input_rate, output_rate = rates
+    cost = input_tokens * input_rate + output_tokens * output_rate
+    cost += cache_read_tokens * input_rate * 0.1   # cache hit: 10% of input rate
+    cost += cache_write_tokens * input_rate * 1.25  # cache write: 125% of input rate
+    return cost

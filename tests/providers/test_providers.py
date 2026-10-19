@@ -89,7 +89,9 @@ async def test_anthropic_provider_includes_system_message():
             messages=[Message(role="user", content="hello")],
             system="You are a helpful assistant.",
         )
-    assert captured.get("system") == "You are a helpful assistant."
+    sys_block = captured.get("system")
+    assert isinstance(sys_block, list) and sys_block[0]["text"] == "You are a helpful assistant."
+    assert sys_block[0]["cache_control"] == {"type": "ephemeral"}
 
 
 # ── thinking / extra_body tests ───────────────────────────────────────────────

@@ -20,6 +20,9 @@ class CompletionResponse:
     # stop_reason="max_tokens", OpenAI finish_reason="length"). The text is then
     # incomplete and must not be treated as a finished answer.
     truncated: bool = False
+    # Anthropic prompt-caching fields; 0 for providers that don't support caching.
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -34,6 +37,8 @@ class LLMProvider(ABC):
     # Providers that cannot report streaming usage leave these at 0.
     last_stream_input_tokens: int = 0
     last_stream_output_tokens: int = 0
+    last_stream_cache_read_tokens: int = 0
+    last_stream_cache_write_tokens: int = 0
 
     @abstractmethod
     async def complete(self, messages: list[Message], system: Optional[str] = None,
