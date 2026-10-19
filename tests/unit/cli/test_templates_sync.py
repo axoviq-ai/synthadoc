@@ -530,6 +530,127 @@ class TestSetOrigin:
         assert result.exit_code != 0
 
 
+# ── _read_origin ─────────────────────────────────────────────────────────────
+
+class TestReadOrigin:
+    def test_missing_file_returns_empty(self, tmp_path):
+        from synthadoc.cli.templates import _read_origin
+        assert _read_origin(tmp_path) == {}
+
+    def test_malformed_json_returns_empty(self, tmp_path):
+        from synthadoc.cli.templates import _read_origin
+        dot_sd = tmp_path / ".synthadoc"
+        dot_sd.mkdir()
+        (dot_sd / "origin.json").write_text("{invalid json", encoding="utf-8")
+        assert _read_origin(tmp_path) == {}
+
+    def test_valid_template_origin(self, tmp_path):
+        from synthadoc.cli.templates import _read_origin
+        dot_sd = tmp_path / ".synthadoc"
+        dot_sd.mkdir()
+        (dot_sd / "origin.json").write_text(
+            '{"type": "template", "ref": "finance/investment", "installed": "2026-01-01"}',
+            encoding="utf-8",
+        )
+        origin = _read_origin(tmp_path)
+        assert origin["type"] == "template"
+        assert origin["ref"] == "finance/investment"
+
+
+# ── Additional Docker fallback edge cases ─────────────────────────────────────
+
+class TestDockerFallbackEdgeCases:
+    """Boundary cases around _fallback_wiki_root and _do_sync_from_origin."""
+
+    def _make_docker_wiki(self, tmp_path, *, template_ref=None, demo_name=None):
+        wiki_root = tmp_path / "wiki"
+        (wiki_root / "wiki").mkdir(parents=True)
+        dot_sd = wiki_root / ".synthadoc"
+        dot_sd.mkdir()
+        (dot_sd / "config.toml").write_text("[server]\nport = 7070\n", encoding="utf-8")
+        (wiki_root / "ROUTING.md").write_text("# OLD ROUTING\n", encoding="utf-8")
+        (wiki_root / "seeds.md").write_text("# Old getting started\n", encoding="utf-8")
+        for fname in ("AGENTS.md", "CLAUDE.md", "GEMINI.md"):
+            (wiki_root / fname).write_text(f"# {fname} — wiki\n\n- Old\n", encoding="utf-8")
+        (wiki_root / "wiki" / "purpose.md").write_text(
+            "---\ntitle: Purpose\n---\n\n# Purpose\n", encoding="utf-8"
+        )
+        (wiki_root / "wiki" / "index.md").write_text(
+            "---\ntitle: Index\n---\n\n# Index\n", encoding="utf-8"
+        )
+        if template_ref is not None:
+            (dot_sd / "origin.json").write_text(
+                _json.dumps({"type": "template", "ref": template_ref, "installed": "2026-01-01"}, indent=2),
+                encoding="utf-8",
+            )
+        elif demo_name is not None:
+            (dot_sd / "origin.json").write_text(
+                _json.dumps({"type": "demo", "name": demo_name, "installed": "2026-01-01"}, indent=2),
+                encoding="utf-8",
+            )
+        return wiki_root
+
+    def test_env_var_nonexistent_dir_falls_through_to_cwd(
+        self, fake_template_root, tmp_path, monkeypatch
+    ):
+        """SYNTHADOC_WIKI pointing to a missing directory → falls through to CWD."""
+        wiki_root = self._make_docker_wiki(tmp_path, template_ref="finance/investment")
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(tmp_path / "nonexistent"))
+        monkeypatch.chdir(wiki_root)
+        with patch("synthadoc.cli.install._read_registry", return_value={}), \
+             patch("synthadoc.cli.install._DEMOS", {}):
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code == 0, result.output
+        assert "SEC EDGAR" in (wiki_root / "seeds.md").read_text(encoding="utf-8")
+
+    def test_neither_env_nor_cwd_exits_cleanly(self, tmp_path, monkeypatch):
+        """No SYNTHADOC_WIKI, no wiki in CWD → exit 0 with 'Nothing to sync'."""
+        monkeypatch.delenv("SYNTHADOC_WIKI", raising=False)
+        monkeypatch.chdir(tmp_path)  # no .synthadoc/config.toml here
+        with patch("synthadoc.cli.install._read_registry", return_value={}), \
+             patch("synthadoc.cli.install._DEMOS", {}):
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code == 0
+        combined = result.output.lower()
+        assert "nothing to sync" in combined or "no template" in combined
+
+    def test_demo_origin_syncs_in_docker(self, tmp_path, monkeypatch):
+        """Docker path with demo origin.json routes to _sync_demo_wiki."""
+        wiki_root = self._make_docker_wiki(tmp_path, demo_name="history-of-computing")
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki_root))
+        fake_demo_path = tmp_path / "fake-demo"
+        with patch("synthadoc.cli.install._read_registry", return_value={}), \
+             patch("synthadoc.cli.install._DEMOS", {"history-of-computing": fake_demo_path}), \
+             patch("synthadoc.cli.templates._sync_demo_wiki", return_value=["  + wiki/article.md"]) as mock_sync:
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code == 0, result.output
+        mock_sync.assert_called_once()
+
+    def test_invalid_demo_in_origin_gives_clear_error(self, tmp_path, monkeypatch):
+        """origin.json references a demo that no longer exists → clear error."""
+        wiki_root = self._make_docker_wiki(tmp_path, demo_name="removed-demo")
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki_root))
+        with patch("synthadoc.cli.install._read_registry", return_value={}), \
+             patch("synthadoc.cli.install._DEMOS", {}):
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code != 0
+        assert "removed-demo" in result.output
+        assert "origin.json" in result.output
+
+
+# ── set-origin edge cases ─────────────────────────────────────────────────────
+
+class TestSetOriginEdgeCases:
+    def test_no_wiki_root_exits_with_error(self, tmp_path, monkeypatch):
+        """set-origin fails clearly when no wiki root can be resolved."""
+        monkeypatch.delenv("SYNTHADOC_WIKI", raising=False)
+        monkeypatch.chdir(tmp_path)  # no .synthadoc/config.toml
+        with patch("synthadoc.cli.install._read_registry", return_value={}):
+            result = runner.invoke(app, ["templates", "set-origin", "finance/investment"])
+        assert result.exit_code != 0
+        assert "SYNTHADOC_WIKI" in result.output or "wiki directory" in result.output
+
+
 # ── demo sync deprecation ─────────────────────────────────────────────────────
 
 class TestDemoSyncDeprecation:

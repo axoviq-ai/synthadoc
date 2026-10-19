@@ -10,8 +10,7 @@ from typing import Optional
 import httpx
 import typer
 
-from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli._wiki import resolve_wiki_path, _read_registry, LOOPBACK_HOST
+from synthadoc.cli._wiki import resolve_wiki, resolve_wiki_path, _read_registry, LOOPBACK_HOST, _fallback_wiki_root
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
 
 _PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
@@ -298,17 +297,7 @@ def plugin_upgrade_cmd():
     registry = _read_registry()
     if not registry:
         # Docker fallback: no registry — upgrade the single wiki from SYNTHADOC_WIKI or CWD
-        import os
-        env_wiki = os.environ.get("SYNTHADOC_WIKI", "").strip()
-        wiki_path: Path | None = None
-        if env_wiki:
-            p = Path(env_wiki)
-            if p.is_dir():
-                wiki_path = p
-        if wiki_path is None:
-            cwd = Path.cwd()
-            if (cwd / ".synthadoc" / "config.toml").exists():
-                wiki_path = cwd
+        wiki_path = _fallback_wiki_root()
         if wiki_path is None:
             typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
             raise typer.Exit(0)

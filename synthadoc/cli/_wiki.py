@@ -70,6 +70,23 @@ def probe_port(port: int, timeout: float = 1.0) -> bool:
         return False
 
 
+def _fallback_wiki_root() -> Optional[Path]:
+    """Return a wiki root from SYNTHADOC_WIKI env var or CWD, or None.
+
+    Used by commands that need to locate a single wiki when the host registry
+    (~/.synthadoc/wikis.json) is absent — e.g. inside a Docker container.
+    """
+    env_wiki = os.environ.get(ENV_VAR, "").strip()
+    if env_wiki:
+        p = Path(env_wiki)
+        if p.is_dir():
+            return p
+    cwd = Path.cwd()
+    if (cwd / ".synthadoc" / "config.toml").exists():
+        return cwd
+    return None
+
+
 def resolve_wiki_path(wiki: str) -> Path:
     """Resolve a wiki name or path to an absolute Path.
 

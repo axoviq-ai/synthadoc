@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -11,6 +10,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
+from synthadoc.cli._wiki import _fallback_wiki_root
 from synthadoc.cli._utils import (
     _extract_body,
     _extract_frontmatter_block,
@@ -36,17 +36,14 @@ def _read_origin(wiki_root: Path) -> dict:
     return {}
 
 
-def _fallback_wiki_root() -> Optional[Path]:
-    """Return a wiki root from SYNTHADOC_WIKI env var or CWD, or None."""
-    env_wiki = os.environ.get("SYNTHADOC_WIKI", "").strip()
-    if env_wiki:
-        p = Path(env_wiki)
-        if p.is_dir():
-            return p
-    cwd = Path.cwd()
-    if (cwd / ".synthadoc" / "config.toml").exists():
-        return cwd
-    return None
+def _print_sync_result(name: str, updated: list[str]) -> None:
+    """Print the standard sync result block for one wiki."""
+    if updated:
+        typer.echo(f"{name}:")
+        for line in updated:
+            typer.echo(line)
+    else:
+        typer.echo(f"{name}: already up to date")
 
 
 @template_app.command("list")
@@ -197,14 +194,8 @@ def _do_sync(name: Optional[str], force: bool) -> None:
                 # Scanning all wikis — skip silently
                 continue
 
-        if updated:
-            typer.echo(f"{target}:")
-            for line in updated:
-                typer.echo(line)
-            any_changes = True
-        else:
-            typer.echo(f"{target}: already up to date")
-            any_changes = True
+        _print_sync_result(target, updated)
+        any_changes = True
 
     if not any_changes:
         typer.echo("Already up to date - nothing to sync.")
@@ -239,12 +230,7 @@ def _do_sync_from_origin(wiki_root: Path, force: bool) -> None:
             wiki_name=wiki_name,
             force=force,
         )
-        if updated:
-            typer.echo(f"{wiki_name}:")
-            for line in updated:
-                typer.echo(line)
-        else:
-            typer.echo(f"{wiki_name}: already up to date")
+        _print_sync_result(wiki_name, updated)
 
     elif origin_type == "demo":
         demo_name = origin.get("name", "")
@@ -262,12 +248,7 @@ def _do_sync_from_origin(wiki_root: Path, force: bool) -> None:
             demo_template=_DEMOS[demo_name],
             force=force,
         )
-        if updated:
-            typer.echo(f"{wiki_name}:")
-            for line in updated:
-                typer.echo(line)
-        else:
-            typer.echo(f"{wiki_name}: already up to date")
+        _print_sync_result(wiki_name, updated)
 
     else:
         typer.echo(
@@ -488,7 +469,7 @@ def set_origin_cmd(
       synthadoc templates set-origin finance/investment
       synthadoc templates set-origin history-of-computing
     """
-    from synthadoc.cli.install import _DEMOS
+    from synthadoc.cli.install import _DEMOS, _write_origin
     from synthadoc.core.template_engine import get_template_path
 
     wiki_root = _fallback_wiki_root()
@@ -511,8 +492,8 @@ def set_origin_cmd(
                 err=True,
             )
             raise typer.Exit(1)
-        origin = {"type": "template", "ref": ref}
         label = f"template '{ref}'"
+        _write_origin(wiki_root, demo=None, template=ref)
     else:
         # Demo name
         if ref not in _DEMOS:
@@ -522,12 +503,8 @@ def set_origin_cmd(
                 err=True,
             )
             raise typer.Exit(1)
-        origin = {"type": "demo", "name": ref}
         label = f"demo '{ref}'"
+        _write_origin(wiki_root, demo=ref, template=None)
 
-    from datetime import date
-    origin["installed"] = date.today().isoformat()
     origin_file = wiki_root / ".synthadoc" / "origin.json"
-    origin_file.parent.mkdir(parents=True, exist_ok=True)
-    origin_file.write_text(json.dumps(origin, indent=2), encoding="utf-8", newline="\n")
     typer.echo(f"Origin set to {label} in {origin_file}")

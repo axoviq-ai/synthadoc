@@ -116,6 +116,42 @@ def test_plugin_upgrade_docker_fallback(tmp_path, monkeypatch):
     assert (wiki / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists()
 
 
+def test_plugin_upgrade_cwd_fallback(tmp_path, monkeypatch):
+    """No SYNTHADOC_WIKI, but CWD is a wiki directory → upgrade uses CWD."""
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+    monkeypatch.delenv("SYNTHADOC_WIKI", raising=False)
+    monkeypatch.chdir(wiki)
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin._read_registry", return_value={}),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"),
+    ):
+        result = runner.invoke(app, ["plugin", "upgrade"])
+
+    assert result.exit_code == 0, result.output
+    assert (wiki / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists()
+
+
+def test_plugin_upgrade_env_var_missing_dir_falls_through(tmp_path, monkeypatch):
+    """SYNTHADOC_WIKI pointing to non-existent dir → falls through to CWD."""
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+    monkeypatch.setenv("SYNTHADOC_WIKI", str(tmp_path / "nonexistent"))
+    monkeypatch.chdir(wiki)
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin._read_registry", return_value={}),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"),
+    ):
+        result = runner.invoke(app, ["plugin", "upgrade"])
+
+    assert result.exit_code == 0, result.output
+    assert (wiki / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists()
+
+
 def test_plugin_upgrade_no_registry(tmp_path):
     src = _make_plugin_src(tmp_path)
 
