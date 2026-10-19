@@ -20,6 +20,9 @@ class CompletionResponse:
     # stop_reason="max_tokens", OpenAI finish_reason="length"). The text is then
     # incomplete and must not be treated as a finished answer.
     truncated: bool = False
+    # Anthropic prompt-caching fields; 0 for providers that don't support caching.
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
