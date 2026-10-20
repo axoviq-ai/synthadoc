@@ -43,10 +43,16 @@ def test_thin_section_detected():
     assert thin[0].severity == "high"
 
 
-def test_thin_section_boundary_exactly_50_words_not_flagged():
-    content = "# Page\n\n## Section\n" + " ".join(["word"] * 50) + "\n"
+def test_thin_section_boundary_exactly_40_words_not_flagged():
+    content = "# Page\n\n## Section\n" + " ".join(["word"] * 40) + "\n"
     issues = scan_page("test", content)
     assert not any(i.type == "thin_section" for i in issues)
+
+
+def test_thin_section_boundary_39_words_flagged():
+    content = "# Page\n\n## Section\n" + " ".join(["word"] * 39) + "\n"
+    issues = scan_page("test", content)
+    assert any(i.type == "thin_section" for i in issues)
 
 
 def test_unclosed_code_block():

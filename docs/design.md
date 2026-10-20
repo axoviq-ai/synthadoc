@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.4.2
+**Version:** 1.4.3
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4557,6 +4557,32 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.4.3
+
+**Major features**
+
+- **Anthropic prompt caching** — the system prompt is sent with `cache_control: {"type": "ephemeral"}` on every request, pinning it to the Anthropic 5-minute prompt cache. Cache-hit token counts (`cache_read_input_tokens`, `cache_creation_input_tokens`) are threaded through `estimate_cost()` and logged. Long repeated sessions (ingest, scaffold, lint) see measurably lower latency and cost on subsequent turns.
+- **Docker: in-container plugin and template upgrade** — `synthadoc plugin upgrade` and `synthadoc templates sync` now work correctly inside a running container. Previously these commands relied on the host registry and silently did nothing in Docker. The container detects its own wiki root via `SYNTHADOC_WIKI` and applies upgrades without host tooling.
+- **Qwen provider improvements** — `qwen3.8-flash` and `qwen3.8-max` added as free-tier DashScope models with `thinking: disabled` required. `DASHSCOPE_API_KEY` accepted as an alias for `QWEN_API_KEY`. `QWEN_BASE_URL` override supported for non-default endpoints.
+
+**Fixes**
+
+- **Tool-call JSON brace repair** — models that stream tool calls and truncate at `max_tokens` before closing braces are repaired by appending the missing `}` characters, keeping the agentic loop alive instead of failing with a parse error.
+- **MiniMax native tool calls** — MiniMax's deeply nested tool-call format (`choices[0].delta.tool_calls`) is parsed correctly; tool-call protocol is re-sent every turn to prevent drift.
+- **Content health resolver hardening** — resolver prompt tightened to reject rewrites that drop text, skip pages with draft artifacts, strip CLI tool artifacts from proposals, show affected sections in BEFORE/AFTER diff (not first 400 chars), make confirm-card code blocks scrollable, and support `list` / `roll back` intents with coding-tool CLI providers.
+- **Ingest: no text loss on re-ingest** — force re-ingest of one source no longer wipes text contributed by other sources; duplicate sections from repeated ingest are merged, keeping every sentence.
+- **Ingest: relative binary paths** — `.pdf`, `.docx`, `.pptx` passed as relative paths are resolved against the CWD instead of being interpreted as web-fetch intents.
+- **Broken-citation single-page mode** — `find_broken_citations` in STEP 5 of the broken citation resolver workflow now correctly scopes to the given `page_slug` instead of scanning the full wiki.
+- **OpenAI / Anthropic API compatibility** — `max_completion_tokens` used for GPT-5+ and o-series; temperature omitted for those models. Anthropic stops sending `temperature`; SDK 1.15+ required.
+- **Query timeout** — `--timeout` defaults to `None`, falling back to `client_stream_timeout_seconds` from config; server and client HTTP timeouts are now kept in sync.
+- **Provider refresh** — model list and pricing updated (2026-10-16); `kimi-k3` removed from DashScope template (returns empty responses).
+
+**Security**
+
+- **UTF-8 BOM removed** — BOM stripped from `README.md`, `README-pypi.md`, `docs/design.md`, `docs/user-quick-start-guide.md`, and four Python source files (`agents/ingest_agent.py`, `cli/cache.py`, `cli/candidates.py`, `cli/install.py`). The literal U+FEFF character in `cli/_utils.py:85` replaced with `chr(0xFEFF)` so no BOM byte appears in source.
+- **Obsidian plugin eval-pattern** — `Function("return this")()` (a bundler-injected UMD global-scope accessor from third-party dependencies) replaced with `globalThis` in `main.js`. The substitution is applied automatically by `patchBundle()` in `esbuild.config.mjs` on every production build.
+- **Binary demo sources converted** — seven `.pptx`, `.xlsx`, and `.pdf` demo source files replaced with reviewable `.md` / `.csv` equivalents. `synthadoc templates sync` removes superseded binary files from existing installs without touching user-added files.
 
 ### v1.4.2
 

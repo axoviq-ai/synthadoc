@@ -216,7 +216,7 @@ class ChatConfig:
 @dataclass
 class ContentHealthConfig:
     token_budget: int = 50_000
-    thin_section_min_words: int = 50
+    thin_section_min_words: int = 40
 
 
 @dataclass

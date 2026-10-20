@@ -331,7 +331,7 @@ session_retention_days = 30
 # Minimum word count for a section to be considered non-thin.
 # Sections with fewer words are flagged as "thin" during lint and ingest.
 # Lower this value for wikis with intentionally short reference sections (e.g. glossaries).
-thin_section_min_words = 50
+thin_section_min_words = 40
 
 [security]
 # Automatically scan all wiki pages for sensitive data (API keys, emails, SSNs,
