@@ -27,6 +27,7 @@ from synthadoc.agents.workflows._tools import (
 )
 # Contradiction-domain tools (specific to this workflow)
 from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
+    ContradictionPageType,
     tool_get_contradicted_pages,
     tool_read_source_content,
     tool_cost_estimate,
@@ -411,11 +412,12 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             #     and can be cleared without a rewrite.
             #     "inferred" in the note means the ingest agent guessed the
             #     target page from topic similarity, not a verified claim match.
+            PT = ContradictionPageType
             note = page_info.get("contradiction_note") or ""
             is_inferred_conflict = (
-                page_type == "conflict" and "inferred" in note.lower()
+                page_type == PT.CONFLICT and "inferred" in note.lower()
             )
-            if page_type == "unknown" or is_inferred_conflict:
+            if page_type == PT.UNKNOWN or is_inferred_conflict:
                 lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                 if lint_result.get("pass"):
                     reason = (
@@ -430,19 +432,19 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                     )
                     fixed.append({"slug": slug, "note": reason})
                     # Normalise page_type so the rewrite guard below skips this slug
-                    page_type = "unknown"
+                    page_type = PT.UNKNOWN
                     # Fall through to the confirm-between-pages block below
-                elif page_type == "unknown":
+                elif page_type == PT.UNKNOWN:
                     # Real issue — treat as gate-demoted and fall through to rewrite
-                    page_type = "gate"
-                # inferred-conflict that failed lint: page_type stays "conflict",
+                    page_type = PT.GATE
+                # inferred-conflict that failed lint: page_type stays CONFLICT,
                 # falls through to rewrite attempt
 
-            if page_type != "unknown" or slug not in fixed:
+            if page_type != PT.UNKNOWN or slug not in fixed:
                 # 4b. Read page content (and source for conflict/both types)
                 page_content = await tool_read_page_content(ctx, slug=slug)
                 source_text: str | None = None
-                if page_type in ("conflict", "both"):
+                if page_type in (PT.CONFLICT, PT.BOTH):
                     source_result = await tool_read_source_content(ctx, slug=slug)
                     source_text = source_result.get("source_text") or None
 
