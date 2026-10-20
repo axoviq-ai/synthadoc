@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.4.2
+    Community Edition  v1.4.3
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.4.2-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.4.3-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.4.2**
+**Document version: v1.4.3**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -483,7 +483,14 @@ synthadoc templates sync --force # demo and template wikis — refresh seeds, ro
 
 Neither command requires the server to be running.
 
-**Upgrading a Docker deployment:** `docker pull chenp/synthadoc:latest`, then remove and re-create the container with the same `docker run` command; wiki data on the host is untouched. To refresh the Obsidian plugin in the vault, run `docker exec <container> synthadoc plugin install`. (`plugin upgrade` and `templates sync` rely on the host registry and don't work inside a container.) See [Docker Deployment Guide — Updating the image](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md#updating-the-image).
+**Upgrading a Docker deployment:** `docker pull chenp/synthadoc:latest`, then remove and re-create the container with the same `docker run` command; wiki data on the host is untouched. Then run inside the container to sync the plugin and templates:
+
+```bash
+docker exec <container> synthadoc plugin upgrade      # push updated plugin binary to the wiki vault
+docker exec <container> synthadoc templates sync      # refresh seeds, routing, agent files, and stubs
+```
+
+See [Docker Deployment Guide — Updating the image](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md#updating-the-image).
 
 ---
 
