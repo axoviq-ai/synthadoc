@@ -3264,7 +3264,7 @@ If an issue cannot be fixed without writing new facts, the workflow asks before 
 
 Skipped pages are left untouched (no snapshot, no write) and are listed in the final summary.
 
-**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 50 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
+**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 40 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
 
 **From the CLI:**
 

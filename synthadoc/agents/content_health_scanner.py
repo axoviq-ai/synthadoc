@@ -116,7 +116,7 @@ def _subtree_word_count(sections: list[tuple[str, str, int]], k: int) -> int:
 # Public API
 # ---------------------------------------------------------------------------
 
-def scan_page(slug: str, content: str, thin_section_min_words: int = 50) -> list[ContentIssue]:
+def scan_page(slug: str, content: str, thin_section_min_words: int = 40) -> list[ContentIssue]:
     """Scan one page's markdown content. Returns issues found, empty list if clean."""
     issues: list[ContentIssue] = []
     clean = _strip_code_blocks(content)
@@ -205,7 +205,7 @@ def scan_page(slug: str, content: str, thin_section_min_words: int = 50) -> list
 
 def scan_pages(
     pages: dict[str, str],
-    thin_section_min_words: int = 50,
+    thin_section_min_words: int = 40,
 ) -> dict[str, list[ContentIssue]]:
     """Scan multiple pages. Returns {slug: [issues]}. Omits clean pages."""
     return {
@@ -218,7 +218,7 @@ def scan_pages(
 def refresh_wiki_health_issues(
     store: "WikiStorage",
     slugs: "list[str] | None" = None,
-    thin_section_min_words: int = 50,
+    thin_section_min_words: int = 40,
     skip_slugs: "frozenset[str]" = frozenset(),
 ) -> int:
     """Scan all active pages and write back any whose content_health_issues changed.

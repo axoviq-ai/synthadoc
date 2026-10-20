@@ -65,14 +65,29 @@ async def tool_get_contradicted_pages(
     return {"pages": results}
 
 
+import re as _re
+
+
+def _extract_note_source_file(note: str) -> str | None:
+    """Parse a contradiction_note for the ingest source filename.
+
+    The ingest agent writes notes in the form:
+      "Flagged while ingesting 'first-compiler-controversy.md': ..."
+    Returns the bare filename, or None if not found.
+    """
+    m = _re.search(r"ingesting\s+['\"]([^'\"]+)['\"]", note, _re.IGNORECASE)
+    return m.group(1) if m else None
+
+
 async def tool_read_source_content(ctx: "WorkflowContext", slug: str) -> dict:
     """Return source text for a contradicted page using a layered fallback.
 
     Fallback order:
-    1. raw_sources/<source_file>       — original ingest content
-    2. .synthadoc/extracted/<stem>.txt — pre-processed text
-    3. contradiction_note              — minimal context when sources are missing
-    4. Empty string                    — fallback_used="none"
+    1. raw_sources/<source_file>       — original ingest content (page.sources)
+    2. .synthadoc/extracted/<stem>.txt — pre-processed text (page.sources)
+    3. raw_sources/<note_source_file>  — source named in contradiction_note
+    4. contradiction_note              — minimal context when sources are missing
+    5. Empty string                    — fallback_used="none"
 
     Returns: {"slug", "source_text", "source_path", "fallback_used"}
     """
@@ -105,7 +120,20 @@ async def tool_read_source_content(ctx: "WorkflowContext", slug: str) -> dict:
                 except OSError:
                     pass
 
-    # 3. contradiction_note
+    # 3. source file named in the contradiction_note ("ingesting 'X.md'")
+    if page.contradiction_note:
+        note_file = _extract_note_source_file(page.contradiction_note)
+        if note_file:
+            note_raw = ctx.wiki_root / "raw_sources" / note_file
+            if note_raw.exists():
+                try:
+                    text = note_raw.read_text(encoding="utf-8", errors="replace")
+                    return {"slug": slug, "source_text": text[:8000],
+                            "source_path": str(note_raw), "fallback_used": "note_source"}
+                except OSError:
+                    pass
+
+    # 4. contradiction_note
     if page.contradiction_note:
         return {"slug": slug, "source_text": page.contradiction_note,
                 "source_path": None, "fallback_used": "contradiction_note"}
