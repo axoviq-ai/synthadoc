@@ -185,7 +185,7 @@ async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
     confirm_result = await tool_confirm(
         ctx,
         message=(
-            f"**Contradiction Resolver -- ready to start**\n\n"
+            f"**Contradiction Resolver — ready to start**\n\n"
             f"- Pages to process: **{page_count}**\n"
             f"- Estimated cost: **{cost_label}**\n"
             f"- Estimated time: ~**{estimate['estimated_minutes']} min**\n\n"
@@ -205,17 +205,17 @@ def _format_cr_summary(
     wiki_status: dict,
 ) -> str:
     """Render the Contradiction Resolver final summary as a markdown string."""
-    lines: list[str] = ["**Contradiction Resolver -- Complete**", ""]
+    lines: list[str] = ["**Contradiction Resolver — Complete**", ""]
 
-    lines.append(f"**Fixed ({len(fixed)}):**")
+    lines.append(f"**✅ Fixed ({len(fixed)}):**")
     if fixed:
         for item in fixed:
-            lines.append(f"- {item['slug']} -- {item['note']}")
+            lines.append(f"- {item['slug']} — {item['note']}")
     else:
         lines.append("- (none)")
 
     lines.append("")
-    lines.append(f"**Unresolved ({len(unresolved)}):**")
+    lines.append(f"**⚠ Unresolved ({len(unresolved)}):**")
     if unresolved:
         for item in unresolved:
             lines.append(f"- {item['slug']}: {item['reason']}")
@@ -228,7 +228,7 @@ def _format_cr_summary(
         lines.append("- (none)")
 
     lines.append("")
-    lines.append(f"**Skipped ({len(skipped)}):**")
+    lines.append(f"**⏭ Skipped ({len(skipped)}):**")
     if skipped:
         for s in skipped:
             lines.append(f"- {s}")
