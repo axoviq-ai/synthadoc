@@ -13,6 +13,7 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.storage.wiki import LifecycleState
 # Shared framework tools (usable by any workflow)
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
@@ -428,7 +429,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                         "— contradicted state was stale metadata"
                     )
                     await tool_transition_lifecycle_state(
-                        ctx, slug=slug, to_state="active", reason=reason,
+                        ctx, slug=slug, to_state=LifecycleState.ACTIVE, reason=reason,
                     )
                     fixed.append({"slug": slug, "note": reason})
                     # Normalise page_type so the rewrite guard below skips this slug
@@ -480,7 +481,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                         lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                         if lint_result.get("pass"):
                             await tool_transition_lifecycle_state(
-                                ctx, slug=slug, to_state="active",
+                                ctx, slug=slug, to_state=LifecycleState.ACTIVE,
                                 reason=(
                                     "resolved by contradiction-resolver "
                                     "— CLI provider path, Strategy 1 (content rewrite)"
