@@ -13,6 +13,7 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.storage.wiki import LifecycleState
 # Shared framework tools (usable by any workflow)
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
@@ -27,6 +28,7 @@ from synthadoc.agents.workflows._tools import (
 )
 # Contradiction-domain tools (specific to this workflow)
 from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
+    ContradictionPageType,
     tool_get_contradicted_pages,
     tool_read_source_content,
     tool_cost_estimate,
@@ -405,32 +407,45 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                 {"tool": "_resolve", "message": f"Resolving {slug} ({page_type})..."},
             )
 
-            # 4a. Unknown type: run lint first to determine whether state is stale
-            if page_type == "unknown":
+            # 4a. Stale-flag check: unknown type OR inferred conflict flag.
+            #     Both cases are handled identically — run scoped lint; if it
+            #     passes the contradicted state is not backed by a real issue
+            #     and can be cleared without a rewrite.
+            #     "inferred" in the note means the ingest agent guessed the
+            #     target page from topic similarity, not a verified claim match.
+            PT = ContradictionPageType
+            note = page_info.get("contradiction_note") or ""
+            is_inferred_conflict = (
+                page_type == PT.CONFLICT and "inferred" in note.lower()
+            )
+            if page_type == PT.UNKNOWN or is_inferred_conflict:
                 lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                 if lint_result.get("pass"):
-                    # Stale metadata — no rewrite needed; transition directly
-                    await tool_transition_lifecycle_state(
-                        ctx, slug=slug, to_state="active",
-                        reason=(
-                            "resolved: clean lint with no contradiction signals "
-                            "— contradicted state was stale metadata"
-                        ),
+                    reason = (
+                        "stale inferred contradiction note — disputed claim never "
+                        "confirmed on this page; scoped lint passed"
+                        if is_inferred_conflict else
+                        "resolved: clean lint with no contradiction signals "
+                        "— contradicted state was stale metadata"
                     )
-                    fixed.append({
-                        "slug": slug,
-                        "note": "Stale contradicted state; fresh lint passed, transitioned to active",
-                    })
-                    # Still need to confirm between pages below
-                else:
+                    await tool_transition_lifecycle_state(
+                        ctx, slug=slug, to_state=LifecycleState.ACTIVE, reason=reason,
+                    )
+                    fixed.append({"slug": slug, "note": reason})
+                    # Normalise page_type so the rewrite guard below skips this slug
+                    page_type = PT.UNKNOWN
+                    # Fall through to the confirm-between-pages block below
+                elif page_type == PT.UNKNOWN:
                     # Real issue — treat as gate-demoted and fall through to rewrite
-                    page_type = "gate"
+                    page_type = PT.GATE
+                # inferred-conflict that failed lint: page_type stays CONFLICT,
+                # falls through to rewrite attempt
 
-            if page_type != "unknown" or slug not in fixed:
+            if page_type != PT.UNKNOWN or slug not in fixed:
                 # 4b. Read page content (and source for conflict/both types)
                 page_content = await tool_read_page_content(ctx, slug=slug)
                 source_text: str | None = None
-                if page_type in ("conflict", "both"):
+                if page_type in (PT.CONFLICT, PT.BOTH):
                     source_result = await tool_read_source_content(ctx, slug=slug)
                     source_text = source_result.get("source_text") or None
 
@@ -466,7 +481,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                         lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                         if lint_result.get("pass"):
                             await tool_transition_lifecycle_state(
-                                ctx, slug=slug, to_state="active",
+                                ctx, slug=slug, to_state=LifecycleState.ACTIVE,
                                 reason=(
                                     "resolved by contradiction-resolver "
                                     "— CLI provider path, Strategy 1 (content rewrite)"
