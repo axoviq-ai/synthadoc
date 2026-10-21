@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn, Optional
 
 import typer
+
+from synthadoc import errors as E
 
 ENV_VAR = "SYNTHADOC_WIKI"
 DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
@@ -89,6 +91,26 @@ def _docker_wiki_hint(wiki_name: str) -> str:
         f'  Example entry: {{"{wiki_name}": {{"path": "/absolute/path/to/{wiki_name}", "port": 7070}}}}\n'
         f"  Or re-install it on the host: synthadoc install {wiki_name} --target <dir>"
     )
+
+
+def _raise_wiki_not_registered(wiki_name: str, fallback_hint: str = "") -> NoReturn:
+    """Raise ERR-WIKI-006 with the most actionable message for the context.
+
+    When the host registry exists but the wiki is absent, the Docker hint fires.
+    Otherwise falls back to *fallback_hint* (or a generic install hint).
+    """
+    if _REGISTRY.exists() and wiki_name not in _read_registry():
+        E.cli_error(
+            E.WIKI_NOT_REGISTERED,
+            f"Wiki '{wiki_name}' is not registered on this host.",
+            _docker_wiki_hint(wiki_name),
+        )
+    else:
+        E.cli_error(
+            E.WIKI_NOT_REGISTERED,
+            f"Wiki '{wiki_name}' is not installed.",
+            fallback_hint or f"Make sure wiki '{wiki_name}' was installed with 'synthadoc install'.",
+        )
 
 
 def _fallback_wiki_root() -> Optional[Path]:
