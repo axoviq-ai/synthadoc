@@ -315,12 +315,13 @@ def serve_cmd(
         abs_root = root.resolve()
         # json.dumps produces a quoted, backslash-escaped string safe to paste into wikis.json
         _path_json = _json.dumps(str(abs_root))
+        _port = cfg.server.port
         _wiki_on_disk = (abs_root / ".synthadoc" / "config.toml").exists()
         if _wiki_on_disk:
             _hint = (
                 f"The wiki exists on disk but is not registered.\n"
                 f"Add it manually to {_REGISTRY}:\n"
-                f'  "{wiki}": {{"path": {_path_json}, "port": <port>}}\n'
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
                 f"Then retry: synthadoc serve -w {wiki}"
             )
         else:
@@ -328,7 +329,7 @@ def serve_cmd(
                 f"Register it by running from the parent directory:\n"
                 f"  synthadoc install {wiki} --target {abs_root.parent}\n"
                 f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
-                f'  "{wiki}": {{"path": {_path_json}, "port": <port>}}\n'
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
                 f"Then retry: synthadoc serve -w {wiki}"
             )
         E.cli_error(E.WIKI_NOT_REGISTERED, f"Wiki '{wiki}' is not registered in {_REGISTRY}.", _hint)

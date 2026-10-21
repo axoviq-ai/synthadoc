@@ -150,8 +150,11 @@ def test_serve_error_shows_absolute_path_when_wiki_on_disk():
         result = runner.invoke(app, ["serve", "-w", "my-wiki", "--http-only"])
     assert result.exit_code != 0
     output = result.output or ""
-    # json.dumps produces escaped path — either the raw string or its JSON form appears
+    # json-escaped path must appear
     assert "my-wiki" in output and ("wikis" in output or "home" in output), \
         f"Expected absolute path in hint, got: {output}"
+    # real port from cfg must appear, not the placeholder
+    assert "7070" in output, f"Expected real port in hint, got: {output}"
+    assert "<port>" not in output, f"Placeholder <port> must not appear, got: {output}"
     assert "synthadoc install" not in output, \
         f"install suggestion must not appear when wiki exists on disk, got: {output}"
