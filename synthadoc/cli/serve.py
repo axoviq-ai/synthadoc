@@ -311,15 +311,24 @@ def serve_cmd(
     # are self-describing: config.toml loaded above is proof the wiki is valid.
     _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
     if wiki not in read_registry_all() and not _wiki_is_path:
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki}' is not registered in {_REGISTRY}.",
-            f"Register it by running from the parent directory:\n"
-            f"  synthadoc install {wiki} --target {root.parent}\n"
-            f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
-            f'  "{wiki}": {{"path": "{root}", "port": <port>}}\n'
-            f"Then retry: synthadoc serve -w {wiki}",
-        )
+        abs_root = root.resolve()
+        _wiki_on_disk = (abs_root / ".synthadoc" / "config.toml").exists()
+        if _wiki_on_disk:
+            _hint = (
+                f"The wiki exists on disk but is not registered.\n"
+                f"Add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": "{abs_root}", "port": <port>}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        else:
+            _hint = (
+                f"Register it by running from the parent directory:\n"
+                f"  synthadoc install {wiki} --target {abs_root.parent}\n"
+                f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": "{abs_root}", "port": <port>}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        E.cli_error(E.WIKI_NOT_REGISTERED, f"Wiki '{wiki}' is not registered in {_REGISTRY}.", _hint)
     effective_port = port if port is not None else cfg.server.port
     if host is not None:
         cfg.server.host = host

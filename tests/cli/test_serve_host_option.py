@@ -118,11 +118,39 @@ def test_serve_allows_path_wiki_without_registry():
 def test_serve_fails_when_wiki_not_registered():
     """serve must exit non-zero with ERR-WIKI-006 when the wiki is not registered."""
     cfg = _make_cfg()
+    fake_root = MagicMock()
+    fake_root.resolve.return_value = fake_root
+    fake_root.__truediv__ = lambda self, other: MagicMock(**{"exists.return_value": False})
+    fake_root.parent = MagicMock()
     with patch("synthadoc.cli._wiki.resolve_wiki", return_value="unregistered-wiki"), \
-         patch("synthadoc.cli.serve.resolve_wiki_path", return_value=MagicMock()), \
+         patch("synthadoc.cli.serve.resolve_wiki_path", return_value=fake_root), \
          patch("synthadoc.config.load_config", return_value=cfg), \
          patch("synthadoc.cli.serve.read_registry_all", return_value={}):
         result = runner.invoke(app, ["serve", "-w", "unregistered-wiki", "--http-only"])
     assert result.exit_code != 0, "Expected non-zero exit for unregistered wiki"
     assert "ERR-WIKI-006" in (result.output or "") or "not registered" in (result.output or "").lower(), \
         f"Expected registration error, got: {result.output}"
+
+
+def test_serve_error_shows_absolute_path_when_wiki_on_disk():
+    """ERR-WIKI-006 hint must show absolute path and omit install suggestion when wiki exists on disk."""
+    cfg = _make_cfg()
+    abs_path = MagicMock()
+    abs_path.__str__ = lambda self: "/home/user/wikis/my-wiki"
+    config_toml = MagicMock(**{"exists.return_value": True})
+    abs_path.__truediv__ = lambda self, other: config_toml
+
+    fake_root = MagicMock()
+    fake_root.resolve.return_value = abs_path
+
+    with patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"), \
+         patch("synthadoc.cli.serve.resolve_wiki_path", return_value=fake_root), \
+         patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value={}):
+        result = runner.invoke(app, ["serve", "-w", "my-wiki", "--http-only"])
+    assert result.exit_code != 0
+    output = result.output or ""
+    assert "/home/user/wikis/my-wiki" in output, \
+        f"Expected absolute path in hint, got: {output}"
+    assert "synthadoc install" not in output, \
+        f"install suggestion must not appear when wiki exists on disk, got: {output}"
