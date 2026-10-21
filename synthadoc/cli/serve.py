@@ -313,16 +313,18 @@ def serve_cmd(
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
 
-    # A wiki must be registered before its server may start.  Both host and
-    # Docker deployments create a wikis.json entry via `synthadoc install`;
-    # if the entry is absent the operator has not completed installation.
-    if wiki not in read_registry_all():
+    # Name-based wikis (e.g. -w my-wiki) require a registry entry — the name
+    # alone does not locate the wiki on disk.
+    # Path-based wikis (e.g. -w /wiki in Docker, -w . from inside the wiki dir)
+    # are self-describing: config.toml loaded above is proof the wiki is valid.
+    _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
+    if wiki not in read_registry_all() and not _wiki_is_path:
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
             f"Wiki '{wiki}' is not registered in {_REGISTRY}.",
             f"Register it by running from the parent directory:\n"
             f"  synthadoc install {wiki} --target {root.parent}\n"
-            f"Or, if the wiki already exists on disk, add it manually:\n"
+            f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
             f'  "{wiki}": {{"path": "{root}", "port": <port>}}\n'
             f"Then retry: synthadoc serve -w {wiki}",
         )
