@@ -19,7 +19,7 @@ from synthadoc.cli.install import (
     _DEMOS,
 )
 from synthadoc.cli._port import assign_wiki_port, _DEFAULT_PORT
-from synthadoc.cli._wiki import resolve_wiki, _docker_wiki_hint
+from synthadoc.cli._wiki import resolve_wiki, _docker_wiki_hint, _REGISTRY
 from synthadoc.core.backup_engine import (
     create_backup,
     read_manifest,
@@ -52,11 +52,16 @@ def backup_cmd(
     wiki_root = resolve_wiki_path(wiki_name)
 
     if not (wiki_root / ".synthadoc" / "config.toml").exists():
-        docker_hint = _docker_wiki_hint(wiki_name)
+        if _REGISTRY.exists() and wiki_name not in _read_registry():
+            E.cli_error(
+                E.WIKI_NOT_REGISTERED,
+                f"Wiki '{wiki_name}' is not registered on this host.",
+                _docker_wiki_hint(wiki_name),
+            )
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki_name}' is not registered on this host.",
-            docker_hint or "Run 'synthadoc list' to see registered wikis.",
+            f"Wiki '{wiki_name}' is not installed.",
+            "Run 'synthadoc list' to see registered wikis.",
         )
 
     output_dir = Path(output).resolve()

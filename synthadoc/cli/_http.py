@@ -9,7 +9,9 @@ import typer
 from typing import NoReturn
 
 from synthadoc.config import load_config, Config as _Config
-from synthadoc.cli._wiki import resolve_wiki_path, LOOPBACK_HOST, _docker_wiki_hint
+from synthadoc.cli._wiki import (
+    resolve_wiki_path, LOOPBACK_HOST, _docker_wiki_hint, _REGISTRY, _read_registry,
+)
 from synthadoc import errors as E
 
 
@@ -23,11 +25,16 @@ def _server_info(wiki: str) -> tuple[str, _Config]:
     root = resolve_wiki_path(wiki)
     config_path = root / ".synthadoc" / "config.toml"
     if not config_path.exists():
-        docker_hint = _docker_wiki_hint(wiki)
+        if _REGISTRY.exists() and wiki not in _read_registry():
+            E.cli_error(
+                E.WIKI_NOT_REGISTERED,
+                f"Wiki '{wiki}' is not registered on this host.",
+                _docker_wiki_hint(wiki),
+            )
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki}' is not registered on this host.",
-            docker_hint or f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
+            f"Wiki '{wiki}' is not installed.",
+            f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
         )
     try:
         cfg = load_config(project_config=config_path)
