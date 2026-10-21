@@ -1463,3 +1463,126 @@ def test_make_provider_qwen_dashscope_model_no_key_errors(monkeypatch):
     with pytest.raises(MissingApiKeyError) as exc_info:
         make_provider("ingest", _make_cfg("qwen", "qwen-plus"))
     assert "QWEN_API_KEY" in str(exc_info.value)
+
+
+# ── kimi provider tests ───────────────────────────────────────────────────────
+
+def test_make_provider_missing_kimi_key_exits(monkeypatch):
+    """make_provider must raise MissingApiKeyError when neither KIMI_API_KEY nor QWEN_API_KEY is set."""
+    from synthadoc.providers import make_provider
+    from synthadoc.errors import MissingApiKeyError
+    monkeypatch.delenv("KIMI_API_KEY", raising=False)
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    with pytest.raises(MissingApiKeyError) as exc_info:
+        make_provider("ingest", _make_cfg("kimi", "kimi-k3"))
+    msg = str(exc_info.value)
+    assert "KIMI_API_KEY" in msg
+    assert "bailian.console.aliyun.com" in msg
+
+
+def test_make_provider_kimi_uses_dashscope_url(monkeypatch):
+    """kimi provider must use DashScope endpoint and OpenAIProvider."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("KIMI_API_KEY", "test-kimi-key")
+    provider = make_provider("ingest", _make_cfg("kimi", "kimi-k3"))
+    assert isinstance(provider, OpenAIProvider)
+    assert "dashscope" in str(provider._client.base_url)
+
+
+def test_make_provider_kimi_accepts_qwen_api_key_as_fallback(monkeypatch):
+    """kimi provider must accept QWEN_API_KEY when KIMI_API_KEY is absent."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.delenv("KIMI_API_KEY", raising=False)
+    monkeypatch.setenv("QWEN_API_KEY", "test-qwen-key")
+    provider = make_provider("ingest", _make_cfg("kimi", "kimi-k3"))
+    assert isinstance(provider, OpenAIProvider)
+    assert "dashscope" in str(provider._client.base_url)
+
+
+def test_make_provider_kimi_propagates_thinking_disabled(monkeypatch):
+    """thinking=disabled must produce enable_thinking=False for kimi (same as qwen/DashScope)."""
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("KIMI_API_KEY", "test-kimi-key")
+    cfg = Config(agents=AgentsConfig(
+        default=AgentConfig(provider="kimi", model="kimi-k3", thinking="disabled")
+    ))
+    provider = make_provider("default", cfg)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider._extra_body == {"enable_thinking": False}
+
+
+def test_build_extra_body_kimi_disabled():
+    """kimi provider must use the DashScope enable_thinking=False body, not thinking.type."""
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("disabled", "kimi") == {"enable_thinking": False}
+
+
+def test_build_extra_body_kimi_enabled():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("enabled", "kimi") == {"enable_thinking": True}
+
+
+def test_build_extra_body_kimi_empty():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("", "kimi") == {}
+
+
+@pytest.mark.asyncio
+async def test_kimi_provider_uses_streaming_collect():
+    """complete() on a kimi provider must use the streaming-collect path, not non-streaming."""
+    import types
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.providers.base import Message
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="kimi", model="kimi-k3",
+                      base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      thinking="disabled")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    def _chunk(content=None, finish_reason=None, usage=None):
+        delta = types.SimpleNamespace(content=content, model_extra={})
+        choice = types.SimpleNamespace(delta=delta, finish_reason=finish_reason)
+        return types.SimpleNamespace(
+            choices=[choice] if (content is not None or finish_reason) else [],
+            usage=usage,
+        )
+
+    usage_ns = types.SimpleNamespace(prompt_tokens=10, completion_tokens=5)
+    chunks = [
+        _chunk(content='{"answer": "'),
+        _chunk(content='42"}'),
+        _chunk(finish_reason="stop"),
+        _chunk(usage=usage_ns),
+    ]
+
+    async def _fake_create(*a, **kw):
+        assert kw.get("stream") is True, "kimi must always request stream=True"
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    provider._client.chat.completions.create = _fake_create
+    result = await provider.complete(messages=[Message(role="user", content="hi")])
+    assert result.text == '{"answer": "42"}'
+    assert result.input_tokens == 10
+    assert result.output_tokens == 5
+
+
+def test_qwen_provider_does_not_route_kimi_models(monkeypatch):
+    """kimi-k3 set under provider='qwen' must NOT match the DashScope regex (no kimi- in pattern)."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    # Without a key, DashScope models raise; Ollama models fall back silently.
+    # kimi- should no longer match the DashScope regex, so it falls to Ollama.
+    provider = make_provider("ingest", _make_cfg("qwen", "kimi-k3"))
+    assert isinstance(provider, OllamaProvider), \
+        "kimi-k3 under provider=qwen must fall to Ollama now that kimi- is removed from qwen regex"

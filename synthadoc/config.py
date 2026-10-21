@@ -18,7 +18,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 KNOWN_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "groq", "minimax", "deepseek",
-                   "qwen", "claude-code", "opencode"}
+                   "kimi", "qwen", "claude-code", "opencode"}
 
 STAGING_POLICIES: frozenset[str] = frozenset({"off", "all", "threshold"})
 STAGING_CONFIDENCE_LEVELS: frozenset[str] = frozenset({"high", "medium", "low"})

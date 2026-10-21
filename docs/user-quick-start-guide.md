@@ -3705,6 +3705,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                | Yes             |
 | `qwen`        | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier available; `qwen3.8-flash` ($0.15/$0.47/1M), `qwen3.8-max` ($2/$6/1M), `qwen-plus` paid | Model-dependent |
 | `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
+| `kimi`        | `KIMI_API_KEY` (or `QWEN_API_KEY`) | No — `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M), `kimi-k2.7-code` ($0.95/$4/1M) | No |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
 | `opencode`    | _(none)_            | Yes — free via Opencode Zen, no API key           | No              |
 
@@ -3718,6 +3719,11 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }               # Groq (paid, $0.075/$0.30 per 1M)
+# NOTE: Kimi models on DashScope have thinking ON by default — always add thinking = "disabled"
+#       or responses will time out on large wiki contexts.
+# default = { provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }  # Kimi k3 flagship ($3/$15 per 1M, 1M ctx)
+# default = { provider = "kimi",      model = "kimi-k2.6",     thinking = "disabled" }  # Kimi K2.6 general purpose ($0.95/$4 per 1M)
+# default = { provider = "kimi",      model = "kimi-k2.7-code", thinking = "disabled" } # Kimi K2.7 coding specialist ($0.95/$4 per 1M)
 # NOTE: all Qwen DashScope models have thinking ON by default — always add thinking = "disabled"
 #       or responses will time out on large wiki contexts.
 # default = { provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }  # Qwen free tier ($0.15/$0.47 per 1M)
@@ -3744,9 +3750,10 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq or MiniMax.
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
 > - **MiniMax:** no free tier. M3 supports multimodal (text + image) and a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
-> - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
+> - **Thinking field (MiniMax M3, Qwen DashScope, Kimi DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** Set `QWEN_API_KEY` or `DASHSCOPE_API_KEY` (both accepted; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). **Free-tier models:** `qwen3.8-flash` ($0.15/$0.47 per 1M in/out after free quota) and `qwen3.8-max` ($2/$6 per 1M, flagship MoE). Paid models: `qwen-plus`, `qwen-max`. **Always add `thinking = "disabled"`** to your config — thinking is ON by default for all DashScope models and causes timeouts on large wiki contexts (188K chars times out at 120 s without it).
+> - **Kimi (DashScope):** Set `KIMI_API_KEY` (your DashScope API key also works via `QWEN_API_KEY`; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Models: `kimi-k3` (1M-token context, strong reasoning, $3/$15/1M), `kimi-k2.6` (256K ctx, general purpose, $0.95/$4/1M), `kimi-k2.7-code` (coding specialist). **Always add `thinking = "disabled"`** — kimi-k3 has extended thinking ON by default and will time out on large contexts without it.
 > - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
