@@ -70,6 +70,27 @@ def probe_port(port: int, timeout: float = 1.0) -> bool:
         return False
 
 
+def _docker_wiki_hint(wiki_name: str) -> str:
+    """Return a hint string when the wiki may have been installed in a Docker container.
+
+    Call just before raising ERR-WIKI-006.  Returns an empty string when the
+    host registry does not exist (we may already be inside a container) or
+    when the wiki IS registered (not a Docker case).
+    """
+    if not _REGISTRY.exists():
+        return ""
+    if wiki_name in _read_registry():
+        return ""
+    return (
+        f"This wiki may have been installed inside a Docker container — its\n"
+        f"  registry entry lives only inside that container.\n"
+        f"  To use it from the host, add its entry manually to:\n"
+        f"    {_REGISTRY}\n"
+        f'  Example entry: {{"{wiki_name}": {{"path": "/absolute/path/to/{wiki_name}", "port": 7070}}}}\n'
+        f"  Or re-install it on the host: synthadoc install {wiki_name} --target <dir>"
+    )
+
+
 def _fallback_wiki_root() -> Optional[Path]:
     """Return a wiki root from SYNTHADOC_WIKI env var or CWD, or None.
 
