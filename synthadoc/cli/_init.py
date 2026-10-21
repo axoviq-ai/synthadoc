@@ -246,6 +246,8 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }}      # free tier + $0.15/$0.47 per 1M — set QWEN_API_KEY (recommended)
 # default = {{ provider = "qwen",      model = "qwen3.8-max",   thinking = "disabled" }}      # free tier + $2.00/$6.00 per 1M, flagship MoE — set QWEN_API_KEY
 # default = {{ provider = "qwen",      model = "qwen-plus",     thinking = "disabled" }}      # paid, higher quality — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
+# NOTE: Kimi models on DashScope have extended thinking ON by default; thinking="disabled" is required.
+# default = {{ provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }}      # paid, $3/$15 per 1M, 1M ctx — set KIMI_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
