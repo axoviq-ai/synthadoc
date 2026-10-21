@@ -15,7 +15,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._wiki import resolve_wiki_path
+from synthadoc.cli._wiki import resolve_wiki_path, _raise_wiki_not_registered
 from synthadoc import errors as E
 
 schedule_app = typer.Typer(help="Manage recurring scheduled operations.")
@@ -31,11 +31,7 @@ def _resolve_and_validate(wiki: Optional[str]) -> Path:
         )
     root = resolve_wiki_path(wiki)
     if not (root / ".synthadoc" / "config.toml").exists():
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki}' is not installed.",
-            f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
-        )
+        _raise_wiki_not_registered(wiki)
     return root
 
 
