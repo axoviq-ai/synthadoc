@@ -3719,11 +3719,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }               # Groq (paid, $0.075/$0.30 per 1M)
-# NOTE: Kimi models on DashScope have thinking ON by default — always add thinking = "disabled"
-#       or responses will time out on large wiki contexts.
-# default = { provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }  # Kimi k3 flagship ($3/$15 per 1M, 1M ctx)
-# default = { provider = "kimi",      model = "kimi-k2.6",     thinking = "disabled" }  # Kimi K2.6 general purpose ($0.95/$4 per 1M)
-# default = { provider = "kimi",      model = "kimi-k2.7-code", thinking = "disabled" } # Kimi K2.7 coding specialist ($0.95/$4 per 1M)
+# default = { provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }  # Kimi k3 flagship ($3/$15 per 1M, 1M ctx) — thinking must be disabled
 # NOTE: all Qwen DashScope models have thinking ON by default — always add thinking = "disabled"
 #       or responses will time out on large wiki contexts.
 # default = { provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }  # Qwen free tier ($0.15/$0.47 per 1M)
