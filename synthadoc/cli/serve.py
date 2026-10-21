@@ -14,7 +14,7 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._wiki import (
-    resolve_wiki_path, read_registry_all, _REGISTRY, _fallback_wiki_root,
+    resolve_wiki_path, read_registry_all, _REGISTRY,
 )
 from synthadoc import errors as E
 
@@ -299,14 +299,6 @@ def serve_cmd(
     from synthadoc.core.logging_config import setup_logging
 
     root = resolve_wiki_path(wiki)
-
-    # Scenario 2: inside Docker / no host registry — fall back to CWD wiki root
-    # when the resolved path has no config.toml and the host registry is absent.
-    config_path = root / ".synthadoc" / "config.toml"
-    if not config_path.exists() and not _REGISTRY.exists():
-        fallback = _fallback_wiki_root()
-        if fallback and (fallback / ".synthadoc" / "config.toml").exists():
-            root = fallback
 
     try:
         cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
