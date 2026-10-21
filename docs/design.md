@@ -4546,7 +4546,7 @@ The workflow can also be started manually (**Actions â†’ Publish Docker Image â†
 
 ### Upgrading a container deployment
 
-Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `plugin upgrade` and `templates sync` iterate the host wiki registry, which does not exist in a container, so they are unavailable there. Refreshing demo or template content is currently pip-only.
+Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
 
 ### Container-related fixes shipped with Docker support
 
