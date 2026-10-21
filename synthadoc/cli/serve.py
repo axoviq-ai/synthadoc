@@ -313,15 +313,18 @@ def serve_cmd(
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
 
-    # Scenario 1: host machine, Docker-installed wiki — warn that thin-client
-    # commands (status, query, lint …) won't work until the wiki is registered.
-    if _REGISTRY.exists() and wiki not in read_registry_all():
-        typer.echo(
-            f"Warning: wiki '{wiki}' is not registered in {_REGISTRY}.\n"
-            "  CLI commands that talk to the server (synthadoc status, query, lint…)\n"
-            "  will fail unless the wiki is registered on this host.\n"
-            f"  To register it: edit {_REGISTRY} and add an entry for '{wiki}'.",
-            err=True,
+    # A wiki must be registered before its server may start.  Both host and
+    # Docker deployments create a wikis.json entry via `synthadoc install`;
+    # if the entry is absent the operator has not completed installation.
+    if wiki not in read_registry_all():
+        E.cli_error(
+            E.WIKI_NOT_REGISTERED,
+            f"Wiki '{wiki}' is not registered in {_REGISTRY}.",
+            f"Register it by running from the parent directory:\n"
+            f"  synthadoc install {wiki} --target {root.parent}\n"
+            f"Or, if the wiki already exists on disk, add it manually:\n"
+            f'  "{wiki}": {{"path": "{root}", "port": <port>}}\n'
+            f"Then retry: synthadoc serve -w {wiki}",
         )
     effective_port = port if port is not None else cfg.server.port
     if host is not None:

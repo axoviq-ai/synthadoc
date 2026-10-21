@@ -18,12 +18,16 @@ def _make_cfg(host: str = "127.0.0.1", port: int = 7070):
 
 
 
+_REGISTERED = {".": {"path": ".", "port": 7070}}
+
+
 def test_host_option_accepted():
     """--host 0.0.0.0 must be accepted without 'No such option' error."""
     cfg = _make_cfg()
     with patch("synthadoc.cli._wiki.resolve_wiki", return_value="."), \
          patch("synthadoc.cli.serve.resolve_wiki_path", return_value=MagicMock()), \
          patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value=_REGISTERED), \
          patch("synthadoc.cli.serve._check_wiki"), \
          patch("synthadoc.cli.serve._check_port"), \
          patch("synthadoc.cli.serve._check_network"), \
@@ -45,6 +49,7 @@ def test_host_option_overrides_config():
     with patch("synthadoc.cli._wiki.resolve_wiki", return_value="."), \
          patch("synthadoc.cli.serve.resolve_wiki_path", return_value=MagicMock()), \
          patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value=_REGISTERED), \
          patch("synthadoc.cli.serve._check_wiki"), \
          patch("synthadoc.cli.serve._check_port"), \
          patch("synthadoc.cli.serve._check_network"), \
@@ -68,6 +73,7 @@ def test_no_host_option_uses_config():
     with patch("synthadoc.cli._wiki.resolve_wiki", return_value="."), \
          patch("synthadoc.cli.serve.resolve_wiki_path", return_value=MagicMock()), \
          patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value=_REGISTERED), \
          patch("synthadoc.cli.serve._check_wiki"), \
          patch("synthadoc.cli.serve._check_port"), \
          patch("synthadoc.cli.serve._check_network"), \
@@ -83,3 +89,16 @@ def test_no_host_option_uses_config():
     call_kwargs = mock_cfg_cls.call_args[1]
     assert call_kwargs.get("host") == "127.0.0.1", \
         f"Expected host='127.0.0.1', got: {call_kwargs}"
+
+
+def test_serve_fails_when_wiki_not_registered():
+    """serve must exit non-zero with ERR-WIKI-006 when the wiki is not registered."""
+    cfg = _make_cfg()
+    with patch("synthadoc.cli._wiki.resolve_wiki", return_value="unregistered-wiki"), \
+         patch("synthadoc.cli.serve.resolve_wiki_path", return_value=MagicMock()), \
+         patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value={}):
+        result = runner.invoke(app, ["serve", "-w", "unregistered-wiki", "--http-only"])
+    assert result.exit_code != 0, "Expected non-zero exit for unregistered wiki"
+    assert "ERR-WIKI-006" in (result.output or "") or "not registered" in (result.output or "").lower(), \
+        f"Expected registration error, got: {result.output}"
