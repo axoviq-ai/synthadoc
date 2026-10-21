@@ -1,4 +1,4 @@
-﻿# Synthadoc — Design Document
+# Synthadoc — Design Document
 
 **Version:** 1.4.1
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
