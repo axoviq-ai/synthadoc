@@ -1575,6 +1575,14 @@ async def test_kimi_provider_uses_streaming_collect():
     assert result.output_tokens == 5
 
 
+def test_sampling_kwargs_kimi_omits_temperature():
+    """kimi provider must never include temperature — DashScope rejects it with HTTP 400."""
+    from synthadoc.providers.openai import _sampling_kwargs
+    kwargs = _sampling_kwargs("kimi", "kimi-k3", 0.3, 8192)
+    assert "temperature" not in kwargs
+    assert kwargs == {"max_tokens": 8192}
+
+
 def test_qwen_provider_does_not_route_kimi_models(monkeypatch):
     """kimi-k3 set under provider='qwen' must NOT match the DashScope regex (no kimi- in pattern)."""
     from synthadoc.providers import make_provider

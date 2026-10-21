@@ -100,7 +100,10 @@ def _sampling_kwargs(provider: str, model: str, temperature: float, max_tokens: 
     current model), and GPT-5-era and newer models accept only the default
     temperature. OpenAI-compatible providers that share this class (Gemini,
     Groq, MiniMax, DeepSeek, Qwen) keep ``max_tokens`` and ``temperature``.
+    Kimi models on DashScope reject any explicit temperature parameter (400).
     """
+    if provider == "kimi":
+        return {"max_tokens": max_tokens}
     if provider != "openai":
         return {"temperature": temperature, "max_tokens": max_tokens}
     kwargs: dict = {"max_completion_tokens": max_tokens}
