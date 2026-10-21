@@ -58,11 +58,12 @@ def backup_cmd(
                 f"Wiki '{wiki_name}' is not registered on this host.",
                 _docker_wiki_hint(wiki_name),
             )
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki_name}' is not installed.",
-            "Run 'synthadoc list' to see registered wikis.",
-        )
+        else:
+            E.cli_error(
+                E.WIKI_NOT_REGISTERED,
+                f"Wiki '{wiki_name}' is not installed.",
+                "Run 'synthadoc list' to see registered wikis.",
+            )
 
     output_dir = Path(output).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

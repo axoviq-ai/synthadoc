@@ -31,11 +31,12 @@ def _server_info(wiki: str) -> tuple[str, _Config]:
                 f"Wiki '{wiki}' is not registered on this host.",
                 _docker_wiki_hint(wiki),
             )
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki}' is not installed.",
-            f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
-        )
+        else:
+            E.cli_error(
+                E.WIKI_NOT_REGISTERED,
+                f"Wiki '{wiki}' is not installed.",
+                f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
+            )
     try:
         cfg = load_config(project_config=config_path)
     except E.ConfigError as exc:

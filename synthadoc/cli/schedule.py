@@ -37,11 +37,12 @@ def _resolve_and_validate(wiki: Optional[str]) -> Path:
                 f"Wiki '{wiki}' is not registered on this host.",
                 _docker_wiki_hint(wiki),
             )
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki}' is not installed.",
-            f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
-        )
+        else:
+            E.cli_error(
+                E.WIKI_NOT_REGISTERED,
+                f"Wiki '{wiki}' is not installed.",
+                f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
+            )
     return root
 
 
