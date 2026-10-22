@@ -234,7 +234,12 @@ def heading_mismatch_error(
     if not changes:
         return None
 
-    budget = Counter(issues_fixed or [])
+    budget: Counter[str] = Counter()
+    for entry in (issues_fixed or []):
+        for issue_type in _HEADING_TOLERANCE:
+            if entry == issue_type or entry.startswith(issue_type + " "):
+                budget[issue_type] += 1
+                break
     unexplained: list[HeadingChange] = []
     for change in changes:
         explained = False
