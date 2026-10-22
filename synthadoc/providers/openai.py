@@ -8,7 +8,7 @@ import re
 from typing import AsyncGenerator, Optional
 import openai as _openai
 from openai import AsyncOpenAI
-from synthadoc.config import AgentConfig
+from synthadoc.config import AgentConfig, Provider
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     Empty string (unset) → no extra_body; provider default applies.
     DashScope (qwen, kimi) uses enable_thinking; DeepSeek and MiniMax/others use thinking.type.
     """
-    if provider in ("qwen", "kimi"):
+    if provider in (Provider.QWEN, Provider.KIMI):
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
@@ -102,9 +102,9 @@ def _sampling_kwargs(provider: str, model: str, temperature: float, max_tokens: 
     Groq, MiniMax, DeepSeek, Qwen) keep ``max_tokens`` and ``temperature``.
     Kimi models on DashScope reject any explicit temperature parameter (400).
     """
-    if provider == "kimi":
+    if provider == Provider.KIMI:
         return {"max_tokens": max_tokens}
-    if provider != "openai":
+    if provider != Provider.OPENAI:
         return {"temperature": temperature, "max_tokens": max_tokens}
     kwargs: dict = {"max_completion_tokens": max_tokens}
     if not _OPENAI_FIXED_SAMPLING_RE.match(model):
@@ -285,7 +285,7 @@ class OpenAIProvider(LLMProvider):
           (5 s / 15 s / 30 s) for transient load spikes (e.g. Gemini 503).
         """
         # Kimi models on DashScope only return content via streaming.
-        if self._config.provider == "kimi":
+        if self._config.provider == Provider.KIMI:
             return await self._collect_stream_response(msgs, temperature, max_tokens)
         rl_delays = list(_RATE_LIMIT_RETRY_DELAYS_S)
         se_delays = list(_SERVER_ERROR_RETRY_DELAYS_S)
@@ -433,7 +433,7 @@ class OpenAIProvider(LLMProvider):
                     text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
                     text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
                     if not text:
-                        if self._config.provider == "deepseek":
+                        if self._config.provider == Provider.DEEPSEEK:
                             # For DeepSeek, reasoning_content is chain-of-thought, not the
                             # answer.  Content was entirely inside <think> blocks, meaning
                             # thinking was not disabled as required.  Fail the call so the

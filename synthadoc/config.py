@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Optional
 
@@ -17,8 +18,23 @@ from typing import Optional
 # Known providers
 # ---------------------------------------------------------------------------
 
-KNOWN_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "groq", "minimax", "deepseek",
-                   "kimi", "qwen", "claude-code", "opencode"}
+
+class Provider(StrEnum):
+    ANTHROPIC  = "anthropic"
+    OPENAI     = "openai"
+    OLLAMA     = "ollama"
+    GEMINI     = "gemini"
+    GROQ       = "groq"
+    MINIMAX    = "minimax"
+    DEEPSEEK   = "deepseek"
+    KIMI       = "kimi"
+    QWEN       = "qwen"
+    CLAUDE_CODE = "claude-code"
+    OPENCODE   = "opencode"
+
+
+# Set of valid provider strings — kept for validation and sorted listings.
+KNOWN_PROVIDERS: frozenset[str] = frozenset(Provider)
 
 STAGING_POLICIES: frozenset[str] = frozenset({"off", "all", "threshold"})
 STAGING_CONFIDENCE_LEVELS: frozenset[str] = frozenset({"high", "medium", "low"})
@@ -43,7 +59,7 @@ class AgentConfig:
         Includes Ollama (local inference) and CLI-delegation providers
         (claude-code, opencode) that bill via subscription rather than per token.
         """
-        return self.provider in ("ollama", "claude-code", "opencode")
+        return self.provider in (Provider.OLLAMA, Provider.CLAUDE_CODE, Provider.OPENCODE)
 
 
 @dataclass
