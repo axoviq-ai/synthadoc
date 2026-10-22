@@ -4,11 +4,14 @@
 """
 Deterministic static-analysis security scan — zero LLM calls, pure Python.
 
-Catches the finding categories reported by third-party repo audits (dynamic
-code execution, invisible Unicode, weak hashing, unreviewed binaries, raw IP
-literals): all are regex/pattern matches a human reviewer would otherwise
-have to catch by eye. Scans only git-tracked files, so build output,
-node_modules, venvs, etc. are excluded automatically.
+Catches the finding categories reported by third-party repo audits: dynamic
+code execution (eval/exec in Python, eval/Function in JS/TS), invisible
+Unicode (zero-width and bidi-override characters, in every tracked document),
+weak hashing, unreviewed binaries (content-sniffed, not a fixed extension
+list — includes demo/template raw_sources/), and raw IP literals. All are
+regex/pattern matches a human reviewer would otherwise have to catch by eye.
+Scans only git-tracked files, so build output, node_modules, venvs, etc. are
+excluded automatically.
 
 Run locally before opening a PR:
     python scripts/security_scan.py
@@ -42,11 +45,16 @@ _ZERO_WIDTH_RE = re.compile("[" + "".join(chr(c) for c in (0x200B, 0x200C, 0x200
 _BIDI_RE = re.compile("[" + chr(0x202A) + "-" + chr(0x202E) + chr(0x2066) + "-" + chr(0x2069) + "]")
 
 _JS_EVAL_RE = re.compile(r"\beval\s*\(|\bFunction\s*\(")
+_PY_EVAL_RE = re.compile(r"\beval\s*\(|\bexec\s*\(")
 _MD5_RE = re.compile(r"\bhashlib\.md5\s*\(")
 # A preceding "/" (e.g. "Chrome/124.0.0.0") marks a version string, not an IP.
 _IPV4_RE = re.compile(r"(?<!/)\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
-_BINARY_EXTENSIONS = {".pptx", ".xlsx", ".docx", ".pdf", ".zip", ".pptm", ".xlsm"}
+# Office/archive formats that can carry macros or embedded objects — flagged
+# at MEDIUM. Any other extension-recognized or content-sniffed binary (images,
+# etc.) is flagged at LOW: expected as demo/doc assets, still worth a provenance note.
+_RISKY_BINARY_EXTENSIONS = {".pptx", ".xlsx", ".docx", ".pdf", ".zip", ".pptm", ".xlsm",
+                            ".doc", ".xls", ".ppt", ".rar", ".7z", ".jar"}
 
 # Inline escape for a specific finding on a specific line, e.g.:
 #   x = hashlib.md5(data)  # security-scan: allow (non-security fingerprint)
@@ -83,20 +91,25 @@ def _line_allows(line: str) -> bool:
     return _ALLOW_COMMENT in line
 
 
-def check_js_dynamic_eval(files: list[Path]) -> list[Finding]:
+def check_dynamic_code_execution(files: list[Path]) -> list[Finding]:
+    """Flag dynamic-code-execution calls in JS/TS (eval, Function) and Python (eval, exec)."""
     findings = []
     for path in files:
-        if path.suffix not in (".js", ".ts", ".jsx", ".tsx"):
+        if path.suffix in (".js", ".ts", ".jsx", ".tsx"):
+            pattern, desc = _JS_EVAL_RE, "eval/Function"
+        elif path.suffix == ".py":
+            pattern, desc = _PY_EVAL_RE, "eval/exec"
+        else:
             continue
         text = _read_text(path)
         if text is None:
             continue
         for i, line in enumerate(text.splitlines(), start=1):
-            if _JS_EVAL_RE.search(line) and not _line_allows(line):
+            if pattern.search(line) and not _line_allows(line):
                 findings.append(Finding(
                     path=str(path.relative_to(ROOT)), line=i, severity="high",
                     category="Code Injection", cwe="CWE-78, CWE-94, CWE-95",
-                    message="dynamic code execution (eval/Function) — evaluates text as code",
+                    message=f"dynamic code execution ({desc}) — evaluates text as code",
                 ))
     return findings
 
@@ -114,11 +127,9 @@ def check_invisible_unicode(files: list[Path]) -> list[Finding]:
     """
     findings = []
     for path in files:
-        if path.suffix in _BINARY_EXTENSIONS:
-            continue
         text = _read_text(path)
         if text is None:
-            continue
+            continue  # binary file — nothing to scan for embedded text chars
         rel = path.relative_to(ROOT)
         is_test = rel.parts[0] == "tests"
 
@@ -174,15 +185,38 @@ def check_weak_hash(files: list[Path]) -> list[Finding]:
 
 
 def check_unreviewed_binaries(files: list[Path]) -> list[Finding]:
+    """Flag binary files by content (failed UTF-8 decode), not a fixed
+    extension list — so any binary type anywhere in the repo (demo/template
+    raw_sources included) gets the same provenance check, not just the
+    office-document extensions a prior audit happened to find.
+
+    Office/archive formats that can carry macros or embedded objects are
+    flagged everywhere in the repo (MEDIUM) — rare and worth a look
+    regardless of location. Other binaries (images, etc.) are expected in
+    known asset directories (docs/png, web-ui assets, the built web-ui
+    bundle) and would otherwise drown every real finding in doc-screenshot
+    noise; they're only flagged (LOW) inside a raw_sources/ directory,
+    where ingest content is expected to be plain text and an image
+    arriving there is actually worth a provenance check.
+    """
     findings = []
     for path in files:
-        if path.suffix.lower() in _BINARY_EXTENSIONS:
-            findings.append(Finding(
-                path=str(path.relative_to(ROOT)), line=1, severity="medium",
-                category="Inventory/Provenance — Binary File", cwe="CWE-1104",
-                message="binary file committed with no source/provenance recorded — "
-                        "confirm this is intentional before merging",
-            ))
+        if _read_text(path) is not None:
+            continue  # decodes as UTF-8 text — not binary
+        ext = path.suffix.lower()
+        rel = path.relative_to(ROOT)
+        if ext in _RISKY_BINARY_EXTENSIONS:
+            severity = "medium"
+        elif "raw_sources" in rel.parts:
+            severity = "low"
+        else:
+            continue
+        findings.append(Finding(
+            path=str(rel), line=1, severity=severity,
+            category="Inventory/Provenance — Binary File", cwe="CWE-1104",
+            message=f"binary file ({ext or 'no extension'}) committed with no "
+                    "source/provenance recorded — confirm this is intentional before merging",
+        ))
     return findings
 
 
@@ -210,7 +244,7 @@ def check_raw_ip_literals(files: list[Path]) -> list[Finding]:
 
 
 CHECKS = (
-    check_js_dynamic_eval,
+    check_dynamic_code_execution,
     check_invisible_unicode,
     check_weak_hash,
     check_unreviewed_binaries,
