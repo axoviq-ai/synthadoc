@@ -1404,6 +1404,61 @@ If the server started but `/health` does not respond, the wiki may have failed v
 - `container`: requires macOS 26 (Tahoe) on Apple Silicon. Not available on Intel Macs or macOS < 26.
 - `wslc`: requires WSL 2.9.3+ on Windows 11. Update WSL: `wsl --update`.
 
+**Running the host `synthadoc serve` for a wiki installed via Docker**
+
+When a wiki is created with `docker run --rm … synthadoc install`, the one-off container writes its registry entry inside the container and then exits — the host's `~/.synthadoc/wikis.json` is never touched. If you later want to run `synthadoc serve` directly on the host (without Docker), you have two options:
+
+*Option A — pass the full path instead of the name (no configuration needed):*
+
+```bash
+synthadoc serve -w ~/wikis/history-of-computing
+```
+
+Or from inside the wiki directory:
+
+```bash
+cd ~/wikis/history-of-computing
+synthadoc serve
+```
+
+*Option B — register the wiki by name on the host (needed if you want `synthadoc serve -w history-of-computing` to work):*
+
+Open `~/.synthadoc/wikis.json` in a text editor (create it if it does not exist) and add an entry for the wiki. Use the absolute path from your host filesystem and the port set in the wiki's `config.toml`:
+
+```json
+{
+  "history-of-computing": {
+    "path": "/home/yourname/wikis/history-of-computing",
+    "port": 7070
+  }
+}
+```
+
+On Windows, use forward slashes: `"C:/Users/yourname/wikis/history-of-computing"`.
+
+After saving, `synthadoc serve -w history-of-computing` works normally on the host. The Docker container is unaffected — it never reads the host registry.
+
+**Switching between Docker serve and host serve**
+
+Stop one before starting the other — both bind the same port.
+
+*Docker → host:*
+
+```bash
+docker stop history-of-computing
+synthadoc serve -w ~/wikis/history-of-computing
+```
+
+*Host → Docker:*
+
+```bash
+# Stop the host server (Ctrl+C if running in foreground, or:)
+synthadoc stop -w history-of-computing
+docker start history-of-computing
+```
+
+`docker start` resumes the existing named container — no new `docker run` needed.
+
 **Slow file operations on Windows**
 
 Move the wiki folder from the Windows drive into the WSL2 filesystem. See the [Windows performance tip](#windows-11-wsl-293) above.

@@ -13,7 +13,9 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._wiki import resolve_wiki_path, read_registry_all
+from synthadoc.cli._wiki import (
+    resolve_wiki_path, read_registry_all, _REGISTRY,
+)
 from synthadoc import errors as E
 
 # Internal env var set on the detached child to suppress duplicate banner output.
@@ -297,10 +299,40 @@ def serve_cmd(
     from synthadoc.core.logging_config import setup_logging
 
     root = resolve_wiki_path(wiki)
+
     try:
         cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
+
+    # Name-based wikis (e.g. -w my-wiki) require a registry entry — the name
+    # alone does not locate the wiki on disk.
+    # Path-based wikis (e.g. -w /wiki in Docker, -w . from inside the wiki dir)
+    # are self-describing: config.toml loaded above is proof the wiki is valid.
+    _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
+    if wiki not in read_registry_all() and not _wiki_is_path:
+        import json as _json
+        abs_root = root.resolve()
+        # json.dumps produces a quoted, backslash-escaped string safe to paste into wikis.json
+        _path_json = _json.dumps(str(abs_root))
+        _port = cfg.server.port
+        _wiki_on_disk = (abs_root / ".synthadoc" / "config.toml").exists()
+        if _wiki_on_disk:
+            _hint = (
+                f"The wiki exists on disk but is not registered.\n"
+                f"Add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        else:
+            _hint = (
+                f"Register it by running from the parent directory:\n"
+                f"  synthadoc install {wiki} --target {abs_root.parent}\n"
+                f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        E.cli_error(E.WIKI_NOT_REGISTERED, f"Wiki '{wiki}' is not registered in {_REGISTRY}.", _hint)
     effective_port = port if port is not None else cfg.server.port
     if host is not None:
         cfg.server.host = host

@@ -1190,7 +1190,7 @@ synthadoc audit events -n 100 --offset 100 -w my-wiki
 
 ### Wiki targeting
 
-The `-w` / `--wiki` option accepts either a **registry name** (registered via `install`) or a **filesystem path**. Without `-w`, defaults to the current working directory.
+The `-w` / `--wiki` option accepts either a **registry name** (registered via `install`) or a **filesystem path**. Without `-w`, defaults to the current working directory. `synthadoc serve` hard-fails with `ERR-WIKI-006` when a name-based wiki is not registered; path-based arguments (`-w /wiki`, `-w ./my-wiki`) bypass that check entirely.
 
 Registry stored at `~/.synthadoc/wikis.json`:
 
@@ -1237,7 +1237,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
 | `ERR-WIKI-004`   | Install target already exists on disk                     |
 | `ERR-WIKI-005`   | Unknown demo template name                                |
-| `ERR-WIKI-006`   | Name not in`~/.synthadoc/wikis.json`                      |
+| `ERR-WIKI-006`   | Name-based wiki not in `~/.synthadoc/wikis.json`; path-based wikis (`-w /wiki`, `-w .`) bypass this check |
 | `ERR-WIKI-007`   | Backup requires a newer`db_schema_version` than installed |
 | `ERR-CFG-001`    | Required API key environment variable not set             |
 | `ERR-CFG-002`    | Provider name not recognised                              |
@@ -4501,7 +4501,7 @@ port 7070                      ── map  ──▶   7070    synthadoc serve -
 | --- | --- |
 | **One wiki per container** | Matches the one-process / one-port server model; multiple wikis run as multiple containers |
 | **Wiki files stay on the host** | `/wiki` is a bind mount, so Obsidian, git hooks, and backups work on the host files directly |
-| **No registry inside the container** | `CMD` starts the server with an explicit `-w /wiki`; `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` resolve the wiki without `-w` |
+| **No registry inside the container** | `CMD` starts the server with `-w /wiki`, a filesystem path — `serve` only consults the registry for name-based wiki arguments, so no registry entry is needed inside the container; `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` resolve the wiki without `-w` |
 | **Symmetric port mapping** | The server reads `[server] port` from the wiki's `config.toml`; mapping `-p 7070:7070` keeps the Obsidian plugin, Web UI, and scripts unchanged between Docker and native `synthadoc serve` |
 | **HTTP API + Web UI + MCP on one port** | The default `CMD` runs without `--http-only`, so `/app` (Web UI) and `/mcp` (MCP over HTTP) are served alongside the REST API. MCP stdio is not used in containers |
 | **Secrets via environment only** | API keys are passed with `--env-file`; nothing is baked into the image |
@@ -4546,7 +4546,7 @@ The workflow can also be started manually (**Actions → Publish Docker Image �
 
 ### Upgrading a container deployment
 
-Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `plugin upgrade` and `templates sync` iterate the host wiki registry, which does not exist in a container, so they are unavailable there. Refreshing demo or template content is currently pip-only.
+Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
 
 ### Container-related fixes shipped with Docker support
 

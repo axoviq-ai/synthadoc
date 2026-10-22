@@ -19,7 +19,7 @@ from synthadoc.cli.install import (
     _DEMOS,
 )
 from synthadoc.cli._port import assign_wiki_port, _DEFAULT_PORT
-from synthadoc.cli._wiki import resolve_wiki
+from synthadoc.cli._wiki import resolve_wiki, _raise_wiki_not_registered
 from synthadoc.core.backup_engine import (
     create_backup,
     read_manifest,
@@ -52,11 +52,7 @@ def backup_cmd(
     wiki_root = resolve_wiki_path(wiki_name)
 
     if not (wiki_root / ".synthadoc" / "config.toml").exists():
-        E.cli_error(
-            E.WIKI_NOT_REGISTERED,
-            f"Wiki '{wiki_name}' is not installed at '{wiki_root}'.",
-            "Run 'synthadoc list' to see registered wikis.",
-        )
+        _raise_wiki_not_registered(wiki_name, "Run 'synthadoc list' to see registered wikis.")
 
     output_dir = Path(output).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
