@@ -3,7 +3,13 @@
 """Tests for the deterministic content-health fixes (merge + sentence preservation)."""
 import pytest
 
-from synthadoc.agents.content_health_fixes import dropped_sentences, merge_duplicate_sections
+from synthadoc.agents.content_health_fixes import (
+    HeadingChange,
+    dropped_sentences,
+    heading_diff,
+    heading_mismatch_error,
+    merge_duplicate_sections,
+)
 from synthadoc.agents.content_health_scanner import scan_page
 
 _FLAG_DAY = (
@@ -65,3 +71,115 @@ def test_merge_ignores_headings_inside_code_fences():
 ])
 def test_dropped_sentences(rewritten, lost):
     assert dropped_sentences("Alpha beta gamma delta. Second sentence is right here.", rewritten) == lost
+
+
+def test_heading_diff_identical_returns_empty():
+    md = "# Title\n\nBody.\n\n## Section\n\nMore body.\n"
+    assert heading_diff(md, md) == []
+
+
+def test_heading_diff_no_headings_returns_empty():
+    assert heading_diff("just prose, no headings\n", "still just prose\n") == []
+
+
+def test_heading_diff_detects_removed_heading():
+    before = "# Title\n\n## Empty\n\n## Keep\n\nbody\n"
+    after = "# Title\n\n## Keep\n\nbody\n"
+    changes = heading_diff(before, after)
+    assert changes == [HeadingChange(kind="removed", before="Empty", after=None)]
+
+
+def test_heading_diff_detects_added_heading():
+    before = "# Title\n\n## Keep\n\nbody\n"
+    after = "# Title\n\n## Keep\n\nbody\n\n## New\n\nmore\n"
+    changes = heading_diff(before, after)
+    assert changes == [HeadingChange(kind="added", before=None, after="New")]
+
+
+def test_heading_diff_detects_level_change_same_text():
+    before = "# Title\n\n### Stray\n\nbody\n"
+    after = "# Title\n\n## Stray\n\nbody\n"
+    changes = heading_diff(before, after)
+    assert changes == [HeadingChange(kind="level_changed", before="Stray", after="Stray")]
+
+
+def test_heading_diff_detects_text_change_same_level():
+    before = "## The Cathedral and the Bazaar (1999)\n\nbody\n"
+    after = "## The Cathedral and the Bazaar\n\nbody\n"
+    changes = heading_diff(before, after)
+    assert changes == [HeadingChange(
+        kind="text_changed", before="The Cathedral and the Bazaar (1999)",
+        after="The Cathedral and the Bazaar",
+    )]
+
+
+def test_heading_diff_detects_reordered_headings():
+    before = "# Title\n\n## A\n\nbody a\n\n## B\n\nbody b\n"
+    after = "# Title\n\n## B\n\nbody b\n\n## A\n\nbody a\n"
+    changes = heading_diff(before, after)
+    assert {(c.kind, c.before) for c in changes} == {("reordered", "A"), ("reordered", "B")}
+
+
+def test_heading_diff_ignores_headings_inside_code_fences():
+    before = "# Title\n\n```\n# not a heading\n```\n\nbody\n"
+    after = "# Title\n\n```\n# not a heading either\n```\n\nbody\n"
+    assert heading_diff(before, after) == []
+
+
+def test_heading_mismatch_error_strict_rejects_any_change():
+    before = "# Title\n\n## A\n\nbody\n"
+    after = "# Title\n\n## B\n\nbody\n"
+    result = heading_mismatch_error("my-slug", before, after)
+    assert result is not None
+    assert result["status"] == "error"
+    assert result["slug"] == "my-slug"
+
+
+def test_heading_mismatch_error_strict_allows_no_change():
+    md = "# Title\n\n## A\n\nbody\n"
+    assert heading_mismatch_error("my-slug", md, md) is None
+
+
+def test_heading_mismatch_error_allows_one_removed_per_empty_section_issue():
+    before = "# Title\n\n## Empty\n\n## Keep\n\nbody\n"
+    after = "# Title\n\n## Keep\n\nbody\n"
+    assert heading_mismatch_error("s", before, after, issues_fixed=["empty_section"]) is None
+
+
+def test_heading_mismatch_error_rejects_removed_beyond_budget():
+    before = "# Title\n\n## Empty1\n\n## Empty2\n\n## Keep\n\nbody\n"
+    after = "# Title\n\n## Keep\n\nbody\n"
+    result = heading_mismatch_error("s", before, after, issues_fixed=["empty_section"])
+    assert result is not None
+    assert result["heading_changes"] == 1
+
+
+def test_heading_mismatch_error_allows_level_change_per_orphaned_heading_issue():
+    before = "# Title\n\n### Stray\n\nbody\n"
+    after = "# Title\n\n## Stray\n\nbody\n"
+    assert heading_mismatch_error("s", before, after, issues_fixed=["orphaned_heading"]) is None
+
+
+def test_heading_mismatch_error_rejects_level_change_with_text_change():
+    before = "# Title\n\n### Stray Old\n\nbody\n"
+    after = "# Title\n\n## Stray New\n\nbody\n"
+    result = heading_mismatch_error("s", before, after, issues_fixed=["orphaned_heading"])
+    assert result is not None
+
+
+def test_heading_mismatch_error_rejects_change_not_permitted_by_issue_type():
+    before = "# Title\n\n## A\n\nbody\n"
+    after = "# Title\n\n## B\n\nbody\n"
+    result = heading_mismatch_error("s", before, after, issues_fixed=["unclosed_code_block"])
+    assert result is not None
+
+
+def test_heading_mismatch_error_each_change_consumes_its_own_issue_type_budget():
+    # Two different tolerated changes, each backed by its own issue type —
+    # one type's budget must not absorb the other type's change.
+    before = "# Title\n\n## Empty\n\n### Stray\n\nbody\n"
+    after = "# Title\n\n## Stray\n\nbody\n"
+    result = heading_mismatch_error(
+        "s", before, after, issues_fixed=["empty_section", "orphaned_heading"],
+    )
+    assert result is None
