@@ -410,6 +410,7 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 | Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)                                                                   |
 | MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)                                                                                 |
 | DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)                                                                     |
+| Kimi             | No — pay-per-token; `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M) | No | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
 | Anthropic        | No                                                        | Yes             | [console.anthropic.com](https://console.anthropic.com/)                                                                             |
 | OpenAI           | No                                                        | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)                                                                         |
 | **Claude Code**  | Included with subscription — no API key                  | No              | Set`provider = "claude-code"` in config.toml                                                                                        |
@@ -424,6 +425,7 @@ export OPENAI_API_KEY=sk-…           # paid
 export MINIMAX_API_KEY=…             # paid — text rates (image support)
 export DEEPSEEK_API_KEY=…            # paid — text rates (no image support)
 export QWEN_API_KEY=…                # DashScope cloud — 1M free tokens trial (DASHSCOPE_API_KEY also accepted)
+export KIMI_API_KEY=…                # Kimi (DashScope) — kimi-k3 flagship, kimi-k2.6 general (QWEN_API_KEY also accepted)
 export TAVILY_API_KEY=tvly-…         # web search (optional)
 
 # Windows cmd — current session only
@@ -434,6 +436,7 @@ set OPENAI_API_KEY=sk-…
 set MINIMAX_API_KEY=…
 set DEEPSEEK_API_KEY=…
 set QWEN_API_KEY=…                   # DASHSCOPE_API_KEY also accepted
+set KIMI_API_KEY=…                   # QWEN_API_KEY also accepted
 set TAVILY_API_KEY=tvly-…
 
 ```
