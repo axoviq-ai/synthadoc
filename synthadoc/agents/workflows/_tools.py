@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
 from enum import Enum
@@ -1057,12 +1058,25 @@ async def tool_propose_and_apply(
     )
     confirmed = result.get("confirmed", False)
     if confirmed:
+        await ctx.audit_db.snapshot_if_changed(
+            slug, page.content, triggered_by=strategy_name, reason=rationale,
+        )
+        snapshots = await ctx.audit_db.list_page_snapshots(slug)
+        snapshot_id = snapshots[0]["id"] if snapshots else None
+
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
         # pages.  tool_run_scoped_lint marks a page as failed if contradiction_note
         # is not None, regardless of content quality.  Applying approved new content
         # is the act of resolving the conflict, so the note must be cleared here.
         page.contradiction_note = None
+        page.last_fix_record = {
+            "slug": slug,
+            "snapshot_id": snapshot_id,
+            "snapshot_index_before": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "strategy_name": strategy_name,
+        }
         _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
             ctx.store.write_page(slug, page)

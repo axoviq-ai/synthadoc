@@ -1603,3 +1603,35 @@ class TestProposeAndApplyChecks:
             strategy_name="Strategy 1", rationale="test",
         )
         assert result["applied"] is True
+
+    async def test_successful_apply_writes_last_fix_record(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nold body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nold body text with enough words here. Plus more.\n",
+            strategy_name="Strategy 1 — Content rewrite", rationale="test",
+        )
+        assert result["applied"] is True
+        assert page.last_fix_record is not None
+        assert page.last_fix_record["strategy_name"] == "Strategy 1 — Content rewrite"
+        assert page.last_fix_record["snapshot_id"] == 42
+
+    async def test_rejected_apply_does_not_write_last_fix_record(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert page.last_fix_record is None

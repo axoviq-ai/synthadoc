@@ -44,6 +44,12 @@ def _ctx(tmp_path: Path, store: WikiStorage) -> MagicMock:
     ctx.session_id = "test-session"
     ctx.queue = AsyncMock()
     ctx.audit_db = AsyncMock()
+    # tool_propose_and_apply snapshots before writing — give these two calls
+    # real, YAML-serializable return values instead of auto-generated Mocks
+    # (an unconfigured AsyncMock's return_value is itself a Mock, which blows
+    # up frontmatter serialization when it lands in page.last_fix_record).
+    ctx.audit_db.snapshot_if_changed = AsyncMock(return_value=True)
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[])
     return ctx
 
 
