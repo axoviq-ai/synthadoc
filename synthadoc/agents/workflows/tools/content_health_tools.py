@@ -15,6 +15,7 @@ from synthadoc.agents.content_health_fixes import (
     dropped_sentences, heading_mismatch_error, merge_duplicate_sections, text_loss_error,
 )
 from synthadoc.agents.content_health_scanner import resolvable_issues, scan_page
+from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.workflows._tools import tool_confirm, unified_diff_preview
 from synthadoc.storage.wiki import LifecycleState
 
@@ -381,31 +382,18 @@ async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) ->
     stored_snapshot_id = page.content_health_fix_record.get("snapshot_id")
     stored_snapshot_index = page.content_health_fix_record.get("snapshot_index_before", 1)
 
-    # Resolve the current index for the stored snapshot id (robust to new snapshots added later).
-    if stored_snapshot_id is not None:
-        snapshots = await ctx.audit_db.list_page_snapshots(slug)
-        resolved_index = next(
-            (s["index"] for s in snapshots if s.get("id") == stored_snapshot_id),
-            stored_snapshot_index,  # fallback to stored index if id not found
-        )
-    else:
-        resolved_index = stored_snapshot_index
+    restore_result = await restore_page_snapshot(
+        ctx, slug, stored_snapshot_id, stored_snapshot_index,
+    )
+    if restore_result["status"] != _STATUS_OK:
+        return {"status": _STATUS_ERR, "message": restore_result["error"]}
 
-    snapshot = await ctx.audit_db.get_snapshot_by_index(slug, resolved_index)
-    if snapshot is None or snapshot.get("content_snapshot") is None:
-        return {
-            "status": _STATUS_ERR,
-            "message": f"Snapshot {resolved_index} for '{slug}' not found in audit log",
-        }
-
-    restored_content = snapshot["content_snapshot"]
-    page.content = restored_content
+    resolved_index = restore_result["resolved_index"]
+    restored_content = restore_result["restored_content"]
+    page = ctx.store.read_page(slug)
     page.content_health_fix_record = None
-    # Restore issues from the original content.
     page.content_health_issues = [asdict(i) for i in scan_page(slug, restored_content)]
     ctx.store.write_page(slug, page)
-    if ctx.bump_epoch:
-        ctx.bump_epoch()
 
     return {
         "status": _STATUS_OK,
