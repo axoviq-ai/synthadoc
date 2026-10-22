@@ -768,9 +768,14 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 skipped.append(slug)
                 yield {"event": "token", "data": {"text": f"⏭ {slug}: skipped.\n"}}
             else:
+                await tool_dismiss_content_health_issues(
+                    ctx, slug, reason=f"auto-fix rejected: {result.get('error')}",
+                )
                 yield {"event": "token", "data": {
-                    "text": f"⚠ {slug}: not written — {result.get('error')}\n"
+                    "text": f"⚠ {slug}: fix rejected, issues dismissed for human review — "
+                            f"{result.get('error')}\n"
                 }}
+                skipped.append(slug)
 
         final_summary = (
             f"\nContent Health Resolver — Complete\n"

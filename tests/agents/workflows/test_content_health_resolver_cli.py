@@ -226,6 +226,46 @@ async def test_cli_provider_bare_rollback_lists_fixes(tmp_path):
     assert "roll back <slug>" in text
 
 
+@pytest.mark.asyncio
+async def test_rejected_fix_is_dismissed_not_silently_skipped(tmp_path, monkeypatch):
+    store = WikiStorage(tmp_path / "wiki")
+    content = "# Page\n\n## Intro\n" + " ".join(["word"] * 60) + "\n\n# Stray Title\n"
+    store.write_page("turing", WikiPage(
+        title="Turing", tags=[], content=content, status=LifecycleState.ACTIVE,
+        confidence="", sources=[],
+        content_health_issues=[{"type": "orphaned_heading", "severity": "medium",
+                                "location": "line 6", "description": "H1 outside title"}]))
+    ctx = _make_ctx(store)
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text="# Page\n\n## Stray Title\n", input_tokens=0, output_tokens=0,
+    ))  # drops the whole "## Intro" body — always rejected regardless of issue type
+
+    dismiss_calls = []
+    async def _fake_dismiss(ctx, slug, reason):
+        dismiss_calls.append((slug, reason))
+        # Clear issues from the page, just like the real function does
+        page = ctx.store.read_page(slug)
+        if page is not None:
+            page.content_health_issues = []
+            ctx.store.write_page(slug, page)
+        return {"status": "success", "slug": slug}
+    monkeypatch.setattr(
+        "synthadoc.agents.workflows.content_health_resolver.tool_dismiss_content_health_issues",
+        _fake_dismiss,
+    )
+
+    _, p_resolver, p_tools = _patch_confirm()
+    with p_resolver, p_tools:
+        _ = [e async for e in ContentHealthResolverWorkflow().run_for_cli_provider(
+            ctx, question="run content health", provider=provider)]
+
+    assert len(dismiss_calls) == 1
+    assert dismiss_calls[0][0] == "turing"
+    page = store.read_page("turing")
+    assert page.content_health_issues == []  # cleared, so it won't be re-attempted
+
+
 @pytest.mark.parametrize("question, expected", [
     ("list content health fixes", ("list", None)),
     ("run content health resolver list", ("list", None)),
