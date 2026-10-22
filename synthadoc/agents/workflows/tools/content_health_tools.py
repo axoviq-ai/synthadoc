@@ -11,7 +11,9 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from synthadoc.agents.content_health_fixes import dropped_sentences, merge_duplicate_sections
+from synthadoc.agents.content_health_fixes import (
+    dropped_sentences, merge_duplicate_sections, text_loss_error,
+)
 from synthadoc.agents.content_health_scanner import resolvable_issues, scan_page
 from synthadoc.agents.workflows._tools import tool_confirm, unified_diff_preview
 from synthadoc.storage.wiki import LifecycleState
@@ -83,27 +85,6 @@ async def tool_get_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     }
 
 
-def _text_loss_error(slug: str, current: str, proposed: str) -> dict | None:
-    """Error result when *proposed* drops any sentence of *current*, else None."""
-    dropped = dropped_sentences(current, proposed)
-    if not dropped:
-        return None
-    shown = "; ".join(f'"{d[:120]}"' for d in dropped[:5])
-    return {
-        "status": _STATUS_ERR,
-        "slug": slug,
-        "dropped_sentences": len(dropped),
-        "error": (
-            f"Rejected — nothing was written. The rewrite removes {len(dropped)} "
-            f"sentence(s) that exist in the current page, e.g. {shown}. "
-            "Content-health fixes must keep every sentence. Leave issues that cannot "
-            "be fixed without losing text for a human: dismiss them (notify, then "
-            "dismiss_content_health_issues) instead of writing. Do not retry with the "
-            "same content."
-        ),
-    }
-
-
 async def confirm_page_change(
     ctx: "WorkflowContext", slug: str, current: str, proposed: str, summary: str,
     yes_label: str = "Approve",
@@ -133,7 +114,7 @@ async def tool_apply_content_health_fix(
     page = ctx.store.read_page(slug)
     if page is None:
         return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
-    rejection = _text_loss_error(slug, page.content, content)
+    rejection = text_loss_error(slug, page.content, content)
     if rejection:
         return rejection
     summary = (
@@ -169,7 +150,7 @@ async def tool_write_content_health_fix(
     if page is None:
         return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
 
-    rejection = _text_loss_error(slug, page.content, content)
+    rejection = text_loss_error(slug, page.content, content)
     if rejection:
         return rejection
 

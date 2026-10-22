@@ -9,6 +9,7 @@ from synthadoc.agents.content_health_fixes import (
     heading_diff,
     heading_mismatch_error,
     merge_duplicate_sections,
+    text_loss_error,
 )
 from synthadoc.agents.content_health_scanner import scan_page
 
@@ -190,3 +191,17 @@ def test_heading_mismatch_error_rejects_reorder_hidden_behind_tolerated_level_ch
     after = "# Title\n\n## Stray\n\nb3\n\n## B\n\nb1\n\n## C\n\nb2\n"
     result = heading_mismatch_error("s", before, after, issues_fixed=["orphaned_heading"])
     assert result is not None  # must reject: a reorder is hiding behind the tolerated level change
+
+
+def test_text_loss_error_none_when_nothing_dropped():
+    md = "# Title\n\nThis is a complete sentence here.\n"
+    assert text_loss_error("s", md, md) is None
+
+
+def test_text_loss_error_rejects_dropped_sentence():
+    current = "# Title\n\nThis is a complete sentence that must survive rewrites.\n"
+    proposed = "# Title\n\nCompletely different content now.\n"
+    result = text_loss_error("s", current, proposed)
+    assert result is not None
+    assert result["status"] == "error"
+    assert result["dropped_sentences"] == 1

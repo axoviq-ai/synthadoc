@@ -198,6 +198,27 @@ _HEADING_TOLERANCE: dict[str, str] = {
 }
 
 
+def text_loss_error(slug: str, current: str, proposed: str) -> dict | None:
+    """Error result when *proposed* drops any sentence of *current*, else None."""
+    dropped = dropped_sentences(current, proposed)
+    if not dropped:
+        return None
+    shown = "; ".join(f'"{d[:120]}"' for d in dropped[:5])
+    return {
+        "status": _STATUS_ERR,
+        "slug": slug,
+        "dropped_sentences": len(dropped),
+        "error": (
+            f"Rejected — nothing was written. The rewrite removes {len(dropped)} "
+            f"sentence(s) that exist in the current page, e.g. {shown}. "
+            "Content-health fixes must keep every sentence. Leave issues that cannot "
+            "be fixed without losing text for a human: dismiss them (notify, then "
+            "dismiss_content_health_issues) instead of writing. Do not retry with the "
+            "same content."
+        ),
+    }
+
+
 def heading_mismatch_error(
     slug: str, before: str, after: str, *, issues_fixed: list[str] | None = None
 ) -> dict | None:
