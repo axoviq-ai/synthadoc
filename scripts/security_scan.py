@@ -38,8 +38,8 @@ _DOC_EXAMPLE_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
 
 # Same character classes synthadoc/core/sanitizer.py strips from ingested
 # content at runtime — reused here to scan our own source for the same thing.
-_ZERO_WIDTH_RE = re.compile("[​‌‍﻿]")
-_BIDI_RE = re.compile("[‪-‮⁦-⁩]")
+_ZERO_WIDTH_RE = re.compile("[" + "".join(chr(c) for c in (0x200B, 0x200C, 0x200D, 0xFEFF)) + "]")
+_BIDI_RE = re.compile("[" + chr(0x202A) + "-" + chr(0x202E) + chr(0x2066) + "-" + chr(0x2069) + "]")
 
 _JS_EVAL_RE = re.compile(r"\beval\s*\(|\bFunction\s*\(")
 _MD5_RE = re.compile(r"\bhashlib\.md5\s*\(")
@@ -122,7 +122,7 @@ def check_invisible_unicode(files: list[Path]) -> list[Finding]:
         rel = path.relative_to(ROOT)
         is_test = rel.parts[0] == "tests"
 
-        leading_bom = text.startswith("﻿")
+        leading_bom = text.startswith(chr(0xFEFF))
         if leading_bom:
             findings.append(Finding(
                 path=str(rel), line=1, severity="low",
@@ -167,8 +167,8 @@ def check_weak_hash(files: list[Path]) -> list[Finding]:
                 findings.append(Finding(
                     path=str(path.relative_to(ROOT)), line=i, severity="low",
                     category="Weak Cryptography — MD5 Hash", cwe="CWE-327, CWE-338",
-                    message="hashlib.md5() use — not collision-resistant; fine only for "
-                            "non-security fingerprinting (mark with '# security-scan: allow')",
+                    message="md5 hash use — not collision-resistant; fine only for "  # security-scan: allow
+                            "non-security fingerprinting (mark with the allow comment)",
                 ))
     return findings
 
