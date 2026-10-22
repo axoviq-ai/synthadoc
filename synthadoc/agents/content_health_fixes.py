@@ -84,92 +84,108 @@ def heading_diff(before: str, after: str) -> list[HeadingChange]:
     """Ordered diff of before's headings vs after's headings.
 
     Extracts (level, text) pairs via _section_spans — the same mechanism the
-    scanner uses for duplicate_section detection — from both versions, then
-    diffs them with difflib.SequenceMatcher. Pure and opinion-free: returns
-    every difference with no judgement about which are acceptable; callers
-    apply their own policy. An empty list means headings are identical in
-    content, level, and order.
+    scanner uses for duplicate_section detection — from both versions, then:
+    1. builds an explicit before/after correspondence (SequenceMatcher equal
+       blocks first, then content-based fallback matching for leftover items
+       on both sides — text match preferred, level match as a second try);
+    2. reports a content change (level_changed / text_changed) for any
+       corresponded pair whose level or text differs;
+    3. separately checks order-preservation across the FULL correspondence
+       via longest-increasing-subsequence — anything not on that stable
+       backbone is reported as "reordered", independent of whether it also
+       has a content change (a heading can be both level_changed AND
+       reordered at once);
+    4. anything with no correspondence at all is "removed" or "added".
+
+    Pure and opinion-free: returns every difference in document order with no
+    judgement about which are acceptable. Callers apply their own policy. An
+    empty list means headings are identical in content, level, and order.
     """
     before_h = _heading_tuples(before)
     after_h = _heading_tuples(after)
 
-    # If sequences are identical, no changes
-    if before_h == after_h:
-        return []
-
     sm = difflib.SequenceMatcher(None, before_h, after_h, autojunk=False)
-
-    removed_pool: list[tuple[int, str]] = []
-    added_pool: list[tuple[int, str]] = []
-    equal_items: list[tuple[int, str]] = []
-
+    before_to_after: dict[int, int] = {}
+    matched_after: set[int] = set()
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
-            equal_items.extend(before_h[i1:i2])
+            for k in range(i2 - i1):
+                before_to_after[i1 + k] = j1 + k
+                matched_after.add(j1 + k)
+
+    unmatched_before = [i for i in range(len(before_h)) if i not in before_to_after]
+    unmatched_after = [j for j in range(len(after_h)) if j not in matched_after]
+
+    # Text match preferred, level match as a second try: run as two global
+    # passes (not inline per item) so a level-match can never steal the one
+    # candidate that another leftover item actually deserves via text-match.
+    used_after: set[int] = set()
+    for i in unmatched_before:
+        b_text = before_h[i][1]
+        candidate = next(
+            (j for j in unmatched_after if j not in used_after and after_h[j][1] == b_text),
+            None,
+        )
+        if candidate is not None:
+            before_to_after[i] = candidate
+            used_after.add(candidate)
+
+    for i in unmatched_before:
+        if i in before_to_after:
             continue
-        removed_pool.extend(before_h[i1:i2])
-        added_pool.extend(after_h[j1:j2])
+        b_level = before_h[i][0]
+        candidate = next(
+            (j for j in unmatched_after if j not in used_after and after_h[j][0] == b_level),
+            None,
+        )
+        if candidate is not None:
+            before_to_after[i] = candidate
+            used_after.add(candidate)
 
     changes: list[HeadingChange] = []
 
-    # An item that vanished from one spot and reappeared verbatim elsewhere
-    # was moved, not deleted-and-recreated.
-    for item in list(removed_pool):
-        if item in added_pool:
-            removed_pool.remove(item)
-            added_pool.remove(item)
-            changes.append(HeadingChange(kind="reordered", before=item[1], after=item[1]))
-
-    # Check for reordering among items marked as equal: if their relative order
-    # has changed, they're reordered.
-    reordered_from_equal: set[tuple[int, str]] = set()
-    for item in equal_items:
-        before_pos = before_h.index(item)
-        after_pos = after_h.index(item)
-        if before_pos == after_pos:
+    # Content changes for every corresponded pair.
+    for i, j in before_to_after.items():
+        b_level, b_text = before_h[i]
+        a_level, a_text = after_h[j]
+        if b_level == a_level and b_text == a_text:
             continue
-        # Item changed position. Check if this is due to reordering with any other
-        # heading (not just caused by removals/additions).
-        for other in before_h:
-            if other == item or other not in after_h:
-                continue
-            other_before = before_h.index(other)
-            other_after = after_h.index(other)
-            # Relative order changed between item and other
-            if (before_pos < other_before) != (after_pos < other_after):
-                reordered_from_equal.add(item)
-                break
+        kind = "level_changed" if b_text == a_text else "text_changed"
+        changes.append(HeadingChange(kind=kind, before=b_text, after=a_text))
 
-    for item in reordered_from_equal:
-        changes.append(HeadingChange(kind="reordered", before=item[1], after=item[1]))
+    # Order check: the longest increasing subsequence of after-positions
+    # (ordered by before-index) is the stable backbone; anything off it moved.
+    ordered_before_indices = sorted(before_to_after)
+    after_positions = [before_to_after[i] for i in ordered_before_indices]
+    n = len(after_positions)
+    lis_len = [1] * n
+    prev = [-1] * n
+    for x in range(n):
+        for y in range(x):
+            if after_positions[y] < after_positions[x] and lis_len[y] + 1 > lis_len[x]:
+                lis_len[x] = lis_len[y] + 1
+                prev[x] = y
+    on_lis: set[int] = set()
+    if n:
+        end = max(range(n), key=lambda k: lis_len[k])
+        while end != -1:
+            on_lis.add(end)
+            end = prev[end]
+    for idx, before_idx in enumerate(ordered_before_indices):
+        if idx not in on_lis:
+            j = before_to_after[before_idx]
+            changes.append(HeadingChange(
+                kind="reordered", before=before_h[before_idx][1], after=after_h[j][1],
+            ))
 
-    # A remaining pair that shares either text or level was one heading
-    # edited in place, not an unrelated removal plus an unrelated addition.
-    # Process text matches first (same text, different level) to avoid greedy
-    # level matches that would leave text matches unmatched.
-    for b_item in list(removed_pool):
-        b_level, b_text = b_item
-        match = next((a for a in added_pool if a[1] == b_text and a[0] != b_level), None)
-        if match is not None:
-            removed_pool.remove(b_item)
-            added_pool.remove(match)
-            a_level, a_text = match
-            kind = "level_changed" if b_text == a_text else "text_changed"
-            changes.append(HeadingChange(kind=kind, before=b_text, after=a_text))
+    # No correspondence at all.
+    for i in range(len(before_h)):
+        if i not in before_to_after:
+            changes.append(HeadingChange(kind="removed", before=before_h[i][1], after=None))
+    for j in range(len(after_h)):
+        if j not in used_after and j not in matched_after:
+            changes.append(HeadingChange(kind="added", before=None, after=after_h[j][1]))
 
-    # Then process level matches (same level, different text)
-    for b_item in list(removed_pool):
-        b_level, b_text = b_item
-        match = next((a for a in added_pool if a[0] == b_level and a[1] != b_text), None)
-        if match is not None:
-            removed_pool.remove(b_item)
-            added_pool.remove(match)
-            a_level, a_text = match
-            kind = "level_changed" if b_text == a_text else "text_changed"
-            changes.append(HeadingChange(kind=kind, before=b_text, after=a_text))
-
-    changes.extend(HeadingChange(kind="removed", before=h, after=None) for _, h in removed_pool)
-    changes.extend(HeadingChange(kind="added", before=None, after=h) for _, h in added_pool)
     return changes
 
 
