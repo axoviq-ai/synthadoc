@@ -1317,7 +1317,7 @@ otlp_endpoint = "http://localhost:4317"   # used when exporter = "otlp"
 
 ### Provider switching
 
-All eight supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`) share the same config key. Gemini, Groq, MiniMax, DeepSeek, and Qwen (DashScope) use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
+All nine supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `kimi`, `qwen`, `ollama`) share the same config key. Gemini, Groq, MiniMax, DeepSeek, Kimi, and Qwen (DashScope) use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
 
 ```toml
 # Switch from Claude to Gemini Flash (free tier available)
@@ -1336,6 +1336,7 @@ Required environment variables per provider:
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
 | `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes                                          |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
+| `kimi`      | `KIMI_API_KEY` (or `QWEN_API_KEY`) | No — `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M, 256K ctx) | No (text-only)                       |
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
@@ -1951,7 +1952,7 @@ class SlackExportSkill(BaseSkill):
 
 ### Writing a provider
 
-Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
+Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `kimi`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
 For a fully proprietary API, subclass `LLMProvider` and wire it into `synthadoc/providers/__init__.py`:
 

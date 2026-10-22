@@ -80,9 +80,9 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     """Return the provider extra_body dict for the given thinking setting.
 
     Empty string (unset) → no extra_body; provider default applies.
-    DashScope (qwen) uses enable_thinking; DeepSeek and MiniMax/others use thinking.type.
+    DashScope (qwen, kimi) uses enable_thinking; DeepSeek and MiniMax/others use thinking.type.
     """
-    if provider == "qwen":
+    if provider in ("qwen", "kimi"):
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
@@ -100,7 +100,10 @@ def _sampling_kwargs(provider: str, model: str, temperature: float, max_tokens: 
     current model), and GPT-5-era and newer models accept only the default
     temperature. OpenAI-compatible providers that share this class (Gemini,
     Groq, MiniMax, DeepSeek, Qwen) keep ``max_tokens`` and ``temperature``.
+    Kimi models on DashScope reject any explicit temperature parameter (400).
     """
+    if provider == "kimi":
+        return {"max_tokens": max_tokens}
     if provider != "openai":
         return {"temperature": temperature, "max_tokens": max_tokens}
     kwargs: dict = {"max_completion_tokens": max_tokens}
@@ -202,6 +205,76 @@ class OpenAIProvider(LLMProvider):
         text = str(exc).lower()
         return "perday" in text or "requests_per_day" in text or "daily quota" in text
 
+    async def _collect_stream_response(self, msgs: list, temperature: float,
+                                       max_tokens: int):
+        """Collect streaming chunks into a synthetic non-streaming response.
+
+        Kimi models on DashScope return empty content for non-streaming calls.
+        This method uses streaming internally and returns an object with the same
+        attributes as a non-streaming completions response so complete() works unchanged.
+        """
+        import types
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        usage_obj = None
+        finish_reason = None
+
+        try:
+            async for chunk in await self._client.chat.completions.create(
+                model=self._config.model, messages=msgs,
+                **_sampling_kwargs(self._config.provider, self._config.model,
+                                   temperature, max_tokens),
+                timeout=self._timeout, stream=True,
+                stream_options={"include_usage": True},
+                **({"extra_body": self._extra_body} if self._extra_body else {}),
+            ):
+                if chunk.usage is not None:
+                    usage_obj = chunk.usage
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if chunk.choices[0].finish_reason:
+                    finish_reason = chunk.choices[0].finish_reason
+                if delta.content:
+                    content_parts.append(delta.content)
+                extra = getattr(delta, "model_extra", None) or {}
+                rc = extra.get("reasoning_content") or ""
+                if rc:
+                    reasoning_parts.append(rc)
+        except _openai.APITimeoutError:
+            logger.error(
+                "LLM call to %s timed out after %d s. "
+                "Increase [agents] llm_timeout_seconds in .synthadoc/config.toml "
+                "or switch to a faster model.",
+                self._config.provider, self._timeout,
+            )
+            raise
+        except _openai.PermissionDeniedError as exc:
+            body = exc.body if isinstance(exc.body, dict) else {}
+            err_type = (body.get("error", {}).get("type") or "").lower()
+            err_code = (body.get("error", {}).get("code") or "").lower()
+            if "allocationquota" in err_type or "allocationquota" in err_code or "quota" in str(exc).lower():
+                err_msg = body.get("error", {}).get("message") or str(exc)
+                logger.error("Quota exhausted for %s (403) — %s", self._config.provider, err_msg)
+                from synthadoc.errors import DailyQuotaExhaustedException
+                raise DailyQuotaExhaustedException(self._config.provider) from exc
+            raise
+
+        content = "".join(content_parts)
+        reasoning = "".join(reasoning_parts)
+        model_extra = {"reasoning_content": reasoning} if reasoning else {}
+        msg_ns = types.SimpleNamespace(content=content, model_extra=model_extra)
+        choice_ns = types.SimpleNamespace(message=msg_ns, finish_reason=finish_reason or "stop")
+        if usage_obj is not None:
+            usage_ns = types.SimpleNamespace(
+                prompt_tokens=usage_obj.prompt_tokens,
+                completion_tokens=usage_obj.completion_tokens,
+            )
+        else:
+            in_tok, out_tok = _estimate_tokens_from_chars(msgs, len(content))
+            usage_ns = types.SimpleNamespace(prompt_tokens=in_tok, completion_tokens=out_tok)
+        return types.SimpleNamespace(choices=[choice_ns], usage=usage_ns)
+
     async def _call_with_retry(self, msgs: list, temperature: float,
                                max_tokens: int):
         """Call the completions API with retry logic for transient errors.
@@ -211,6 +284,9 @@ class OpenAIProvider(LLMProvider):
         - 5xx InternalServerError: retried up to 3 times with short backoff
           (5 s / 15 s / 30 s) for transient load spikes (e.g. Gemini 503).
         """
+        # Kimi models on DashScope only return content via streaming.
+        if self._config.provider == "kimi":
+            return await self._collect_stream_response(msgs, temperature, max_tokens)
         rl_delays = list(_RATE_LIMIT_RETRY_DELAYS_S)
         se_delays = list(_SERVER_ERROR_RETRY_DELAYS_S)
         rl_idx = se_idx = 0

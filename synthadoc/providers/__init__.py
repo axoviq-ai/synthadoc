@@ -63,13 +63,37 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
+    if name == "kimi":
+        from synthadoc.providers.openai import OpenAIProvider
+        # Kimi models are hosted on DashScope (Ali's QwenCloud).
+        # Accept KIMI_API_KEY or fall back to QWEN_API_KEY / DASHSCOPE_API_KEY
+        # since they share the same DashScope account.
+        key = (
+            os.environ.get("KIMI_API_KEY", "").strip()
+            or os.environ.get("QWEN_API_KEY", "").strip()
+            or os.environ.get("DASHSCOPE_API_KEY", "").strip()
+        )
+        if not key:
+            raise E.MissingApiKeyError(
+                "KIMI_API_KEY (or QWEN_API_KEY)", "Kimi (DashScope)",
+                "https://bailian.console.aliyun.com/"
+            )
+        _default_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url = os.environ.get("KIMI_BASE_URL", "").strip() or _default_url
+        cfg_with_url = AgentConfig(
+            provider="kimi", model=agent_cfg.model,
+            base_url=base_url,
+            thinking=agent_cfg.thinking,
+        )
+        return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "qwen":
         import re as _re
-        # DashScope model names: qwen-plus, qwen3.8-flash, qwq-32b, kimi-k3 …
+        # DashScope model names: qwen-plus, qwen3.8-flash, qwq-32b …
         # Ollama model names:    qwen3.5, qwen3:8b, qwen2.5:72b …
         # Rule: DashScope names always have a letter-named suffix after a hyphen;
         # Ollama names use a colon (qwen3:8b) or no hyphen (qwen3.5).
-        _is_dashscope = bool(_re.match(r'^(qwen[\d.]*-[a-z]|qwq-|kimi-)', agent_cfg.model or ""))
+        # kimi-* models use provider = "kimi" — they are not routed here.
+        _is_dashscope = bool(_re.match(r'^(qwen[\d.]*-[a-z]|qwq-)', agent_cfg.model or ""))
         # Accept DASHSCOPE_API_KEY as an alias so workspace-specific Bailian
         # endpoints (which use that name in their sample code) work without renaming.
         key = (
@@ -113,5 +137,5 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             timeout=timeout,
         )
     E.cli_error(E.CFG_UNKNOWN_PROVIDER, f"Unknown provider: {name!r}",
-                "Supported providers: anthropic, openai, gemini, groq, minimax, deepseek, qwen, ollama, "
+                "Supported providers: anthropic, openai, gemini, groq, minimax, deepseek, kimi, qwen, ollama, "
                 "claude-code, opencode")
