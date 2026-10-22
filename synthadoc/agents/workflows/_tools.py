@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
 from synthadoc.agents.content_health_fixes import text_loss_error, heading_mismatch_error
+from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
     find_broken_citation_refs,
@@ -1085,6 +1086,69 @@ async def tool_propose_and_apply(
             {"tool": "propose_and_apply", "message": f"OK Applied {strategy_name} to {slug}"},
         )
     return {"applied": confirmed, "diff_preview": diff_preview}
+
+
+async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
+    """Roll back a page to before its last tool_propose_and_apply write.
+
+    Reads page.last_fix_record (written by tool_propose_and_apply), delegates
+    to restore_page_snapshot, then clears the record. Shared by
+    contradiction_resolver and orphan_resolver — anything that writes through
+    tool_propose_and_apply gets rollback for free.
+    """
+    if ctx.store is None:
+        return {"status": "error", "error": "No store available"}
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"status": "error", "error": f"Page '{slug}' not found"}
+    if not page.last_fix_record:
+        return {"status": "error", "error": f"No prior fix recorded for '{slug}'"}
+
+    record = page.last_fix_record
+    result = await restore_page_snapshot(
+        ctx, slug, record.get("snapshot_id"), record.get("snapshot_index_before", 1),
+    )
+    if result["status"] != "success":
+        return result
+
+    page = ctx.store.read_page(slug)
+    page.last_fix_record = None
+    ctx.store.write_page(slug, page)
+    return {
+        "status": "success",
+        "slug": slug,
+        "rolled_back_to_snapshot": result["resolved_index"],
+        "message": (
+            f"Rolled back '{slug}' to before {record.get('strategy_name', 'the last fix')} "
+            f"(snapshot {result['resolved_index']})."
+        ),
+    }
+
+
+async def tool_list_recent_fixes(ctx: "WorkflowContext") -> dict:
+    """Return all pages that have a last_fix_record, sorted by timestamp desc.
+
+    Shared by contradiction_resolver and orphan_resolver — any page whose last
+    change went through tool_propose_and_apply shows up here if it hasn't been
+    rolled back since.
+    """
+    if ctx.store is None:
+        return {"status": "error", "fixes": []}
+    fixes = []
+    for slug in ctx.store.list_pages():
+        page = ctx.store.read_page(slug)
+        if page is not None and page.last_fix_record:
+            record = page.last_fix_record
+            fixes.append({
+                "slug": slug,
+                "title": page.title,
+                "strategy_name": record.get("strategy_name", ""),
+                "fixed_at": record.get("timestamp", ""),
+                "snapshot_id": record.get("snapshot_id"),
+                "snapshot_index_before": record.get("snapshot_index_before"),
+            })
+    fixes.sort(key=lambda r: r["fixed_at"], reverse=True)
+    return {"fixes": fixes}
 
 
 _VALID_STATES: frozenset[str] = frozenset(

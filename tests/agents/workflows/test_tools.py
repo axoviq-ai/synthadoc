@@ -26,7 +26,9 @@ from synthadoc.agents.workflows._tools import (
     tool_get_scaffold_preview,
     tool_ingest_source,
     tool_poll_job,
+    tool_list_recent_fixes,
     tool_propose_and_apply,
+    tool_rollback_last_fix,
     tool_run_lint,
     tool_run_scaffold,
 )
@@ -1635,3 +1637,85 @@ class TestProposeAndApplyChecks:
             strategy_name="Strategy 1", rationale="test",
         )
         assert page.last_fix_record is None
+
+
+# ---------------------------------------------------------------------------
+# tool_rollback_last_fix / tool_list_recent_fixes (Task 10)
+# ---------------------------------------------------------------------------
+
+class TestRollbackLastFix:
+    async def test_restores_content_and_clears_record(self):
+        current = "# Title\n\n## Keep\n\noriginal body text with enough words here.\n"
+        store, page = _confirming_store(current)
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": current,
+            }),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\noriginal body text with enough words here. More.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        result = await tool_rollback_last_fix(ctx, "s")
+        assert result["status"] == "success"
+        assert page.content == current
+        assert page.last_fix_record is None
+
+    async def test_errors_cleanly_with_no_prior_fix(self):
+        store, page = _confirming_store("# Title\n\nbody.\n")
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_rollback_last_fix(ctx, "untouched-page")
+        assert result["status"] == "error"
+
+    async def test_second_rollback_errors_cleanly(self):
+        current = "# Title\n\n## Keep\n\noriginal body text with enough words here.\n"
+        store, page = _confirming_store(current)
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": current,
+            }),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\noriginal body text with enough words here. More.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        await tool_rollback_last_fix(ctx, "s")
+        second = await tool_rollback_last_fix(ctx, "s")
+        assert second["status"] == "error"
+
+
+class TestListRecentFixes:
+    async def test_lists_only_pages_with_a_fix_record(self):
+        current = "# Title\n\n## Keep\n\nbody text here with enough words to count.\n"
+        store, page = _confirming_store(current)
+        store.list_pages = MagicMock(return_value=["s"])
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nbody text here with enough words to count. Extra.\n",
+            strategy_name="Strategy 1 — Content rewrite", rationale="test",
+        )
+        result = await tool_list_recent_fixes(ctx)
+        slugs = [f["slug"] for f in result["fixes"]]
+        assert "s" in slugs
+        entry = next(f for f in result["fixes"] if f["slug"] == "s")
+        assert entry["strategy_name"] == "Strategy 1 — Content rewrite"
+
+    async def test_excludes_pages_without_a_fix_record(self):
+        store, page = _confirming_store("# Title\n\nbody.\n")
+        store.list_pages = MagicMock(return_value=["untouched"])
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_list_recent_fixes(ctx)
+        assert result["fixes"] == []
