@@ -26,6 +26,7 @@ from synthadoc.agents.workflows._tools import (
     tool_get_scaffold_preview,
     tool_ingest_source,
     tool_poll_job,
+    tool_propose_and_apply,
     tool_run_lint,
     tool_run_scaffold,
 )
@@ -1529,3 +1530,76 @@ async def test_tool_format_summary_emits_sse_events():
     calls = {call.args[0] for call in ctx.send_sse_event.call_args_list}
     assert "token" in calls, "Expected a 'token' SSE event"
     assert "final_text" in calls, "Expected a 'final_text' SSE event"
+
+
+# ---------------------------------------------------------------------------
+# tool_propose_and_apply — heading/text-loss invariant checks (Task 4)
+# ---------------------------------------------------------------------------
+
+def _confirming_store(content: str):
+    page = MagicMock()
+    page.content = content
+    page.contradiction_note = None
+    page.last_fix_record = None  # explicit — a bare MagicMock attribute is truthy by default
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=page)
+    store.write_page = MagicMock()
+    store.page_lock = MagicMock()
+    store.page_lock.return_value.__enter__ = MagicMock(return_value=None)
+    store.page_lock.return_value.__exit__ = MagicMock(return_value=None)
+    return store, page
+
+
+async def _auto_confirm(ctx, confirmed=True):
+    await asyncio.sleep(0.05)
+    gate = ctx.confirm_registry.get("s1")
+    if gate:
+        ctx.confirm_result_registry["s1"] = confirmed
+        gate.set()
+
+
+class TestProposeAndApplyChecks:
+    async def test_rejects_sentence_loss_before_confirm(self):
+        store, page = _confirming_store(
+            "# Title\n\nThis sentence must survive every rewrite attempt.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s", new_content="# Title\n\nCompletely different now.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is False
+        assert "error" in result
+        store.write_page.assert_not_called()
+
+    async def test_rejects_heading_change_before_confirm(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is False
+        assert "error" in result
+        store.write_page.assert_not_called()
+
+    async def test_applies_heading_preserving_rewrite_normally(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nold body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nold body text with enough words here. Plus more.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is True

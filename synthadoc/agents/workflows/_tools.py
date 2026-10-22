@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+from synthadoc.agents.content_health_fixes import text_loss_error, heading_mismatch_error
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
     find_broken_citation_refs,
@@ -1020,15 +1021,28 @@ async def tool_propose_and_apply(
     Does NOT alter the page's lifecycle state — callers must call
     ``tool_transition_lifecycle_state`` separately after lint passes.
 
+    Before the confirm dialog, rejects (without ever showing the dialog) any
+    rewrite that drops a sentence from the current content or changes any
+    heading (zero-tolerance — no ``issues_fixed`` budget, unlike the
+    content-health apply paths, since neither Strategy 1 rewrites nor
+    orphan-resolver wikilink insertion ever legitimately need to touch a
+    heading).
+
     Returns::
 
         {"applied": bool, "diff_preview": str}
-        {"applied": False, "error": str}  — page not found
+        {"applied": False, "diff_preview": "", "error": str}  — page not found,
+            or the rewrite was rejected for dropping a sentence / changing a heading
     """
     page = ctx.store.read_page(slug)
     if page is None:
         return {"applied": False, "diff_preview": "",
                 "error": f"Page not found: {slug!r}"}
+
+    rejection = text_loss_error(slug, page.content or "", new_content) \
+        or heading_mismatch_error(slug, page.content or "", new_content)
+    if rejection:
+        return {"applied": False, "diff_preview": "", "error": rejection["error"]}
 
     diff_preview = unified_diff_preview(slug, page.content or "", new_content)
 
