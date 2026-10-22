@@ -17,15 +17,16 @@ from synthadoc.cli._wiki import (
     resolve_wiki_path, read_registry_all, _REGISTRY,
 )
 from synthadoc import errors as E
+from synthadoc.config import Provider
 
 # Internal env var set on the detached child to suppress duplicate banner output.
 _NO_BANNER_ENV = "_SYNTHADOC_NO_BANNER"
 
 _PROVIDER_HOSTS = {
-    "anthropic": ("api.anthropic.com", 443),
-    "openai":    ("api.openai.com", 443),
-    "gemini":    ("generativelanguage.googleapis.com", 443),
-    "groq":      ("api.groq.com", 443),
+    Provider.ANTHROPIC: ("api.anthropic.com", 443),
+    Provider.OPENAI:    ("api.openai.com", 443),
+    Provider.GEMINI:    ("generativelanguage.googleapis.com", 443),
+    Provider.GROQ:      ("api.groq.com", 443),
 }
 
 # Loopback addresses — the Obsidian plugin always connects via 127.0.0.1 for these.
@@ -362,16 +363,16 @@ def serve_cmd(
     setup_logging(root, cfg=cfg.logs, verbose=verbose)
 
     from synthadoc.providers import _require_env
-    if provider in ("claude-code", "opencode", "ollama"):
+    if provider in (Provider.CLAUDE_CODE, Provider.OPENCODE, Provider.OLLAMA):
         pass  # CLI and local providers — no API key required
-    elif provider == "anthropic":
+    elif provider == Provider.ANTHROPIC:
         _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
-    elif provider == "openai":
+    elif provider == Provider.OPENAI:
         _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")
-    elif provider == "gemini":
+    elif provider == Provider.GEMINI:
         _require_env("GEMINI_API_KEY", "Google Gemini",
                      "https://aistudio.google.com/app/apikey")
-    elif provider == "groq":
+    elif provider == Provider.GROQ:
         _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys")
 
     # Propagate web_search config to env so WebSearchSkill can read it
