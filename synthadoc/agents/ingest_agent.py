@@ -345,8 +345,9 @@ def _slugify(title: str) -> str:
         "-",
         normalized.lower(),
     ).strip("-")
-    # Fallback: if title was entirely symbols with no slug-able chars, use a content hash
-    return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
+    # Fallback: if title was entirely symbols with no slug-able chars, use a content hash.
+    # Non-security use (filename collision avoidance only) — md5 is fine here.
+    return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]  # security-scan: allow
 
 
 def _url_sidecar_name(url: str) -> str:
