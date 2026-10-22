@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2026 William Johnason / axoviq.com
+# Copyright (c) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 import re
 from pathlib import Path
