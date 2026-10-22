@@ -148,7 +148,13 @@ STEP 4 — Per-page resolution loop
           "Strategy 4 — Cross-page resolution"
           "Strategy 5 — Escalate"
 
-    4e. If not applied (user skipped): mark page as skipped, continue to next page.
+    4e. If not applied:
+        - Result includes an "error" field (not a user decision — a structural or
+          content-loss rejection): treat exactly like a lint failure for retry
+          purposes. If attempt < 4, go to step 4h and select the next strategy.
+          If cap reached, go to step 4i (escalate).
+        - No "error" field (user declined via the confirm dialog): mark page as
+          skipped, continue to next page.
 
     4f. If applied: call tool_run_scoped_lint(slug).
 
@@ -176,6 +182,9 @@ STEP 4 — Per-page resolution loop
               current authoritative sources to support, replace, or ground disputed claims.
             • Strategy 3 (Force re-ingest) — preferred for source-conflict pages when
               source_path is available and the source itself may have updated.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
           Attempt 3 — use a strategy not yet tried; Strategy 1 (second use) is allowed
             only if strategies 2, 3, and 4 have all been tried or clearly ruled out:
@@ -185,10 +194,16 @@ STEP 4 — Per-page resolution loop
             • Strategy 1 (second use) — only if 2, 3, and 4 are all exhausted. Target
               different specific claims than attempt 1, or use stronger hedging and
               explicit source attribution for each disputed claim.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
           Attempt 4 — any remaining untried strategy; if all others have been tried,
             reuse Strategy 1 with a substantially different approach: target different
             claims, restructure the affected section, or add explicit per-claim citations.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
         Repeat from 4c.
 
@@ -475,7 +490,15 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                     )
 
                     if not apply_result.get("applied"):
-                        skipped.append(slug)
+                        error = apply_result.get("error")
+                        if error:
+                            unresolved.append({
+                                "slug": slug,
+                                "reason": f"{error} — re-run with provider=anthropic for "
+                                          f"multi-strategy retry",
+                            })
+                        else:
+                            skipped.append(slug)
                     else:
                         # 4e. Re-lint after applying the change
                         lint_result = await tool_run_scoped_lint(ctx, slug=slug)
