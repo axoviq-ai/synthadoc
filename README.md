@@ -965,7 +965,7 @@ The content health resolver works on pages already flagged by a fast heuristic s
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 
-The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Like the content health resolver, it rejects any rewrite that drops a sentence or mutates a heading, and snapshots before every write — say "roll back `<slug>`" to undo a fix.
+The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Any rewrite that mutates a heading is rejected before you are asked, and every write is snapshotted — say "roll back `<slug>`" to undo a fix.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
 
