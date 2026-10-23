@@ -197,6 +197,9 @@ _HEADING_TOLERANCE: dict[str, str] = {
     "orphaned_heading": "level_changed",
 }
 
+# Trailing " xN" count suffix on an issues_fixed entry, e.g. "orphaned_heading x2".
+_ISSUE_COUNT_SUFFIX_RE = re.compile(r"\sx(\d+)\s*$")
+
 
 def text_loss_error(slug: str, current: str, proposed: str) -> dict | None:
     """Error result when *proposed* drops any sentence of *current*, else None."""
@@ -227,7 +230,8 @@ def heading_mismatch_error(
     Without issues_fixed: zero tolerance — any heading change is rejected.
     With issues_fixed: one 'removed' change is permitted per empty_section
     issue in the list, one 'level_changed' change (heading text unchanged) per
-    orphaned_heading issue. Any other change, or more changes than
+    orphaned_heading issue. An entry of the form "type xN" counts as N issues
+    of that type. Any other change, or more changes than
     issues_fixed accounts for, is rejected.
     """
     changes = heading_diff(before, after)
@@ -238,7 +242,10 @@ def heading_mismatch_error(
     for entry in (issues_fixed or []):
         for issue_type in _HEADING_TOLERANCE:
             if entry == issue_type or entry.startswith(issue_type + " "):
-                budget[issue_type] += 1
+                # "type xN" grants N units of budget; bare "type" (or no
+                # numeric suffix) grants 1.
+                count_match = _ISSUE_COUNT_SUFFIX_RE.search(entry)
+                budget[issue_type] += int(count_match.group(1)) if count_match else 1
                 break
     unexplained: list[HeadingChange] = []
     for change in changes:

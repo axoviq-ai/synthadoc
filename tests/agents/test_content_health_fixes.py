@@ -161,6 +161,26 @@ def test_heading_mismatch_error_allows_level_change_per_orphaned_heading_issue()
     assert heading_mismatch_error("s", before, after, issues_fixed=["orphaned_heading"]) is None
 
 
+def test_heading_mismatch_error_xn_suffix_grants_n_units_of_budget():
+    before = "# Title\n\n### Stray A\n\na\n\n### Stray B\n\nb\n"
+    after = "# Title\n\n## Stray A\n\na\n\n## Stray B\n\nb\n"
+    assert heading_mismatch_error(
+        "s", before, after, issues_fixed=["orphaned_heading x2"],
+    ) is None
+
+
+def test_heading_mismatch_error_x1_suffix_grants_one_unit_only():
+    before = "# Title\n\n### Stray A\n\na\n\n### Stray B\n\nb\n"
+    after = "# Title\n\n## Stray A\n\na\n\n## Stray B\n\nb\n"
+    result = heading_mismatch_error("s", before, after, issues_fixed=["orphaned_heading x1"])
+    assert result is not None
+    assert result["heading_changes"] == 1
+    single_after = "# Title\n\n## Stray A\n\na\n\n### Stray B\n\nb\n"
+    assert heading_mismatch_error(
+        "s", before, single_after, issues_fixed=["orphaned_heading x1"],
+    ) is None
+
+
 def test_heading_mismatch_error_rejects_level_change_with_text_change():
     before = "# Title\n\n### Stray Old\n\nbody\n"
     after = "# Title\n\n## Stray New\n\nbody\n"
