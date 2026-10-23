@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.content_health_fixes import text_loss_error, heading_mismatch_error
+from synthadoc.agents.content_health_fixes import heading_mismatch_error
 from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
@@ -1024,27 +1024,49 @@ async def tool_propose_and_apply(
     ``tool_transition_lifecycle_state`` separately after lint passes.
 
     Before the confirm dialog, rejects (without ever showing the dialog) any
-    rewrite that drops a sentence from the current content or changes any
-    heading (zero-tolerance — no ``issues_fixed`` budget, unlike the
-    content-health apply paths, since neither Strategy 1 rewrites nor
-    orphan-resolver wikilink insertion ever legitimately need to touch a
-    heading).
+    rewrite that changes any heading (zero-tolerance — no ``issues_fixed``
+    budget, unlike the content-health apply paths, since neither Strategy 1
+    rewrites nor orphan-resolver wikilink insertion ever legitimately need to
+    touch a heading).
+
+    This enforces heading preservation ONLY — it deliberately does NOT enforce
+    sentence preservation (``text_loss_error``).  The callers of this function
+    exist to change prose: contradiction_resolver hedges or corrects false
+    claims, and orphan_resolver rewrites a sentence to carry an inline
+    wikilink.  Both legitimately alter existing sentences, so a verbatim
+    sentence-survival check would reject their core use case.  Only the page's
+    heading structure must never move; the human confirm dialog (with diff)
+    is the safeguard for prose changes.
+
+    The rejection message is deliberately neutral: it does not reference
+    content-health-only tools (``dismiss_content_health_issues``) or forbid
+    retrying, since contradiction_resolver's own multi-strategy retry may
+    legitimately try a different rewrite.
 
     Returns::
 
         {"applied": bool, "diff_preview": str}
         {"applied": False, "diff_preview": "", "error": str}  — page not found,
-            or the rewrite was rejected for dropping a sentence / changing a heading
+            or the rewrite was rejected for changing a heading
     """
     page = ctx.store.read_page(slug)
     if page is None:
         return {"applied": False, "diff_preview": "",
                 "error": f"Page not found: {slug!r}"}
 
-    rejection = text_loss_error(slug, page.content or "", new_content) \
-        or heading_mismatch_error(slug, page.content or "", new_content)
+    rejection = heading_mismatch_error(slug, page.content or "", new_content)
     if rejection:
-        return {"applied": False, "diff_preview": "", "error": rejection["error"]}
+        # heading_mismatch_error's own message is written for content-health
+        # callers (it names dismiss_content_health_issues and says "do not
+        # retry"); build a neutral one from its structured fields instead.
+        return {
+            "applied": False, "diff_preview": "",
+            "error": (
+                f"Rejected — nothing was written. This rewrite changes "
+                f"{rejection.get('heading_changes', 'one or more')} heading(s) "
+                f"unexpectedly; headings must be preserved exactly. Review manually."
+            ),
+        }
 
     diff_preview = unified_diff_preview(slug, page.content or "", new_content)
 

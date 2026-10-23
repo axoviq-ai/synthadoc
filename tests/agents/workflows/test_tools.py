@@ -1561,19 +1561,58 @@ async def _auto_confirm(ctx, confirmed=True):
 
 
 class TestProposeAndApplyChecks:
-    async def test_rejects_sentence_loss_before_confirm(self):
+    async def test_applies_corrected_sentence_rewrite(self):
+        """Contradiction fixes CHANGE sentences — sentence loss must not be rejected."""
         store, page = _confirming_store(
-            "# Title\n\nThis sentence must survive every rewrite attempt.\n"
+            "# Title\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
         )
-        ctx, _events = _make_ctx(store=store)
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        new = "# Title\n\n## History\n\nThe telephone was invented by Bell in 1876.\n"
+        result = await tool_propose_and_apply(
+            ctx, slug="s", new_content=new,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+        assert "error" not in result
+        assert page.content == new
+        store.write_page.assert_called_once()
+
+    async def test_applies_inline_wikilink_insertion(self):
+        """Orphan-resolver rewrites a sentence to carry a wikilink — must apply."""
+        store, page = _confirming_store(
+            "# Title\n\n## Body\n\nAlan Turing studied computable numbers deeply.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[]),
+        ))
         asyncio.create_task(_auto_confirm(ctx))
         result = await tool_propose_and_apply(
-            ctx, slug="s", new_content="# Title\n\nCompletely different now.\n",
+            ctx, slug="s",
+            new_content="# Title\n\n## Body\n\n[[alan-turing|Alan Turing]] studied computable numbers deeply.\n",
+            strategy_name="Insert wikilink", rationale="link orphan",
+        )
+        assert result["applied"] is True
+
+    async def test_heading_rejection_message_is_neutral(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
             strategy_name="Strategy 1", rationale="test",
         )
         assert result["applied"] is False
-        assert "error" in result
-        store.write_page.assert_not_called()
+        assert "heading" in result["error"]
+        assert "dismiss_content_health_issues" not in result["error"]
+        assert "Do not retry" not in result["error"]
+        assert "do not retry" not in result["error"].lower()
 
     async def test_rejects_heading_change_before_confirm(self):
         store, page = _confirming_store(
