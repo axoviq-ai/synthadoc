@@ -362,6 +362,13 @@ async def test_transition_lifecycle_state_updates_markdown_file_frontmatter(tmp_
     assert "status: contradicted" not in raw
 
 
+def _top_level_key(raw: str, key: str) -> str | None:
+    """Value of an unindented (top-level) frontmatter key in raw page text, else None."""
+    import re
+    m = re.search(rf"^{re.escape(key)}:[ \t]*(.*)$", raw, re.MULTILINE)
+    return m.group(1).strip() if m else None
+
+
 @pytest.mark.asyncio
 async def test_propose_then_transition_raw_file_consistent(tmp_path):
     """End-to-end: propose→apply clears contradiction_note; transition sets status active.
@@ -394,8 +401,10 @@ async def test_propose_then_transition_raw_file_consistent(tmp_path):
     assert applied["applied"] is True
     raw_after_apply = page_file.read_text(encoding="utf-8")
     # contradiction_note must be gone; status is still contradicted at this stage.
-    assert "contradiction_note" not in raw_after_apply
-    assert "status: contradicted" in raw_after_apply
+    # Checks are anchored to top-level frontmatter keys: last_fix_record legitimately
+    # carries nested pre_fix_status / pre_fix_contradiction_note for rollback.
+    assert not _top_level_key(raw_after_apply, "contradiction_note")
+    assert _top_level_key(raw_after_apply, "status") == "contradicted"
 
     # Step 2: transition to active — only changes status.
     from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
@@ -405,12 +414,11 @@ async def test_propose_then_transition_raw_file_consistent(tmp_path):
     )
     assert result["success"] is True
     raw_after_transition = page_file.read_text(encoding="utf-8")
-    assert "status: active" in raw_after_transition, (
+    assert _top_level_key(raw_after_transition, "status") == "active", (
         "Expected 'status: active' in markdown frontmatter after transition; "
         f"got:\n{raw_after_transition[:500]}"
     )
-    assert "status: contradicted" not in raw_after_transition
-    assert "contradiction_note" not in raw_after_transition
+    assert not _top_level_key(raw_after_transition, "contradiction_note")
 
 
 # ── tool_transition_lifecycle_state — cache invalidation hooks ───────────────
