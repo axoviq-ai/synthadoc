@@ -211,6 +211,58 @@ async def test_cli_provider_rollback_unknown_page_reports_error(tmp_path):
     assert "No content health fix recorded for 'hopper'" in events[-1]["data"]["text"]
 
 
+def _contradiction_fixed_page(slug):
+    """A page last changed by contradiction_resolver: last_fix_record, no CH record."""
+    page = _make_page(slug)
+    page.content = "# Page\n\n## Intro\n\nBell invented the telephone in 1876.\n"
+    page.last_fix_record = {"slug": slug, "snapshot_id": 42, "snapshot_index_before": 1,
+                            "timestamp": "2026-10-22T10:00:00Z",
+                            "strategy_name": "Strategy 1 — Content rewrite"}
+    return page
+
+
+_PRE_CONTRADICTION_FIX = "# Page\n\n## Intro\n\nEdison invented the telephone in 1901.\n"
+
+
+@pytest.mark.asyncio
+async def test_cli_provider_rollback_falls_back_to_last_fix_record(tmp_path):
+    """'roll back X' routed here must still undo a contradiction-resolver fix."""
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _contradiction_fixed_page("turing"))
+    ctx = _make_ctx(store)
+    ctx.audit_db.get_snapshot_by_index = AsyncMock(
+        return_value={"index": 1, "id": 42, "content_snapshot": _PRE_CONTRADICTION_FIX})
+    provider = MagicMock()
+    provider.complete = AsyncMock()
+
+    events = await _run_cli(ContentHealthResolverWorkflow(), ctx, "roll back turing", provider)
+
+    text = events[-1]["data"]["text"]
+    assert "No content health fix recorded" not in text
+    assert "Rolled back 'turing'" in text
+    restored = store.read_page("turing")
+    assert restored.content.strip() == _PRE_CONTRADICTION_FIX.strip()
+    assert restored.last_fix_record is None
+
+
+@pytest.mark.asyncio
+async def test_agentic_rollback_tool_falls_back_to_last_fix_record(tmp_path):
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _contradiction_fixed_page("turing"))
+    ctx = _make_ctx(store)
+    ctx.audit_db.get_snapshot_by_index = AsyncMock(
+        return_value={"index": 1, "id": 42, "content_snapshot": _PRE_CONTRADICTION_FIX})
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("roll back turing")
+    result = await wf.get_tool_fns(ctx)["rollback_content_health_fix"](slug="turing")
+
+    assert result["status"] == "success"
+    restored = store.read_page("turing")
+    assert restored.content.strip() == _PRE_CONTRADICTION_FIX.strip()
+    assert restored.last_fix_record is None
+
+
 @pytest.mark.asyncio
 async def test_cli_provider_bare_rollback_lists_fixes(tmp_path):
     store = WikiStorage(tmp_path / "wiki")

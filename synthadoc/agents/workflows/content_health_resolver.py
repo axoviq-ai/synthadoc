@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
-from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
+from synthadoc.agents.workflows._tools import tool_confirm, tool_notify, tool_rollback_last_fix
 from synthadoc.agents.workflows.tools.content_health_tools import (
     SEVERITY_ORDER,
     tool_apply_content_health_fix,
@@ -240,6 +240,28 @@ def _format_fix_list(fixes: list[dict]) -> str:
             )
         lines.append(f"- {fix['slug']} — {when} — " + "; ".join(parts))
     return "\n".join(lines)
+
+
+async def _rollback_with_fallback(ctx: WorkflowContext, slug: str) -> dict:
+    """Roll back *slug*'s content-health fix, or its generic last fix if it has none.
+
+    Fast-path routing sends every "roll back X" chat message here (this
+    workflow's MATCH_RE claims "roll back"), even when the page was last
+    changed by contradiction_resolver / orphan_resolver through
+    tool_propose_and_apply.  When there is no content-health fix record but
+    the page carries a generic last_fix_record, delegate to
+    tool_rollback_last_fix so the user's rollback still happens.
+    """
+    result = await tool_rollback_content_health_fix(ctx, slug)
+    if result.get("status") != "error":
+        return result
+    page = ctx.store.read_page(slug) if ctx.store is not None else None
+    if page is None or page.content_health_fix_record or not page.last_fix_record:
+        return result
+    fallback = await tool_rollback_last_fix(ctx, slug)
+    if "message" not in fallback and fallback.get("error"):
+        fallback = dict(fallback, message=fallback["error"])
+    return fallback
 
 
 _DRAFT_RE = re.compile(
@@ -536,7 +558,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 if not gate.get("confirmed"):
                     return {"status": "cancelled",
                             "message": f"Rollback of '{slug}' cancelled by the user. Do not retry it."}
-            return await tool_rollback_content_health_fix(ctx, slug)
+            return await _rollback_with_fallback(ctx, slug)
 
         async def _dismiss(slug: str, reason: str) -> dict:
             # Dismissing leaves the text alone but hides the page from the resolver,
@@ -605,7 +627,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         # of starting a new scan-and-fix session.
         intent, rollback_slug = self._parse_intent(question)
         if intent == "rollback" and rollback_slug:
-            result = await tool_rollback_content_health_fix(ctx, rollback_slug)
+            result = await _rollback_with_fallback(ctx, rollback_slug)
             text = result.get("message") or f"Rollback of '{rollback_slug}' failed."
             yield {"event": "final_text", "data": {"text": text}}
             return
