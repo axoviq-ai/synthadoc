@@ -341,11 +341,17 @@ class OrphanResolverWorkflow(AgenticWorkflow):
                 return (
                     f"The user wants to roll back the fix for page '{rollback_slug}'.\n"
                     f"Call tool_rollback_orphan_fix(orphan_slug='{rollback_slug}') and "
-                    f"report the result as plain text using the tool's own wording — "
-                    f"'{rollback_slug}' may not carry its own fix record (orphan "
+                    f"report the result as plain text using the tool's own wording, "
+                    f"verbatim — do not paraphrase it.\n"
+                    f"'{rollback_slug}' may not carry its own fix record, since orphan "
                     f"resolution edits the page that LINKS TO the orphan, not the orphan "
-                    f"page itself), in which case the tool finds and rolls back that "
-                    f"linking page instead and says so."
+                    f"page itself. In that case the tool does NOT roll back any other "
+                    f"page on its own — naming '{rollback_slug}' is the user's approval "
+                    f"to write to '{rollback_slug}', not to some other page it guesses at. "
+                    f"It reports status 'error' with a message naming the actual page to "
+                    f"roll back instead, and no page content changes. Relay that message "
+                    f"as the complete answer; do not call the tool again with a different "
+                    f"slug on your own initiative."
                 )
             return (
                 "The user wants to roll back a fix but did not specify which page.\n"

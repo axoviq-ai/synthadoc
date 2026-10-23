@@ -126,7 +126,7 @@ async def tool_verify_orphan_resolved(
 # ---------------------------------------------------------------------------
 
 async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> dict:
-    """Roll back the fix that resolved *orphan_slug*.
+    """Roll back *orphan_slug*'s own fix record, or report where the real one is.
 
     Orphan resolution never writes to the orphan page itself — it edits the
     HOST page that gets the new [[wikilink]] inserted. So last_fix_record
@@ -134,22 +134,35 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
     tool_rollback_last_fix(orphan_slug) call fails with "no prior fix
     recorded" even though the orphan was genuinely just resolved.
 
-    Tries orphan_slug directly first (covers a record that happens to exist
-    there), then falls back to tool_verify_orphan_resolved's own linked_by
-    computation to find which page(s) currently link to orphan_slug, and
-    rolls back whichever single one of those carries a last_fix_record.
+    When the user names a page, naming it IS the approval to write to it —
+    writing to some OTHER page instead, even with an explanation after the
+    fact, breaks that contract. So this never silently rolls back a
+    different page than the one named: if orphan_slug has no record of its
+    own, it reports which host page actually holds the fix (via
+    tool_verify_orphan_resolved's linked_by computation) and asks the user
+    to name that page explicitly — it does not act on the guess.
 
-    Returns the same shape as tool_rollback_last_fix:
+    Returns:
         {"status": "success", "slug", "rolled_back_to_snapshot", "message"}
+            — only when orphan_slug itself carried the record.
         {"status": "error", "error": str}
+            — orphan_slug has no record; error names the host page to roll
+            back instead if exactly one was found, lists multiple candidates
+            without picking one, or says there is nothing to roll back at
+            all if orphan_slug was never resolved.
     """
     direct = await tool_rollback_last_fix(ctx, orphan_slug)
     if direct.get("status") == "success":
         return direct
 
+    no_record = {
+        "status": "error",
+        "error": f"No fix record for '{orphan_slug}' — nothing to roll back.",
+    }
+
     verify = await tool_verify_orphan_resolved(ctx, orphan_slug)
     if not verify.get("resolved") or ctx.store is None:
-        return direct
+        return no_record
 
     candidates = [
         host_slug for host_slug in verify.get("linked_by", [])
@@ -157,25 +170,27 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
     ]
 
     if not candidates:
-        return direct
+        return no_record
     if len(candidates) > 1:
         return {
             "status": "error",
             "error": (
-                f"'{orphan_slug}' has no fix record of its own, and more than one "
-                f"linking page has a pending fix ({', '.join(candidates)}) — say "
-                f"'roll back <page>' naming one of those directly."
+                f"No fix record for '{orphan_slug}' — nothing to roll back. "
+                f"More than one linking page has a pending fix "
+                f"({', '.join(candidates)}) — say 'roll back <page>' naming "
+                f"one of those directly."
             ),
         }
 
     host_slug = candidates[0]
-    result = await tool_rollback_last_fix(ctx, host_slug)
-    if result.get("status") == "success":
-        result = dict(result, message=(
-            f"'{orphan_slug}' has no fix record of its own — it was resolved by "
-            f"editing '{host_slug}' to add the link. {result.get('message', '')}"
-        ))
-    return result
+    return {
+        "status": "error",
+        "error": (
+            f"No fix record for '{orphan_slug}' — nothing to roll back. "
+            f"It was resolved by editing '{host_slug}'; say 'roll back "
+            f"{host_slug}' if you want to undo that change."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

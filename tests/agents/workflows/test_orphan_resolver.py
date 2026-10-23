@@ -973,7 +973,11 @@ class TestRollbackOrphanFix:
         audit_db = AuditDB(tmp_path / "audit.db")
         return store, audit_db
 
-    async def test_falls_back_to_linking_page_when_orphan_has_no_record(self, tmp_path):
+    async def test_reports_linking_page_without_writing_anything(self, tmp_path):
+        """Naming 'microprocessor' is approval to write to 'microprocessor',
+        not to whatever page the reverse lookup finds. When microprocessor
+        has no record of its own, this must report the real page and NOT
+        touch it — the user has to say 'roll back <that page>' explicitly."""
         from synthadoc.agents.workflows._tools import tool_propose_and_apply
         from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
         store, audit_db = self._wiki(tmp_path)
@@ -991,16 +995,18 @@ class TestRollbackOrphanFix:
 
         result = await tool_rollback_orphan_fix(ctx, "microprocessor")
 
-        assert result["status"] == "success"
-        assert "has no fix record of its own" in result["message"]
-        assert "personal-computer-revolution" in result["message"]
+        assert result["status"] == "error"
+        assert "No fix record for 'microprocessor'" in result["error"]
+        assert "personal-computer-revolution" in result["error"]
+        # Nothing was written — the host page still has the fixed content
+        # and its fix record intact, ready for an explicit rollback.
         page = store.read_page("personal-computer-revolution")
-        assert page.content == self._ORIGINAL
-        assert page.last_fix_record is None
+        assert page.content == self._FIXED
+        assert page.last_fix_record is not None
 
-    async def test_no_fallback_needed_when_slug_itself_has_a_record(self, tmp_path):
-        """If the named page DOES carry its own record, use it directly — no
-        reverse lookup, no 'has no fix record of its own' framing."""
+    async def test_direct_record_rolls_back_immediately(self, tmp_path):
+        """If the named page DOES carry its own record, that record IS the
+        user's target — roll it back directly, no reverse lookup involved."""
         from synthadoc.agents.workflows._tools import tool_propose_and_apply
         from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
         store, audit_db = self._wiki(tmp_path)
@@ -1016,9 +1022,10 @@ class TestRollbackOrphanFix:
         result = await tool_rollback_orphan_fix(ctx, "personal-computer-revolution")
 
         assert result["status"] == "success"
-        assert "has no fix record of its own" not in result["message"]
+        page = store.read_page("personal-computer-revolution")
+        assert page.content == self._ORIGINAL
 
-    async def test_no_record_anywhere_returns_original_error(self, tmp_path):
+    async def test_no_record_anywhere_reports_nothing_to_roll_back(self, tmp_path):
         from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
         store, audit_db = self._wiki(tmp_path, with_fix_record=False)
         await audit_db.init()
@@ -1027,7 +1034,8 @@ class TestRollbackOrphanFix:
         result = await tool_rollback_orphan_fix(ctx, "microprocessor")
 
         assert result["status"] == "error"
-        assert "no prior fix recorded" in result["error"].lower()
+        assert "No fix record for 'microprocessor'" in result["error"]
+        assert "nothing to roll back" in result["error"].lower()
 
     async def test_ambiguous_when_multiple_linking_pages_have_records(self, tmp_path):
         from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
@@ -1077,6 +1085,18 @@ def test_build_initial_message_rollback_intent_with_slug():
     msg = workflow.build_initial_message("roll back microprocessor")
     assert "tool_rollback_orphan_fix" in msg
     assert "microprocessor" in msg
+
+
+def test_build_initial_message_rollback_intent_forbids_guessing_another_page():
+    """Naming 'microprocessor' is approval to write to 'microprocessor' only —
+    the instruction must tell the model the tool never silently rolls back a
+    different page on its own, and must not call the tool again with a
+    different slug if it reports there's nothing to roll back."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    workflow = OrphanResolverWorkflow()
+    msg = workflow.build_initial_message("roll back microprocessor")
+    assert "does NOT roll back any other" in msg
+    assert "do not call the tool again" in msg
 
 
 def test_build_initial_message_rollback_intent_no_slug():

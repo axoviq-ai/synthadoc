@@ -208,11 +208,10 @@ async def test_cli_provider_rollback_unknown_page_reports_error(tmp_path):
 
     events = await _run_cli(ContentHealthResolverWorkflow(), ctx, "roll back hopper", provider)
 
-    # Falls all the way through to tool_rollback_orphan_fix's own direct
-    # tool_rollback_last_fix call, which reports the generic "no record at
-    # all" error — accurate now that the fallback also covers the
-    # orphan-resolver case, not just content-health vs. a direct generic record.
-    assert "No prior fix recorded for 'hopper'" in events[-1]["data"]["text"]
+    # Falls all the way through to tool_rollback_orphan_fix, which reports
+    # there's genuinely nothing to roll back anywhere for this page.
+    assert "No fix record for 'hopper'" in events[-1]["data"]["text"]
+    assert "nothing to roll back" in events[-1]["data"]["text"]
 
 
 def _contradiction_fixed_page(slug):
