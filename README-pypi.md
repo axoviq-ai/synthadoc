@@ -948,6 +948,10 @@ The contradiction resolver lists contradicted pages, estimates cost, then walks 
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
 
+The orphan resolver finds pages with no inbound wikilinks and searches for the best page to link each one from, using up to four progressively broader strategies (title match, content match, then two LLM-assisted scans). It shows the full diff for each proposed `[[wikilink]]` insertion and waits for your approval. Every approved write is snapshotted the same way — say "roll back `<slug>`" to undo it.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Step 10](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)
+
 ### Sensitive data retraction
 
 Scan wiki pages for API keys, emails, SSNs, credit card numbers, and custom patterns. Apply `[REDACTED]` in place after confirmation. The server also scans pages automatically after each ingest job.

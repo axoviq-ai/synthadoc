@@ -1128,6 +1128,8 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 
 The CLI renders the same approval prompts and diff previews as the web UI.
 
+**Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to restore the page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
+
 ### Option 2 — Manual link insertion
 
 Open `wiki/programming-languages-overview.md` and add a reference:
@@ -3293,7 +3295,7 @@ synthadoc workflow run --name content-health roll back alan-turing
 
 These work with every provider, including the coding-tool providers (`claude-code`, `opencode`).
 
-The contradiction resolver ([Step 9](#step-9--resolve-a-contradiction)) shares this same snapshot-and-rollback mechanism — say "roll back `<slug>`" to undo a contradiction fix the same way you would undo a content health fix.
+The contradiction resolver ([Step 9](#step-9--resolve-a-contradiction)) and the orphan resolver ([Step 10](#step-10--fix-an-orphan-page)) share this same snapshot-and-rollback mechanism — say "roll back `<slug>`" to undo a fix from either one the same way you would undo a content health fix.
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 
