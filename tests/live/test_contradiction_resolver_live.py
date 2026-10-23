@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -727,19 +726,21 @@ def test_case6_rollback_restores_pre_fix_content():
 
         rollback_result = _run_workflow("roll", "back", _RESOLVER_SLUG, timeout=120)
         rollback_output = rollback_result.stdout + rollback_result.stderr
-        # The model paraphrases tool_rollback_last_fix's own message ("Rolled
-        # back '<slug>' to before ...") rather than quoting it verbatim — e.g.
-        # "The rollback succeeded... was restored to snapshot 2...". Check that
-        # the tool was actually called (a structural signal, not natural-
-        # language-dependent) and that the summary reads as success, without
-        # requiring one exact phrasing.
+        # The model paraphrases tool_rollback_last_fix's own message freely
+        # ("The rollback succeeded...", "The rollback of `X` succeeded...",
+        # "Rolled back 'X' to before...") — matching every phrasing it might
+        # choose is a losing game. Check the structural signal (the tool was
+        # actually called) and that the output doesn't read as a failure;
+        # the real verification is the file-content check right below, which
+        # doesn't depend on wording at all.
         assert "tool_rollback_last_fix" in rollback_output, (
             f"Rollback did not call tool_rollback_last_fix.\nOutput: {rollback_output[-500:]}"
         )
-        assert re.search(
-            r"rolled\s*back|roll\s*back\s*(succeeded|successful)|rollback\s*(succeeded|successful|complete)",
-            rollback_output, re.IGNORECASE,
-        ), f"Rollback did not report success.\nOutput: {rollback_output[-500:]}"
+        _FAILURE_MARKERS = ("did not run", "did not succeed", "failed", "error", "unable to")
+        lower_output = rollback_output.lower()
+        assert not any(m in lower_output for m in _FAILURE_MARKERS), (
+            f"Rollback output reads as a failure.\nOutput: {rollback_output[-500:]}"
+        )
 
         restored_content = page_file.read_text(encoding="utf-8")
         assert restored_content == pre_fix_content, (
