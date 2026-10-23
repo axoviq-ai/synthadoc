@@ -973,11 +973,12 @@ class TestRollbackOrphanFix:
         audit_db = AuditDB(tmp_path / "audit.db")
         return store, audit_db
 
-    async def test_reports_linking_page_without_writing_anything(self, tmp_path):
-        """Naming 'microprocessor' is approval to write to 'microprocessor',
-        not to whatever page the reverse lookup finds. When microprocessor
-        has no record of its own, this must report the real page and NOT
-        touch it — the user has to say 'roll back <that page>' explicitly."""
+    async def test_rolls_back_the_unambiguous_linking_page_with_a_clear_message(self, tmp_path):
+        """'Roll back microprocessor' has exactly one correct meaning when the
+        host page is unambiguous: restore that host page, since there is
+        nothing on microprocessor itself to undo. The tool executes it
+        directly, but the message must say explicitly which page was
+        restored and why — never leaving the substitution ambiguous."""
         from synthadoc.agents.workflows._tools import tool_propose_and_apply
         from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
         store, audit_db = self._wiki(tmp_path)
@@ -995,14 +996,12 @@ class TestRollbackOrphanFix:
 
         result = await tool_rollback_orphan_fix(ctx, "microprocessor")
 
-        assert result["status"] == "error"
-        assert "No fix record for 'microprocessor'" in result["error"]
-        assert "personal-computer-revolution" in result["error"]
-        # Nothing was written — the host page still has the fixed content
-        # and its fix record intact, ready for an explicit rollback.
+        assert result["status"] == "success"
+        assert "move 'microprocessor' back to orphan status" in result["message"]
+        assert "personal-computer-revolution" in result["message"]
         page = store.read_page("personal-computer-revolution")
-        assert page.content == self._FIXED
-        assert page.last_fix_record is not None
+        assert page.content == self._ORIGINAL
+        assert page.last_fix_record is None
 
     async def test_direct_record_rolls_back_immediately(self, tmp_path):
         """If the named page DOES carry its own record, that record IS the
@@ -1087,15 +1086,15 @@ def test_build_initial_message_rollback_intent_with_slug():
     assert "microprocessor" in msg
 
 
-def test_build_initial_message_rollback_intent_forbids_guessing_another_page():
-    """Naming 'microprocessor' is approval to write to 'microprocessor' only —
-    the instruction must tell the model the tool never silently rolls back a
-    different page on its own, and must not call the tool again with a
-    different slug if it reports there's nothing to roll back."""
+def test_build_initial_message_rollback_intent_demands_clear_substitution_message():
+    """Restoring the host page IS the only way to undo the orphan's
+    resolution — the instruction must require the model to relay the tool's
+    own wording verbatim (which names the restored page explicitly) rather
+    than paraphrase it into something that could hide the substitution."""
     from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
     workflow = OrphanResolverWorkflow()
     msg = workflow.build_initial_message("roll back microprocessor")
-    assert "does NOT roll back any other" in msg
+    assert "verbatim" in msg
     assert "do not call the tool again" in msg
 
 

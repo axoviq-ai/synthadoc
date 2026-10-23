@@ -126,7 +126,7 @@ async def tool_verify_orphan_resolved(
 # ---------------------------------------------------------------------------
 
 async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> dict:
-    """Roll back *orphan_slug*'s own fix record, or report where the real one is.
+    """Roll back whatever fix resolved *orphan_slug*'s orphan status.
 
     Orphan resolution never writes to the orphan page itself — it edits the
     HOST page that gets the new [[wikilink]] inserted. So last_fix_record
@@ -134,22 +134,24 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
     tool_rollback_last_fix(orphan_slug) call fails with "no prior fix
     recorded" even though the orphan was genuinely just resolved.
 
-    When the user names a page, naming it IS the approval to write to it —
-    writing to some OTHER page instead, even with an explanation after the
-    fact, breaks that contract. So this never silently rolls back a
-    different page than the one named: if orphan_slug has no record of its
-    own, it reports which host page actually holds the fix (via
-    tool_verify_orphan_resolved's linked_by computation) and asks the user
-    to name that page explicitly — it does not act on the guess.
+    "Roll back orphan_slug" has exactly one correct meaning when the host
+    page is unambiguous: undo the edit that resolved it, which can only be
+    done by restoring that host page — there is nothing on orphan_slug
+    itself to undo. So when exactly one host page carries the fix, this
+    rolls it back directly rather than asking the user to name it
+    themselves, but the returned message says explicitly which page was
+    restored and why, so it's never mistaken for a rollback of orphan_slug.
+    Only when the host page is genuinely ambiguous (more than one linking
+    page has a pending fix) or there plainly isn't one does this hold off
+    and report instead of guessing.
 
     Returns:
         {"status": "success", "slug", "rolled_back_to_snapshot", "message"}
-            — only when orphan_slug itself carried the record.
+            — slug is the HOST page actually restored, not necessarily
+            orphan_slug; message always names both explicitly.
         {"status": "error", "error": str}
-            — orphan_slug has no record; error names the host page to roll
-            back instead if exactly one was found, lists multiple candidates
-            without picking one, or says there is nothing to roll back at
-            all if orphan_slug was never resolved.
+            — lists multiple candidates without picking one, or says there
+            is nothing to roll back at all if orphan_slug was never resolved.
     """
     direct = await tool_rollback_last_fix(ctx, orphan_slug)
     if direct.get("status") == "success":
@@ -183,14 +185,14 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
         }
 
     host_slug = candidates[0]
-    return {
-        "status": "error",
-        "error": (
-            f"No fix record for '{orphan_slug}' — nothing to roll back. "
-            f"It was resolved by editing '{host_slug}'; say 'roll back "
-            f"{host_slug}' if you want to undo that change."
-        ),
-    }
+    result = await tool_rollback_last_fix(ctx, host_slug)
+    if result.get("status") == "success":
+        result = dict(result, message=(
+            f"To move '{orphan_slug}' back to orphan status, rolled back "
+            f"'{host_slug}' — that's the page that was edited to add the "
+            f"[[{orphan_slug}]] link. {result.get('message', '')}"
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------

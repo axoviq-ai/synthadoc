@@ -442,9 +442,9 @@ async def _auto_confirm_ch(ctx, confirmed=True):
 class TestRollbackWithFallback:
     async def test_falls_back_to_orphan_host_page_lookup(self, tmp_path):
         """A page with neither a content-health nor a generic record of its
-        own (the orphan-resolver case) reports which host page actually
-        holds the fix, without writing to it — naming 'microprocessor' is
-        not approval to write to 'computing-history-timeline' instead."""
+        own (the orphan-resolver case) rolls back via the host page that was
+        actually edited — that's the only way to undo its orphan resolution
+        — with a message that says explicitly which page was restored."""
         from synthadoc.agents.workflows._base import WorkflowContext
         from synthadoc.agents.workflows._tools import tool_propose_and_apply
         from synthadoc.agents.workflows.content_health_resolver import _rollback_with_fallback
@@ -485,12 +485,11 @@ class TestRollbackWithFallback:
 
         result = await _rollback_with_fallback(ctx, "microprocessor")
 
-        assert result["status"] == "error"
-        assert "No fix record for 'microprocessor'" in result["message"]
+        assert result["status"] == "success"
+        assert "move 'microprocessor' back to orphan status" in result["message"]
         assert "computing-history-timeline" in result["message"]
-        # Nothing was written — the host page still has the fixed content.
         page = store.read_page("computing-history-timeline")
-        assert page.content == "A timeline of computing. See [[microprocessor]].\n"
+        assert page.content == "A timeline of computing.\n"
 
     async def test_content_health_record_still_wins_when_present(self, monkeypatch):
         """Unchanged behavior: a page with its own content-health record
