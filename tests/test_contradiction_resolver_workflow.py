@@ -134,7 +134,7 @@ async def test_cli_provider_routes_error_rejection_to_unresolved_with_suggestion
     final_calls = [c for c in ctx.send_sse_event.call_args_list if c.args[0] == "final_text"]
     final = final_calls[-1].args[1]["text"]
     assert "heading mismatch" in final
-    assert "provider=anthropic" in final
+    assert "non-CLI provider" in final
     assert "alan-turing" in final
 
 
@@ -176,7 +176,7 @@ async def test_cli_provider_routes_user_decline_to_skipped_unchanged():
     final_calls = [c for c in ctx.send_sse_event.call_args_list if c.args[0] == "final_text"]
     final = final_calls[-1].args[1]["text"]
     assert "**⏭ Skipped (1):**" in final
-    assert "provider=anthropic" not in final
+    assert "non-CLI provider" not in final
 
 
 def test_build_initial_message_rollback_intent_with_slug():

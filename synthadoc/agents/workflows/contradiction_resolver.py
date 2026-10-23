@@ -429,10 +429,15 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         ("here is the page and its contradiction signals; revise it") — no fake
         tools, no identity redefinition.
 
-        Limitation vs. the Anthropic-API path: only Strategy 1 (content rewrite)
-        is attempted, with no retry loop.  Pages that fail scoped lint after the
-        rewrite are marked unresolved; the summary directs the user to run the
-        full resolver (with provider=anthropic) for those pages.
+        Limitation vs. the full multi-turn tool-call loop: only Strategy 1
+        (content rewrite) is attempted, with no retry loop. This limitation is
+        inherent to CLI-based coding-tool providers (claude-code, opencode) —
+        is_cli_provider gates this path on isinstance(provider,
+        CodingToolCLIProvider), not on any specific non-CLI provider. Pages
+        that fail scoped lint after the rewrite are marked unresolved; the
+        summary directs the user to run the full resolver with a non-CLI
+        provider (anthropic, gemini, minimax, groq, deepseek, qwen, ollama —
+        any provider other than claude-code/opencode) for those pages.
         """
         # "roll back" / "roll back SLUG" intents need no LLM — answer them
         # directly instead of starting a new scan-and-fix session.
@@ -572,8 +577,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                         if error:
                             unresolved.append({
                                 "slug": slug,
-                                "reason": f"{error} — re-run with provider=anthropic for "
-                                          f"multi-strategy retry",
+                                "reason": f"{error} — re-run with a non-CLI provider "
+                                          f"(not claude-code/opencode) for multi-strategy retry",
                             })
                         else:
                             skipped.append(slug)
@@ -599,7 +604,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                                 message=(
                                     f"⚠ {slug} — rewrite applied but lint still failing "
                                     f"({wc} warning(s)); page remains contradicted. "
-                                    f"Re-run the contradiction resolver for multi-strategy retry."
+                                    f"Re-run the contradiction resolver with a non-CLI provider "
+                                    f"(not claude-code/opencode) for multi-strategy retry."
                                 ),
                                 level="warning",
                             )
