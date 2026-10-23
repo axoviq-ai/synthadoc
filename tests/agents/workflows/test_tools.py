@@ -1758,3 +1758,87 @@ class TestListRecentFixes:
         ctx, _events = _make_ctx(store=store)
         result = await tool_list_recent_fixes(ctx)
         assert result["fixes"] == []
+
+
+class TestRollbackRestoresLifecycleFlags:
+    """Rolling back a contradiction fix must re-surface the dispute (Finding I4)."""
+
+    _ORIGINAL = "# Phone\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
+    _FIXED = "# Phone\n\n## History\n\nThe telephone was invented by Bell in 1876.\n"
+
+    def _wiki(self, tmp_path):
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("phone", WikiPage(
+            title="Phone", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], contradiction_note="Sources disagree on the inventor.",
+        ))
+        audit_db = MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": self._ORIGINAL,
+            }),
+            set_page_state=AsyncMock(),
+            record_lifecycle_event=AsyncMock(),
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+        return store, audit_db, ctx
+
+    async def test_record_captures_pre_fix_status_and_note(self, tmp_path):
+        store, _audit, ctx = self._wiki(tmp_path)
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+        page = store.read_page("phone")
+        assert page.contradiction_note is None
+        assert page.last_fix_record["pre_fix_status"] == "contradicted"
+        assert page.last_fix_record["pre_fix_contradiction_note"] == \
+            "Sources disagree on the inventor."
+
+    async def test_rollback_restores_content_status_and_note(self, tmp_path):
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        store, audit_db, ctx = self._wiki(tmp_path)
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="phone", to_state="active", reason="lint passed",
+        )
+        assert transition["success"] is True
+        assert store.read_page("phone").status == "active"
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "contradicted"
+        assert page.contradiction_note == "Sources disagree on the inventor."
+        assert page.last_fix_record is None
+        audit_db.set_page_state.assert_awaited_with("phone", "contradicted", "workflow")
+
+    async def test_legacy_record_without_pre_fix_keys_leaves_flags_alone(self, tmp_path):
+        store, _audit, ctx = self._wiki(tmp_path)
+        page = store.read_page("phone")
+        page.content = self._FIXED
+        page.status = "active"
+        page.contradiction_note = None
+        page.last_fix_record = {"slug": "phone", "snapshot_id": 42,
+                                "snapshot_index_before": 1,
+                                "timestamp": "2026-10-01T00:00:00+00:00",
+                                "strategy_name": "Strategy 1"}
+        store.write_page("phone", page)
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "active"
+        assert page.contradiction_note is None

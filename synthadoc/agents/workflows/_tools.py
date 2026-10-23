@@ -1087,6 +1087,12 @@ async def tool_propose_and_apply(
         snapshots = await ctx.audit_db.list_page_snapshots(slug)
         snapshot_id = snapshots[0]["id"] if snapshots else None
 
+        # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
+        # and by the caller's later tool_transition_lifecycle_state) so
+        # tool_rollback_last_fix can restore them along with the content.
+        pre_fix_status = page.status
+        pre_fix_contradiction_note = page.contradiction_note
+
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
         # pages.  tool_run_scoped_lint marks a page as failed if contradiction_note
@@ -1099,6 +1105,8 @@ async def tool_propose_and_apply(
             "snapshot_index_before": 1,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "strategy_name": strategy_name,
+            "pre_fix_status": pre_fix_status,
+            "pre_fix_contradiction_note": pre_fix_contradiction_note,
         }
         _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
@@ -1117,6 +1125,11 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
     to restore_page_snapshot, then clears the record. Shared by
     contradiction_resolver and orphan_resolver — anything that writes through
     tool_propose_and_apply gets rollback for free.
+
+    Also restores the page's pre-fix ``status`` and ``contradiction_note``
+    from the record, so rolling back a contradiction fix re-surfaces the
+    dispute instead of leaving the old text marked active and unflagged.
+    Records written before those keys existed leave both fields untouched.
     """
     if ctx.store is None:
         return {"status": "error", "error": "No store available"}
@@ -1134,8 +1147,24 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
         return result
 
     page = ctx.store.read_page(slug)
+    status_restored = False
+    if "pre_fix_status" in record and record["pre_fix_status"] \
+            and record["pre_fix_status"] != page.status:
+        page.status = record["pre_fix_status"]
+        status_restored = True
+    if "pre_fix_contradiction_note" in record:
+        page.contradiction_note = record["pre_fix_contradiction_note"]
     page.last_fix_record = None
     ctx.store.write_page(slug, page)
+    if status_restored:
+        # Keep page_states (GET /lifecycle/pages) in step with the frontmatter,
+        # as tool_transition_lifecycle_state does.  Best-effort, like there.
+        if ctx.invalidate_search:
+            ctx.invalidate_search()
+        try:
+            await ctx.audit_db.set_page_state(slug, page.status, "workflow")
+        except Exception:  # noqa: BLE001
+            pass
     return {
         "status": "success",
         "slug": slug,
