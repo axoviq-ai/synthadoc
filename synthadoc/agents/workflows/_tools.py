@@ -1093,6 +1093,7 @@ async def tool_propose_and_apply(
             snapshot_id = existing_record.get("snapshot_id")
             pre_fix_status = existing_record.get("pre_fix_status")
             pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
+            pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
         else:
             await ctx.audit_db.snapshot_if_changed(
                 slug, page.content, triggered_by=strategy_name, reason=rationale,
@@ -1103,8 +1104,13 @@ async def tool_propose_and_apply(
             # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
             # and by the caller's later tool_transition_lifecycle_state) so
             # tool_rollback_last_fix can restore them along with the content.
+            # lint_warnings in particular must be captured here, before step 4f's
+            # tool_run_scoped_lint call overwrites it with the fresh (now-passing)
+            # result — that happens entirely outside this function, so this is the
+            # last point where the pre-fix value is still visible.
             pre_fix_status = page.status
             pre_fix_contradiction_note = page.contradiction_note
+            pre_fix_lint_warnings = page.lint_warnings
 
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
@@ -1119,6 +1125,7 @@ async def tool_propose_and_apply(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "strategy_name": strategy_name,
             "pre_fix_status": pre_fix_status,
+            "pre_fix_lint_warnings": pre_fix_lint_warnings,
             "pre_fix_contradiction_note": pre_fix_contradiction_note,
         }
         _rescan_content_health(page, slug)
@@ -1139,10 +1146,15 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
     contradiction_resolver and orphan_resolver — anything that writes through
     tool_propose_and_apply gets rollback for free.
 
-    Also restores the page's pre-fix ``status`` and ``contradiction_note``
-    from the record, so rolling back a contradiction fix re-surfaces the
-    dispute instead of leaving the old text marked active and unflagged.
-    Records written before those keys existed leave both fields untouched.
+    Also restores the page's pre-fix ``status``, ``contradiction_note``, and
+    ``lint_warnings`` from the record, so rolling back a contradiction fix
+    re-surfaces the dispute instead of leaving the old text marked active and
+    unflagged. ``lint_warnings`` matters for gate-demoted pages, which carry
+    their dispute there instead of in ``contradiction_note`` — it would
+    otherwise still read as the fresh, now-passing result that step 4f's
+    verify-lint call wrote after the fix, since that write happens outside
+    tool_propose_and_apply entirely. Records written before these keys
+    existed leave the corresponding field(s) untouched.
     """
     if ctx.store is None:
         return {"status": "error", "error": "No store available"}
@@ -1167,6 +1179,8 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
         status_restored = True
     if "pre_fix_contradiction_note" in record:
         page.contradiction_note = record["pre_fix_contradiction_note"]
+    if "pre_fix_lint_warnings" in record:
+        page.lint_warnings = record["pre_fix_lint_warnings"] or []
     page.last_fix_record = None
     ctx.store.write_page(slug, page)
     if status_restored:

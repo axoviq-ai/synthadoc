@@ -1843,6 +1843,58 @@ class TestRollbackRestoresLifecycleFlags:
         assert page.status == "active"
         assert page.contradiction_note is None
 
+    async def test_rollback_restores_lint_warnings_for_gate_demoted_pages(self, tmp_path):
+        """Gate-demoted pages carry lint_warnings, not contradiction_note.
+
+        contradiction_resolver's step 4f runs tool_run_scoped_lint right after
+        tool_propose_and_apply to verify the fix — that re-lint overwrites
+        page.lint_warnings with the fresh (now-passing) result, entirely
+        outside tool_propose_and_apply's own write. Rollback must still
+        restore the ORIGINAL warnings that justified the gate demotion, not
+        leave the page with the fix's now-empty list.
+        """
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+        original_warnings = [{"claim": "The sky is green.", "concern": "factually wrong"}]
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("gate-page", WikiPage(
+            title="Gate Page", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], lint_warnings=original_warnings,
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="gate-page", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+
+        # Simulate step 4f's verify-lint call: it runs a real re-lint and
+        # overwrites lint_warnings with the fresh, now-passing result —
+        # entirely outside tool_propose_and_apply.
+        page = store.read_page("gate-page")
+        page.lint_warnings = []
+        store.write_page("gate-page", page)
+
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="gate-page", to_state="active",
+            reason="resolved by contradiction-resolver — strategy: Strategy 1, attempt 1",
+        )
+        assert transition["success"] is True
+
+        result = await tool_rollback_last_fix(ctx, "gate-page")
+
+        assert result["status"] == "success"
+        page = store.read_page("gate-page")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "contradicted"
+        assert page.lint_warnings == original_warnings
+
     async def test_rollback_after_retry_restores_true_original_not_intermediate_attempt(
         self, tmp_path,
     ):

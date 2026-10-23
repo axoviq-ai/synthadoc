@@ -19,9 +19,12 @@ _STATUS_OK = "success"
 _STATUS_ERR = "error"
 
 _ROLLBACK_BARE_RE = re.compile(r"\broll\s*back\b", re.IGNORECASE)
-# Capture the slug-shaped token right after "roll back"/"rollback".
+# Capture the slug-shaped token right after "roll back"/"rollback". Slugs may
+# contain underscores (e.g. a leading "_" marking a test/system page, as in
+# this project's own live-test fixtures) as well as hyphens, so both are in
+# the character class, not just the hyphen-separator position.
 _ROLLBACK_SLUG_RE = re.compile(
-    r"\broll\s*back\b\s+([a-z0-9]+(?:-[a-z0-9]+)*)", re.IGNORECASE
+    r"\broll\s*back\b\s+([a-z0-9_]+(?:-[a-z0-9_]+)*)", re.IGNORECASE
 )
 # Single (unhyphenated) words that commonly follow "roll back" in prose and
 # must not be mistaken for a page slug ("roll back this page", "roll back our

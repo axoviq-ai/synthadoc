@@ -52,6 +52,19 @@ class TestParseRollbackIntent:
             "run contradiction resolver roll back python."
         ) == (True, "python")
 
+    def test_slug_with_leading_underscore_is_recognized(self):
+        # synthadoc's own live-test fixtures use a leading underscore to mark
+        # test/system pages (e.g. "_live-test-contradiction-resolver"). Before
+        # this fix, the slug-candidate class excluded "_", so the whole match
+        # failed at that position and this fell through to (True, None) —
+        # "roll back" with no page named — silently rolling back nothing.
+        assert parse_rollback_intent(
+            "roll back _live-test-contradiction-resolver"
+        ) == (True, "_live-test-contradiction-resolver")
+
+    def test_slug_with_embedded_underscore_is_recognized(self):
+        assert parse_rollback_intent("roll back my_page_slug") == (True, "my_page_slug")
+
     @pytest.mark.parametrize("filler", [
         "this", "that", "our", "your", "my", "it", "them", "these", "those",
         "page", "pages", "This", "the",

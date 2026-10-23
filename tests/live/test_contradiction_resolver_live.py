@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -726,9 +727,19 @@ def test_case6_rollback_restores_pre_fix_content():
 
         rollback_result = _run_workflow("roll", "back", _RESOLVER_SLUG, timeout=120)
         rollback_output = rollback_result.stdout + rollback_result.stderr
-        assert "Rolled back" in rollback_output or "rolled back" in rollback_output.lower(), (
-            f"Rollback did not report success.\nOutput: {rollback_output[-500:]}"
+        # The model paraphrases tool_rollback_last_fix's own message ("Rolled
+        # back '<slug>' to before ...") rather than quoting it verbatim — e.g.
+        # "The rollback succeeded... was restored to snapshot 2...". Check that
+        # the tool was actually called (a structural signal, not natural-
+        # language-dependent) and that the summary reads as success, without
+        # requiring one exact phrasing.
+        assert "tool_rollback_last_fix" in rollback_output, (
+            f"Rollback did not call tool_rollback_last_fix.\nOutput: {rollback_output[-500:]}"
         )
+        assert re.search(
+            r"rolled\s*back|roll\s*back\s*(succeeded|successful)|rollback\s*(succeeded|successful|complete)",
+            rollback_output, re.IGNORECASE,
+        ), f"Rollback did not report success.\nOutput: {rollback_output[-500:]}"
 
         restored_content = page_file.read_text(encoding="utf-8")
         assert restored_content == pre_fix_content, (
