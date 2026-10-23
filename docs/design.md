@@ -4246,6 +4246,8 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Per-page loop:** Python merge and/or LLM rewrite → sentence-preservation check (`dropped_sentences()`; any lost sentence rejects the write before the user is asked) → approval card with the real unified diff (`unified_diff_preview()` → `tool_confirm(diff=…)`) → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner → summary line. Approval cards are built from the actual content inside the tools (Pattern A), never written by the model; dismissals and model-initiated rollbacks also ask first.
 
+**Heading preservation:** alongside the sentence-preservation check, a deterministic post-output check (`heading_mismatch_error()`) rejects any rewrite that adds, removes, or renames a heading, in both the content-health and contradiction-resolver apply paths. Both workflows snapshot before every write via a shared rollback mechanism — say "roll back `<slug>`" at any time to undo a fix from either resolver.
+
 **Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
 
 **Rollback traceability:** Two tools registered in both `ContentHealthResolverWorkflow` and `query_agent`:

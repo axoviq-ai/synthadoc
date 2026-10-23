@@ -991,6 +991,8 @@ synthadoc workflow run --name contradiction-resolver --type source-conflict
 
 The CLI renders the same approval prompts and diff previews as the web UI.
 
+**Rollback after the fact:** every resolver write is preceded by a snapshot, and a rewrite that would add, remove, or rename a heading is rejected before you are asked. Say "roll back grace-hopper" (web UI or CLI) to restore a page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver).
+
 ### Option 2 — Manual resolution
 
 1. Open `wiki/grace-hopper.md` in Obsidian
@@ -3243,7 +3245,7 @@ The workflow announces what it found and the order it will work in (highest seve
 For each page, you approve the real change, shown as a coloured diff (red lines removed, green lines added):
 
 - **Duplicate sections** are merged in Python, with no LLM: later copies are folded into the first one. Every sentence is kept and only paragraphs repeated word for word are dropped, so the merged section may read repetitively and is worth a quick edit afterwards.
-- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence is rejected before you are asked.
+- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence — or add, remove, or rename a heading — is rejected before you are asked.
 
 ```
 --- alan-turing (current)
@@ -3290,6 +3292,8 @@ synthadoc workflow run --name content-health roll back alan-turing
 ```
 
 These work with every provider, including the coding-tool providers (`claude-code`, `opencode`).
+
+The contradiction resolver ([Step 9](#step-9--resolve-a-contradiction)) shares this same snapshot-and-rollback mechanism — say "roll back `<slug>`" to undo a contradiction fix the same way you would undo a content health fix.
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 

@@ -674,5 +674,72 @@ def test_case5b_pre_prompt_fires_after_lint():
         )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Case 6: Conversational rollback restores pre-fix content
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.live
+@pytest.mark.timeout(600)
+def test_case6_rollback_restores_pre_fix_content():
+    """Resolve a page, then say 'roll back <slug>' and confirm the restore.
+
+    Setup:   automatic (lint run inside this test, same as case 1).
+    Expected:
+      - After the resolver runs, the page file differs from its pre-fix content.
+      - After "roll back <slug>", the page file matches its pre-fix content again.
+    """
+    wiki_path = _wiki_root()
+    if wiki_path is None:
+        pytest.skip("Cannot determine wiki path from /status — skipping")
+
+    page_file = wiki_path / "wiki" / f"{_RESOLVER_SLUG}.md"
+    _setup_test_page(wiki_path)
+    pre_lint_states = _snapshot_page_states()
+    try:
+        job = _run_lint(scope="all")
+        assert job["status"] == "completed", f"Lint job failed: {job}"
+
+        state = _page_state(_RESOLVER_SLUG)
+        if state != "contradicted":
+            pytest.skip(
+                f"Test page not demoted to contradicted after lint (state={state!r}); "
+                "see test_case1_gate_demoted_fix's skip message for the config fix."
+            )
+
+        pre_fix_content = page_file.read_text(encoding="utf-8")
+
+        result = _run_workflow("--slug", _RESOLVER_SLUG, input_text="y\ny\n", timeout=280)
+        output = result.stdout + result.stderr
+        _COMPLETION_MARKERS = ("Fixed", "Unresolved", "Contradiction Resolver — Complete")
+        if not any(m in output for m in _COMPLETION_MARKERS):
+            pytest.xfail(
+                f"Case 6: resolver stream cut off before producing a completion summary "
+                f"({len(output)} chars). Likely a transient LLM API failure mid-workflow.\n"
+                f"Last 400 chars: {output[-400:]}"
+            )
+
+        post_fix_content = page_file.read_text(encoding="utf-8")
+        assert post_fix_content != pre_fix_content, (
+            "Resolver did not change the page — nothing to roll back; "
+            "check that case 1's gate-demotion precondition actually fired."
+        )
+
+        rollback_result = _run_workflow("roll", "back", _RESOLVER_SLUG, timeout=120)
+        rollback_output = rollback_result.stdout + rollback_result.stderr
+        assert "Rolled back" in rollback_output or "rolled back" in rollback_output.lower(), (
+            f"Rollback did not report success.\nOutput: {rollback_output[-500:]}"
+        )
+
+        restored_content = page_file.read_text(encoding="utf-8")
+        assert restored_content == pre_fix_content, (
+            "Page content after rollback does not match its pre-fix content.\n"
+            f"Pre-fix (last 300 chars): {pre_fix_content[-300:]}\n"
+            f"Restored (last 300 chars): {restored_content[-300:]}"
+        )
+    finally:
+        _restore_collateral_demotions(pre_lint_states, _RESOLVER_SLUG)
+        _cleanup_test_page(wiki_path)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v", "-s"]))
