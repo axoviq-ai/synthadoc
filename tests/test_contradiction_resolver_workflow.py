@@ -177,3 +177,50 @@ async def test_cli_provider_routes_user_decline_to_skipped_unchanged():
     final = final_calls[-1].args[1]["text"]
     assert "**⏭ Skipped (1):**" in final
     assert "provider=anthropic" not in final
+
+
+def test_build_initial_message_rollback_intent_with_slug():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    workflow = ContradictionResolverWorkflow()
+    msg = workflow.build_initial_message(
+        "roll back alan-turing", session_id="sess-1", wiki_root=MagicMock(), store=MagicMock(),
+    )
+    assert "tool_rollback_last_fix" in msg
+    assert "alan-turing" in msg
+
+
+def test_build_initial_message_rollback_intent_no_slug():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    workflow = ContradictionResolverWorkflow()
+    msg = workflow.build_initial_message(
+        "roll back", session_id="sess-1", wiki_root=MagicMock(), store=MagicMock(),
+    )
+    assert "tool_list_recent_fixes" in msg
+
+
+@pytest.mark.asyncio
+async def test_cli_provider_rollback_short_circuit_no_model_call():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.send_sse_event = AsyncMock()
+
+    rollback_calls = []
+    async def _fake_rollback(ctx, slug):
+        rollback_calls.append(slug)
+        return {"status": "success", "message": f"Rolled back '{slug}'."}
+
+    class _FakeProvider:
+        async def complete(self, *a, **kw):
+            raise AssertionError("model should not be called for a rollback request")
+
+    with patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_rollback_last_fix",
+        new=_fake_rollback,
+    ):
+        events = [e async for e in ContradictionResolverWorkflow().run_for_cli_provider(
+            ctx, question="roll back my-page", provider=_FakeProvider())]
+
+    assert rollback_calls == ["my-page"]
+    assert events[-1]["data"]["text"] == "Rolled back 'my-page'."

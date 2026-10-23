@@ -13,14 +13,17 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.agents.workflows._rollback import parse_rollback_intent
 from synthadoc.storage.wiki import LifecycleState
 # Shared framework tools (usable by any workflow)
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_ingest_source,
+    tool_list_recent_fixes,
     tool_notify,
     tool_poll_job,
     tool_read_page_content,
+    tool_rollback_last_fix,
     tool_run_scoped_lint,
     tool_propose_and_apply,
     tool_transition_lifecycle_state,
@@ -240,6 +243,7 @@ STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
     - <slug>
 
     **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
+    A snapshot is saved before each change — say 'roll back [page]' to undo.
 
   When a section is empty write "- (none)" as the single list item.
   This plain-text output ends the loop — it must be your very last action.
@@ -323,6 +327,20 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         user_input: str,
         **_kwargs,
     ) -> str:
+        is_rollback, rollback_slug = parse_rollback_intent(user_input)
+        if is_rollback:
+            if rollback_slug:
+                return (
+                    f"The user wants to roll back the last fix on page '{rollback_slug}'.\n"
+                    f"Call tool_rollback_last_fix(slug='{rollback_slug}') and report the "
+                    f"result as plain text."
+                )
+            return (
+                "The user wants to roll back a fix but did not specify which page.\n"
+                "Call tool_list_recent_fixes() and report the list, asking the user "
+                "which page to roll back."
+            )
+
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
         type_match = re.search(
             r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
@@ -358,6 +376,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_notify":                     p(tool_notify, ctx),
             "tool_ingest_source":              p(tool_ingest_source, ctx),
             "tool_poll_job":                   p(tool_poll_job, ctx),
+            "tool_rollback_last_fix":          p(tool_rollback_last_fix, ctx),
+            "tool_list_recent_fixes":          p(tool_list_recent_fixes, ctx),
         }
 
     # ── CLI provider path ─────────────────────────────────────────────────────
@@ -376,6 +396,26 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         rewrite are marked unresolved; the summary directs the user to run the
         full resolver (with provider=anthropic) for those pages.
         """
+        # "roll back" / "roll back SLUG" intents need no LLM — answer them
+        # directly instead of starting a new scan-and-fix session.
+        is_rollback, rollback_slug = parse_rollback_intent(question)
+        if is_rollback and rollback_slug:
+            result = await tool_rollback_last_fix(ctx, rollback_slug)
+            text = result.get("message") or f"Rollback of '{rollback_slug}' failed."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+        if is_rollback:
+            listing = await tool_list_recent_fixes(ctx)
+            fixes = listing.get("fixes", [])
+            if not fixes:
+                text = "No recent fixes to roll back."
+            else:
+                lines = [f"- {f['slug']}: {f['strategy_name']} ({f['fixed_at']})" for f in fixes]
+                text = "Recent fixes:\n" + "\n".join(lines) + \
+                       "\nSay 'roll back <slug>' to restore one of these pages."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+
         # ── 1. Parse flags (same logic as build_initial_message) ──────────────
         slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
         type_match = re.search(
