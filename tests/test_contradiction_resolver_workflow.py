@@ -224,3 +224,76 @@ async def test_cli_provider_rollback_short_circuit_no_model_call():
 
     assert rollback_calls == ["my-page"]
     assert events[-1]["data"]["text"] == "Rolled back 'my-page'."
+
+
+# ── tool_rollback_last_fix confirm gate (agentic tool-call loop) ─────────────
+
+def test_rollback_last_fix_is_a_per_call_gated_tool():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    assert "tool_rollback_last_fix" in ContradictionResolverWorkflow.GATED_TOOLS
+    assert "tool_rollback_last_fix" in ContradictionResolverWorkflow.GATED_TOOLS_PER_CALL
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_rollback_during_normal_run_requires_user_confirm(confirmed):
+    """The model must not roll a page back on its own mid-resolution."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=confirm), \
+         patch("synthadoc.agents.workflows.contradiction_resolver.tool_rollback_last_fix",
+               new=rollback):
+        wf = ContradictionResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)          # ActionAgent order: tools first
+        wf.build_initial_message("run contradiction resolver")
+        result = await fns["tool_rollback_last_fix"](slug="alan-turing")
+        confirm.assert_awaited_once()
+        assert (rollback.await_count == 1) is confirmed
+        assert result["status"] == ("success" if confirmed else "cancelled")
+        if confirmed:
+            # Per-call gate: a second rollback needs a fresh approval.
+            await fns["tool_rollback_last_fix"](slug="grace-hopper")
+            assert confirm.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_tool_confirm_between_pages_does_not_open_rollback_gate():
+    """An approved 'continue to next page?' tool_confirm must not unlock rollback."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    gate_confirm = AsyncMock(return_value={"confirmed": False})
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=gate_confirm), \
+         patch("synthadoc.agents.workflows.contradiction_resolver.tool_confirm",
+               new=AsyncMock(return_value={"confirmed": True})), \
+         patch("synthadoc.agents.workflows.contradiction_resolver.tool_rollback_last_fix",
+               new=rollback):
+        wf = ContradictionResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)
+        wf.build_initial_message("run contradiction resolver")
+        await fns["tool_confirm"](message="Continue to the next page?")
+        result = await fns["tool_rollback_last_fix"](slug="alan-turing")
+    gate_confirm.assert_awaited_once()
+    rollback.assert_not_awaited()
+    assert result["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_explicit_rollback_request_runs_without_extra_confirm():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    confirm = AsyncMock()
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=confirm), \
+         patch("synthadoc.agents.workflows.contradiction_resolver.tool_rollback_last_fix",
+               new=rollback):
+        wf = ContradictionResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)
+        wf.build_initial_message("roll back alan-turing")
+        result = await fns["tool_rollback_last_fix"](slug="alan-turing")
+    confirm.assert_not_awaited()
+    rollback.assert_awaited_once_with(ctx, slug="alan-turing")
+    assert result["status"] == "success"

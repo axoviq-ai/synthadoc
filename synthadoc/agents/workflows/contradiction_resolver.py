@@ -307,6 +307,41 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     # CLI providers accept without safety objections.
     SUPPORTS_CLI_PROVIDER: bool = True
 
+    # Confirm gate — Pattern B (declarative GATED_TOOLS).
+    # tool_rollback_last_fix silently replaces a page's content, so during a
+    # normal resolution run the model must not call it without the user's
+    # approval.  Per-call: every rollback needs its own approval.  Note this
+    # workflow's confirm tool is registered as "tool_confirm", not "confirm",
+    # so the model's between-pages "continue?" confirms never open this gate —
+    # only the framework's fallback dialog (fired by the gated wrapper) does.
+    #
+    # An explicit user request ("roll back X", detected in build_initial_message)
+    # bypasses the gate — see build_guarded_tool_fns — matching
+    # content_health_resolver's precedent: the request itself is the approval.
+    # run_for_cli_provider calls tool_rollback_last_fix directly and never goes
+    # through this registry.
+    GATED_TOOLS: frozenset[str] = frozenset({"tool_rollback_last_fix"})
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"tool_rollback_last_fix"})
+
+    def build_guarded_tool_fns(self, ctx: "WorkflowContext") -> dict:
+        """Gate tool_rollback_last_fix unless the user explicitly asked for a rollback.
+
+        ActionAgent calls this BEFORE build_initial_message, so the choice is
+        made at tool-call time (by then build_initial_message has recorded
+        whether the request was an explicit rollback).
+        """
+        guarded = super().build_guarded_tool_fns(ctx)
+        gated_rollback = guarded["tool_rollback_last_fix"]
+        direct_rollback = functools.partial(tool_rollback_last_fix, ctx)
+
+        async def _rollback(*args, **kwargs) -> dict:
+            if getattr(self, "_user_requested_rollback", False):
+                return await direct_rollback(*args, **kwargs)
+            return await gated_rollback(*args, **kwargs)
+
+        guarded["tool_rollback_last_fix"] = _rollback
+        return guarded
+
     def get_tool_budget(self) -> int:
         # Each page requires ~8 tool calls (read, propose, lint, transition, confirm ×2)
         # with 4-attempt retry headroom.  Allow up to 20 pages:
@@ -328,6 +363,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         **_kwargs,
     ) -> str:
         is_rollback, rollback_slug = parse_rollback_intent(user_input)
+        # Read by build_guarded_tool_fns' rollback wrapper at call time.
+        self._user_requested_rollback = is_rollback
         if is_rollback:
             if rollback_slug:
                 return (
