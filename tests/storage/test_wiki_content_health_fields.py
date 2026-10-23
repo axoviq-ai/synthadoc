@@ -81,3 +81,19 @@ def test_fix_record_cleared_writes_correctly():
         assert loaded.content_health_fix_record is None
         raw = (Path(tmp) / "test.md").read_text()
         assert "content_health_fix_record" not in raw
+
+
+def test_last_fix_record_default_none():
+    p = _make_page()
+    assert p.last_fix_record is None
+
+
+def test_roundtrip_last_fix_record():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = WikiStorage(Path(tmp))
+        last_fix = {"slug": "test", "snapshot_id": "abc123", "snapshot_index_before": 1,
+                    "timestamp": "2026-10-22T00:00:00+00:00", "strategy_name": "Strategy 1"}
+        page = _make_page(last_fix_record=last_fix)
+        store.write_page("test", page)
+        loaded = store.read_page("test")
+        assert loaded.last_fix_record == last_fix

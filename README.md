@@ -961,13 +961,17 @@ synthadoc workflow run --name content-health list -w my-wiki
 synthadoc workflow run --name content-health roll back alan-turing -w my-wiki
 ```
 
-The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
+The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence — or add, remove, or rename a heading — is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](docs/user-quick-start-guide.md#demo--content-health-resolver)
 
-The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
+The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Any rewrite that mutates a heading is rejected before you are asked, and every write is snapshotted — say "roll back `<slug>`" to undo a fix.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
+
+The orphan resolver finds pages with no inbound wikilinks and searches for the best page to link each one from, using up to four progressively broader strategies (title match, content match, then two LLM-assisted scans). It shows the full diff for each proposed `[[wikilink]]` insertion and waits for your approval. Every approved write is snapshotted the same way — say "roll back `<slug>`" to undo it.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Step 10](docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)
 
 ### Sensitive data retraction
 

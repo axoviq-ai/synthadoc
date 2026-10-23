@@ -9,6 +9,7 @@ import pytest
 
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows.tools.content_health_tools import (
+    tool_apply_content_health_fix,
     tool_get_page_content,
     tool_list_content_health_fixes,
     tool_rollback_content_health_fix,
@@ -59,8 +60,12 @@ async def test_write_fix_stores_fix_record(tmp_path):
     store = WikiStorage(tmp_path / "wiki")
     issues = [{"type": "duplicate_section", "severity": "critical",
                "location": "## Intro", "description": "x2"}]
-    store.write_page("turing", _make_page("turing", content_health_issues=issues))
+    store.write_page("turing", _make_page(
+        "turing", content="# Turing\n\n## Intro\nContent.\n", content_health_issues=issues,
+    ))
     ctx = _make_ctx(store)
+    # Headings match the original exactly — only the body changes — so this
+    # exercises fix-record bookkeeping without tripping the heading check.
     fixed_content = "# Turing\n\n## Intro\n" + " ".join(["word"] * 60) + "\n"
     result = await tool_write_content_health_fix(
         ctx, slug="turing", content=fixed_content,
@@ -83,8 +88,12 @@ async def test_write_fix_clears_issues_when_clean(tmp_path):
                                           content_health_issues=issues))
     ctx = _make_ctx(store)
     clean_content = "# Turing\n\n## Intro\n" + " ".join(["word"] * 60) + "\n"
+    # Removing the duplicate "## Intro" heading directly (not via the dedicated
+    # merge tool) needs the bypass: the heading check has no budget for
+    # duplicate_section on its own.
     result = await tool_write_content_health_fix(
         ctx, slug="turing", content=clean_content, issues_fixed=["dup x1"],
+        skip_heading_check=True,
     )
     assert result["status"] == "success"
     assert result["remaining_issues"] == 0
@@ -243,8 +252,11 @@ async def test_write_fix_allows_merge_that_keeps_every_sentence(tmp_path):
         "## Deep Learning\n- AlexNet won ImageNet in 2012 by a **wide** margin.\n"
         "- AlphaGo beat Lee Sedol\n  at Go in 2016.\n"
     )
+    # Folding the duplicate "## Deep Learning" heading directly (not via the
+    # dedicated merge tool) needs the bypass, same as the test above.
     result = await tool_write_content_health_fix(
-        ctx, slug="ai", content=merged, issues_fixed=["duplicate_section x1"])
+        ctx, slug="ai", content=merged, issues_fixed=["duplicate_section x1"],
+        skip_heading_check=True)
 
     assert result["status"] == "success"
     assert store.read_page("ai").content.strip() == merged.strip()
@@ -305,3 +317,55 @@ async def test_find_issues_leaves_out_report_only_pages(tmp_path):
     assert store.count_content_health_issues() == 2
     from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES
     assert store.count_content_health_issues(exclude_types=REPORT_ONLY_ISSUE_TYPES) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_content_health_fix_rejects_heading_change_not_in_issues(tmp_path):
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _make_page(
+        "turing", content="# Title\n\n## A\n\nbody text here with real words.\n",
+    ))
+    ctx = _make_ctx(store)
+    result = await tool_write_content_health_fix(
+        ctx, slug="turing", content="# Title\n\n## B\n\nbody text here with real words.\n",
+        issues_fixed=["unclosed_code_block"],
+    )
+    assert result["status"] == "error"
+    assert "## A" in store.read_page("turing").content
+
+
+@pytest.mark.asyncio
+async def test_write_content_health_fix_allows_empty_section_removal(tmp_path):
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _make_page(
+        "turing", content="# Title\n\n## Empty\n\n## Keep\n\nbody text here with enough words.\n",
+    ))
+    ctx = _make_ctx(store)
+    result = await tool_write_content_health_fix(
+        ctx, slug="turing", content="# Title\n\n## Keep\n\nbody text here with enough words.\n",
+        issues_fixed=["empty_section"],
+    )
+    assert result["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_apply_content_health_fix_rejects_heading_change_before_confirm(tmp_path, monkeypatch):
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _make_page(
+        "turing", content="# Title\n\n## A\n\nbody text here with real words.\n",
+    ))
+    ctx = _make_ctx(store)
+    confirm_called = False
+    async def _fake_confirm(*a, **kw):
+        nonlocal confirm_called
+        confirm_called = True
+        return True
+    monkeypatch.setattr(
+        "synthadoc.agents.workflows.tools.content_health_tools.confirm_page_change", _fake_confirm,
+    )
+    result = await tool_apply_content_health_fix(
+        ctx, slug="turing", content="# Title\n\n## B\n\nbody text here with real words.\n",
+        issues_fixed=["unclosed_code_block"],
+    )
+    assert result["status"] == "error"
+    assert confirm_called is False

@@ -936,6 +936,17 @@ class LintAgent(BaseAgent):
                 slug, from_state, to_state, reason, TriggerSource.LINT,
                 content_snapshot=page.content or None,
             )
+        if to_state == LifecycleState.CONTRADICTED and from_state in (
+            LifecycleState.ACTIVE, LifecycleState.STALE,
+        ):
+            # A fresh demotion starts a new resolution episode. last_fix_record
+            # is never cleared on promotion (it stays so the user can roll back
+            # the episode that was just resolved), so without this, a stale
+            # record from that earlier episode would still be here — and a
+            # retry inside tool_propose_and_apply would chain onto it, making
+            # "roll back" reach past this new contradiction into the old,
+            # already-resolved one.
+            page.last_fix_record = None
         page.status = to_state
         self._store.write_page(slug, page)
 

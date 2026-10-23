@@ -4246,11 +4246,19 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Per-page loop:** Python merge and/or LLM rewrite → sentence-preservation check (`dropped_sentences()`; any lost sentence rejects the write before the user is asked) → approval card with the real unified diff (`unified_diff_preview()` → `tool_confirm(diff=…)`) → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner → summary line. Approval cards are built from the actual content inside the tools (Pattern A), never written by the model; dismissals and model-initiated rollbacks also ask first.
 
+**Heading preservation:** a deterministic post-output check (`heading_mismatch_error()`) rejects any rewrite that adds, removes, or renames a heading, in both the content-health and contradiction-resolver apply paths. The sentence-preservation check (`dropped_sentences()`) stays content-health-only — `tool_propose_and_apply` (contradiction-resolver, orphan-resolver) deliberately does not enforce it, since both callers' jobs are to change prose (hedge/correct a claim, insert a wikilink inline), not preserve it verbatim. Both workflows snapshot before every write via a shared rollback mechanism (`synthadoc/agents/workflows/_rollback.py`) — say "roll back `<slug>`" at any time to undo a fix from either resolver; content-health's own rollback entry points fall back to the generic mechanism when a page has no content-health-specific fix record but does have a generic one, so "roll back `<slug>`" works from chat regardless of which resolver made the fix.
+
 **Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
 
 **Rollback traceability:** Two tools registered in both `ContentHealthResolverWorkflow` and `query_agent`:
 - `tool_list_content_health_fixes()` — returns all pages fixed, with timestamps and pre-fix snapshot indices
 - `tool_rollback_content_health_fix(slug)` — looks up the fix record, calls `POST /pages/{slug}/rollback` with the pre-fix snapshot index; clears the fix record and restores heuristic issue flags after rollback
+
+`contradiction_resolver` and `orphan_resolver` share a parallel, generic pair instead, registered in `_tools.py`:
+- `tool_list_recent_fixes()` — returns all pages with a `last_fix_record` (any `tool_propose_and_apply` write), with timestamps and the strategy name used
+- `tool_rollback_last_fix(slug)` — resolves the recorded snapshot via `restore_page_snapshot()` (shared with content-health's own rollback), restores content plus the pre-fix `status`/`contradiction_note`, and clears the record
+
+In `contradiction_resolver`, `tool_rollback_last_fix` is gated (`GATED_TOOLS` + `GATED_TOOLS_PER_CALL`) so the model cannot call it mid-resolution without a human confirm — except when the user's own message explicitly requested a rollback, which runs directly with no redundant second confirmation.
 
 **Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
 

@@ -18,17 +18,20 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.agents.workflows._rollback import parse_rollback_intent
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_notify,
     tool_read_page_content,
     tool_propose_and_apply,
+    tool_list_recent_fixes,
 )
 from synthadoc.agents.workflows.tools.orphan_resolver_tools import (
     tool_find_orphaned_pages,
     tool_estimate_and_confirm,
     tool_search_orphan_candidates,
     tool_verify_orphan_resolved,
+    tool_rollback_orphan_fix,
 )
 
 if TYPE_CHECKING:
@@ -223,6 +226,11 @@ STEP 5 — Final summary (markdown — ends the loop)
   (replace N with the actual count of remaining unprocessed orphans):
     _To process the remaining N orphans, run the **orphan resolver** again._
 
+  If resolved_list is non-empty, append this line after the summary (and after
+  the "remaining orphans" line above, if both apply) — every resolved fix is
+  snapshotted and can be undone this way:
+    A snapshot is saved before each change — say 'roll back [page]' to undo.
+
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
 • Strategy transitions are SILENT: when advancing to the next strategy because no
@@ -282,6 +290,41 @@ class OrphanResolverWorkflow(AgenticWorkflow):
     # reused unchanged from the multi-turn path.
     SUPPORTS_CLI_PROVIDER: bool = True
 
+    # Confirm gate — Pattern B (declarative GATED_TOOLS), mirroring
+    # contradiction_resolver. tool_rollback_orphan_fix silently replaces a
+    # page's content, so during a normal resolution run the model must not
+    # call it without the user's approval. Per-call: every rollback needs
+    # its own approval. This workflow's confirm tool is registered as
+    # "tool_confirm" (not "confirm"), so the inter-orphan "continue?" confirm
+    # never opens this gate — only the framework's fallback dialog does.
+    #
+    # An explicit user request ("roll back X", detected in build_initial_message)
+    # bypasses the gate — see build_guarded_tool_fns — matching
+    # contradiction_resolver's and content_health_resolver's precedent: the
+    # request itself is the approval. run_for_cli_provider calls
+    # tool_rollback_orphan_fix directly and never goes through this registry.
+    GATED_TOOLS: frozenset[str] = frozenset({"tool_rollback_orphan_fix"})
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"tool_rollback_orphan_fix"})
+
+    def build_guarded_tool_fns(self, ctx: "WorkflowContext") -> dict:
+        """Gate tool_rollback_orphan_fix unless the user explicitly asked for a rollback.
+
+        ActionAgent calls this BEFORE build_initial_message, so the choice is
+        made at tool-call time (by then build_initial_message has recorded
+        whether the request was an explicit rollback).
+        """
+        guarded = super().build_guarded_tool_fns(ctx)
+        gated_rollback = guarded["tool_rollback_orphan_fix"]
+        direct_rollback = functools.partial(tool_rollback_orphan_fix, ctx)
+
+        async def _rollback(*args, **kwargs) -> dict:
+            if getattr(self, "_user_requested_rollback", False):
+                return await direct_rollback(*args, **kwargs)
+            return await gated_rollback(*args, **kwargs)
+
+        guarded["tool_rollback_orphan_fix"] = _rollback
+        return guarded
+
     def get_tool_budget(self) -> int:
         # 3 setup + 20 orphans × 15 calls (4 attempts × ~3 + confirm) = 303 → 300
         return 300
@@ -290,6 +333,34 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         return _SYSTEM_PROMPT
 
     def build_initial_message(self, user_input: str, **_kwargs) -> str:
+        is_rollback, rollback_slug = parse_rollback_intent(user_input)
+        # Read by build_guarded_tool_fns' rollback wrapper at call time.
+        self._user_requested_rollback = is_rollback
+        if is_rollback:
+            if rollback_slug:
+                return (
+                    f"The user wants to roll back the fix for page '{rollback_slug}'.\n"
+                    f"Call tool_rollback_orphan_fix(orphan_slug='{rollback_slug}') and "
+                    f"report the result as plain text using the tool's own wording, "
+                    f"verbatim — do not paraphrase it.\n"
+                    f"'{rollback_slug}' may not carry its own fix record, since orphan "
+                    f"resolution edits the page that LINKS TO the orphan, not the orphan "
+                    f"page itself. When that's the case and exactly one linking page has "
+                    f"the fix, the tool rolls IT back directly — restoring that linking "
+                    f"page is the only way to put '{rollback_slug}' back into orphan "
+                    f"status, there is nothing on '{rollback_slug}' itself to undo — and "
+                    f"its message says explicitly which page was restored and why. Relay "
+                    f"that message as the complete answer. Only when the tool reports "
+                    f"status 'error' (ambiguous candidates, or nothing to roll back at "
+                    f"all) has nothing been written; do not call the tool again with a "
+                    f"different slug on your own initiative."
+                )
+            return (
+                "The user wants to roll back a fix but did not specify which page.\n"
+                "Call tool_list_recent_fixes() and report the list, asking the user "
+                "which page to roll back."
+            )
+
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
         if slug_match:
             slug = slug_match.group(1)
@@ -323,6 +394,8 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             "tool_estimate_and_confirm":      p(tool_estimate_and_confirm, ctx),
             "tool_search_orphan_candidates":  p(tool_search_orphan_candidates, ctx),
             "tool_verify_orphan_resolved":    p(tool_verify_orphan_resolved, ctx),
+            "tool_rollback_orphan_fix":       p(tool_rollback_orphan_fix, ctx),
+            "tool_list_recent_fixes":         p(tool_list_recent_fixes, ctx),
             # Shared framework tools
             "tool_read_page_content":         p(tool_read_page_content, ctx),
             "tool_propose_and_apply":         p(tool_propose_and_apply, ctx),
@@ -356,6 +429,26 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         (bounded LLM edit) + tool_propose_and_apply (diff-before-write) +
         tool_verify_orphan_resolved (graph-level check).
         """
+        # "roll back" / "roll back SLUG" intents need no LLM — answer them
+        # directly instead of starting a new scan-and-fix session.
+        is_rollback, rollback_slug = parse_rollback_intent(question)
+        if is_rollback and rollback_slug:
+            result = await tool_rollback_orphan_fix(ctx, rollback_slug)
+            text = result.get("message") or f"Rollback of '{rollback_slug}' failed."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+        if is_rollback:
+            listing = await tool_list_recent_fixes(ctx)
+            fixes = listing.get("fixes", [])
+            if not fixes:
+                text = "No recent fixes to roll back."
+            else:
+                lines = [f"- {f['slug']}: {f['strategy_name']} ({f['fixed_at']})" for f in fixes]
+                text = "Recent fixes:\n" + "\n".join(lines) + \
+                       "\nSay 'roll back <slug>' to restore one of these pages."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+
         # ── 1. Discover orphans (mirrors STEP 1) ──────────────────────────────
         slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
         page_slug: str | None = slug_match.group(1) if slug_match else None
@@ -468,6 +561,12 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             for slug in skipped_list:
                 skipped_lines.append(f"- {slug}")
             parts.append("\n".join(skipped_lines))
+
+        if resolved_list:
+            parts.append(
+                "A snapshot is saved before each change — "
+                "say 'roll back [page]' to undo."
+            )
 
         summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}

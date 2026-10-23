@@ -398,6 +398,9 @@ docker exec history-of-computing synthadoc workflow run --name ingest-lint
 # Run the contradiction resolver (interactive — approves rewrites one by one)
 docker exec -it history-of-computing synthadoc workflow run --name contradiction-resolver
 
+# Undo a contradiction-resolver fix — restores the page's pre-fix snapshot
+docker exec history-of-computing synthadoc workflow run --name contradiction-resolver roll back alan-turing
+
 # Scan and fix broken wikilinks
 docker exec -it history-of-computing synthadoc workflow run --name broken-wikilinks
 

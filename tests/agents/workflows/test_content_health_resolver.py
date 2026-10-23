@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ContentHealthResolverWorkflow class attributes and tool registration."""
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -40,6 +41,36 @@ async def test_system_prompt_contains_tool_inventory():
                       "list_content_health_fixes", "rollback_content_health_fix",
                       "merge_duplicate_sections", "notify"):
         assert tool_name in prompt, f"Missing tool '{tool_name}' in system prompt"
+
+
+@pytest.mark.asyncio
+async def test_step4_rollback_hint_is_conditioned_on_actually_fixing_something():
+    """STEP 4's closing 'list/roll back' lines must be conditional on Fixed > 0.
+
+    When every page was dismissed (needs human editing) or skipped, no
+    snapshot exists for this run — telling the user to "review all changes"
+    or "roll back <slug>" is misleading when nothing was written.
+    """
+    wf = ContentHealthResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "If Fixed (N pages) > 0, append" in prompt, (
+        "STEP 4's rollback/list-fixes closing lines must be gated on Fixed > 0, "
+        "not shown unconditionally in the final-summary template"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rollback_instruction_does_not_presuppose_content_health_fix():
+    """rollback_content_health_fix falls back to a page's generic last_fix_record
+    (from contradiction_resolver / orphan_resolver) when it has no
+    content-health-specific record. The model must report using the tool's
+    own wording, not assume/say "content health fix" for every rollback.
+    """
+    from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow as WF
+    wf = WF()
+    msg = wf.build_initial_message("roll back some-page")
+    assert "tool's own wording" in msg or "TOOL'S OWN wording" in msg
+    assert "may NOT be a content-health fix" in msg
 
 
 def test_get_tool_fns_returns_expected_tools():
@@ -386,3 +417,113 @@ async def test_rollback_requested_by_user_runs_without_extra_confirm(monkeypatch
 
     confirm.assert_not_awaited()
     rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# _rollback_with_fallback — the universal "roll back X" entry point
+# ---------------------------------------------------------------------------
+#
+# Fast-path routing sends EVERY "roll back X" chat message to this workflow
+# (its MATCH_RE is the only one with a bare "roll back" clause, so it wins
+# the ROUTED_WORKFLOWS registry-order race against contradiction_resolver's
+# and orphan_resolver's own, more specific MATCH_RE patterns). So this
+# function is the de-facto universal rollback dispatcher, and must correctly
+# cascade through all three fix types: content-health, generic
+# (contradiction/orphan direct), and orphan-via-host-page.
+
+async def _auto_confirm_ch(ctx, confirmed=True):
+    await asyncio.sleep(0.05)
+    gate = ctx.confirm_registry.get(ctx.session_id)
+    if gate:
+        ctx.confirm_result_registry[ctx.session_id] = confirmed
+        gate.set()
+
+
+class TestRollbackWithFallback:
+    async def test_falls_back_to_orphan_host_page_lookup(self, tmp_path):
+        """A page with neither a content-health nor a generic record of its
+        own (the orphan-resolver case) rolls back via the host page that was
+        actually edited — that's the only way to undo its orphan resolution
+        — with a message that says explicitly which page was restored."""
+        from synthadoc.agents.workflows._base import WorkflowContext
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        from synthadoc.agents.workflows.content_health_resolver import _rollback_with_fallback
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("microprocessor", WikiPage(
+            title="Microprocessor", tags=[], content="The CPU on a chip.\n",
+            status="active", confidence="", sources=[],
+        ))
+        store.write_page("computing-history-timeline", WikiPage(
+            title="Computing History Timeline", tags=[],
+            content="A timeline of computing.\n",
+            status="active", confidence="", sources=[],
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+
+        events = []
+        async def _send(e, d):
+            events.append({"event": e, "data": d})
+        ctx = WorkflowContext(
+            session_id="s1", wiki_root=tmp_path / "wiki", queue=None,
+            store=store, audit_db=audit_db, send_sse_event=_send,
+            confirm_registry={}, confirm_result_registry={},
+        )
+
+        asyncio.create_task(_auto_confirm_ch(ctx))
+        applied = await tool_propose_and_apply(
+            ctx, slug="computing-history-timeline",
+            new_content="A timeline of computing. See [[microprocessor]].\n",
+            strategy_name="title_bm25",
+            rationale="'computing-history-timeline' identified as related; "
+                      "LLM inserted [[microprocessor]].",
+        )
+        assert applied["applied"] is True
+
+        result = await _rollback_with_fallback(ctx, "microprocessor")
+
+        assert result["status"] == "success"
+        assert "move 'microprocessor' back to orphan status" in result["message"]
+        assert "computing-history-timeline" in result["message"]
+        page = store.read_page("computing-history-timeline")
+        assert page.content == "A timeline of computing.\n"
+
+    async def test_content_health_record_still_wins_when_present(self, monkeypatch):
+        """Unchanged behavior: a page with its own content-health record
+        never reaches the fallback at all."""
+        from synthadoc.agents.workflows import content_health_resolver as mod
+        from unittest.mock import AsyncMock
+        ch_rollback = AsyncMock(return_value={"status": "success", "message": "ok"})
+        orphan_fallback = AsyncMock()
+        monkeypatch.setattr(mod, "tool_rollback_content_health_fix", ch_rollback)
+        monkeypatch.setattr(mod, "tool_rollback_orphan_fix", orphan_fallback)
+
+        result = await mod._rollback_with_fallback(MagicMock(), "some-page")
+
+        assert result["status"] == "success"
+        orphan_fallback.assert_not_awaited()
+
+    async def test_direct_generic_record_still_works_unchanged(self, monkeypatch):
+        """Unchanged behavior for the pre-existing contradiction_resolver
+        fallback case: a page with its own last_fix_record (no content-health
+        record) is rolled back directly, same as before this change."""
+        from synthadoc.agents.workflows import content_health_resolver as mod
+        from unittest.mock import AsyncMock
+        ch_rollback = AsyncMock(return_value={"status": "error", "error": "no content health fix"})
+        orphan_fallback = AsyncMock(return_value={"status": "success", "message": "rolled back directly"})
+        monkeypatch.setattr(mod, "tool_rollback_content_health_fix", ch_rollback)
+        monkeypatch.setattr(mod, "tool_rollback_orphan_fix", orphan_fallback)
+        page = MagicMock()
+        page.content_health_fix_record = None
+        store = MagicMock()
+        store.read_page.return_value = page
+        ctx = MagicMock()
+        ctx.store = store
+
+        result = await mod._rollback_with_fallback(ctx, "some-page")
+
+        assert result["status"] == "success"
+        orphan_fallback.assert_awaited_once_with(ctx, "some-page")
