@@ -242,7 +242,8 @@ STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
     **⏭ Skipped (<N>):**
     - <slug>
 
-    **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
+    **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>.
+
     A snapshot is saved before each change — say 'roll back [page]' to undo.
 
   When a section is empty write "- (none)" as the single list item.
