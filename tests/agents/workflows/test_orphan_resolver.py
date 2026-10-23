@@ -938,3 +938,252 @@ def test_cli_summary_mentions_rollback_only_when_something_resolved():
 
     no_fix = _build_summary([], ["babbage"], ["colossus"])
     assert "roll back" not in no_fix.lower()
+
+
+# ---------------------------------------------------------------------------
+# tool_rollback_orphan_fix — reverse lookup when the orphan page itself has
+# no fix record (orphan resolution edits the LINKING page, not the orphan)
+# ---------------------------------------------------------------------------
+
+async def _auto_confirm_orphan(ctx, confirmed=True):
+    await asyncio.sleep(0.05)
+    gate = ctx.confirm_registry.get("test-session")
+    if gate:
+        ctx.confirm_result_registry["test-session"] = confirmed
+        gate.set()
+
+
+class TestRollbackOrphanFix:
+    _ORIGINAL = "Content about personal computers.\n"
+    _FIXED = "Content about personal computers. See [[microprocessor]] for details.\n"
+
+    def _wiki(self, tmp_path, *, with_fix_record: bool = True):
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("microprocessor", WikiPage(
+            title="Microprocessor", tags=[], content="The CPU on a chip.\n",
+            status="active", confidence="", sources=[],
+        ))
+        store.write_page("personal-computer-revolution", WikiPage(
+            title="Personal Computer Revolution", tags=[],
+            content=self._ORIGINAL if with_fix_record else self._FIXED,
+            status="active", confidence="", sources=[],
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        return store, audit_db
+
+    async def test_falls_back_to_linking_page_when_orphan_has_no_record(self, tmp_path):
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
+        store, audit_db = self._wiki(tmp_path)
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        asyncio.create_task(_auto_confirm_orphan(ctx))
+        applied = await tool_propose_and_apply(
+            ctx, slug="personal-computer-revolution", new_content=self._FIXED,
+            strategy_name="title_bm25",
+            rationale="'personal-computer-revolution' identified as related; "
+                      "LLM inserted [[microprocessor]].",
+        )
+        assert applied["applied"] is True
+
+        result = await tool_rollback_orphan_fix(ctx, "microprocessor")
+
+        assert result["status"] == "success"
+        assert "has no fix record of its own" in result["message"]
+        assert "personal-computer-revolution" in result["message"]
+        page = store.read_page("personal-computer-revolution")
+        assert page.content == self._ORIGINAL
+        assert page.last_fix_record is None
+
+    async def test_no_fallback_needed_when_slug_itself_has_a_record(self, tmp_path):
+        """If the named page DOES carry its own record, use it directly — no
+        reverse lookup, no 'has no fix record of its own' framing."""
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
+        store, audit_db = self._wiki(tmp_path)
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        asyncio.create_task(_auto_confirm_orphan(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="personal-computer-revolution", new_content=self._FIXED,
+            strategy_name="title_bm25", rationale="test",
+        )
+
+        result = await tool_rollback_orphan_fix(ctx, "personal-computer-revolution")
+
+        assert result["status"] == "success"
+        assert "has no fix record of its own" not in result["message"]
+
+    async def test_no_record_anywhere_returns_original_error(self, tmp_path):
+        from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
+        store, audit_db = self._wiki(tmp_path, with_fix_record=False)
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        result = await tool_rollback_orphan_fix(ctx, "microprocessor")
+
+        assert result["status"] == "error"
+        assert "no prior fix recorded" in result["error"].lower()
+
+    async def test_ambiguous_when_multiple_linking_pages_have_records(self, tmp_path):
+        from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("microprocessor", WikiPage(
+            title="Microprocessor", tags=[], content="The CPU on a chip.\n",
+            status="active", confidence="", sources=[],
+        ))
+        store.write_page("host-a", WikiPage(
+            title="Host A", tags=[], content="See [[microprocessor]].\n",
+            status="active", confidence="", sources=[],
+            last_fix_record={"slug": "host-a", "snapshot_id": 1,
+                              "snapshot_index_before": 1,
+                              "timestamp": "2026-01-01T00:00:00+00:00",
+                              "strategy_name": "title_bm25"},
+        ))
+        store.write_page("host-b", WikiPage(
+            title="Host B", tags=[], content="Also see [[microprocessor]].\n",
+            status="active", confidence="", sources=[],
+            last_fix_record={"slug": "host-b", "snapshot_id": 2,
+                              "snapshot_index_before": 1,
+                              "timestamp": "2026-01-01T00:00:00+00:00",
+                              "strategy_name": "content_bm25"},
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        result = await tool_rollback_orphan_fix(ctx, "microprocessor")
+
+        assert result["status"] == "error"
+        assert "host-a" in result["error"]
+        assert "host-b" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Rollback-via-chat wiring: build_initial_message / run_for_cli_provider /
+# GATED_TOOLS — mirrors test_contradiction_resolver_workflow.py's equivalent
+# coverage for tool_rollback_last_fix.
+# ---------------------------------------------------------------------------
+
+def test_build_initial_message_rollback_intent_with_slug():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    workflow = OrphanResolverWorkflow()
+    msg = workflow.build_initial_message("roll back microprocessor")
+    assert "tool_rollback_orphan_fix" in msg
+    assert "microprocessor" in msg
+
+
+def test_build_initial_message_rollback_intent_no_slug():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    workflow = OrphanResolverWorkflow()
+    msg = workflow.build_initial_message("roll back")
+    assert "tool_list_recent_fixes" in msg
+
+
+async def test_cli_provider_rollback_short_circuit_no_model_call():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.send_sse_event = AsyncMock()
+
+    rollback_calls = []
+    async def _fake_rollback(ctx, orphan_slug):
+        rollback_calls.append(orphan_slug)
+        return {"status": "success", "message": f"Rolled back '{orphan_slug}'."}
+
+    class _FakeProvider:
+        async def complete(self, *a, **kw):
+            raise AssertionError("model should not be called for a rollback request")
+
+    with patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_rollback_orphan_fix",
+        new=_fake_rollback,
+    ):
+        events = [e async for e in OrphanResolverWorkflow().run_for_cli_provider(
+            ctx, question="roll back microprocessor", provider=_FakeProvider())]
+
+    assert rollback_calls == ["microprocessor"]
+    assert events[-1]["data"]["text"] == "Rolled back 'microprocessor'."
+
+
+def test_rollback_orphan_fix_is_a_per_call_gated_tool():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    assert "tool_rollback_orphan_fix" in OrphanResolverWorkflow.GATED_TOOLS
+    assert "tool_rollback_orphan_fix" in OrphanResolverWorkflow.GATED_TOOLS_PER_CALL
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_rollback_during_normal_run_requires_user_confirm(confirmed):
+    """The model must not roll a page back on its own mid-resolution."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    confirm = AsyncMock(return_value={"confirmed": confirmed})
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=confirm), \
+         patch("synthadoc.agents.workflows.orphan_resolver.tool_rollback_orphan_fix",
+               new=rollback):
+        wf = OrphanResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)          # ActionAgent order: tools first
+        wf.build_initial_message("run orphan resolver")
+        result = await fns["tool_rollback_orphan_fix"](orphan_slug="microprocessor")
+        confirm.assert_awaited_once()
+        assert (rollback.await_count == 1) is confirmed
+        assert result["status"] == ("success" if confirmed else "cancelled")
+        if confirmed:
+            # Per-call gate: a second rollback needs a fresh approval.
+            await fns["tool_rollback_orphan_fix"](orphan_slug="quantum-computing")
+            assert confirm.await_count == 2
+
+
+async def test_tool_confirm_between_orphans_does_not_open_rollback_gate():
+    """An approved 'continue to next orphan?' tool_confirm must not unlock rollback."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    gate_confirm = AsyncMock(return_value={"confirmed": False})
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=gate_confirm), \
+         patch("synthadoc.agents.workflows.orphan_resolver.tool_confirm",
+               new=AsyncMock(return_value={"confirmed": True})), \
+         patch("synthadoc.agents.workflows.orphan_resolver.tool_rollback_orphan_fix",
+               new=rollback):
+        wf = OrphanResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)
+        wf.build_initial_message("run orphan resolver")
+        await fns["tool_confirm"](message="Continue to the next orphan?")
+        result = await fns["tool_rollback_orphan_fix"](orphan_slug="microprocessor")
+    gate_confirm.assert_awaited_once()
+    rollback.assert_not_awaited()
+    assert result["status"] == "cancelled"
+
+
+async def test_explicit_rollback_request_runs_without_extra_confirm():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    confirm = AsyncMock()
+    rollback = AsyncMock(return_value={"status": "success"})
+    ctx = MagicMock()
+    with patch("synthadoc.agents.workflows._tools.tool_confirm", new=confirm), \
+         patch("synthadoc.agents.workflows.orphan_resolver.tool_rollback_orphan_fix",
+               new=rollback):
+        wf = OrphanResolverWorkflow()
+        fns = wf.build_guarded_tool_fns(ctx)
+        wf.build_initial_message("roll back microprocessor")
+        result = await fns["tool_rollback_orphan_fix"](orphan_slug="microprocessor")
+    confirm.assert_not_awaited()
+    rollback.assert_awaited_once_with(ctx, orphan_slug="microprocessor")
+    assert result["status"] == "success"
+
+
+def test_get_tool_fns_includes_rollback_tools():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    ctx = MagicMock()
+    tools = OrphanResolverWorkflow().get_tool_fns(ctx)
+    assert "tool_rollback_orphan_fix" in tools
+    assert "tool_list_recent_fixes" in tools

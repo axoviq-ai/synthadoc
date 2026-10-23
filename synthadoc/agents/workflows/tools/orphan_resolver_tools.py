@@ -14,7 +14,7 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.lint_agent import find_orphan_slugs
-from synthadoc.agents.workflows._tools import tool_confirm
+from synthadoc.agents.workflows._tools import tool_confirm, tool_rollback_last_fix
 from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
@@ -119,6 +119,63 @@ async def tool_verify_orphan_resolved(
         return {"resolved": True, "linked_by": linked_by}
 
     return {"resolved": False, "linked_by": []}
+
+
+# ---------------------------------------------------------------------------
+# tool_rollback_orphan_fix
+# ---------------------------------------------------------------------------
+
+async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> dict:
+    """Roll back the fix that resolved *orphan_slug*.
+
+    Orphan resolution never writes to the orphan page itself — it edits the
+    HOST page that gets the new [[wikilink]] inserted. So last_fix_record
+    lives on that host page, not on orphan_slug, and a direct
+    tool_rollback_last_fix(orphan_slug) call fails with "no prior fix
+    recorded" even though the orphan was genuinely just resolved.
+
+    Tries orphan_slug directly first (covers a record that happens to exist
+    there), then falls back to tool_verify_orphan_resolved's own linked_by
+    computation to find which page(s) currently link to orphan_slug, and
+    rolls back whichever single one of those carries a last_fix_record.
+
+    Returns the same shape as tool_rollback_last_fix:
+        {"status": "success", "slug", "rolled_back_to_snapshot", "message"}
+        {"status": "error", "error": str}
+    """
+    direct = await tool_rollback_last_fix(ctx, orphan_slug)
+    if direct.get("status") == "success":
+        return direct
+
+    verify = await tool_verify_orphan_resolved(ctx, orphan_slug)
+    if not verify.get("resolved") or ctx.store is None:
+        return direct
+
+    candidates = [
+        host_slug for host_slug in verify.get("linked_by", [])
+        if (page := ctx.store.read_page(host_slug)) is not None and page.last_fix_record
+    ]
+
+    if not candidates:
+        return direct
+    if len(candidates) > 1:
+        return {
+            "status": "error",
+            "error": (
+                f"'{orphan_slug}' has no fix record of its own, and more than one "
+                f"linking page has a pending fix ({', '.join(candidates)}) — say "
+                f"'roll back <page>' naming one of those directly."
+            ),
+        }
+
+    host_slug = candidates[0]
+    result = await tool_rollback_last_fix(ctx, host_slug)
+    if result.get("status") == "success":
+        result = dict(result, message=(
+            f"'{orphan_slug}' has no fix record of its own — it was resolved by "
+            f"editing '{host_slug}' to add the link. {result.get('message', '')}"
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------
