@@ -44,6 +44,21 @@ class TestParseRollbackIntent:
         # matches. Not fixed here; just pinned so a future change notices.
         assert parse_rollback_intent("we need to roll back our expectations") == (True, None)
 
+    def test_single_word_slug_is_recognized(self):
+        assert parse_rollback_intent("roll back turing") == (True, "turing")
+
+    def test_single_word_slug_in_cli_form_with_trailing_punctuation(self):
+        assert parse_rollback_intent(
+            "run contradiction resolver roll back python."
+        ) == (True, "python")
+
+    @pytest.mark.parametrize("filler", [
+        "this", "that", "our", "your", "my", "it", "them", "these", "those",
+        "page", "pages", "This", "the",
+    ])
+    def test_filler_words_are_not_slugs(self, filler):
+        assert parse_rollback_intent(f"roll back {filler} please") == (True, None)
+
 
 class TestRestorePageSnapshot:
     @pytest.mark.asyncio

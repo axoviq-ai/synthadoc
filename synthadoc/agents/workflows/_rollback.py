@@ -19,12 +19,19 @@ _STATUS_OK = "success"
 _STATUS_ERR = "error"
 
 _ROLLBACK_BARE_RE = re.compile(r"\broll\s*back\b", re.IGNORECASE)
-# Only capture a following word as a slug when it looks like one (hyphenated,
-# e.g. "alan-turing") — a bare following word like "this" or "our" ("roll
-# back this page", "roll back our expectations") is prose, not a page name.
+# Capture the slug-shaped token right after "roll back"/"rollback".
 _ROLLBACK_SLUG_RE = re.compile(
-    r"\broll\s*back\b\s+([a-z0-9]+(?:-[a-z0-9]+)+)", re.IGNORECASE
+    r"\broll\s*back\b\s+([a-z0-9]+(?:-[a-z0-9]+)*)", re.IGNORECASE
 )
+# Single (unhyphenated) words that commonly follow "roll back" in prose and
+# must not be mistaken for a page slug ("roll back this page", "roll back our
+# expectations", "roll back the last fix").
+_ROLLBACK_FILLER_WORDS: frozenset[str] = frozenset({
+    "this", "that", "our", "your", "my", "it", "them", "these", "those",
+    "page", "pages",
+    "the", "a", "an", "to", "last", "all", "everything", "fix", "fixes",
+    "change", "changes",
+})
 
 
 def parse_rollback_intent(user_input: str) -> tuple[bool, str | None]:
@@ -37,15 +44,29 @@ def parse_rollback_intent(user_input: str) -> tuple[bool, str | None]:
     matcher): "roll back" as a literal substring of unrelated prose still
     matches — this is a plain substring search, not intent classification.
 
-    The word right after "roll back"/"rollback" is only treated as a slug
-    when it looks like one (hyphenated, e.g. "alan-turing"); a bare word like
-    "this" or "our" ("roll back this page", "roll back our expectations") is
-    left as slug=None rather than mistaken for a page name.
+    The word right after "roll back"/"rollback" is treated as a slug when
+    EITHER (a) it is hyphenated (e.g. "alan-turing" — multi-word slugs are
+    always hyphenated, so this is safe), OR (b) it is a single word that is
+    NOT on a short list of common English filler/pronoun words
+    (``_ROLLBACK_FILLER_WORDS``: "this", "our", "page", "the", ...).  So
+    "roll back turing" yields slug "turing", while "roll back this page" and
+    "roll back our expectations" yield slug=None.
+
+    Known limitation of heuristic (b): any single English word NOT on the
+    filler list is still taken as a slug — e.g. "roll back quickly" yields
+    slug "quickly".  A wrong slug fails
+    safely — the rollback tool reports no fix recorded for it — so this is
+    accepted, in the same spirit as the substring-match limitation above.
     """
     if not _ROLLBACK_BARE_RE.search(user_input):
         return False, None
     match = _ROLLBACK_SLUG_RE.search(user_input)
-    return True, (match.group(1).rstrip(".,;") if match else None)
+    if not match:
+        return True, None
+    candidate = match.group(1)
+    if "-" not in candidate and candidate.lower() in _ROLLBACK_FILLER_WORDS:
+        return True, None
+    return True, candidate
 
 
 async def restore_page_snapshot(
