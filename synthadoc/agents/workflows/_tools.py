@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
 from enum import Enum
@@ -23,6 +24,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+from synthadoc.agents.content_health_fixes import heading_mismatch_error
+from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
     find_broken_citation_refs,
@@ -1020,15 +1023,50 @@ async def tool_propose_and_apply(
     Does NOT alter the page's lifecycle state — callers must call
     ``tool_transition_lifecycle_state`` separately after lint passes.
 
+    Before the confirm dialog, rejects (without ever showing the dialog) any
+    rewrite that changes any heading (zero-tolerance — no ``issues_fixed``
+    budget, unlike the content-health apply paths, since neither Strategy 1
+    rewrites nor orphan-resolver wikilink insertion ever legitimately need to
+    touch a heading).
+
+    This enforces heading preservation ONLY — it deliberately does NOT enforce
+    sentence preservation (``text_loss_error``).  The callers of this function
+    exist to change prose: contradiction_resolver hedges or corrects false
+    claims, and orphan_resolver rewrites a sentence to carry an inline
+    wikilink.  Both legitimately alter existing sentences, so a verbatim
+    sentence-survival check would reject their core use case.  Only the page's
+    heading structure must never move; the human confirm dialog (with diff)
+    is the safeguard for prose changes.
+
+    The rejection message is deliberately neutral: it does not reference
+    content-health-only tools (``dismiss_content_health_issues``) or forbid
+    retrying, since contradiction_resolver's own multi-strategy retry may
+    legitimately try a different rewrite.
+
     Returns::
 
         {"applied": bool, "diff_preview": str}
-        {"applied": False, "error": str}  — page not found
+        {"applied": False, "diff_preview": "", "error": str}  — page not found,
+            or the rewrite was rejected for changing a heading
     """
     page = ctx.store.read_page(slug)
     if page is None:
         return {"applied": False, "diff_preview": "",
                 "error": f"Page not found: {slug!r}"}
+
+    rejection = heading_mismatch_error(slug, page.content or "", new_content)
+    if rejection:
+        # heading_mismatch_error's own message is written for content-health
+        # callers (it names dismiss_content_health_issues and says "do not
+        # retry"); build a neutral one from its structured fields instead.
+        return {
+            "applied": False, "diff_preview": "",
+            "error": (
+                f"Rejected — nothing was written. This rewrite changes "
+                f"{rejection.get('heading_changes', 'one or more')} heading(s) "
+                f"unexpectedly; headings must be preserved exactly. Review manually."
+            ),
+        }
 
     diff_preview = unified_diff_preview(slug, page.content or "", new_content)
 
@@ -1043,12 +1081,53 @@ async def tool_propose_and_apply(
     )
     confirmed = result.get("confirmed", False)
     if confirmed:
+        existing_record = page.last_fix_record
+        if existing_record:
+            # A retry within the same resolution episode (contradiction_resolver's
+            # step 4h calls tool_propose_and_apply again with a new strategy when
+            # scoped lint fails after an applied attempt). Chain onto the FIRST
+            # attempt's snapshot/status/note instead of re-snapshotting the
+            # already-rewritten content — otherwise rollback would only undo the
+            # most recent attempt, landing on a still-wrong intermediate rewrite
+            # rather than the true pre-episode original.
+            snapshot_id = existing_record.get("snapshot_id")
+            pre_fix_status = existing_record.get("pre_fix_status")
+            pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
+            pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
+        else:
+            await ctx.audit_db.snapshot_if_changed(
+                slug, page.content, triggered_by=strategy_name, reason=rationale,
+            )
+            snapshots = await ctx.audit_db.list_page_snapshots(slug)
+            snapshot_id = snapshots[0]["id"] if snapshots else None
+
+            # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
+            # and by the caller's later tool_transition_lifecycle_state) so
+            # tool_rollback_last_fix can restore them along with the content.
+            # lint_warnings in particular must be captured here, before step 4f's
+            # tool_run_scoped_lint call overwrites it with the fresh (now-passing)
+            # result — that happens entirely outside this function, so this is the
+            # last point where the pre-fix value is still visible.
+            pre_fix_status = page.status
+            pre_fix_contradiction_note = page.contradiction_note
+            pre_fix_lint_warnings = page.lint_warnings
+
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
         # pages.  tool_run_scoped_lint marks a page as failed if contradiction_note
         # is not None, regardless of content quality.  Applying approved new content
         # is the act of resolving the conflict, so the note must be cleared here.
         page.contradiction_note = None
+        page.last_fix_record = {
+            "slug": slug,
+            "snapshot_id": snapshot_id,
+            "snapshot_index_before": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "strategy_name": strategy_name,
+            "pre_fix_status": pre_fix_status,
+            "pre_fix_lint_warnings": pre_fix_lint_warnings,
+            "pre_fix_contradiction_note": pre_fix_contradiction_note,
+        }
         _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
             ctx.store.write_page(slug, page)
@@ -1057,6 +1136,97 @@ async def tool_propose_and_apply(
             {"tool": "propose_and_apply", "message": f"OK Applied {strategy_name} to {slug}"},
         )
     return {"applied": confirmed, "diff_preview": diff_preview}
+
+
+async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
+    """Roll back a page to before its last tool_propose_and_apply write.
+
+    Reads page.last_fix_record (written by tool_propose_and_apply), delegates
+    to restore_page_snapshot, then clears the record. Shared by
+    contradiction_resolver and orphan_resolver — anything that writes through
+    tool_propose_and_apply gets rollback for free.
+
+    Also restores the page's pre-fix ``status``, ``contradiction_note``, and
+    ``lint_warnings`` from the record, so rolling back a contradiction fix
+    re-surfaces the dispute instead of leaving the old text marked active and
+    unflagged. ``lint_warnings`` matters for gate-demoted pages, which carry
+    their dispute there instead of in ``contradiction_note`` — it would
+    otherwise still read as the fresh, now-passing result that step 4f's
+    verify-lint call wrote after the fix, since that write happens outside
+    tool_propose_and_apply entirely. Records written before these keys
+    existed leave the corresponding field(s) untouched.
+    """
+    if ctx.store is None:
+        return {"status": ToolStatus.ERROR, "error": "No store available"}
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"status": ToolStatus.ERROR, "error": f"Page '{slug}' not found"}
+    if not page.last_fix_record:
+        return {"status": ToolStatus.ERROR, "error": f"No prior fix recorded for '{slug}'"}
+
+    record = page.last_fix_record
+    result = await restore_page_snapshot(
+        ctx, slug, record.get("snapshot_id"), record.get("snapshot_index_before", 1),
+    )
+    if result["status"] != ToolStatus.SUCCESS:
+        return result
+
+    page = ctx.store.read_page(slug)
+    status_restored = False
+    if "pre_fix_status" in record and record["pre_fix_status"] \
+            and record["pre_fix_status"] != page.status:
+        page.status = record["pre_fix_status"]
+        status_restored = True
+    if "pre_fix_contradiction_note" in record:
+        page.contradiction_note = record["pre_fix_contradiction_note"]
+    if "pre_fix_lint_warnings" in record:
+        page.lint_warnings = record["pre_fix_lint_warnings"] or []
+    page.last_fix_record = None
+    ctx.store.write_page(slug, page)
+    if status_restored:
+        # Keep page_states (GET /lifecycle/pages) in step with the frontmatter,
+        # as tool_transition_lifecycle_state does.  Best-effort, like there.
+        if ctx.invalidate_search:
+            ctx.invalidate_search()
+        try:
+            await ctx.audit_db.set_page_state(slug, page.status, "workflow")
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "status": ToolStatus.SUCCESS,
+        "slug": slug,
+        "rolled_back_to_snapshot": result["resolved_index"],
+        "message": (
+            f"Rolled back '{slug}' to before {record.get('strategy_name', 'the last fix')} "
+            f"(snapshot {result['resolved_index']})."
+        ),
+    }
+
+
+async def tool_list_recent_fixes(ctx: "WorkflowContext") -> dict:
+    """Return all pages that have a last_fix_record, sorted by timestamp desc.
+
+    Shared by contradiction_resolver and orphan_resolver — any page whose last
+    change went through tool_propose_and_apply shows up here if it hasn't been
+    rolled back since.
+    """
+    if ctx.store is None:
+        return {"status": ToolStatus.ERROR, "fixes": []}
+    fixes = []
+    for slug in ctx.store.list_pages():
+        page = ctx.store.read_page(slug)
+        if page is not None and page.last_fix_record:
+            record = page.last_fix_record
+            fixes.append({
+                "slug": slug,
+                "title": page.title,
+                "strategy_name": record.get("strategy_name", ""),
+                "fixed_at": record.get("timestamp", ""),
+                "snapshot_id": record.get("snapshot_id"),
+                "snapshot_index_before": record.get("snapshot_index_before"),
+            })
+    fixes.sort(key=lambda r: r["fixed_at"], reverse=True)
+    return {"fixes": fixes}
 
 
 _VALID_STATES: frozenset[str] = frozenset(

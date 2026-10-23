@@ -26,6 +26,9 @@ from synthadoc.agents.workflows._tools import (
     tool_get_scaffold_preview,
     tool_ingest_source,
     tool_poll_job,
+    tool_list_recent_fixes,
+    tool_propose_and_apply,
+    tool_rollback_last_fix,
     tool_run_lint,
     tool_run_scaffold,
 )
@@ -1529,3 +1532,429 @@ async def test_tool_format_summary_emits_sse_events():
     calls = {call.args[0] for call in ctx.send_sse_event.call_args_list}
     assert "token" in calls, "Expected a 'token' SSE event"
     assert "final_text" in calls, "Expected a 'final_text' SSE event"
+
+
+# ---------------------------------------------------------------------------
+# tool_propose_and_apply — heading/text-loss invariant checks (Task 4)
+# ---------------------------------------------------------------------------
+
+def _confirming_store(content: str):
+    page = MagicMock()
+    page.content = content
+    page.contradiction_note = None
+    page.last_fix_record = None  # explicit — a bare MagicMock attribute is truthy by default
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=page)
+    store.write_page = MagicMock()
+    store.page_lock = MagicMock()
+    store.page_lock.return_value.__enter__ = MagicMock(return_value=None)
+    store.page_lock.return_value.__exit__ = MagicMock(return_value=None)
+    return store, page
+
+
+async def _auto_confirm(ctx, confirmed=True):
+    await asyncio.sleep(0.05)
+    gate = ctx.confirm_registry.get("s1")
+    if gate:
+        ctx.confirm_result_registry["s1"] = confirmed
+        gate.set()
+
+
+class TestProposeAndApplyChecks:
+    async def test_applies_corrected_sentence_rewrite(self):
+        """Contradiction fixes CHANGE sentences — sentence loss must not be rejected."""
+        store, page = _confirming_store(
+            "# Title\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        new = "# Title\n\n## History\n\nThe telephone was invented by Bell in 1876.\n"
+        result = await tool_propose_and_apply(
+            ctx, slug="s", new_content=new,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+        assert "error" not in result
+        assert page.content == new
+        store.write_page.assert_called_once()
+
+    async def test_applies_inline_wikilink_insertion(self):
+        """Orphan-resolver rewrites a sentence to carry a wikilink — must apply."""
+        store, page = _confirming_store(
+            "# Title\n\n## Body\n\nAlan Turing studied computable numbers deeply.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Body\n\n[[alan-turing|Alan Turing]] studied computable numbers deeply.\n",
+            strategy_name="Insert wikilink", rationale="link orphan",
+        )
+        assert result["applied"] is True
+
+    async def test_heading_rejection_message_is_neutral(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is False
+        assert "heading" in result["error"]
+        assert "dismiss_content_health_issues" not in result["error"]
+        assert "Do not retry" not in result["error"]
+        assert "do not retry" not in result["error"].lower()
+
+    async def test_rejects_heading_change_before_confirm(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is False
+        assert "error" in result
+        store.write_page.assert_not_called()
+
+    async def test_applies_heading_preserving_rewrite_normally(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nold body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nold body text with enough words here. Plus more.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is True
+
+    async def test_successful_apply_writes_last_fix_record(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nold body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nold body text with enough words here. Plus more.\n",
+            strategy_name="Strategy 1 — Content rewrite", rationale="test",
+        )
+        assert result["applied"] is True
+        assert page.last_fix_record is not None
+        assert page.last_fix_record["strategy_name"] == "Strategy 1 — Content rewrite"
+        assert page.last_fix_record["snapshot_id"] == 42
+
+    async def test_rejected_apply_does_not_write_last_fix_record(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        ctx, _events = _make_ctx(store=store)
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert page.last_fix_record is None
+
+
+# ---------------------------------------------------------------------------
+# tool_rollback_last_fix / tool_list_recent_fixes (Task 10)
+# ---------------------------------------------------------------------------
+
+class TestRollbackLastFix:
+    async def test_restores_content_and_clears_record(self):
+        current = "# Title\n\n## Keep\n\noriginal body text with enough words here.\n"
+        store, page = _confirming_store(current)
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": current,
+            }),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\noriginal body text with enough words here. More.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        result = await tool_rollback_last_fix(ctx, "s")
+        assert result["status"] == "success"
+        assert page.content == current
+        assert page.last_fix_record is None
+
+    async def test_errors_cleanly_with_no_prior_fix(self):
+        store, page = _confirming_store("# Title\n\nbody.\n")
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_rollback_last_fix(ctx, "untouched-page")
+        assert result["status"] == "error"
+
+    async def test_second_rollback_errors_cleanly(self):
+        current = "# Title\n\n## Keep\n\noriginal body text with enough words here.\n"
+        store, page = _confirming_store(current)
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": current,
+            }),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\noriginal body text with enough words here. More.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        await tool_rollback_last_fix(ctx, "s")
+        second = await tool_rollback_last_fix(ctx, "s")
+        assert second["status"] == "error"
+
+
+class TestListRecentFixes:
+    async def test_lists_only_pages_with_a_fix_record(self):
+        current = "# Title\n\n## Keep\n\nbody text here with enough words to count.\n"
+        store, page = _confirming_store(current)
+        store.list_pages = MagicMock(return_value=["s"])
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\nbody text here with enough words to count. Extra.\n",
+            strategy_name="Strategy 1 — Content rewrite", rationale="test",
+        )
+        result = await tool_list_recent_fixes(ctx)
+        slugs = [f["slug"] for f in result["fixes"]]
+        assert "s" in slugs
+        entry = next(f for f in result["fixes"] if f["slug"] == "s")
+        assert entry["strategy_name"] == "Strategy 1 — Content rewrite"
+
+    async def test_excludes_pages_without_a_fix_record(self):
+        store, page = _confirming_store("# Title\n\nbody.\n")
+        store.list_pages = MagicMock(return_value=["untouched"])
+        ctx, _events = _make_ctx(store=store)
+        result = await tool_list_recent_fixes(ctx)
+        assert result["fixes"] == []
+
+
+class TestRollbackRestoresLifecycleFlags:
+    """Rolling back a contradiction fix must re-surface the dispute (Finding I4)."""
+
+    _ORIGINAL = "# Phone\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
+    _FIXED = "# Phone\n\n## History\n\nThe telephone was invented by Bell in 1876.\n"
+
+    def _wiki(self, tmp_path):
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("phone", WikiPage(
+            title="Phone", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], contradiction_note="Sources disagree on the inventor.",
+        ))
+        audit_db = MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": self._ORIGINAL,
+            }),
+            set_page_state=AsyncMock(),
+            record_lifecycle_event=AsyncMock(),
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+        return store, audit_db, ctx
+
+    async def test_record_captures_pre_fix_status_and_note(self, tmp_path):
+        store, _audit, ctx = self._wiki(tmp_path)
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+        page = store.read_page("phone")
+        assert page.contradiction_note is None
+        assert page.last_fix_record["pre_fix_status"] == "contradicted"
+        assert page.last_fix_record["pre_fix_contradiction_note"] == \
+            "Sources disagree on the inventor."
+
+    async def test_rollback_restores_content_status_and_note(self, tmp_path):
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        store, audit_db, ctx = self._wiki(tmp_path)
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="phone", to_state="active", reason="lint passed",
+        )
+        assert transition["success"] is True
+        assert store.read_page("phone").status == "active"
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "contradicted"
+        assert page.contradiction_note == "Sources disagree on the inventor."
+        assert page.last_fix_record is None
+        audit_db.set_page_state.assert_awaited_with("phone", "contradicted", "workflow")
+
+    async def test_legacy_record_without_pre_fix_keys_leaves_flags_alone(self, tmp_path):
+        store, _audit, ctx = self._wiki(tmp_path)
+        page = store.read_page("phone")
+        page.content = self._FIXED
+        page.status = "active"
+        page.contradiction_note = None
+        page.last_fix_record = {"slug": "phone", "snapshot_id": 42,
+                                "snapshot_index_before": 1,
+                                "timestamp": "2026-10-01T00:00:00+00:00",
+                                "strategy_name": "Strategy 1"}
+        store.write_page("phone", page)
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "active"
+        assert page.contradiction_note is None
+
+    async def test_rollback_restores_lint_warnings_for_gate_demoted_pages(self, tmp_path):
+        """Gate-demoted pages carry lint_warnings, not contradiction_note.
+
+        contradiction_resolver's step 4f runs tool_run_scoped_lint right after
+        tool_propose_and_apply to verify the fix — that re-lint overwrites
+        page.lint_warnings with the fresh (now-passing) result, entirely
+        outside tool_propose_and_apply's own write. Rollback must still
+        restore the ORIGINAL warnings that justified the gate demotion, not
+        leave the page with the fix's now-empty list.
+        """
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+        original_warnings = [{"claim": "The sky is green.", "concern": "factually wrong"}]
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("gate-page", WikiPage(
+            title="Gate Page", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], lint_warnings=original_warnings,
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="gate-page", new_content=self._FIXED,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+
+        # Simulate step 4f's verify-lint call: it runs a real re-lint and
+        # overwrites lint_warnings with the fresh, now-passing result —
+        # entirely outside tool_propose_and_apply.
+        page = store.read_page("gate-page")
+        page.lint_warnings = []
+        store.write_page("gate-page", page)
+
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="gate-page", to_state="active",
+            reason="resolved by contradiction-resolver — strategy: Strategy 1, attempt 1",
+        )
+        assert transition["success"] is True
+
+        result = await tool_rollback_last_fix(ctx, "gate-page")
+
+        assert result["status"] == "success"
+        page = store.read_page("gate-page")
+        assert page.content.strip() == self._ORIGINAL.strip()
+        assert page.status == "contradicted"
+        assert page.lint_warnings == original_warnings
+
+    async def test_rollback_after_retry_restores_true_original_not_intermediate_attempt(
+        self, tmp_path,
+    ):
+        """contradiction_resolver's step 4h retries tool_propose_and_apply again
+        (new strategy) when scoped lint fails after an applied attempt. A second
+        call must chain onto the FIRST attempt's pre-fix snapshot/status/note,
+        not re-snapshot the already-rewritten (intermediate) content — otherwise
+        rollback undoes only the last attempt, landing on a still-wrong
+        intermediate rewrite instead of the true pre-contradiction original.
+
+        Uses the real AuditDB (not a mock) because the bug lives in the
+        interaction between snapshot_if_changed's dedup and list_page_snapshots'
+        id-ordering across more than one write — a fixed-response mock cannot
+        exercise that.
+        """
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("phone", WikiPage(
+            title="Phone", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], contradiction_note="Sources disagree on the inventor.",
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        attempt_1_content = (
+            "# Phone\n\n## History\n\nThe telephone was invented by Bell in 1876, "
+            "per Source A.\n"
+        )
+
+        asyncio.create_task(_auto_confirm(ctx))
+        attempt_1 = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=attempt_1_content,
+            strategy_name="Strategy 1", rationale="correct the claim (attempt 1)",
+        )
+        assert attempt_1["applied"] is True
+
+        asyncio.create_task(_auto_confirm(ctx))
+        attempt_2 = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 2", rationale="correct the claim (attempt 2)",
+        )
+        assert attempt_2["applied"] is True
+
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="phone", to_state="active",
+            reason="resolved by contradiction-resolver — strategy: Strategy 2, attempt 2",
+        )
+        assert transition["success"] is True
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip(), (
+            f"Expected the true pre-contradiction original, got: {page.content!r}"
+        )
+        assert page.status == "contradicted"
+        assert page.contradiction_note == "Sources disagree on the inventor."
+        assert page.last_fix_record is None
