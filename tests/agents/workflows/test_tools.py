@@ -1842,3 +1842,67 @@ class TestRollbackRestoresLifecycleFlags:
         assert page.content.strip() == self._ORIGINAL.strip()
         assert page.status == "active"
         assert page.contradiction_note is None
+
+    async def test_rollback_after_retry_restores_true_original_not_intermediate_attempt(
+        self, tmp_path,
+    ):
+        """contradiction_resolver's step 4h retries tool_propose_and_apply again
+        (new strategy) when scoped lint fails after an applied attempt. A second
+        call must chain onto the FIRST attempt's pre-fix snapshot/status/note,
+        not re-snapshot the already-rewritten (intermediate) content — otherwise
+        rollback undoes only the last attempt, landing on a still-wrong
+        intermediate rewrite instead of the true pre-contradiction original.
+
+        Uses the real AuditDB (not a mock) because the bug lives in the
+        interaction between snapshot_if_changed's dedup and list_page_snapshots'
+        id-ordering across more than one write — a fixed-response mock cannot
+        exercise that.
+        """
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("phone", WikiPage(
+            title="Phone", tags=[], content=self._ORIGINAL, status="contradicted",
+            confidence="", sources=[], contradiction_note="Sources disagree on the inventor.",
+        ))
+        audit_db = AuditDB(tmp_path / "audit.db")
+        await audit_db.init()
+        ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+        attempt_1_content = (
+            "# Phone\n\n## History\n\nThe telephone was invented by Bell in 1876, "
+            "per Source A.\n"
+        )
+
+        asyncio.create_task(_auto_confirm(ctx))
+        attempt_1 = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=attempt_1_content,
+            strategy_name="Strategy 1", rationale="correct the claim (attempt 1)",
+        )
+        assert attempt_1["applied"] is True
+
+        asyncio.create_task(_auto_confirm(ctx))
+        attempt_2 = await tool_propose_and_apply(
+            ctx, slug="phone", new_content=self._FIXED,
+            strategy_name="Strategy 2", rationale="correct the claim (attempt 2)",
+        )
+        assert attempt_2["applied"] is True
+
+        from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+        transition = await tool_transition_lifecycle_state(
+            ctx, slug="phone", to_state="active",
+            reason="resolved by contradiction-resolver — strategy: Strategy 2, attempt 2",
+        )
+        assert transition["success"] is True
+
+        result = await tool_rollback_last_fix(ctx, "phone")
+
+        assert result["status"] == "success"
+        page = store.read_page("phone")
+        assert page.content.strip() == self._ORIGINAL.strip(), (
+            f"Expected the true pre-contradiction original, got: {page.content!r}"
+        )
+        assert page.status == "contradicted"
+        assert page.contradiction_note == "Sources disagree on the inventor."
+        assert page.last_fix_record is None

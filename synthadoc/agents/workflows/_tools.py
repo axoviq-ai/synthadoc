@@ -1081,17 +1081,30 @@ async def tool_propose_and_apply(
     )
     confirmed = result.get("confirmed", False)
     if confirmed:
-        await ctx.audit_db.snapshot_if_changed(
-            slug, page.content, triggered_by=strategy_name, reason=rationale,
-        )
-        snapshots = await ctx.audit_db.list_page_snapshots(slug)
-        snapshot_id = snapshots[0]["id"] if snapshots else None
+        existing_record = page.last_fix_record
+        if existing_record:
+            # A retry within the same resolution episode (contradiction_resolver's
+            # step 4h calls tool_propose_and_apply again with a new strategy when
+            # scoped lint fails after an applied attempt). Chain onto the FIRST
+            # attempt's snapshot/status/note instead of re-snapshotting the
+            # already-rewritten content — otherwise rollback would only undo the
+            # most recent attempt, landing on a still-wrong intermediate rewrite
+            # rather than the true pre-episode original.
+            snapshot_id = existing_record.get("snapshot_id")
+            pre_fix_status = existing_record.get("pre_fix_status")
+            pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
+        else:
+            await ctx.audit_db.snapshot_if_changed(
+                slug, page.content, triggered_by=strategy_name, reason=rationale,
+            )
+            snapshots = await ctx.audit_db.list_page_snapshots(slug)
+            snapshot_id = snapshots[0]["id"] if snapshots else None
 
-        # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
-        # and by the caller's later tool_transition_lifecycle_state) so
-        # tool_rollback_last_fix can restore them along with the content.
-        pre_fix_status = page.status
-        pre_fix_contradiction_note = page.contradiction_note
+            # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
+            # and by the caller's later tool_transition_lifecycle_state) so
+            # tool_rollback_last_fix can restore them along with the content.
+            pre_fix_status = page.status
+            pre_fix_contradiction_note = page.contradiction_note
 
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
