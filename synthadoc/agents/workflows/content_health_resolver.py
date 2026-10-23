@@ -14,7 +14,8 @@ from typing import Awaitable, Callable
 
 from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
-from synthadoc.agents.workflows._tools import tool_confirm, tool_notify, tool_rollback_last_fix
+from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
+from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
 from synthadoc.agents.workflows.tools.content_health_tools import (
     SEVERITY_ORDER,
     tool_apply_content_health_fix,
@@ -245,22 +246,33 @@ def _format_fix_list(fixes: list[dict]) -> str:
 
 
 async def _rollback_with_fallback(ctx: WorkflowContext, slug: str) -> dict:
-    """Roll back *slug*'s content-health fix, or its generic last fix if it has none.
+    """Roll back *slug*'s content-health fix, falling back to its generic last
+    fix, and finally to an orphan-resolver host-page lookup.
 
     Fast-path routing sends every "roll back X" chat message here (this
-    workflow's MATCH_RE claims "roll back"), even when the page was last
-    changed by contradiction_resolver / orphan_resolver through
-    tool_propose_and_apply.  When there is no content-health fix record but
-    the page carries a generic last_fix_record, delegate to
-    tool_rollback_last_fix so the user's rollback still happens.
+    workflow's MATCH_RE claims the bare "roll back" pattern, so it wins the
+    registry-order race against every other workflow's rollback), even when
+    the page was last changed by contradiction_resolver or orphan_resolver
+    through tool_propose_and_apply — or when *slug* is itself an orphan whose
+    fix actually lives on a different page (the one that was edited to link
+    to it; orphan resolution never writes to the orphan page itself).
+
+    tool_rollback_orphan_fix is a strict superset of tool_rollback_last_fix:
+    it tries *slug* directly first (covering the contradiction_resolver case
+    exactly as before), then falls back to a linked_by lookup (covering the
+    orphan_resolver case) only if that direct attempt also fails. So this
+    delegates to it unconditionally rather than checking page.last_fix_record
+    first — an orphan page has neither a content-health nor a generic record
+    of its own, and would otherwise short-circuit to the original error
+    before ever trying the host-page lookup.
     """
     result = await tool_rollback_content_health_fix(ctx, slug)
     if result.get("status") != "error":
         return result
     page = ctx.store.read_page(slug) if ctx.store is not None else None
-    if page is None or page.content_health_fix_record or not page.last_fix_record:
+    if page is None or page.content_health_fix_record:
         return result
-    fallback = await tool_rollback_last_fix(ctx, slug)
+    fallback = await tool_rollback_orphan_fix(ctx, slug)
     if "message" not in fallback and fallback.get("error"):
         fallback = dict(fallback, message=fallback["error"])
     return fallback
