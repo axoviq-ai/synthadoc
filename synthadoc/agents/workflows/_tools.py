@@ -1157,18 +1157,18 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
     existed leave the corresponding field(s) untouched.
     """
     if ctx.store is None:
-        return {"status": "error", "error": "No store available"}
+        return {"status": ToolStatus.ERROR, "error": "No store available"}
     page = ctx.store.read_page(slug)
     if page is None:
-        return {"status": "error", "error": f"Page '{slug}' not found"}
+        return {"status": ToolStatus.ERROR, "error": f"Page '{slug}' not found"}
     if not page.last_fix_record:
-        return {"status": "error", "error": f"No prior fix recorded for '{slug}'"}
+        return {"status": ToolStatus.ERROR, "error": f"No prior fix recorded for '{slug}'"}
 
     record = page.last_fix_record
     result = await restore_page_snapshot(
         ctx, slug, record.get("snapshot_id"), record.get("snapshot_index_before", 1),
     )
-    if result["status"] != "success":
+    if result["status"] != ToolStatus.SUCCESS:
         return result
 
     page = ctx.store.read_page(slug)
@@ -1193,7 +1193,7 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
         except Exception:  # noqa: BLE001
             pass
     return {
-        "status": "success",
+        "status": ToolStatus.SUCCESS,
         "slug": slug,
         "rolled_back_to_snapshot": result["resolved_index"],
         "message": (
@@ -1211,7 +1211,7 @@ async def tool_list_recent_fixes(ctx: "WorkflowContext") -> dict:
     rolled back since.
     """
     if ctx.store is None:
-        return {"status": "error", "fixes": []}
+        return {"status": ToolStatus.ERROR, "fixes": []}
     fixes = []
     for slug in ctx.store.list_pages():
         page = ctx.store.read_page(slug)

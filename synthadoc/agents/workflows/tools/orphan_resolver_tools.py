@@ -14,7 +14,7 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.lint_agent import find_orphan_slugs
-from synthadoc.agents.workflows._tools import tool_confirm, tool_rollback_last_fix
+from synthadoc.agents.workflows._tools import ToolStatus, tool_confirm, tool_rollback_last_fix
 from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
@@ -154,11 +154,11 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
             is nothing to roll back at all if orphan_slug was never resolved.
     """
     direct = await tool_rollback_last_fix(ctx, orphan_slug)
-    if direct.get("status") == "success":
+    if direct.get("status") == ToolStatus.SUCCESS:
         return direct
 
     no_record = {
-        "status": "error",
+        "status": ToolStatus.ERROR,
         "error": f"No fix record for '{orphan_slug}' — nothing to roll back.",
     }
 
@@ -175,7 +175,7 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
         return no_record
     if len(candidates) > 1:
         return {
-            "status": "error",
+            "status": ToolStatus.ERROR,
             "error": (
                 f"No fix record for '{orphan_slug}' — nothing to roll back. "
                 f"More than one linking page has a pending fix "
@@ -186,7 +186,7 @@ async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> 
 
     host_slug = candidates[0]
     result = await tool_rollback_last_fix(ctx, host_slug)
-    if result.get("status") == "success":
+    if result.get("status") == ToolStatus.SUCCESS:
         result = dict(result, message=(
             f"To move '{orphan_slug}' back to orphan status, rolled back "
             f"'{host_slug}' — that's the page that was edited to add the "
