@@ -194,10 +194,12 @@ STEP 4 — Final summary (plain text only):
   ⚠️ Dismissed — requires human editing (N pages):
   - **<slug>**: <issue types> → <what a human editor must do>
   ...
-  ⏭ Skipped (N pages): <slug>, ...
+  ⏭ Skipped (N pages): <slug>, ..."
 
-  Say 'list content health fixes' to review all changes.
-  Say 'roll back <slug>' to undo any individual page."
+  If Fixed (N pages) > 0, append these two lines after the summary above —
+  there is nothing to review or undo when nothing was actually written:
+    Say 'list content health fixes' to review all changes.
+    Say 'roll back <slug>' to undo any individual page.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -356,8 +358,15 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         if intent == "rollback":
             if slug:
                 return (
-                    f"The user wants to roll back the content health fix for page '{slug}'.\n"
-                    f"Call rollback_content_health_fix(slug='{slug}') and report the result as plain text.\n"
+                    f"The user wants to roll back the most recent recorded fix for page "
+                    f"'{slug}'.\n"
+                    f"Call rollback_content_health_fix(slug='{slug}') and report the result "
+                    f"as plain text using the TOOL'S OWN wording, not your own paraphrase. "
+                    f"This page's last recorded fix may NOT be a content-health fix — "
+                    f"rollback_content_health_fix falls back to the page's generic last fix "
+                    f"(from the contradiction resolver or orphan resolver) when it has no "
+                    f"content-health-specific record. Do not say 'content health fix' unless "
+                    f"the tool's own result actually says so.\n"
                     "Output plain text only — do not call any other tools."
                 )
             # "roll back" without a specific slug → list fixes so user can choose

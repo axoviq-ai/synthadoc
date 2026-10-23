@@ -42,6 +42,36 @@ async def test_system_prompt_contains_tool_inventory():
         assert tool_name in prompt, f"Missing tool '{tool_name}' in system prompt"
 
 
+@pytest.mark.asyncio
+async def test_step4_rollback_hint_is_conditioned_on_actually_fixing_something():
+    """STEP 4's closing 'list/roll back' lines must be conditional on Fixed > 0.
+
+    When every page was dismissed (needs human editing) or skipped, no
+    snapshot exists for this run — telling the user to "review all changes"
+    or "roll back <slug>" is misleading when nothing was written.
+    """
+    wf = ContentHealthResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "If Fixed (N pages) > 0, append" in prompt, (
+        "STEP 4's rollback/list-fixes closing lines must be gated on Fixed > 0, "
+        "not shown unconditionally in the final-summary template"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rollback_instruction_does_not_presuppose_content_health_fix():
+    """rollback_content_health_fix falls back to a page's generic last_fix_record
+    (from contradiction_resolver / orphan_resolver) when it has no
+    content-health-specific record. The model must report using the tool's
+    own wording, not assume/say "content health fix" for every rollback.
+    """
+    from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow as WF
+    wf = WF()
+    msg = wf.build_initial_message("roll back some-page")
+    assert "tool's own wording" in msg or "TOOL'S OWN wording" in msg
+    assert "may NOT be a content-health fix" in msg
+
+
 def test_get_tool_fns_returns_expected_tools():
     ctx = MagicMock()
     wf = ContentHealthResolverWorkflow()

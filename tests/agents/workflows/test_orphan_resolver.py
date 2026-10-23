@@ -809,6 +809,24 @@ async def test_system_prompt_step5_uses_bold_headers():
     )
 
 
+async def test_system_prompt_step5_mentions_rollback_when_resolved():
+    """Step 5 must tell the user resolved fixes can be rolled back.
+
+    orphan_resolver writes through tool_propose_and_apply, the same shared
+    mechanism contradiction_resolver uses — so every resolved orphan has a
+    snapshot and can be undone with 'roll back <slug>'. Without this line in
+    the final-summary instructions, the model never tells the user that
+    capability exists, even though the tool itself (tool_rollback_last_fix)
+    works fine if they happen to ask for it anyway.
+    """
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "roll back" in prompt.lower(), (
+        "Step 5 instructions must mention rolling back resolved fixes"
+    )
+
+
 async def test_system_prompt_step5_no_bullet_character():
     """Step 5 format template must not use Unicode bullet characters."""
     from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
@@ -880,3 +898,43 @@ def test_cli_summary_uses_bold_headers_and_dash_list():
         "Summary must use '- slug' (no indent) not '  - slug' for consistency "
         "with the contradiction-resolver format"
     )
+
+
+def test_cli_summary_mentions_rollback_only_when_something_resolved():
+    """run_for_cli_provider's mirrored summary appends the rollback hint only
+    when resolved_list is non-empty — there's nothing to roll back otherwise.
+
+    This reproduces the summary-building snippet the same way
+    test_cli_summary_uses_bold_headers_and_dash_list does; it is not a call
+    into run_for_cli_provider itself (that needs a full ctx/provider harness).
+    """
+    def _build_summary(resolved_list, unresolved_list, skipped_list):
+        parts: list[str] = ["**Orphan Resolver — Complete**"]
+        if resolved_list:
+            resolved_lines = [f"**✅ Resolved ({len(resolved_list)}):**"]
+            for slug, linked_by in resolved_list:
+                linkers = ", ".join(linked_by)
+                resolved_lines.append(f"- {slug} (linked from {linkers})")
+            parts.append("\n".join(resolved_lines))
+        if unresolved_list:
+            unresolved_lines = [f"**⚠ Unresolved ({len(unresolved_list)}):**"]
+            for slug in unresolved_list:
+                unresolved_lines.append(f"- {slug} (4 strategies exhausted — see notices above)")
+            parts.append("\n".join(unresolved_lines))
+        if skipped_list:
+            skipped_lines = [f"**⏭ Skipped ({len(skipped_list)}):**"]
+            for slug in skipped_list:
+                skipped_lines.append(f"- {slug}")
+            parts.append("\n".join(skipped_lines))
+        if resolved_list:
+            parts.append(
+                "A snapshot is saved before each change — "
+                "say 'roll back [page]' to undo."
+            )
+        return "\n\n".join(parts)
+
+    with_fix = _build_summary([("alan-turing", ["grace-hopper"])], [], [])
+    assert "say 'roll back [page]' to undo" in with_fix
+
+    no_fix = _build_summary([], ["babbage"], ["colossus"])
+    assert "roll back" not in no_fix.lower()

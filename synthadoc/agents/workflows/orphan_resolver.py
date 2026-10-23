@@ -223,6 +223,11 @@ STEP 5 — Final summary (markdown — ends the loop)
   (replace N with the actual count of remaining unprocessed orphans):
     _To process the remaining N orphans, run the **orphan resolver** again._
 
+  If resolved_list is non-empty, append this line after the summary (and after
+  the "remaining orphans" line above, if both apply) — every resolved fix is
+  snapshotted and can be undone this way:
+    A snapshot is saved before each change — say 'roll back [page]' to undo.
+
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
 • Strategy transitions are SILENT: when advancing to the next strategy because no
@@ -468,6 +473,12 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             for slug in skipped_list:
                 skipped_lines.append(f"- {slug}")
             parts.append("\n".join(skipped_lines))
+
+        if resolved_list:
+            parts.append(
+                "A snapshot is saved before each change — "
+                "say 'roll back [page]' to undo."
+            )
 
         summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
