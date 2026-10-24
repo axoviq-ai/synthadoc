@@ -3334,7 +3334,7 @@ Edge weight is a composite signal from two sources:
 
 Most edges are `mixed` (have both types). Pure `co_source` edges surface hidden relationships — pages compiled from the same source document are linked immediately after ingest, before any wikilinks are created. `edge_type` is stored on each edge so the web UI can render co-source edges with a different visual style.
 
-Cluster IDs are assigned by Louvain community detection — pages that link densely to each other end up in the same cluster.
+Cluster IDs are assigned by Louvain community detection — pages that link densely to each other end up in the same cluster. Louvain runs with a fixed seed, so rebuilding an unchanged wiki keeps its cluster IDs (and colours). Co-source pairs are found through an index of pages per source, so the build cost follows how many pages each source produced, not every pair of pages in the wiki.
 
 ### REST API
 
@@ -3358,9 +3358,18 @@ Cluster IDs are assigned by Louvain community detection — pages that link dens
 
 When the graph tables are empty (first call after upgrade, or before the first lint run), the server returns `{"status": "computing"}` and starts a background build immediately. The web UI polls every 2 seconds and renders the graph when the status becomes `"ready"`.
 
+Two views keep large wikis drawable (`synthadoc/core/graph_views.py`); both return the same `status` / `node_count` / `edge_count` / `cluster_count` summary:
+
+- **`GET /graph?view=clusters`** — one entry per cluster, largest first: `{id, size, label, top_pages, types}`, where `label` joins the titles of the cluster's three most-connected pages; plus `links` between clusters: `{from, to, weight, count}` (summed weight and number of page links).
+- **`GET /graph?cluster=N`** — cluster *N*'s pages, each with `degree` (its link count across the whole graph), and the links among them, keeping each page's 3 strongest; `edge_total` is the number before thinning.
+
+Enriching nodes reads every page's frontmatter, so it runs in a worker thread and does not hold up other requests.
+
 ### Web UI
 
-The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
+The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Wikis with more than 300 pages open on the **cluster overview** instead: one bubble per cluster (area ∝ pages, labelled with its main pages), and each cluster's strongest links; clicking a bubble draws that cluster's pages, and **← All clusters** returns. Smaller wikis draw every page, as before. Measured on synthetic wikis, the 5,000-page graph went from a 34 s load at under 1 frame per second (7.6 s freezes) to the overview in about 6 s at 60 fps, with a cluster opening in about 2 s.
+
+In the page view, nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
 
 Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 

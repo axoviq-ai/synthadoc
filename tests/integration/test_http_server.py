@@ -482,6 +482,45 @@ def test_get_graph_node_fields(tmp_wiki, seeded_graph, reset_graph_flag):
     assert isinstance(node["cluster_id"], int)
 
 
+def _graph_response(tmp_wiki, url):
+    from fastapi.testclient import TestClient
+
+    fake_page = MagicMock()
+    fake_page.title = "Page"
+    fake_page.type = "concept"
+    fake_page.status = "active"
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+            return client.get(url)
+
+
+def test_get_graph_cluster_overview(tmp_wiki, seeded_graph, reset_graph_flag):
+    """?view=clusters returns clusters and the links between them, not every page."""
+    resp = _graph_response(tmp_wiki, "/graph?view=clusters")
+    data = resp.json()
+    assert data["status"] == "ready" and data["node_count"] == 3
+    assert "nodes" not in data and "edges" not in data
+    assert [(c["id"], c["size"]) for c in data["clusters"]] == [(0, 2), (1, 1)]
+    assert data["links"] == [{"from": 0, "to": 1, "weight": 1, "count": 1}]
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_get_graph_single_cluster(tmp_wiki, seeded_graph, reset_graph_flag):
+    """?cluster=N returns that cluster's pages and links, with each page's full degree."""
+    data = _graph_response(tmp_wiki, "/graph?cluster=0").json()
+    assert data["cluster_id"] == 0
+    assert sorted(n["slug"] for n in data["nodes"]) == ["alpha", "beta"]
+    assert {n["slug"]: n["degree"] for n in data["nodes"]} == {"alpha": 1, "beta": 2}
+    assert [(e["from"], e["to"]) for e in data["edges"]] == [("alpha", "beta")]
+
+
+def test_get_graph_default_response_is_unchanged(tmp_wiki, seeded_graph, reset_graph_flag):
+    """Plain /graph (used by the Obsidian plugin) keeps its shape."""
+    data = _graph_response(tmp_wiki, "/graph").json()
+    assert set(data) == {"status", "node_count", "edge_count", "cluster_count", "nodes", "edges"}
+
+
 def test_get_graph_returns_no_store_header(tmp_wiki, seeded_graph, reset_graph_flag):
     """GET /graph must include Cache-Control: no-store in the response headers."""
     from fastapi.testclient import TestClient

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { useState } from "react";
 
-interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
+interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; degree?: number; }
 interface GraphEdge { from: string; to: string; weight: number; }
 
 interface Props {
@@ -70,7 +70,8 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
     if (!node) return null;
 
     const displayTitle = node.title || node.slug;
-    const connections = edges.filter(e => e.from === node.slug || e.to === node.slug).length;
+    // A cluster view carries only the strongest links, so it sends each page's full count.
+    const connections = node.degree ?? edges.filter(e => e.from === node.slug || e.to === node.slug).length;
     const density = totalNodes > 1 ? connections / (totalNodes - 1) : 0;
     const connStrength = connections === 0 ? "Isolated"
         : connections < 3 ? "Sparse"
