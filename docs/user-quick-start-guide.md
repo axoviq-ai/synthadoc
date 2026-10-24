@@ -2758,7 +2758,40 @@ After lint resolves dangling links and the graph is rebuilt, the same wiki becom
 
 ### Large wikis: cluster overview
 
-A wiki with more than 300 pages is too dense to draw page by page, so the Graph tab opens on a **cluster overview**: one bubble per cluster, sized by its number of pages and labelled with its most-connected pages, joined by the strongest links between clusters. Below the graph, a list names every cluster with its page count, largest first. Click a bubble or a list entry to see that cluster's pages (each page shows its three strongest links); **← All clusters** takes you back. Smaller wikis show every page, as before.
+The demo's 110 pages fit comfortably on screen. A wiki with thousands of pages does not: drawing every page and link at once means animating tens of thousands of shapes, and the result is too dense to read. So a wiki with **more than 300 pages** opens on a **cluster overview**, and you drill into one cluster at a time. Smaller wikis show every page, as above.
+
+![Cluster overview of a 5,000-page wiki — 24 cluster bubbles sized by page count, the strongest links between clusters, and a clickable list of clusters below the graph](png/synthadoc-graph-cluster-overview.png)
+
+*A 5,000-page test wiki built from Wikipedia articles (titles past the first 1,985 repeat, hence "part 2" and "part 3"): 100,801 links summarised as 24 clusters.*
+
+**Reading the overview:**
+
+- **Each bubble is a cluster**: a group of pages that link densely to each other, found by the same Louvain clustering that colours the page view. Its size and the number after its name give its page count.
+- **The name** joins the titles of the cluster's most-connected pages, so you can tell what it is about at a glance.
+- **Lines between bubbles** are the strongest connections between clusters; a thicker line means more links between their pages.
+- **The list below the graph** names every cluster with its page count, largest first. Hover an entry to see its full name.
+- Colours stay the same from one lint run to the next, as long as the wiki has not changed much.
+
+**Drill in:** click a bubble, or an entry in the list, to open that cluster.
+
+![Inside one 268-page cluster — every page with its strongest links, and a selected page's detail panel](png/synthadoc-graph-cluster-detail.png)
+
+*Inside a cluster: all of its pages, each with its three strongest links (605 here) rather than every link, so the drawing stays readable. Click a page for the usual detail panel; its connection count includes links to other clusters.*
+
+Everything from the page view works here: the type filter, zoom and pan, dragging pages, and **Ask about this →**. Click **← All clusters** to go back.
+
+**Speed.** Measured in a browser on test wikis of 500 to 5,000 pages:
+
+| Pages | Before: graph appears | Before: smoothness | Now: overview appears | Now: smoothness |
+| ---: | ---: | ---: | ---: | ---: |
+| 500 | 1.7 s | 40 fps | 0.8 s | 60 fps |
+| 1,000 | 5.2 s | 12 fps | 1.3 s | 60 fps |
+| 2,000 | 10.1 s | 2 fps | 2.8 s | 60 fps |
+| 5,000 | 34 s, then a frozen tab | 0 fps | about 6 s | 60 fps |
+
+Opening a cluster takes about 2 seconds. The server side got faster too: page frontmatter is parsed with the C YAML parser (libyaml) when it is available — PyYAML's prebuilt packages include it — about 7× faster, which helps every feature that reads pages.
+
+> The **Obsidian graph panel** (below) does not use the cluster overview yet: on wikis with more than 300 pages it shows the 300 most-connected pages. Use the web UI to explore all of a large wiki.
 
 ### Click a node to query it
 

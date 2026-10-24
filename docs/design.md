@@ -682,6 +682,8 @@ class BaseSkill(ABC):
 
 Plain Markdown. One file per page. Filename = slug + `.md`. Frontmatter is YAML between `---` delimiters. Body uses standard Markdown with `[[wikilinks]]` for internal references.
 
+Frontmatter is parsed with `synthadoc.utils.load_yaml()`, which uses PyYAML's libyaml-backed `CSafeLoader` when it is available (PyYAML's prebuilt wheels include it) and the pure-Python `SafeLoader` otherwise. Both refuse Python object tags and give identical results; the C loader is about 7× faster, which matters for whole-wiki scans (graph enrichment, status, lint) at thousands of pages.
+
 `WikiStorage.write_page()` drops C0 control characters other than tab, newline and carriage return from the body before writing. A NUL in a page (one replaced `&` in a shipped demo page) makes `grep` and editors treat the file as binary; a test keeps them out of every shipped demo page.
 
 ### audit.db — Immutable audit trail
@@ -3378,7 +3380,22 @@ Enriching nodes reads every page's frontmatter, so it runs in a worker thread an
 
 ### Web UI
 
-The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Wikis with more than 300 pages open on the **cluster overview** instead: one bubble per cluster (area ∝ pages, labelled with its main pages), and each cluster's strongest links, with a list of clusters (name and page count) below; clicking a bubble or list entry draws that cluster's pages, and **← All clusters** returns. Smaller wikis draw every page, as before. Measured on synthetic wikis, the 5,000-page graph went from a 34 s load at under 1 frame per second (7.6 s freezes) to the overview in about 6 s at 60 fps, with a cluster opening in about 2 s.
+The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Wikis with more than 300 pages (`CLUSTER_VIEW_MIN_NODES`, the same cap the Obsidian panel uses) open on the **cluster overview** instead: one bubble per cluster (area ∝ pages, labelled with its main pages), and each cluster's strongest links, with a list of clusters (name and page count) below; clicking a bubble or list entry draws that cluster's pages, and **← All clusters** returns. Smaller wikis draw every page, as before. The UI requests `/graph?view=clusters` first and fetches the full `/graph` only when the wiki is at or under the cap, so a large wiki never sends every page and link to the browser.
+
+![Cluster overview of a 5,000-page wiki](png/synthadoc-graph-cluster-overview.png)
+
+**Why:** drawing every page stops working at a few thousand pages. At 5,000 pages and ~100,000 links the page view animated ~115,000 SVG elements; the tab froze for seconds at a time and the result was too dense to read. The overview draws one shape per cluster (about 100 elements at 5,000 pages), and a cluster view keeps each page's 3 strongest links.
+
+**Measured** in headless Chromium on synthetic wikis (Wikipedia titles grouped by category, random links within each category), from opening the Graph tab:
+
+| Pages | Page view: appears | Page view: fps | Page view: longest freeze | Overview: appears | Overview: fps |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 1.7 s | 40 | 0.1 s | 0.8 s | 60 |
+| 1,000 | 5.2 s | 12 | 0.5 s | 1.3 s | 60 |
+| 2,000 | 10.1 s | 2 | 1.5 s | 2.8 s | 60 |
+| 5,000 | 34.2 s | 0 | 7.6 s | ~6 s | 60 |
+
+Opening a 289-page cluster takes about 2 s at 60 fps. At 5,000 pages the `/graph?view=clusters` request itself takes ~1.4 s; most of the remaining time is `/lifecycle/status`, which the UI requests at the same moment and which reads every page.
 
 In the page view, nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
 
