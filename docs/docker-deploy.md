@@ -571,7 +571,7 @@ docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-com
 
 ### Semantic search
 
-The image includes [semantic search](design.md#semantic-search) (`fastembed` and the ~65 MB embedding model, built in so containers never download it). It is off by default; turn it on in `config.toml` and restart:
+The image includes [semantic search](design.md#semantic-search) (`fastembed` and the ~65 MB embedding model, built in so containers never download it). It is off by default (the server logs a one-line reminder at startup that it is available); turn it on in `config.toml` and restart:
 
 ```toml
 [search]

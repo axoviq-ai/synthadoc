@@ -147,6 +147,36 @@ async def test_init_without_vectors_never_embeds(tmp_wiki):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("installed", [True, False])
+async def test_init_hints_at_semantic_search_only_when_installed_but_off(tmp_wiki, caplog, installed):
+    import logging
+    from unittest.mock import patch
+
+    orch = _vector_orch(tmp_wiki, False)
+    with patch("synthadoc.core.orchestrator.fastembed_installed", return_value=installed), \
+         caplog.at_level(logging.INFO, logger="synthadoc.core.orchestrator"):
+        await orch.init()
+    await orch.close()
+    hinted = any("Semantic search is available but off" in r.message for r in caplog.records)
+    assert hinted is installed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [True, "auto"])
+async def test_init_never_hints_when_vectors_are_requested(tmp_wiki, caplog, mode):
+    import logging
+    from unittest.mock import patch
+
+    orch = _vector_orch(tmp_wiki, mode)
+    with patch.dict("sys.modules", {"fastembed": None}), \
+         patch("synthadoc.core.orchestrator.fastembed_installed", return_value=True), \
+         caplog.at_level(logging.INFO, logger="synthadoc.core.orchestrator"):
+        await orch.init()
+    await orch.close()
+    assert not any("available but off" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
     """_wiki_epoch must increment after a successful ingest job."""
     from synthadoc.core.orchestrator import Orchestrator

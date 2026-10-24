@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import logging
 import os
 import re
@@ -110,6 +111,11 @@ def embed_model_cache_dir() -> Path:
     ~/.synthadoc/models. (fastembed's own default is the system temp folder,
     which the OS clears, forcing a 65 MB re-download.)"""
     return Path(os.environ.get("FASTEMBED_CACHE_PATH") or Path.home() / ".synthadoc" / "models")
+
+
+def fastembed_installed() -> bool:
+    """True when fastembed can be imported (checked without importing it)."""
+    return importlib.util.find_spec("fastembed") is not None
 
 
 def load_embed_model():

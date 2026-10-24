@@ -19,7 +19,7 @@ from synthadoc.observability.telemetry import get_tracer, setup_telemetry
 from synthadoc.providers import make_provider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.search import HybridSearch
+from synthadoc.storage.search import HybridSearch, fastembed_installed
 from synthadoc.storage.wiki import WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -130,6 +130,10 @@ class Orchestrator:
                 logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — "
                             "syncing embeddings in the background, BM25 only until done")
                 self._search.schedule_embedding_sync()
+        elif fastembed_installed():
+            # e.g. the Docker image, which ships the model: say how to turn it on.
+            logger.info("Semantic search is available but off. To turn it on, set "
+                        "vector = true under [search] in .synthadoc/config.toml and restart.")
 
     async def close(self) -> None:
         await self._search.close()
