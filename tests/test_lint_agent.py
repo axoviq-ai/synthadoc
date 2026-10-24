@@ -226,6 +226,32 @@ def test_build_graph_co_source_two_shared(tmp_path):
     assert xy["edge_type"] == "co_source"
 
 
+def test_build_graph_co_source_pairs_every_page_of_a_source(tmp_path):
+    """Every pair of pages compiled from one source is linked; pages sharing no
+    source are not, and each pair's weight counts its own shared sources."""
+    s1, s2 = make_source("h1", "a.pdf"), make_source("h2", "b.pdf")
+    pages = {
+        "p": make_page(content="", sources=[s1]),
+        "q": make_page(content="", sources=[s1, s2]),
+        "r": make_page(content="", sources=[s1, s2]),
+        "lonely": make_page(content="", sources=[make_source("h3", "c.pdf")]),
+    }
+    store = make_store(tmp_path, pages)
+    _, edges = LintAgent(None, store, mock_log_writer())._build_graph()
+    weights = {frozenset((e["from_slug"], e["to_slug"])): e["weight"] for e in edges}
+    assert weights == {frozenset("pq"): 2, frozenset("pr"): 2, frozenset("qr"): 4}
+
+
+def test_build_graph_cluster_ids_are_stable_between_builds(tmp_path):
+    """Louvain runs with a fixed seed, so rebuilding keeps cluster ids (and colours)."""
+    pages = {f"n{i}": make_page(content=" ".join(f"[[n{j}]]" for j in range(10) if j != i and (i < 5) == (j < 5)))
+             for i in range(10)}
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    builds = [agent._build_graph()[0] for _ in range(3)]
+    assert builds[0] == builds[1] == builds[2]
+
+
 def test_build_graph_excludes_archived_pages(tmp_path):
     """Archived pages must not appear as graph nodes on a full rebuild.
 

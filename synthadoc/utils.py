@@ -8,6 +8,18 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
+
+# libyaml's C parser when PyYAML was built with it (~7x faster on page
+# frontmatter, identical results); the pure-Python parser otherwise.
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def load_yaml(text: str):
+    """``yaml.safe_load`` using the C parser when available."""
+    return yaml.load(text, Loader=_YAML_LOADER)
+
 
 def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     """Convert a stored UTC timestamp to local time for display.

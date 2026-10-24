@@ -11,7 +11,7 @@ from typing import Optional
 import yaml
 from filelock import FileLock
 
-from synthadoc.utils import atomic_write_text
+from synthadoc.utils import atomic_write_text, load_yaml
 
 _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "updated", "sources", "orphan",
                        "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
@@ -224,7 +224,7 @@ class WikiStorage:
             parts = raw.split("---", 2)
             if len(parts) >= 3:
                 try:
-                    fm = yaml.safe_load(parts[1]) or {}
+                    fm = load_yaml(parts[1]) or {}
                 except yaml.YAMLError:
                     fm = {}
                 body = parts[2].lstrip("\n")
