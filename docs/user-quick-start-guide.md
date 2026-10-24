@@ -2760,6 +2760,8 @@ After lint resolves dangling links and the graph is rebuilt, the same wiki becom
 
 The demo's 110 pages fit comfortably on screen. A wiki with thousands of pages does not: drawing every page and link at once means animating tens of thousands of shapes, and the result is too dense to read. So a wiki with **more than 300 pages** opens on a **cluster overview**, and you drill into one cluster at a time. Smaller wikis show every page, as above.
 
+The 300 counts the pages in the graph: `active`, `stale` and `contradicted` pages. Drafts, archived pages and system pages (`index`, `dashboard`, `purpose`, `overview`) are left out, so the node count in the Graph tab's header is the number that matters. The limit is fixed; it is not a `config.toml` setting.
+
 ![Cluster overview of a 5,000-page wiki — 24 cluster bubbles sized by page count, the strongest links between clusters, and a clickable list of clusters below the graph](png/synthadoc-graph-cluster-overview.png)
 
 *A 5,000-page test wiki built from Wikipedia articles (titles past the first 1,985 repeat, hence "part 2" and "part 3"): 100,801 links summarised as 24 clusters.*
