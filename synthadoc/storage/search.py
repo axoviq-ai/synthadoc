@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,21 @@ class VectorStore:
 
 
 _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+
+
+def embed_model_cache_dir() -> Path:
+    """Where the embedding model is cached: FASTEMBED_CACHE_PATH if set, else
+    ~/.synthadoc/models. (fastembed's own default is the system temp folder,
+    which the OS clears, forcing a 65 MB re-download.)"""
+    return Path(os.environ.get("FASTEMBED_CACHE_PATH") or Path.home() / ".synthadoc" / "models")
+
+
+def load_embed_model():
+    """Load the embedding model, downloading it into embed_model_cache_dir()
+    the first time. The Docker build calls this to bake the model in."""
+    from fastembed import TextEmbedding
+    return TextEmbedding(_EMBED_MODEL_NAME, cache_dir=str(embed_model_cache_dir()))
+
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 
 # Characters of a page's search text that are embedded: its title, tags and
@@ -212,8 +228,7 @@ class HybridSearch:
 
     def _get_embed_model(self):
         if self._embed_model is None:
-            from fastembed import TextEmbedding
-            self._embed_model = TextEmbedding(_EMBED_MODEL_NAME)
+            self._embed_model = load_embed_model()
         return self._embed_model
 
     def _embed_texts(self, texts: list[str]) -> "np.ndarray":

@@ -200,6 +200,7 @@ def test_corpus_repopulated_after_invalidation(tmp_wiki):
 # ── VectorStore ───────────────────────────────────────────────────────────────
 
 import asyncio
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -461,6 +462,21 @@ def test_get_embed_model_creates_and_caches_model(tmp_wiki):
     with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=mock_te_cls)}):
         assert search._get_embed_model() is search._get_embed_model()
     mock_te_cls.assert_called_once()
+
+
+def test_embed_model_is_cached_under_synthadoc_home_unless_overridden(tmp_wiki, monkeypatch):
+    from synthadoc.storage.search import embed_model_cache_dir
+    monkeypatch.delenv("FASTEMBED_CACHE_PATH", raising=False)
+    assert embed_model_cache_dir() == Path.home() / ".synthadoc" / "models"
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    assert embed_model_cache_dir() == tmp_wiki / "models"
+
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
+                          search_cfg=SearchConfig(vector=True))
+    text_embedding = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}):
+        search._get_embed_model()
+    assert text_embedding.call_args.kwargs["cache_dir"] == str(tmp_wiki / "models")
 
 
 def test_embed_texts_returns_normalised_rows(tmp_wiki):

@@ -3825,7 +3825,7 @@ provider    = "tavily"
 max_results = 20
 
 # Optional: semantic search — BM25 fused with page embeddings
-# (pip install "synthadoc[vectors]"; downloads a ~130 MB model once)
+# (pip install "synthadoc[vectors]"; downloads a ~65 MB model once)
 # [search]
 # vector = true                # or "auto": on whenever fastembed is installed
 # vector_top_candidates = 20   # candidates from each of BM25 and embeddings
