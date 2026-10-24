@@ -19,7 +19,7 @@ from synthadoc.observability.telemetry import get_tracer, setup_telemetry
 from synthadoc.providers import make_provider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.search import HybridSearch
+from synthadoc.storage.search import HybridSearch, page_search_text
 from synthadoc.storage.wiki import WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -167,8 +167,7 @@ class Orchestrator:
         for i, slug in enumerate(to_embed, 1):
             page = self._store.read_page(slug)
             if page:
-                text = f"{page.title} {' '.join(page.tags)} {page.content}"
-                await self._search.embed_page(slug, text)
+                await self._search.embed_page(slug, page_search_text(page))
             if i % 50 == 0:
                 logger.info("Vector migration: %d/%d pages embedded…", i, len(to_embed))
             await asyncio.sleep(0)
@@ -340,8 +339,7 @@ class Orchestrator:
                     for slug in result.pages_created + result.pages_updated:
                         page = self._store.read_page(slug)
                         if page:
-                            text = f"{page.title} {' '.join(page.tags)} {page.content}"
-                            await self._search.embed_page(slug, text)
+                            await self._search.embed_page(slug, page_search_text(page))
                 self._hooks.fire("on_ingest_complete", {
                     "event": "on_ingest_complete", "wiki": str(self._root),
                     "source": source,

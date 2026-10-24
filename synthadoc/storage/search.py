@@ -11,7 +11,7 @@ from typing import Optional
 import aiosqlite
 from rank_bm25 import BM25Okapi
 
-from synthadoc.storage.wiki import WikiStorage
+from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 
 @dataclass
@@ -85,6 +85,11 @@ class VectorStore:
 
 _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
+
+def page_search_text(page: WikiPage) -> str:
+    """Text a page is indexed by, for both BM25 and embeddings."""
+    return f"{page.title} {' '.join(page.tags)} {page.content}"
+
 
 # Only pages in these lifecycle states enter the BM25 corpus.
 # contradicted, archived, and draft pages must not answer queries.
@@ -171,8 +176,7 @@ class HybridSearch:
             page = self._store.read_page(slug)
             if not page or page.status not in _QUERY_STATES:
                 continue
-            text = f"{page.title} {' '.join(page.tags)} {page.content}"
-            tokenized.append(self._tokenize(text))
+            tokenized.append(self._tokenize(page_search_text(page)))
             filtered_slugs.append(slug)
         self._cached_corpus = (filtered_slugs, tokenized)
         return self._cached_corpus
