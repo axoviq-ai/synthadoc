@@ -46,7 +46,8 @@ Configurations:
 | --- | --- |
 | `bm25` | BM25 only — the default today |
 | `rerank` | `[search] vector = true` today: BM25 top 20, re-sorted by embedding similarity |
-| `fusion` | Prototype of the proposed design: BM25 top 20 and embedding top 20 over the whole wiki, merged by reciprocal rank fusion |
+| `rrf` | Prototype: BM25 top 20 and embedding top 20 over the whole wiki, merged by reciprocal rank fusion |
+| `fusion` | Prototype of the proposed design: `rrf`, but when BM25's best score is ≥ 1.05× its second, BM25's top 3 stay on top (protects exact-name lookups) |
 
 Metrics, per query type and wiki size: recall@5/10/20 (share of the right
 pages in the top k), MRR@10 and nDCG@10 (how high they rank), and P50/P95

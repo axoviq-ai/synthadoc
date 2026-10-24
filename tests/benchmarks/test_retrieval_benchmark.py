@@ -336,3 +336,34 @@ def test_write_baseline_replaces_only_the_configs_just_run(tmp_path):
     results = json.loads(path.read_text())["results"]
     assert results == {"wikipedia": {"bm25": {"x": 1}, "rerank": {"x": 2}, "fusion": {"x": 3}},
                        "hotpot": {"bm25": {"x": 4}}}
+
+
+def _results(*scores):
+    from synthadoc.storage.search import SearchResult
+    return [SearchResult(slug=f"p{i}", score=sc, title="", snippet="") for i, sc in enumerate(scores)]
+
+
+def test_keyword_dominates_needs_a_clear_bm25_winner():
+    assert evaluate.keyword_dominates(_results(2.05, 2.0)) is False
+    assert evaluate.keyword_dominates(_results(2.2, 2.0)) is True
+    assert evaluate.keyword_dominates(_results(1.0)) is True
+    assert evaluate.keyword_dominates(_results(1.0, 0.0)) is True
+    assert evaluate.keyword_dominates([]) is False
+
+
+async def test_fusion_pins_bm25_top_hits_when_bm25_dominates(tmp_path):
+    np = pytest.importorskip("numpy")
+    from synthadoc.config import SearchConfig
+    from synthadoc.storage.search import HybridSearch
+
+    wiki_dir = _tiny_wiki(tmp_path)
+    search = HybridSearch(WikiStorage(wiki_dir), tmp_path / "e.db", search_cfg=SearchConfig(vector=False))
+    search._embed_text = lambda text: [0.0, 1.0, 0.0]          # embeddings always prefer unix
+    matrix = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=np.float32)
+    slugs = ["eniac", "tcp-ip", "unix"]
+    plain = evaluate.FusionSearch(search, slugs, matrix)
+    pinned = evaluate.FusionSearch(search, slugs, matrix, pin_keyword_hits=True)
+
+    assert (await plain.hybrid_search(["eniac"], top_n=3))[0].slug == "eniac"     # tie broken by insertion
+    assert (await pinned.hybrid_search(["eniac"], top_n=3))[0].slug == "eniac"
+    assert (await pinned.hybrid_search(["software"], top_n=3))[0].slug == "unix"  # BM25 found nothing

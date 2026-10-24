@@ -30,6 +30,10 @@ WIKI_SIZES = (200, 500, 1000)   # plus the full corpus
 # random stream, so with one seed the subsets would avoid the query pages.
 SUBSET_SEED = 2026
 RRF_K = 60                   # standard reciprocal-rank-fusion constant
+# When BM25's best score beats its second by this factor, its top hits are
+# almost always right (an exact name or term match), so they are kept on top.
+PIN_DOMINANCE = 1.05
+PIN_TOP = 3
 
 
 @dataclass
@@ -38,13 +42,15 @@ class Config:
     search_cfg: SearchConfig
     needs_embeddings: bool = False
     fusion: bool = False
+    pin_keyword_hits: bool = False
 
 
 _VECTOR = SearchConfig(vector=True, vector_top_candidates=CANDIDATE_POOL)
 CONFIGS = {
     "bm25": Config("bm25", SearchConfig(vector=False)),
     "rerank": Config("rerank", _VECTOR, needs_embeddings=True),
-    "fusion": Config("fusion", _VECTOR, needs_embeddings=True, fusion=True),
+    "rrf": Config("rrf", _VECTOR, needs_embeddings=True, fusion=True),
+    "fusion": Config("fusion", _VECTOR, needs_embeddings=True, fusion=True, pin_keyword_hits=True),
 }
 
 
@@ -53,25 +59,30 @@ class FusionSearch:
 
     Runs BM25 and an embedding search over the whole (scoped) wiki side by
     side and merges the two rankings with reciprocal rank fusion, so a page
-    either method finds can surface. Embeddings are held in memory as one
-    matrix. It reuses today's page embeddings (first 512 characters per page);
-    section-level embeddings are not prototyped here.
+    either method finds can surface. With *pin_keyword_hits*, BM25's top
+    PIN_TOP results stay on top when its best score dominates (>= PIN_DOMINANCE
+    times the second), which protects exact name and identifier lookups.
+    Embeddings are held in memory as one matrix. It reuses today's page
+    embeddings (first 512 characters per page); section-level embeddings are
+    not prototyped here.
     """
 
-    def __init__(self, search: HybridSearch, slugs: list[str], matrix) -> None:
+    def __init__(self, search: HybridSearch, slugs: list[str], matrix,
+                 pin_keyword_hits: bool = False) -> None:
         self._search = search
         self._slugs = slugs
         self._matrix = matrix                      # rows L2-normalised
         self._row = {slug: i for i, slug in enumerate(slugs)}
+        self._pin = pin_keyword_hits
 
     @classmethod
-    async def create(cls, search: HybridSearch) -> "FusionSearch":
+    async def create(cls, search: HybridSearch, pin_keyword_hits: bool = False) -> "FusionSearch":
         import numpy as np
         stored = await search._vector_store.get_all()
         slugs = sorted(stored)
         matrix = np.array([stored[s] for s in slugs], dtype=np.float32)
         matrix /= np.linalg.norm(matrix, axis=1, keepdims=True).clip(min=1e-12)
-        return cls(search, slugs, matrix)
+        return cls(search, slugs, matrix, pin_keyword_hits)
 
     def _corpus(self):
         return self._search._corpus()
@@ -86,14 +97,27 @@ class FusionSearch:
 
     async def hybrid_search(self, query_terms: list[str], top_n: int = 10,
                             scoped_slugs: list[str] | None = None) -> list[SearchResult]:
-        keyword = [r.slug for r in self._search.bm25_search(query_terms, CANDIDATE_POOL, scoped_slugs)]
+        bm25 = self._search.bm25_search(query_terms, CANDIDATE_POOL, scoped_slugs)
+        keyword = [r.slug for r in bm25]
         semantic = self._vector_ranking(" ".join(query_terms), scoped_slugs, CANDIDATE_POOL)
         fused: dict[str, float] = defaultdict(float)
         for ranking in (keyword, semantic):
             for rank, slug in enumerate(ranking, 1):
                 fused[slug] += 1 / (RRF_K + rank)
-        best = sorted(fused, key=fused.get, reverse=True)[:top_n]
-        return [SearchResult(slug=s, score=fused[s], title=s, snippet="") for s in best]
+        best = sorted(fused, key=fused.get, reverse=True)
+        if self._pin and keyword_dominates(bm25):
+            pinned = keyword[:PIN_TOP]
+            best = pinned + [s for s in best if s not in pinned]
+        return [SearchResult(slug=s, score=fused[s], title=s, snippet="") for s in best[:top_n]]
+
+
+def keyword_dominates(results: list[SearchResult]) -> bool:
+    """True when BM25's best score is at least PIN_DOMINANCE times its second."""
+    if not results:
+        return False
+    if len(results) == 1 or results[1].score <= 0:
+        return True
+    return results[0].score >= PIN_DOMINANCE * results[1].score
 
 
 def has_fastembed() -> bool:
@@ -118,7 +142,7 @@ async def make_search(wiki_dir: Path, config: Config,
         for slug in todo:
             if page := store.read_page(slug):
                 await search.embed_page(slug, page_search_text(page))
-    return await FusionSearch.create(search) if config.fusion else search
+    return await FusionSearch.create(search, config.pin_keyword_hits) if config.fusion else search
 
 
 def nested_subsets(slugs: list[str], sizes: tuple[int, ...], seed: int = SUBSET_SEED) -> dict[int, list[str] | None]:
