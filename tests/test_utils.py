@@ -198,3 +198,10 @@ def test_write_page_is_atomic(tmp_wiki):
     assert not tmp.exists(), ".tmp file must not be left behind"
     assert "body text" in target.read_text(encoding="utf-8")
     assert b"\r\n" not in target.read_bytes()
+
+
+def test_strip_control_chars_keeps_tab_newline_and_cr():
+    from synthadoc.utils import strip_control_chars
+    assert strip_control_chars("a\x00b\x07c\x1fd") == "abcd"
+    assert strip_control_chars("line\tone\r\nline two\n") == "line\tone\r\nline two\n"
+    assert strip_control_chars("café · 中文") == "café · 中文"
