@@ -60,6 +60,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix K — Domain Templates](#appendix-k--domain-templates)
 - [Appendix L — Cross-Wiki Queries](#appendix-l--cross-wiki-queries)
 - [Appendix M — Run the Demo in Docker](#appendix-m--run-the-demo-in-docker)
+- [Appendix N — Semantic search](#appendix-n--semantic-search)
 
 ---
 
@@ -335,6 +336,8 @@ Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
 
 The suggested search strings are generated automatically. Run one of the suggestions
 after Step 12 to fill the gap.
+
+> **Asking in your own words?** Keyword search can miss a page when your question uses different words from it. On larger wikis, [semantic search (Appendix N)](#appendix-n--semantic-search) finds pages by meaning as well.
 
 ![CLI query result with knowledge gap callout](png/cli-gap-detection.png)
 
@@ -3824,7 +3827,7 @@ fetch_timeout_seconds = 60   # increase if slow sites time out during web search
 provider    = "tavily"
 max_results = 20
 
-# Optional: semantic search — BM25 fused with page embeddings
+# Optional: semantic search — BM25 fused with page embeddings, see Appendix N
 # (pip install "synthadoc[vectors]"; downloads a ~65 MB model once)
 # [search]
 # vector = true                # or "auto": on whenever fastembed is installed
@@ -4267,7 +4270,7 @@ architecture (1945), and includes tags for deep-learning milestones.
 | Field                        | Meaning                                                                                |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full  |
-| `relevance`                  | BM25 score — higher means stronger keyword match to your goal                         |
+| `relevance`                  | BM25 score — higher means stronger keyword match to your goal; `0.00` for a page found only by [semantic search](#appendix-n--semantic-search) |
 | `confidence`                 | LLM-assigned confidence in the page's coverage of the topic                            |
 | `omitted`                    | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
 
@@ -4810,3 +4813,88 @@ docker rm history-of-computing            # remove the container
 After editing `config.toml`, run `docker restart history-of-computing`. After changing `.env`, remove and re-create the container (Step 3), because `restart` does not re-read `.env`.
 
 Your pages, audit trail, and config are untouched; they live in the host folder, not in the container. pip users can switch back to the native server at any time with `synthadoc serve -w history-of-computing --background`.
+
+---
+
+## Appendix N — Semantic search
+
+By default, Synthadoc finds the pages for an answer with keyword search ([BM25](design.md#semantic-search)): it ranks pages by the words they share with your question. That is fast and precise when you use the same words as the page, but it can miss a page when you describe the topic in your own words. **Semantic search** adds a second search that compares meaning, using a small embedding model that runs on your machine, and merges the two result lists.
+
+### When it helps
+
+Turn it on when your wiki has a few hundred pages or more, and people ask questions in their own words rather than the wiki's terminology. Measured on a 1,985-page wiki built from Wikipedia ([benchmark](../benchmarks/retrieval/README.md)):
+
+| Question type | Keyword search | With semantic search |
+| --- | ---: | ---: |
+| Paraphrased ("the first electronic machine built to compute artillery tables") | 48% | **68%** |
+| Uses the page's own words | 100% | 100% |
+| Exact name, acronym or number ("Moore School 1946") | 99% | 98% |
+| **All questions** | 84% | **90%** |
+
+*How often the right page is among the top 5 handed to the LLM.* The gain grows with the size of the wiki: on a 200-page wiki, paraphrased questions improve by 9 points; at 2,000 pages, by 20. On a small wiki such as the demo, keyword search usually finds the right pages already.
+
+When keyword search has one clear winner (typically an exact name or term), that page stays on top, so precise lookups keep working as before.
+
+### Turn it on
+
+**1. Install it.** Semantic search needs the optional `vectors` add-on:
+
+```bash
+pip install "synthadoc[vectors]"
+```
+
+The square brackets ask pip to install Synthadoc together with an optional group of extra packages, here `fastembed` (which runs the model) and `numpy`, about 175 MB. Keep the quotes: zsh, the default macOS shell, otherwise reads the brackets as a file pattern and fails with `no matches found`. Running it on an existing install only adds the extra packages. From a source checkout, use `pip install -e ".[vectors]"`.
+
+**Docker:** nothing to install. The image already includes the add-on and the model ([Docker guide](docker-deploy.md#semantic-search)).
+
+**2. Switch it on** in the wiki's `.synthadoc/config.toml`:
+
+```toml
+[search]
+vector = true
+```
+
+| Setting | Meaning |
+| --- | --- |
+| `false` | Keyword search only. The default. |
+| `true` | Semantic search on. If the add-on is missing, the server logs a warning and uses keyword search. |
+| `"auto"` | On whenever the add-on is installed, keyword search otherwise, with no warning. Useful for one config shared by machines with and without the add-on. |
+
+**3. Restart the server** (`docker restart <container>` in Docker).
+
+What you get, by how Synthadoc was installed:
+
+| Installed with | `vector = false` | `vector = true` | `vector = "auto"` |
+| --- | --- | --- | --- |
+| `pip install synthadoc` | Keyword search | Keyword search + a warning to install the add-on | Keyword search |
+| `pip install "synthadoc[vectors]"` | Keyword search + a startup reminder that semantic search is available | Semantic search | Semantic search |
+| Docker image | Keyword search + the startup reminder | Semantic search | Semantic search |
+
+### Check that it is working
+
+The server log shows:
+
+```
+Vector search: enabled (model: BAAI/bge-small-en-v1.5) — syncing embeddings in the background, BM25 only until done
+Vector search: embedding 214 page(s)…
+```
+
+In Docker: `docker logs <container> 2>&1 | grep -i vector`.
+
+- **First start:** outside Docker, the ~65 MB model is downloaded once, into `~/.synthadoc/models`. Then every page is embedded in the background, a few minutes for a couple of thousand pages. Questions are answered with keyword search until that finishes.
+- **Later starts** embed only pages that are new or changed, and the log shows no `embedding` line when nothing changed.
+- **What counts as a change:** each page is embedded from its title, tags and the first 512 characters of its text. Editing further down a page does not re-embed it. This is deliberate: in the benchmark, embedding the whole page made results worse.
+- Embeddings are stored in `.synthadoc/embeddings.db`. It is safe to delete; it is rebuilt on the next start.
+- Draft, archived and contradicted pages are not embedded, just as they are left out of keyword search.
+
+If you see `embedding sync failed`, search keeps working on keywords alone and retries after the next page change.
+
+### Good to know
+
+- **English only.** The model, `BAAI/bge-small-en-v1.5`, is trained on English. For wikis mainly in Chinese, Japanese or Korean, keep `vector = false` for now.
+- **Speed:** each question takes about 100 ms longer, the time to run the model on your question. Keyword search itself became about 18× faster in the same release, for everyone.
+- **Knowledge gap warnings** are still based on keyword evidence only, so a page that is merely similar in meaning cannot hide a real gap.
+- **Works with every LLM provider**, including the coding-tool providers ([Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider)): the embedding model runs locally and never calls the LLM.
+- **Cross-wiki queries** use semantic search in each wiki that has it turned on ([Appendix L](#appendix-l--cross-wiki-queries)).
+
+How it works in detail: [design doc — Semantic search](design.md#semantic-search).

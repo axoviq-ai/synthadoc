@@ -296,6 +296,8 @@ After the BM25 merge step, a knowledge gap is detected when ANY of three indepen
 2. `max_score < gap_score_threshold` (default: `2.0`, configurable via `[query] gap_score_threshold` in `config.toml`) — low keyword overlap
 3. Fewer than 2 candidates contain any key noun from the question with sufficient frequency — corpus-relative BM25 scores can be inflated by shared vocabulary; this content-overlap check catches off-topic matches
 
+Signals 4–7 check each key term of the (decomposed) question against the candidate pages. A page is *on topic* when it contains a specific term at least twice, matched as the exact word. Signal 5 asks whether every specific term is covered in depth by at least one page; there a term also matches its word family — common endings (`-ing`, `-er(s)`, `-ion(s)`, `-ation(s)`, `-ed`) are stripped when at least 5 letters remain — so a page that says "codebreaking" covers "codebreakers". The family match is kept out of the on-topic count, where "container" → "contain" would make every page that says "contains" look on topic. With semantic search on, only candidates with a BM25 score above 0 are considered: a page found only by the embedding search is not keyword evidence.
+
 When a gap fires:
 
 1. `SearchDecomposeAgent.decompose(question)` is called to generate 1–4 focused keyword search strings
@@ -357,7 +359,14 @@ vector_top_candidates = 20   # candidates taken from each of BM25 and the embedd
 ```
 
 `true` logs a warning when fastembed is missing; `"auto"` treats a missing
-fastembed as the normal BM25 setup and logs it at info level.
+fastembed as the normal BM25 setup and logs it at info level. With `vector = false`
+and fastembed installed (as in the Docker image), startup logs one info line saying
+how to turn semantic search on; nothing switches on by itself.
+
+**Default:** the `synthadoc init` template writes `vector = false`, and so does every
+wiki created since v0.2.0, so changing the template default would only affect new
+wikis. `"auto"` becomes the template default once a second independent corpus and a
+CJK check confirm the benchmark result; existing configs are never rewritten.
 
 **Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on; cached at `~/.synthadoc/models/` thereafter (override with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in).
 
@@ -672,6 +681,8 @@ class BaseSkill(ABC):
 ### wiki/ — Page files
 
 Plain Markdown. One file per page. Filename = slug + `.md`. Frontmatter is YAML between `---` delimiters. Body uses standard Markdown with `[[wikilinks]]` for internal references.
+
+`WikiStorage.write_page()` drops C0 control characters other than tab, newline and carriage return from the body before writing. A NUL in a page (one replaced `&` in a shipped demo page) makes `grep` and editors treat the file as binary; a test keeps them out of every shipped demo page.
 
 ### audit.db — Immutable audit trail
 
@@ -4294,7 +4305,7 @@ Cross-wiki queries allow a single natural-language query to fan out across multi
 
 Every wiki server exposes two endpoints:
 
-- **`POST /retrieve`** — a lightweight BM25-only responder; returns matching pages without any LLM call.
+- **`POST /retrieve`** — a lightweight retrieval responder (BM25, fused with embeddings when semantic search is on); returns matching pages without any LLM call.
 - **`POST /cross-wiki/query`** — a coordinator; picks relevant wikis, fans out to their `/retrieve` endpoints in parallel, merges results, and runs one LLM synthesis pass.
 
 Any server can act as the coordinator for a given request.
@@ -4339,7 +4350,7 @@ The cross-wiki feature is accessible from the web chat UI (`synthadoc web`):
 
 ### API Reference — `POST /retrieve`
 
-BM25-only retrieval endpoint on every wiki server. No LLM call, no synthesis, no gap detection. Used by coordinators for parallel fan-out.
+Retrieval endpoint on every wiki server: BM25, fused with the embedding search when that wiki has [semantic search](#semantic-search) on. No LLM call, no synthesis, no gap detection. Used by coordinators for parallel fan-out. Pages come back best first; `score` is the BM25 score (0 for a page only the embedding search found), so coordinators merge results by position, not by score.
 
 **Request:**
 ```json
