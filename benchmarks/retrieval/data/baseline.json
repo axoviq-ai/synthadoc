@@ -1,0 +1,574 @@
+{
+ "generated": "2026-10-23",
+ "commit": "ee417bd",
+ "results": {
+  "wikipedia": {
+   "bm25": {
+    "200": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.9116,
+       "recall@10": 0.9252,
+       "recall@20": 0.9388,
+       "mrr@10": 0.8824,
+       "ndcg@10": 0.8927,
+       "queries": 147
+      },
+      "identifier": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9853,
+       "ndcg@10": 0.9888,
+       "queries": 51
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 1.0,
+       "ndcg@10": 1.0,
+       "queries": 51
+      },
+      "paraphrase": {
+       "recall@5": 0.7111,
+       "recall@10": 0.7556,
+       "recall@20": 0.8,
+       "mrr@10": 0.6326,
+       "ndcg@10": 0.6621,
+       "queries": 45
+      }
+     },
+     "latency": {
+      "p50_ms": 70.5,
+      "p95_ms": 76.7
+     }
+    },
+    "500": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8903,
+       "recall@10": 0.9086,
+       "recall@20": 0.9269,
+       "mrr@10": 0.8516,
+       "ndcg@10": 0.8654,
+       "queries": 383
+      },
+      "identifier": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9785,
+       "ndcg@10": 0.984,
+       "queries": 132
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9949,
+       "ndcg@10": 0.9962,
+       "queries": 132
+      },
+      "paraphrase": {
+       "recall@5": 0.6471,
+       "recall@10": 0.7059,
+       "recall@20": 0.7647,
+       "mrr@10": 0.5517,
+       "ndcg@10": 0.5887,
+       "queries": 119
+      }
+     },
+     "latency": {
+      "p50_ms": 138.0,
+      "p95_ms": 166.8
+     }
+    },
+    "1000": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8694,
+       "recall@10": 0.898,
+       "recall@20": 0.9143,
+       "mrr@10": 0.8216,
+       "ndcg@10": 0.8399,
+       "queries": 735
+      },
+      "identifier": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9795,
+       "ndcg@10": 0.9847,
+       "queries": 255
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9935,
+       "ndcg@10": 0.9951,
+       "queries": 255
+      },
+      "paraphrase": {
+       "recall@5": 0.5733,
+       "recall@10": 0.6667,
+       "recall@20": 0.72,
+       "mrr@10": 0.4479,
+       "ndcg@10": 0.4997,
+       "queries": 225
+      }
+     },
+     "latency": {
+      "p50_ms": 173.4,
+      "p95_ms": 299.1
+     }
+    },
+    "1985": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8399,
+       "recall@10": 0.865,
+       "recall@20": 0.8923,
+       "mrr@10": 0.791,
+       "ndcg@10": 0.8089,
+       "queries": 1430
+      },
+      "identifier": {
+       "recall@5": 0.994,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9625,
+       "ndcg@10": 0.9719,
+       "queries": 499
+      },
+      "lexical": {
+       "recall@5": 0.998,
+       "recall@10": 0.998,
+       "recall@20": 0.998,
+       "mrr@10": 0.9843,
+       "ndcg@10": 0.9879,
+       "queries": 499
+      },
+      "paraphrase": {
+       "recall@5": 0.4792,
+       "recall@10": 0.5556,
+       "recall@20": 0.6458,
+       "mrr@10": 0.3695,
+       "ndcg@10": 0.4137,
+       "queries": 432
+      }
+     },
+     "latency": {
+      "p50_ms": 338.7,
+      "p95_ms": 361.9
+     }
+    }
+   },
+   "rerank": {
+    "200": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8639,
+       "recall@10": 0.932,
+       "recall@20": 0.9388,
+       "mrr@10": 0.7682,
+       "ndcg@10": 0.8075,
+       "queries": 147
+      },
+      "identifier": {
+       "recall@5": 0.8039,
+       "recall@10": 0.9804,
+       "recall@20": 1.0,
+       "mrr@10": 0.6317,
+       "ndcg@10": 0.7139,
+       "queries": 51
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9804,
+       "ndcg@10": 0.9855,
+       "queries": 51
+      },
+      "paraphrase": {
+       "recall@5": 0.7778,
+       "recall@10": 0.8,
+       "recall@20": 0.8,
+       "mrr@10": 0.6824,
+       "ndcg@10": 0.7118,
+       "queries": 45
+      }
+     },
+     "latency": {
+      "p50_ms": 123.3,
+      "p95_ms": 139.3
+     }
+    },
+    "500": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.812,
+       "recall@10": 0.8668,
+       "recall@20": 0.9269,
+       "mrr@10": 0.7125,
+       "ndcg@10": 0.7498,
+       "queries": 383
+      },
+      "identifier": {
+       "recall@5": 0.7045,
+       "recall@10": 0.8333,
+       "recall@20": 1.0,
+       "mrr@10": 0.5363,
+       "ndcg@10": 0.6069,
+       "queries": 132
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9823,
+       "ndcg@10": 0.9868,
+       "queries": 132
+      },
+      "paraphrase": {
+       "recall@5": 0.7227,
+       "recall@10": 0.7563,
+       "recall@20": 0.7647,
+       "mrr@10": 0.6086,
+       "ndcg@10": 0.6454,
+       "queries": 119
+      }
+     },
+     "latency": {
+      "p50_ms": 174.0,
+      "p95_ms": 185.9
+     }
+    },
+    "1000": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.7891,
+       "recall@10": 0.8449,
+       "recall@20": 0.9143,
+       "mrr@10": 0.6634,
+       "ndcg@10": 0.707,
+       "queries": 735
+      },
+      "identifier": {
+       "recall@5": 0.6824,
+       "recall@10": 0.8039,
+       "recall@20": 1.0,
+       "mrr@10": 0.4856,
+       "ndcg@10": 0.5613,
+       "queries": 255
+      },
+      "lexical": {
+       "recall@5": 0.9922,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9594,
+       "ndcg@10": 0.9694,
+       "queries": 255
+      },
+      "paraphrase": {
+       "recall@5": 0.68,
+       "recall@10": 0.7156,
+       "recall@20": 0.72,
+       "mrr@10": 0.5294,
+       "ndcg@10": 0.5749,
+       "queries": 225
+      }
+     },
+     "latency": {
+      "p50_ms": 262.3,
+      "p95_ms": 295.8
+     }
+    },
+    "1985": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.742,
+       "recall@10": 0.8154,
+       "recall@20": 0.8923,
+       "mrr@10": 0.6176,
+       "ndcg@10": 0.665,
+       "queries": 1430
+      },
+      "identifier": {
+       "recall@5": 0.6253,
+       "recall@10": 0.7856,
+       "recall@20": 1.0,
+       "mrr@10": 0.4459,
+       "ndcg@10": 0.5261,
+       "queries": 499
+      },
+      "lexical": {
+       "recall@5": 0.986,
+       "recall@10": 0.996,
+       "recall@20": 0.998,
+       "mrr@10": 0.9392,
+       "ndcg@10": 0.9533,
+       "queries": 499
+      },
+      "paraphrase": {
+       "recall@5": 0.5949,
+       "recall@10": 0.6412,
+       "recall@20": 0.6458,
+       "mrr@10": 0.4446,
+       "ndcg@10": 0.4924,
+       "queries": 432
+      }
+     },
+     "latency": {
+      "p50_ms": 428.0,
+      "p95_ms": 473.8
+     }
+    }
+   },
+   "fusion": {
+    "200": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.9388,
+       "recall@10": 0.9796,
+       "recall@20": 0.9864,
+       "mrr@10": 0.8341,
+       "ndcg@10": 0.8692,
+       "queries": 147
+      },
+      "identifier": {
+       "recall@5": 0.9608,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.765,
+       "ndcg@10": 0.8226,
+       "queries": 51
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9902,
+       "ndcg@10": 0.9928,
+       "queries": 51
+      },
+      "paraphrase": {
+       "recall@5": 0.8444,
+       "recall@10": 0.9333,
+       "recall@20": 0.9556,
+       "mrr@10": 0.7356,
+       "ndcg@10": 0.7819,
+       "queries": 45
+      }
+     },
+     "latency": {
+      "p50_ms": 54.3,
+      "p95_ms": 60.9
+     }
+    },
+    "500": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.9034,
+       "recall@10": 0.9687,
+       "recall@20": 0.9896,
+       "mrr@10": 0.7839,
+       "ndcg@10": 0.8283,
+       "queries": 383
+      },
+      "identifier": {
+       "recall@5": 0.9394,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.6763,
+       "ndcg@10": 0.7552,
+       "queries": 132
+      },
+      "lexical": {
+       "recall@5": 1.0,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9924,
+       "ndcg@10": 0.9944,
+       "queries": 132
+      },
+      "paraphrase": {
+       "recall@5": 0.7563,
+       "recall@10": 0.8992,
+       "recall@20": 0.9664,
+       "mrr@10": 0.672,
+       "ndcg@10": 0.7251,
+       "queries": 119
+      }
+     },
+     "latency": {
+      "p50_ms": 144.8,
+      "p95_ms": 157.3
+     }
+    },
+    "1000": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.902,
+       "recall@10": 0.9551,
+       "recall@20": 0.9755,
+       "mrr@10": 0.7537,
+       "ndcg@10": 0.8025,
+       "queries": 735
+      },
+      "identifier": {
+       "recall@5": 0.9451,
+       "recall@10": 0.9961,
+       "recall@20": 1.0,
+       "mrr@10": 0.6796,
+       "ndcg@10": 0.757,
+       "queries": 255
+      },
+      "lexical": {
+       "recall@5": 0.9961,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9779,
+       "ndcg@10": 0.9834,
+       "queries": 255
+      },
+      "paraphrase": {
+       "recall@5": 0.7467,
+       "recall@10": 0.8578,
+       "recall@20": 0.92,
+       "mrr@10": 0.5837,
+       "ndcg@10": 0.6491,
+       "queries": 225
+      }
+     },
+     "latency": {
+      "p50_ms": 254.8,
+      "p95_ms": 411.1
+     }
+    },
+    "1985": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8832,
+       "recall@10": 0.9392,
+       "recall@20": 0.9622,
+       "mrr@10": 0.7184,
+       "ndcg@10": 0.7721,
+       "queries": 1430
+      },
+      "identifier": {
+       "recall@5": 0.9359,
+       "recall@10": 0.992,
+       "recall@20": 1.0,
+       "mrr@10": 0.6616,
+       "ndcg@10": 0.7429,
+       "queries": 499
+      },
+      "lexical": {
+       "recall@5": 0.994,
+       "recall@10": 1.0,
+       "recall@20": 1.0,
+       "mrr@10": 0.9674,
+       "ndcg@10": 0.9756,
+       "queries": 499
+      },
+      "paraphrase": {
+       "recall@5": 0.6944,
+       "recall@10": 0.8079,
+       "recall@20": 0.875,
+       "mrr@10": 0.4964,
+       "ndcg@10": 0.5707,
+       "queries": 432
+      }
+     },
+     "latency": {
+      "p50_ms": 434.3,
+      "p95_ms": 525.1
+     }
+    }
+   }
+  },
+  "hotpot": {
+   "bm25": {
+    "2963": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.7167,
+       "recall@10": 0.8683,
+       "recall@20": 0.92,
+       "mrr@10": 0.8484,
+       "ndcg@10": 0.7546,
+       "queries": 300
+      },
+      "human": {
+       "recall@5": 0.7167,
+       "recall@10": 0.8683,
+       "recall@20": 0.92,
+       "mrr@10": 0.8484,
+       "ndcg@10": 0.7546,
+       "queries": 300
+      }
+     },
+     "latency": {
+      "p50_ms": 92.2,
+      "p95_ms": 101.0
+     }
+    }
+   },
+   "rerank": {
+    "2963": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.8417,
+       "recall@10": 0.8967,
+       "recall@20": 0.92,
+       "mrr@10": 0.9066,
+       "ndcg@10": 0.8326,
+       "queries": 300
+      },
+      "human": {
+       "recall@5": 0.8417,
+       "recall@10": 0.8967,
+       "recall@20": 0.92,
+       "mrr@10": 0.9066,
+       "ndcg@10": 0.8326,
+       "queries": 300
+      }
+     },
+     "latency": {
+      "p50_ms": 193.9,
+      "p95_ms": 211.6
+     }
+    }
+   },
+   "fusion": {
+    "2963": {
+     "metrics": {
+      "all": {
+       "recall@5": 0.82,
+       "recall@10": 0.93,
+       "recall@20": 0.97,
+       "mrr@10": 0.9018,
+       "ndcg@10": 0.8294,
+       "queries": 300
+      },
+      "human": {
+       "recall@5": 0.82,
+       "recall@10": 0.93,
+       "recall@20": 0.97,
+       "mrr@10": 0.9018,
+       "ndcg@10": 0.8294,
+       "queries": 300
+      }
+     },
+     "latency": {
+      "p50_ms": 146.7,
+      "p95_ms": 167.7
+     }
+    }
+   }
+  }
+ }
+}
