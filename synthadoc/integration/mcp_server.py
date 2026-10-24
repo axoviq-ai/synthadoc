@@ -176,12 +176,13 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_search(terms: str) -> dict:
-        """Search the wiki with BM25 keyword search. Returns page titles, slugs, and snippets.
+        """Search the wiki (BM25 keyword search, plus semantic search when enabled).
+        Returns page titles, slugs, and snippets, best match first.
 
         Use this to find relevant pages, then synthadoc_read_page to get full content.
         Synthesize the answer yourself — no LLM is called on the Synthadoc side.
         """
-        results = orchestrator._search.bm25_search(terms.split(), top_n=10)
+        results = await orchestrator._search.hybrid_search(terms.split(), top_n=10)
         return {
             "results": [
                 {"slug": r.slug, "score": r.score, "title": r.title, "snippet": r.snippet}

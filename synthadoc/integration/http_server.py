@@ -1203,12 +1203,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/retrieve")
     async def retrieve(req: RetrieveRequest):
-        """BM25-only retrieval — no LLM, no synthesis. Used by cross-wiki coordinators."""
+        """Retrieval only (BM25, fused with embeddings when enabled) — no LLM, no
+        synthesis. Used by cross-wiki coordinators.
+
+        Pages are returned best first; ``score`` is the BM25 score (0 for a page
+        only the embedding search found), so coordinators merge by position.
+        """
         from synthadoc.cli._wiki import extract_purpose_summary
         from synthadoc.storage.wiki import LifecycleState
-        from synthadoc.storage.search import HybridSearch
+        from synthadoc.storage.search import HybridSearch, merge_results
         from synthadoc.storage.wiki import WikiStorage
-        from typing import Any
         if not req.question.strip():
             raise HTTPException(status_code=400, detail="question must not be empty")
         top_k = min(max(req.top_k, 1), 20)
@@ -1219,14 +1223,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         wiki_name = orch._root.name
 
         queries = req.sub_questions if req.sub_questions else [req.question]
-        best: dict[str, Any] = {}
-        for q in queries:
-            results = await search.hybrid_search(q.split(), top_n=top_k)
-            for r in results:
-                if r.slug not in best or r.score > best[r.slug].score:
-                    best[r.slug] = r
-
-        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:top_k]
+        candidates = merge_results(
+            [await search.hybrid_search(q.split(), top_n=top_k) for q in queries], top_k)
         pages = []
         for r in candidates:
             page = store.read_page(r.slug)

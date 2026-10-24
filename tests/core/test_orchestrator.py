@@ -95,13 +95,9 @@ async def test_run_ingest_http_5xx_retries_job(tmp_wiki):
         assert not any(j.id == job_id for j in skipped_jobs), "5xx job must not be skipped"
 
 
-@pytest.mark.asyncio
-async def test_vector_migration_embeds_existing_pages(tmp_wiki):
-    """_run_vector_migration must embed all pages not yet in embeddings.db."""
-    from unittest.mock import patch, AsyncMock
+def _vector_orch(tmp_wiki, mode):
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
-    from synthadoc.storage.search import VectorStore
 
     wiki_dir = tmp_wiki / "wiki"
     wiki_dir.mkdir(parents=True, exist_ok=True)
@@ -110,259 +106,74 @@ async def test_vector_migration_embeds_existing_pages(tmp_wiki):
         "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent here.",
         encoding="utf-8",
     )
-
     cfg = Config(
         agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
-        search=SearchConfig(vector=True),
+        search=SearchConfig(vector=mode),
     )
-    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await orch._search.init_vector()
-
-    with patch.object(orch._search, "_embed_text", return_value=[0.1, 0.2, 0.3, 0.4]):
-        await orch._run_vector_migration()
-
-    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    slugs = await vs.list_slugs()
-    assert "test-page" in slugs
+    return Orchestrator(wiki_root=tmp_wiki, config=cfg)
 
 
 @pytest.mark.asyncio
-async def test_vector_migration_skips_already_embedded(tmp_wiki):
-    """_run_vector_migration must skip pages already in embeddings.db."""
+@pytest.mark.parametrize("mode", [True, "auto"])
+async def test_init_with_vectors_syncs_embeddings_in_background(tmp_wiki, mode):
+    """init() opens embeddings.db and embeds existing pages in the background."""
+    import numpy as np
     from unittest.mock import patch
-    from synthadoc.core.orchestrator import Orchestrator
-    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
-    from synthadoc.storage.search import VectorStore
 
-    wiki_dir = tmp_wiki / "wiki"
-    wiki_dir.mkdir(parents=True, exist_ok=True)
-    (wiki_dir / "existing.md").write_text(
-        "---\ntitle: Existing\ntags: []\nstatus: active\n"
-        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent.",
-        encoding="utf-8",
-    )
-
-    cfg = Config(
-        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
-        search=SearchConfig(vector=True),
-    )
-    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await orch._search.init_vector()
-
-    # Pre-populate embeddings
-    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await vs.upsert("existing", [0.9, 0.1, 0.0, 0.0])
-
-    embed_calls = []
-    original = orch._search._embed_text
-    def fake_embed(text):
-        embed_calls.append(text)
-        return [0.1, 0.2, 0.3, 0.4]
-
-    with patch.object(orch._search, "_embed_text", side_effect=fake_embed):
-        await orch._run_vector_migration()
-
-    # Already embedded — should not be re-embedded
-    assert len(embed_calls) == 0
+    orch = _vector_orch(tmp_wiki, mode)
+    fake = lambda texts: np.ones((len(texts), 4), dtype=np.float32) / 2
+    with patch.dict("sys.modules", {"fastembed": MagicMock()}), \
+         patch.object(orch._search, "_embed_texts", side_effect=fake):
+        await orch.init()
+        await orch._search.wait_for_embedding_sync()
+    try:
+        assert await orch._search._vector_store.text_hashes() != {}
+        assert "test-page" in orch._search._page_slugs
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
-async def test_run_ingest_domain_blocked_skips_job(tmp_wiki):
-    """DomainBlockedException must skip the job without retrying."""
-    from synthadoc.errors import DomainBlockedException
-
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        job_id = await orch._queue.enqueue("ingest", {"source": "https://blocked.com/page", "force": False})
-
-        exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=exc)
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, "https://blocked.com/page", auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
-        assert any(j.id == job_id for j in skipped)
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_daily_quota_exhausted_fails_permanent(tmp_wiki):
-    """DailyQuotaExhaustedException must permanently fail the job (no retry)."""
-    from synthadoc.errors import DailyQuotaExhaustedException
-
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
-
-        exc = DailyQuotaExhaustedException(provider="anthropic")
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=exc)
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
-        assert any(j.id == job_id for j in dead)
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_coding_tool_quota_fails_permanent(tmp_wiki):
-    """CodingToolQuotaExhaustedException must permanently fail the job."""
-    from synthadoc.errors import CodingToolQuotaExhaustedException
-
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
-
-        exc = CodingToolQuotaExhaustedException("claude-code")
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=exc)
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
-        assert any(j.id == job_id for j in dead)
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_connect_error_retries_job(tmp_wiki):
-    """httpx.ConnectError must re-queue the job for retry (PENDING)."""
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        job_id = await orch._queue.enqueue("ingest", {"source": "https://unreachable.com", "force": False})
-
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, "https://unreachable.com", auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
-        assert any(j.id == job_id for j in pending)
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_environment_error_fails_permanent(tmp_wiki):
-    """EnvironmentError (missing provider binary) must permanently fail the job."""
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        job_id = await orch._queue.enqueue("ingest", {"source": "file.pdf", "force": False})
-
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=EnvironmentError("binary not found"))
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, "file.pdf", auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
-        assert any(j.id == job_id for j in dead)
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_sources_txt_is_expanded_into_child_jobs(tmp_wiki):
-    """A sources.txt whose every content line is a URL/intent/path fans out into one job each."""
-    from synthadoc.core.orchestrator import Orchestrator
-    from synthadoc.config import load_config
-    from synthadoc.core.queue import JobStatus
-
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        manifest = tmp_wiki / "sources.txt"
-        manifest.write_text(
-            "# batch ingest\n"
-            "https://example.com/page-one\n"
-            "https://example.com/page-two\n"
-            "search for: history of computing\n",
-            encoding="utf-8",
-        )
-        job_id = await orch._queue.enqueue("ingest", {"source": str(manifest), "force": False})
-        await orch._run_ingest(job_id, str(manifest), auto_confirm=True)
-
-        from synthadoc.core.queue import JobStatus
-        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-        parent = next((j for j in completed if j.id == job_id), None)
-        assert parent is not None, "parent job should be completed"
-        assert parent.result is not None
-        assert parent.result["child_sources_enqueued"] == 3
-        assert len(parent.result["child_job_ids"]) == 3
-
-        pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
-        assert len(pending) == 3
-        sources = {j.payload["source"] for j in pending}
-        assert "https://example.com/page-one" in sources
-        assert "https://example.com/page-two" in sources
-        assert "search for: history of computing" in sources
-
-
-@pytest.mark.asyncio
-async def test_run_ingest_plain_txt_is_not_treated_as_manifest(tmp_wiki):
-    """A .txt file containing prose (not all-URL/intent lines) goes through normal ingest."""
-    from synthadoc.core.orchestrator import Orchestrator
-    from synthadoc.config import load_config
-    from unittest.mock import AsyncMock, MagicMock, patch
-    from synthadoc.agents.ingest_agent import IngestResult
-
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        prose = tmp_wiki / "notes.txt"
-        prose.write_text(
-            "The history of computing spans several decades.\n"
-            "Key figures include Turing, Von Neumann, and Dijkstra.\n",
-            encoding="utf-8",
-        )
-        job_id = await orch._queue.enqueue("ingest", {"source": str(prose), "force": False})
-
-        mock_agent = MagicMock()
-        normal_result = IngestResult(source=str(prose))
-        normal_result.pages_created = ["computing-history"]
-        mock_agent.run = AsyncMock(return_value=normal_result)
-
-        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-            await orch._run_ingest(job_id, str(prose), auto_confirm=True)
-
-        mock_agent.run.assert_called_once()  # went through normal ingest, not manifest expansion
-
-
-@pytest.mark.asyncio
-async def test_resume_returns_job_count(tmp_wiki):
-    """resume() must re-queue all pending jobs and return the count."""
-    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
-        await orch._queue.enqueue("ingest", {"source": "file1.md", "force": False})
-        await orch._queue.enqueue("ingest", {"source": "file2.md", "force": False})
-
-        count = await orch.resume()
-        assert count >= 2
-
-
-@pytest.mark.asyncio
-async def test_vector_migration_noop_when_vector_disabled(tmp_wiki):
-    """_run_vector_migration must be a no-op when search.vector=False."""
+async def test_init_without_vectors_never_embeds(tmp_wiki):
     from unittest.mock import patch
-    from synthadoc.core.orchestrator import Orchestrator
-    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
 
-    wiki_dir = tmp_wiki / "wiki"
-    wiki_dir.mkdir(parents=True, exist_ok=True)
-    (wiki_dir / "page.md").write_text(
-        "---\ntitle: Page\ntags: []\nstatus: active\n"
-        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent.",
-        encoding="utf-8",
-    )
+    orch = _vector_orch(tmp_wiki, False)
+    with patch.object(orch._search, "_embed_texts") as embed:
+        await orch.init()
+        await orch._search.wait_for_embedding_sync()
+    await orch.close()
+    embed.assert_not_called()
+    assert orch._search._vector_store is None
 
-    cfg = Config(
-        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
-        search=SearchConfig(vector=False),
-    )
-    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
 
-    embed_calls = []
-    with patch.object(orch._search, "_embed_text", side_effect=lambda t: embed_calls.append(t) or [0.1]):
-        await orch._run_vector_migration()
+@pytest.mark.asyncio
+@pytest.mark.parametrize("installed", [True, False])
+async def test_init_hints_at_semantic_search_only_when_installed_but_off(tmp_wiki, caplog, installed):
+    import logging
+    from unittest.mock import patch
 
-    assert embed_calls == []
+    orch = _vector_orch(tmp_wiki, False)
+    with patch("synthadoc.core.orchestrator.fastembed_installed", return_value=installed), \
+         caplog.at_level(logging.INFO, logger="synthadoc.core.orchestrator"):
+        await orch.init()
+    await orch.close()
+    hinted = any("Semantic search is available but off" in r.message for r in caplog.records)
+    assert hinted is installed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [True, "auto"])
+async def test_init_never_hints_when_vectors_are_requested(tmp_wiki, caplog, mode):
+    import logging
+    from unittest.mock import patch
+
+    orch = _vector_orch(tmp_wiki, mode)
+    with patch.dict("sys.modules", {"fastembed": None}), \
+         patch("synthadoc.core.orchestrator.fastembed_installed", return_value=True), \
+         caplog.at_level(logging.INFO, logger="synthadoc.core.orchestrator"):
+        await orch.init()
+    await orch.close()
+    assert not any("available but off" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

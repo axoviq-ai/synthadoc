@@ -3176,3 +3176,119 @@ async def test_run_stream_specific_content_query_not_hijacked_by_rewrite_trigger
     assert done_ev["data"].get("cacheable", True) is True, (
         "Content question must not be routed to live-data path due to rewrite trigger injection"
     )
+
+
+def test_detect_gap_ignores_embedding_only_candidates(tmp_wiki):
+    """Gap signals measure keyword evidence: pages that only the embedding
+    search found (BM25 score 0) must not make the wiki look better covered."""
+    from synthadoc.storage.search import SearchResult
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    question = "what is the capital of atlantis"
+    embedding_only = [SearchResult(slug=f"p{i}", score=0.0, title=f"P{i}", snippet="", rank_score=0.03)
+                      for i in range(5)]
+    assert agent._detect_gap(question, embedding_only, 0.0) == agent._detect_gap(question, [], 0.0)
+    assert agent._detect_gap(question, embedding_only, 0.0)[0] is True
+
+
+def _gap_agent(pages: dict[str, str]):
+    from synthadoc.agents.query_agent import QueryAgent
+    from unittest.mock import MagicMock
+
+    agent = MagicMock(spec=QueryAgent)
+    agent._gap_score_threshold = 2.0
+    agent._detect_gap = QueryAgent._detect_gap.__get__(agent, QueryAgent)
+    agent._store = MagicMock()
+    agent._store.read_page.side_effect = lambda slug: MagicMock(content=pages[slug], title=slug)
+    return agent
+
+
+def test_detect_gap_counts_a_terms_word_family_as_in_depth_coverage(tmp_wiki):
+    """A page that says "codebreaking" throughout covers "codebreakers".
+
+    Regression: "how the British broke the German cipher machine" was decomposed
+    into sub-questions about "codebreakers"; the Alan Turing page says
+    "codebreaking" 11 times but "codebreakers" once, so signal 5 reported a gap.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "turing": "enigma enigma codebreaking codebreaking codebreakers break break",
+        "timeline": "enigma enigma break break",
+        "transistor": "transistors replaced vacuum tubes",
+        "unix": "unix was written at bell labs",
+    }
+    agent = _gap_agent(pages)
+    candidates = [SearchResult(slug=s, score=10.0 - i, title=s, snippet="")
+                  for i, s in enumerate(pages)]
+    gap, _, on_topic, min_qualifying = agent._detect_gap(
+        question="How did codebreakers break Enigma", candidates=candidates, max_score=10.0)
+    assert gap is False
+    assert on_topic == 2 and min_qualifying == 1
+
+
+def test_gap_match_form_strips_endings_only_from_long_words():
+    from synthadoc.agents.query_agent import _gap_match_form
+
+    assert _gap_match_form("codebreaker") == "codebreak"
+    assert _gap_match_form("decrypting") == "decrypt"
+    assert _gap_match_form("orchestration") == "orchestr"
+    assert _gap_match_form("enigma") == "enigma"
+    assert _gap_match_form("timer") == "timer"           # stem would be under 5 letters
+    assert _gap_match_form("kubernete") == "kubernete"
+
+
+async def _fused_gap(tmp_wiki, pages: dict[str, str], question: str):
+    """Run the gap check on fused (BM25 + embedding) candidates, as with vector = true.
+
+    The fake embedding model makes every page equally similar, so pages that
+    share no word with the question still join the candidates (BM25 score 0).
+    """
+    import numpy as np
+    from unittest.mock import MagicMock, patch
+    from synthadoc.config import SearchConfig
+    from synthadoc.storage.search import HybridSearch, merge_results
+    from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    for slug, body in pages.items():
+        store.write_page(slug, WikiPage(title=slug, tags=[], content=body, status="active",
+                                        confidence="high", sources=[]))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=True))
+    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
+        await search.init_vector()
+    search._embed_texts = lambda texts: np.ones((len(texts), 4), dtype=np.float32) / 2
+    await search.sync_embeddings()
+    candidates = merge_results([await search.hybrid_search(question.lower().split(), top_n=20)], 20)
+    await search.close()
+
+    agent = _gap_agent({})
+    agent._store = store
+    return candidates, agent._detect_gap(question=question, candidates=candidates,
+                                         max_score=max(r.score for r in candidates))
+
+
+async def test_detect_gap_word_family_fix_holds_with_vector_search(tmp_wiki):
+    candidates, (gap, _, on_topic, _) = await _fused_gap(tmp_wiki, {
+        "turing": "Enigma enigma codebreaking codebreaking codebreakers break break.",
+        "timeline": "Enigma enigma break break.",
+        "lunch": "A lunch break.",
+        "spring": "A spring break.",
+        "transistor": "Transistors replaced vacuum tubes.",
+        "unix": "Unix was written at Bell Labs.",
+    }, "How did codebreakers break Enigma")
+    assert {r.slug for r in candidates if r.score == 0} == {"transistor", "unix"}   # embedding-only
+    assert gap is False
+    assert on_topic == 2                        # embedding-only pages are not keyword evidence
+
+
+async def test_detect_gap_still_reports_a_missing_topic_with_vector_search(tmp_wiki):
+    candidates, (gap, _, _, _) = await _fused_gap(tmp_wiki, {
+        "storage": "The system contains records and contains logs.",
+        "unix": "The Unix system contains a kernel.",
+        "transistor": "Transistors replaced vacuum tubes.",
+    }, "What is the Kubernetes container orchestration system")
+    assert any(r.score == 0 for r in candidates)
+    assert gap is True

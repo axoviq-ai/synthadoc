@@ -296,7 +296,7 @@ class CrossWikiQueryAgent(BaseAgent):
         target_wikis: list[tuple[str, str]],
         raw_results: list[Any],
     ) -> tuple[list[dict], list[str], list[str]]:
-        pages: list[dict] = []
+        ranked: list[tuple[int, dict]] = []   # (rank within its wiki, page)
         offline: list[str] = []
         warnings: list[str] = []
         for (name, _), result in zip(target_wikis, raw_results):
@@ -311,12 +311,14 @@ class CrossWikiQueryAgent(BaseAgent):
             else:
                 result_pages = result.pages
                 result_routing_warning = result.routing_warning
-            for page in result_pages:
-                pages.append({**page, "wiki_name": name})
+            ranked += [(rank, {**page, "wiki_name": name}) for rank, page in enumerate(result_pages, 1)]
             if result_routing_warning:
                 warnings.append(f"{name}: {result_routing_warning}")
-        pages.sort(key=lambda p: p.get("score", 0), reverse=True)
-        return pages, offline, warnings
+        # Each wiki returns its pages best first. Raw scores are not comparable
+        # across wikis (BM25 depends on each corpus; fused ranks are another
+        # scale), so interleave by position: every wiki's best page comes first.
+        ranked.sort(key=lambda item: item[0])   # stable: equal ranks keep wiki order
+        return [page for _, page in ranked], offline, warnings
 
     def _build_cross_wiki_context(self, pages: list[dict]) -> str:
         parts: list[str] = []

@@ -11,7 +11,7 @@ from typing import Optional
 import yaml
 from filelock import FileLock
 
-from synthadoc.utils import atomic_write_text
+from synthadoc.utils import atomic_write_text, strip_control_chars
 
 _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "updated", "sources", "orphan",
                        "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
@@ -206,7 +206,7 @@ class WikiStorage:
             body = page_or_content
 
         yaml_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True)
-        text = f"---\n{yaml_str}---\n\n{body}"
+        text = f"---\n{yaml_str}---\n\n{strip_control_chars(body)}"
         target = self._page_path(slug)
         atomic_write_text(target, text)
 

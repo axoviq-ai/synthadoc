@@ -173,7 +173,7 @@ Turing's legacy continues through the **ACM Turing Award**, computing's highest 
 
 ## World War II Cryptanalysis
 
-During World War II, Turing became one of the most important figures at Bletchley Park, working for the Government Code and Cypher School (GC CS). He designed the Bomb e machine, an electromechanical device used to crack the German Enigma cipher, significantly speeding up the decryption process. This work build on earlier pioneering contributions from Polish cryptanalysts Marian Rejewski, Jerzy Różzycki, and Henryk Zygalski, who had developed initial cryptanalytic techniques against Enigma before the war.
+During World War II, Turing became one of the most important figures at Bletchley Park, working for the Government Code and Cypher School (GC&CS). He designed the Bombe machine, an electromechanical device used to crack the German Enigma cipher, significantly speeding up the decryption process. This work build on earlier pioneering contributions from Polish cryptanalysts Marian Rejewski, Jerzy Różzycki, and Henryk Zygalski, who had developed initial cryptanalytic techniques against Enigma before the war.
 
 During World War II, Turing became pivotal in breaking the German Enigma cipher at bletchley-park working for the Government Code and Cypher School (GC&CS). He designed the electromechanical Bombe machine, which drew on the earlier work of Polish cryptanalyst Marian Rejewski. The Bombe's purpose was to systematically test possible Enigma rotor settings and identify the daily encryption key used by the German military.
 

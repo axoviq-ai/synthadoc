@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -59,6 +60,16 @@ def normalise_ts(ts: str) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# C0 control characters other than tab, newline and carriage return. They have
+# no place in Markdown, and a NUL makes grep and editors treat the file as binary.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def strip_control_chars(text: str) -> str:
+    """*text* without C0 control characters, keeping tab, newline and CR."""
+    return _CONTROL_CHARS_RE.sub("", text)
 
 
 def atomic_write_text(

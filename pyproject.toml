@@ -62,7 +62,8 @@ Changelog = "https://github.com/axoviq-ai/synthadoc/releases"
 
 [project.optional-dependencies]
 vectors = [
-    "fastembed>=0.3",   # requires Rust toolchain to build
+    "fastembed>=0.3",   # local embedding model runtime (onnxruntime); prebuilt wheels
+    "numpy>=1.24",      # embedding matrix maths in storage/search.py
 ]
 dev = [
     "pytest>=8",
