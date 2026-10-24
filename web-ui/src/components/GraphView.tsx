@@ -400,6 +400,18 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                             />
                         )}
                     </div>
+                    {mode === "clusters" && (
+                        <div className="graph-legend graph-legend--clusters" aria-label="Clusters">
+                            {clusters.map(c => (
+                                <button key={c.id} className="graph-legend-item graph-legend-btn"
+                                        title={`${c.label} — ${c.size} pages`} onClick={() => openClusterPages(c)}>
+                                    <span className="graph-cluster-dot" style={{ background: clusterColor(c.id) }} />
+                                    <span className="graph-legend-label">{c.label}</span>
+                                    <span className="graph-legend-size">{c.size}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {mode === "pages" && !openCluster && (
                         <div className="graph-legend">
                             {clusterIds.map(cid => (

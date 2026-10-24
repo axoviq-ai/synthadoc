@@ -2755,7 +2755,7 @@ After lint resolves dangling links and the graph is rebuilt, the same wiki becom
 
 ### Large wikis: cluster overview
 
-A wiki with more than 300 pages is too dense to draw page by page, so the Graph tab opens on a **cluster overview**: one bubble per cluster, sized by its number of pages and labelled with its most-connected pages, joined by the strongest links between clusters. Click a bubble to see that cluster's pages (each page shows its three strongest links); **← All clusters** takes you back. Smaller wikis show every page, as before.
+A wiki with more than 300 pages is too dense to draw page by page, so the Graph tab opens on a **cluster overview**: one bubble per cluster, sized by its number of pages and labelled with its most-connected pages, joined by the strongest links between clusters. Below the graph, a list names every cluster with its page count, largest first. Click a bubble or a list entry to see that cluster's pages (each page shows its three strongest links); **← All clusters** takes you back. Smaller wikis show every page, as before.
 
 ### Click a node to query it
 

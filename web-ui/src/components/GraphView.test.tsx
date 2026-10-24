@@ -70,6 +70,22 @@ describe("GraphView", () => {
         await waitFor(() => expect(screen.getByText(/click a cluster to explore it/)).toBeDefined());
     });
 
+    it("lists clusters by name under the overview, and opens one from the list", async () => {
+        const urls = stubFetch({
+            "/graph?view=clusters": overview(CLUSTER_VIEW_MIN_NODES + 1),
+            "/graph?cluster=1": { status: "ready", cluster_id: 1, nodes: [{ ...node("g", 1), degree: 0 }], edges: [] },
+        });
+        render(<GraphView onAskQuery={vi.fn()} />);
+        const list = await screen.findByLabelText("Clusters");
+        expect(list.textContent).toBe(`Alpha · Beta${CLUSTER_VIEW_MIN_NODES}Gamma1`);   // largest first, with sizes
+        expect(screen.queryByText("Cluster 0")).toBeNull();
+
+        fireEvent.click(screen.getByTitle("Gamma — 1 pages"));
+        await waitFor(() => expect(screen.getByText(/Gamma — 1 pages · 0 strongest links/)).toBeDefined());
+        expect(urls).toContain("/graph?cluster=1");
+        expect(screen.queryByLabelText("Clusters")).toBeNull();
+    });
+
     it("keeps polling while the graph is being built", async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         let calls = 0;

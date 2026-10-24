@@ -1069,6 +1069,11 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .graph-cluster-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .graph-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 14px; flex-shrink: 0; border-top: 1px solid var(--accent-border); font-size: 11px; color: var(--text-muted); min-height: 28px; }
 .graph-legend-item { display: flex; align-items: center; gap: 4px; }
+.graph-legend--clusters { max-height: 76px; overflow-y: auto; }
+.graph-legend-btn { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.graph-legend-btn:hover .graph-legend-label { color: var(--text-primary); text-decoration: underline; }
+.graph-legend-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-legend-size { opacity: 0.7; }
 .graph-conn-label { color: var(--text-muted); font-size: 10.5px; }
 .graph-sidebar-hint { font-size: 11px; color: #f59e0b; background: rgba(245,158,11,0.08); border-radius: 5px; padding: 6px 8px; margin: 0; }
 .graph-sidebar-hint-list { display: flex; flex-direction: column; gap: 5px; }
