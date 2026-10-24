@@ -115,6 +115,9 @@ Synthadoc scales from a single researcher to a company-wide knowledge platform:
 
 **Built for large wikis.** Measured on wikis of thousands of pages: keyword search finds the pages for an answer in about 20 ms at 2,000 pages; optional [semantic search](docs/design.md#semantic-search) puts the right page in the top 5 for 68% of questions asked in your own words, up from 48%; and the [knowledge graph](docs/user-quick-start-guide.md#large-wikis-cluster-overview) opens a 5,000-page wiki as a clickable overview of named topic clusters in about 6 seconds.
 
+![Knowledge graph of a 5,000-page wiki: one bubble per topic cluster, named after its main pages, with a clickable list of clusters below](docs/png/synthadoc-graph-cluster-overview.png)
+*The web UI's Graph tab on a 5,000-page test wiki: 100,801 links summarised as 24 named clusters. Click a cluster to see its pages. [How it works](docs/user-quick-start-guide.md#large-wikis-cluster-overview)*
+
 No cloud account. No vendor lock-in. The wiki is plain Markdown — open it in any editor, back it up with git, sync it with any cloud drive.
 
 ---
