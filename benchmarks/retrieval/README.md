@@ -36,18 +36,38 @@ From the repository root:
 python -m benchmarks.retrieval fetch                       # once: download + build the wikis (~30 min)
 python -m benchmarks.retrieval evaluate                    # BM25 only
 pip install -e ".[vectors]"                                # for embedding configs
-python -m benchmarks.retrieval evaluate --configs bm25,rerank
-python -m benchmarks.retrieval evaluate --configs bm25,rerank --write-baseline
+python -m benchmarks.retrieval evaluate --configs bm25,hybrid
+python -m benchmarks.retrieval evaluate --configs bm25,hybrid --write-baseline
 ```
 
 Configurations:
 
 | Name | Search |
 | --- | --- |
-| `bm25` | BM25 only — the default today |
-| `rerank` | `[search] vector = true` today: BM25 top 20, re-sorted by embedding similarity |
-| `rrf` | Prototype: BM25 top 20 and embedding top 20 over the whole wiki, merged by reciprocal rank fusion |
-| `fusion` | Prototype of the proposed design: `rrf`, but when BM25's best score is ≥ 1.05× its second, BM25's top 3 stay on top (protects exact-name lookups) |
+| `bm25` | BM25 only — `[search] vector = false`, the default |
+| `hybrid` | `[search] vector = true`: BM25 fused with page-embedding search, keyword pin (see [design](../../docs/design.md#semantic-search)) |
+
+The first `hybrid` run embeds every page of the corpus (cached in the
+corpus's `embeddings.db`; later runs only embed changed pages).
+
+### How the design was chosen
+
+Measured on the full 1,985-page corpus while designing semantic search
+(recall@5, page-level embeddings of each page's first 512 characters):
+
+| Setup | lexical | identifier | paraphrase | all |
+| --- | ---: | ---: | ---: | ---: |
+| BM25 | 0.998 | 0.994 | 0.479 | 0.840 |
+| BM25 top 20 re-sorted by embedding similarity (the former `vector = true`) | 0.986 | 0.625 | 0.595 | 0.742 |
+| BM25 + embedding search, reciprocal rank fusion | 0.994 | 0.936 | 0.694 | 0.883 |
+| Fusion + keyword pin (BM25 top 3 kept when its best score ≥ 1.05× its second) | 0.998 | 0.984 | 0.676 | 0.896 |
+| Same, but one embedding per section instead of per page | 0.998 | 0.986 | 0.613 | 0.878 |
+
+Section embeddings rank better on their own (paraphrase recall@5 0.669 vs
+0.616 for the embedding search alone) but fuse worse, because they mostly
+find the pages BM25 already finds, and embedding the 14,511 sections took
+82 minutes against a few minutes for one embedding per page. Semantic search
+therefore embeds each page once (title, tags, first 512 characters).
 
 Metrics, per query type and wiki size: recall@5/10/20 (share of the right
 pages in the top k), MRR@10 and nDCG@10 (how high they rank), and P50/P95

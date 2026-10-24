@@ -559,7 +559,7 @@ async def test_auto_block_domain_concurrent_no_lost_writes(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
-    """When search.vector=True and a page exists in the store, _run_ingest embeds it."""
+    """A successful ingest schedules an embedding sync."""
     from synthadoc.agents.ingest_agent import IngestResult
     from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
     from synthadoc.core.orchestrator import Orchestrator
@@ -593,20 +593,15 @@ async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
         result.output_tokens = 5
         result.skipped = False
 
-        embed_calls = []
-
-        async def fake_embed(slug, text):
-            embed_calls.append(slug)
-
         mock_agent = MagicMock()
         mock_agent.run = AsyncMock(return_value=result)
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
-             patch.object(orch._search, "embed_page", side_effect=fake_embed):
+             patch.object(orch._search, "schedule_embedding_sync") as schedule:
             await orch._run_ingest(job_id, "https://ex.com", auto_confirm=True)
 
-        assert "new-page" in embed_calls
+        schedule.assert_called_once()
     finally:
         await orch.close()
 
@@ -2285,7 +2280,7 @@ def test_lifecycle_rollback_no_undo_index():
 
 @pytest.mark.asyncio
 async def test_orchestrator_init_vector_search_import_error_fallback(tmp_wiki):
-    """Orchestrator.init() logs a warning and continues when fastembed is not installed."""
+    """Orchestrator.init() warns and continues on BM25 when vector=true but fastembed is missing."""
     from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
     from synthadoc.core.orchestrator import Orchestrator
 
@@ -2296,9 +2291,32 @@ async def test_orchestrator_init_vector_search_import_error_fallback(tmp_wiki):
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     # Patch init_vector to raise ImportError (simulates fastembed not installed)
     with patch.object(orch._search, "init_vector",
-                      side_effect=ImportError("fastembed not installed")):
+                      side_effect=ImportError("fastembed not installed")), \
+         patch("synthadoc.core.orchestrator.logger") as log:
         await orch.init()  # must not raise
     await orch.close()
+    log.warning.assert_called_once()
+    assert "fastembed" in log.warning.call_args.args[0]
+    assert orch._search._vector_store is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_init_vector_auto_without_fastembed_is_quiet(tmp_wiki):
+    """vector = "auto" without fastembed is the normal BM25 setup: info, not warning."""
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
+    from synthadoc.core.orchestrator import Orchestrator
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash")),
+        search=SearchConfig(vector="auto"),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    with patch.object(orch._search, "init_vector", side_effect=ImportError("fastembed")), \
+         patch("synthadoc.core.orchestrator.logger") as log:
+        await orch.init()
+    await orch.close()
+    log.warning.assert_not_called()
+    assert any("fastembed" in c.args[0] for c in log.info.call_args_list)
 
 
 # ── cli/audit.py — no-cache full-run server polling path ─────────────────────

@@ -78,7 +78,7 @@ def cmd_generate(args) -> None:
 
 def cmd_evaluate(args) -> None:
     configs = args.configs.split(",")
-    if any(evaluate.CONFIGS[c].needs_embeddings for c in configs) and not evaluate.has_fastembed():
+    if any(evaluate.CONFIGS[c].search_cfg.vector for c in configs) and not evaluate.has_fastembed():
         sys.exit('Embedding configs need fastembed: pip install "synthadoc[vectors]"')
     results: dict = {}
     if "wikipedia" in args.corpora:

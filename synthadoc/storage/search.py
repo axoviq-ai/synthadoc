@@ -3,28 +3,54 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import aiosqlite
 from rank_bm25 import BM25Okapi
 
 from synthadoc.storage.wiki import WikiPage, WikiStorage
 
+if TYPE_CHECKING:
+    import numpy as np
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class SearchResult:
     slug: str
-    score: float
+    score: float             # BM25 score; 0.0 when only the embedding search found the page
     title: str
     snippet: str
     tf_fallback: bool = False
+    rank_score: float = 0.0  # ordering key: the BM25 score, or the fused rank when embeddings are on
+    similarity: Optional[float] = None   # embedding similarity to the query, when embeddings are on
+
+
+def merge_results(result_lists: Iterable[list[SearchResult]],
+                  top_n: Optional[int] = None) -> list[SearchResult]:
+    """Combine several searches (e.g. one per sub-question): keep each page's
+    best result and order by rank_score."""
+    best: dict[str, SearchResult] = {}
+    for results in result_lists:
+        for r in results:
+            if r.slug not in best or r.rank_score > best[r.slug].rank_score:
+                best[r.slug] = r
+    ranked = sorted(best.values(), key=lambda r: r.rank_score, reverse=True)
+    return ranked if top_n is None else ranked[:top_n]
 
 
 class VectorStore:
-    """SQLite-backed store for page embeddings (float32 blobs)."""
+    """SQLite-backed store of page embeddings (float32 blobs).
+
+    Each row carries a hash of the text it was embedded from, so a sync can
+    tell which pages changed.
+    """
 
     def __init__(self, db_path: Path) -> None:
         self._path = Path(db_path)
@@ -33,62 +59,90 @@ class VectorStore:
     async def init(self) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS embeddings (
+                CREATE TABLE IF NOT EXISTS page_embeddings (
                     slug       TEXT PRIMARY KEY,
-                    embedding  BLOB NOT NULL,
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    text_hash  TEXT NOT NULL,
+                    embedding  BLOB NOT NULL
                 )
             """)
+            # Embeddings from before change tracking; re-embedded on the next sync.
+            await db.execute("DROP TABLE IF EXISTS embeddings")
             await db.commit()
 
-    async def upsert(self, slug: str, embedding: list[float]) -> None:
-        import numpy as np
-        blob = np.array(embedding, dtype=np.float32).tobytes()
+    async def text_hashes(self) -> dict[str, str]:
         async with aiosqlite.connect(self._path) as db:
-            await db.execute(
-                "INSERT OR REPLACE INTO embeddings (slug, embedding, updated_at)"
-                " VALUES (?, ?, datetime('now'))",
-                (slug, blob),
+            async with db.execute("SELECT slug, text_hash FROM page_embeddings") as cur:
+                return {slug: text_hash for slug, text_hash in await cur.fetchall()}
+
+    async def upsert_many(self, rows: list[tuple[str, str, "np.ndarray"]]) -> None:
+        """Store each (slug, text_hash, embedding), replacing older rows."""
+        import numpy as np
+        async with aiosqlite.connect(self._path) as db:
+            await db.executemany(
+                "INSERT OR REPLACE INTO page_embeddings (slug, text_hash, embedding) VALUES (?, ?, ?)",
+                [(slug, text_hash, np.asarray(vec, dtype=np.float32).tobytes())
+                 for slug, text_hash, vec in rows],
             )
             await db.commit()
 
-    async def get(self, slug: str) -> "Optional[list[float]]":
+    async def delete_pages(self, slugs: Iterable[str]) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.executemany("DELETE FROM page_embeddings WHERE slug=?", [(s,) for s in slugs])
+            await db.commit()
+
+    async def load(self) -> tuple[list[str], "np.ndarray"]:
+        """(slugs, embedding matrix with one row per slug)."""
         import numpy as np
         async with aiosqlite.connect(self._path) as db:
-            async with db.execute(
-                "SELECT embedding FROM embeddings WHERE slug=?", (slug,)
-            ) as cur:
-                row = await cur.fetchone()
-        if row is None:
-            return None
-        return np.frombuffer(row[0], dtype=np.float32).tolist()
-
-    async def get_all(self) -> "dict[str, list[float]]":
-        import numpy as np
-        async with aiosqlite.connect(self._path) as db:
-            async with db.execute("SELECT slug, embedding FROM embeddings") as cur:
+            async with db.execute("SELECT slug, embedding FROM page_embeddings ORDER BY slug") as cur:
                 rows = await cur.fetchall()
-        return {r[0]: np.frombuffer(r[1], dtype=np.float32).tolist() for r in rows}
-
-    async def list_slugs(self) -> list[str]:
-        async with aiosqlite.connect(self._path) as db:
-            async with db.execute("SELECT slug FROM embeddings") as cur:
-                rows = await cur.fetchall()
-        return [r[0] for r in rows]
-
-    async def count(self) -> int:
-        async with aiosqlite.connect(self._path) as db:
-            async with db.execute("SELECT COUNT(*) FROM embeddings") as cur:
-                row = await cur.fetchone()
-        return row[0] if row else 0
+        if not rows:
+            return [], np.zeros((0, 0), dtype=np.float32)
+        return [r[0] for r in rows], np.stack([np.frombuffer(r[1], dtype=np.float32) for r in rows])
 
 
 _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 
+# Characters of a page's search text that are embedded: its title, tags and
+# opening. Section-level embeddings (one per heading) were benchmarked and
+# rejected: alone they rank better, but fused with BM25 they did worse (they
+# find the pages BM25 already finds) and took ~20x longer to compute.
+_EMBED_CHARS = 512
+_EMBED_BATCH = 64
+
+# Fusion of the BM25 and embedding rankings (see hybrid_search). Tuned on the
+# retrieval benchmark in benchmarks/retrieval.
+_RRF_K = 60
+_PIN_DOMINANCE = 1.05    # BM25 best score >= this x its second -> trust BM25's top hits
+_PIN_TOP = 3
+
+
 def page_search_text(page: WikiPage) -> str:
-    """Text a page is indexed by, for both BM25 and embeddings."""
+    """Text a page is indexed by in BM25."""
     return f"{page.title} {' '.join(page.tags)} {page.content}"
+
+
+def embedding_text(page: WikiPage) -> str:
+    """The text a page is embedded from."""
+    return page_search_text(page)[:_EMBED_CHARS]
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
+def _keyword_dominates(results: list[SearchResult]) -> bool:
+    """True when BM25's best score is at least _PIN_DOMINANCE times its second.
+
+    A dominant BM25 hit is almost always an exact name or term match, so its top
+    results are kept on top of the fused ranking.
+    """
+    if not results:
+        return False
+    if len(results) == 1 or results[1].score <= 0:
+        return True
+    return results[0].score >= _PIN_DOMINANCE * results[1].score
 
 
 # Built BM25 indexes kept per search scope (full corpus plus routing scopes).
@@ -100,7 +154,14 @@ _QUERY_STATES: frozenset[str] = frozenset({"active", "stale"})
 
 
 class HybridSearch:
-    """BM25 full-text search with optional vector re-ranking via fastembed."""
+    """BM25 full-text search, fused with embedding search when enabled.
+
+    With ``[search] vector`` on (and fastembed installed), every query runs
+    BM25 and an embedding search side by side and merges the two rankings
+    with reciprocal rank fusion; a dominant BM25 hit keeps its top results on
+    top. Page embeddings are kept in embeddings.db, held in memory as
+    one matrix, and re-synced in the background when pages change.
+    """
 
     def __init__(self, store: WikiStorage, index_path: Path,
                  search_cfg=None) -> None:
@@ -113,48 +174,118 @@ class HybridSearch:
         self._search_cfg = search_cfg      # SearchConfig or None
         self._vector_store: Optional[VectorStore] = None
         self._embed_model = None            # lazy loaded
+        # In-memory embeddings: one row per page, in _page_slugs order.
+        self._matrix: Optional["np.ndarray"] = None
+        self._page_slugs: list[str] = []
+        self._vectors_dirty = True
+        self._sync_lock = asyncio.Lock()
+        self._sync_task: Optional[asyncio.Task] = None
+
+    def vectors_requested(self) -> bool:
+        """True when the config asks for embeddings (``vector = true`` or ``"auto"``)."""
+        mode = getattr(self._search_cfg, "vector", False)
+        return mode is True or mode == "auto"
 
     def _vector_enabled(self) -> bool:
-        return self._search_cfg is not None and self._search_cfg.vector
+        return self._vector_store is not None
+
+    def _pool_size(self) -> int:
+        return int(getattr(self._search_cfg, "vector_top_candidates", 20) or 20)
 
     async def init_vector(self) -> None:
-        """Create embeddings.db table. Call from orchestrator when vector=true."""
-        if not self._vector_enabled():
+        """Open embeddings.db when the config asks for embeddings.
+
+        Raises ImportError when fastembed is not installed; the caller decides
+        whether that is worth a warning (``true``) or not (``"auto"``).
+        """
+        if not self.vectors_requested():
             return
         try:
             from fastembed import TextEmbedding  # noqa: F401
         except ImportError:
             raise ImportError(
                 "fastembed is required for vector search. "
-                "Run: pip install fastembed  then restart the server."
+                'Run: pip install "synthadoc[vectors]"  then restart the server.'
             )
         self._vector_store = VectorStore(self._index_path)
         await self._vector_store.init()
 
     def _get_embed_model(self):
         if self._embed_model is None:
-            try:
-                from fastembed import TextEmbedding
-            except ImportError:
-                raise ImportError(
-                    "fastembed is required for vector search. "
-                    "Install with: pip install fastembed"
-                )
+            from fastembed import TextEmbedding
             self._embed_model = TextEmbedding(_EMBED_MODEL_NAME)
         return self._embed_model
 
-    def _embed_text(self, text: str) -> list[float]:
-        model = self._get_embed_model()
-        result = list(model.embed([text[:512]]))
-        return result[0].tolist()
+    def _embed_texts(self, texts: list[str]) -> "np.ndarray":
+        """L2-normalised embeddings, one row per text (blocking; run in an executor)."""
+        import numpy as np
+        vectors = np.array(list(self._get_embed_model().embed(texts, batch_size=_EMBED_BATCH)),
+                           dtype=np.float32)
+        return vectors / np.linalg.norm(vectors, axis=1, keepdims=True).clip(min=1e-12)
 
-    async def embed_page(self, slug: str, text: str) -> None:
-        """Embed a page and persist in embeddings.db. No-op when vector disabled."""
-        if not self._vector_enabled() or self._vector_store is None:
+    # ── embedding sync ──────────────────────────────────────────────────────
+
+    async def sync_embeddings(self) -> int:
+        """Embed pages that are new or changed, drop pages that left the corpus,
+        and reload the in-memory matrix. Returns the number of pages embedded."""
+        if self._vector_store is None:
+            return 0
+        async with self._sync_lock:
+            self._vectors_dirty = False
+            slugs, _ = self._corpus()
+            stored = await self._vector_store.text_hashes()
+            todo: list[tuple[str, str, str]] = []   # (slug, hash, text)
+            for slug in slugs:
+                page = self._store.read_page(slug)
+                if page is None:
+                    continue
+                text = embedding_text(page)
+                if stored.get(slug) != (text_hash := _text_hash(text)):
+                    todo.append((slug, text_hash, text))
+            if todo:
+                logger.info("Vector search: embedding %d page(s)…", len(todo))
+            loop = asyncio.get_running_loop()
+            for i in range(0, len(todo), _EMBED_BATCH * 4):
+                batch = todo[i:i + _EMBED_BATCH * 4]
+                vectors = await loop.run_in_executor(None, self._embed_texts, [t for _, _, t in batch])
+                await self._vector_store.upsert_many(
+                    [(slug, text_hash, vec) for (slug, text_hash, _), vec in zip(batch, vectors)])
+            if removed := set(stored) - set(slugs):
+                await self._vector_store.delete_pages(removed)
+            await self._load_matrix()
+            return len(todo)
+
+    async def _load_matrix(self) -> None:
+        slugs, matrix = await self._vector_store.load()
+        self._page_slugs = slugs
+        self._matrix = matrix if slugs else None
+
+    def schedule_embedding_sync(self) -> None:
+        """Start a background sync unless one is already running (no-op when off)."""
+        if self._vector_store is None or (self._sync_task and not self._sync_task.done()):
             return
-        loop = asyncio.get_running_loop()
-        embedding = await loop.run_in_executor(None, self._embed_text, text)
-        await self._vector_store.upsert(slug, embedding)
+        self._sync_task = asyncio.create_task(self._sync_in_background())
+
+    async def _sync_in_background(self) -> None:
+        try:
+            await self.sync_embeddings()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — keep serving BM25; retried on the next page change
+            logger.exception("Vector search: embedding sync failed — BM25 results only until it succeeds")
+
+    async def wait_for_embedding_sync(self) -> None:
+        if self._sync_task is not None:
+            await self._sync_task
+
+    async def close(self) -> None:
+        """Cancel a running background sync."""
+        if self._sync_task is not None and not self._sync_task.done():
+            self._sync_task.cancel()
+            try:
+                await self._sync_task
+            except asyncio.CancelledError:
+                pass
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
@@ -167,9 +298,11 @@ class HybridSearch:
         return compound + ascii_t + cjk_t
 
     def invalidate_index(self) -> None:
-        """Drop the in-memory corpus and index caches. Call after any page write."""
+        """Drop the in-memory corpus and index caches, and mark embeddings for a
+        re-sync. Call after any page write."""
         self._cached_corpus = None
         self._bm25_indexes.clear()
+        self._vectors_dirty = True
 
     def _corpus(self) -> tuple[list[str], list[list[str]]]:
         if self._cached_corpus is not None:
@@ -206,6 +339,13 @@ class HybridSearch:
         self._bm25_indexes[key] = (slugs, corpus, BM25Okapi(corpus))
         return self._bm25_indexes[key]
 
+    def _result(self, slug: str, score: float, **fields) -> SearchResult:
+        page = self._store.read_page(slug)
+        snippet = (page.content[:120] + "...") if page and len(page.content) > 120 \
+                  else (page.content if page else "")
+        return SearchResult(slug=slug, score=float(score), title=page.title if page else slug,
+                            snippet=snippet, **fields)
+
     def bm25_search(self, query_terms: list[str], top_n: int = 10,
                     scoped_slugs: list[str] | None = None) -> list[SearchResult]:
         index = self._bm25_index(scoped_slugs)
@@ -225,56 +365,68 @@ class HybridSearch:
                 scores = _tf_scores
                 _used_tf_fallback = True
         ranked = sorted(zip(slugs, scores), key=lambda x: x[1], reverse=True)
+        return [
+            self._result(slug, score, tf_fallback=_used_tf_fallback, rank_score=float(score))
+            for slug, score in ranked[:top_n] if score > 0
+        ]
+
+    async def _vector_ranking(self, query: str, scoped_slugs: list[str] | None,
+                              top_n: int) -> list[tuple[str, float]]:
+        """Pages closest to *query* by embedding similarity, within the corpus/scope."""
+        import numpy as np
+        loop = asyncio.get_running_loop()
+        query_vec = (await loop.run_in_executor(None, self._embed_texts, [query]))[0]
+        page_sims = self._matrix @ query_vec
+        allowed = set(self._corpus()[0])
+        if scoped_slugs is not None:
+            allowed &= set(scoped_slugs)
+        ranked = []
+        for i in np.argsort(-page_sims):
+            if self._page_slugs[i] in allowed:
+                ranked.append((self._page_slugs[i], float(page_sims[i])))
+                if len(ranked) == top_n:
+                    break
+        return ranked
+
+    def _fuse(self, keyword: list[SearchResult], semantic: list[tuple[str, float]],
+              top_n: int) -> list[SearchResult]:
+        """Reciprocal rank fusion of both rankings; BM25's top hits stay on top
+        when BM25 has a dominant match."""
+        fused: dict[str, float] = {}
+        for ranking in ([r.slug for r in keyword], [slug for slug, _ in semantic]):
+            for rank, slug in enumerate(ranking, 1):
+                fused[slug] = fused.get(slug, 0.0) + 1 / (_RRF_K + rank)
+        if _keyword_dominates(keyword):
+            # Above any fused score (at most 2 / (_RRF_K + 1)), in BM25 order.
+            for i, r in enumerate(keyword[:_PIN_TOP]):
+                fused[r.slug] = 1.0 + (_PIN_TOP - i)
+        by_slug = {r.slug: r for r in keyword}
+        similarity = dict(semantic)
         results = []
-        for slug, score in ranked[:top_n]:
-            if score <= 0:
-                continue
-            page = self._store.read_page(slug)
-            snippet = (page.content[:120] + "...") if page and len(page.content) > 120 \
-                      else (page.content if page else "")
-            results.append(SearchResult(
-                slug=slug, score=float(score),
-                title=page.title if page else slug,
-                snippet=snippet,
-                tf_fallback=_used_tf_fallback,
-            ))
+        for slug in sorted(fused, key=fused.get, reverse=True)[:top_n]:
+            base = by_slug.get(slug)
+            result = (SearchResult(slug=base.slug, score=base.score, title=base.title,
+                                   snippet=base.snippet, tf_fallback=base.tf_fallback)
+                      if base else self._result(slug, 0.0))
+            result.rank_score = fused[slug]
+            result.similarity = similarity.get(slug)
+            results.append(result)
         return results
 
     async def hybrid_search(self, query_terms: list[str],
                             top_n: int = 10,
                             scoped_slugs: list[str] | None = None) -> list[SearchResult]:
-        """BM25 fetch + vector cosine re-rank when enabled; BM25-only otherwise."""
-        top_candidates = (
-            self._search_cfg.vector_top_candidates
-            if self._vector_enabled() and self._search_cfg
-            else top_n
-        )
-        candidates = self.bm25_search(query_terms, top_n=top_candidates, scoped_slugs=scoped_slugs)
+        """BM25 fused with embedding search when enabled; BM25 only otherwise.
 
-        if not self._vector_enabled() or self._vector_store is None or not candidates:
-            return candidates[:top_n]
-
-        import numpy as np
-        stored = await self._vector_store.get_all()
-        if not stored:
-            return candidates[:top_n]
-
-        query_text = " ".join(query_terms)
-        loop = asyncio.get_running_loop()
-        query_emb = await loop.run_in_executor(None, self._embed_text, query_text)
-        q_arr = np.array(query_emb, dtype=np.float32)
-        q_norm = np.linalg.norm(q_arr)
-
-        reranked = []
-        for r in candidates:
-            page_emb = stored.get(r.slug)
-            if page_emb is None:
-                reranked.append((r, 0.0))
-                continue
-            p_arr = np.array(page_emb, dtype=np.float32)
-            norm = q_norm * np.linalg.norm(p_arr)
-            cos_sim = float(np.dot(q_arr, p_arr) / norm) if norm > 0 else 0.0
-            reranked.append((r, cos_sim))
-
-        reranked.sort(key=lambda x: x[1], reverse=True)
-        return [r for r, _ in reranked[:top_n]]
+        Until the first embedding sync has finished, results are BM25 only.
+        """
+        if self._vector_store is None:
+            return self.bm25_search(query_terms, top_n=top_n, scoped_slugs=scoped_slugs)
+        if self._vectors_dirty:
+            self.schedule_embedding_sync()
+        pool = max(top_n, self._pool_size())
+        keyword = self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)
+        if self._matrix is None:
+            return keyword[:top_n]
+        semantic = await self._vector_ranking(" ".join(query_terms), scoped_slugs, pool)
+        return self._fuse(keyword, semantic, top_n)

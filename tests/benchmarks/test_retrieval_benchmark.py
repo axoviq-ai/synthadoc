@@ -304,28 +304,6 @@ def test_format_table_has_a_row_per_config_size_and_type():
     assert table.count("| bm25 | 200 |") == 2
 
 
-async def test_fusion_search_surfaces_pages_either_method_finds(tmp_path):
-    """BM25 misses the paraphrase; the embedding side finds it, and fusion keeps both."""
-    np = pytest.importorskip("numpy")
-    from synthadoc.config import SearchConfig
-    from synthadoc.storage.search import HybridSearch
-
-    wiki_dir = _tiny_wiki(tmp_path)
-    search = HybridSearch(WikiStorage(wiki_dir), tmp_path / "e.db", search_cfg=SearchConfig(vector=False))
-    # Fake embedding space: "software managing" points at unix, everything else at eniac.
-    search._embed_text = lambda text: [0.0, 1.0, 0.0] if "software" in text else [1.0, 0.0, 0.0]
-    slugs = ["eniac", "tcp-ip", "unix"]
-    matrix = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=np.float32)
-    fusion = evaluate.FusionSearch(search, slugs, matrix)
-
-    assert fusion._search.bm25_search(["software", "managing"]) == []   # keyword search misses
-    paraphrase = await fusion.hybrid_search(["software", "managing"], top_n=3)
-    assert paraphrase[0].slug == "unix"
-    lexical = await fusion.hybrid_search(["eniac", "vacuum", "tubes"], top_n=3)
-    assert lexical[0].slug == "eniac"
-    scoped = await fusion.hybrid_search(["software", "managing"], top_n=3, scoped_slugs=["eniac", "tcp-ip"])
-    assert "unix" not in [r.slug for r in scoped]
-
 
 def test_write_baseline_replaces_only_the_configs_just_run(tmp_path):
     from benchmarks.retrieval.__main__ import write_baseline
@@ -338,32 +316,18 @@ def test_write_baseline_replaces_only_the_configs_just_run(tmp_path):
                        "hotpot": {"bm25": {"x": 4}}}
 
 
-def _results(*scores):
-    from synthadoc.storage.search import SearchResult
-    return [SearchResult(slug=f"p{i}", score=sc, title="", snippet="") for i, sc in enumerate(scores)]
-
-
-def test_keyword_dominates_needs_a_clear_bm25_winner():
-    assert evaluate.keyword_dominates(_results(2.05, 2.0)) is False
-    assert evaluate.keyword_dominates(_results(2.2, 2.0)) is True
-    assert evaluate.keyword_dominates(_results(1.0)) is True
-    assert evaluate.keyword_dominates(_results(1.0, 0.0)) is True
-    assert evaluate.keyword_dominates([]) is False
-
-
-async def test_fusion_pins_bm25_top_hits_when_bm25_dominates(tmp_path):
+async def test_make_search_syncs_embeddings_for_the_hybrid_config(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
-    from synthadoc.config import SearchConfig
+    from unittest.mock import MagicMock
     from synthadoc.storage.search import HybridSearch
 
     wiki_dir = _tiny_wiki(tmp_path)
-    search = HybridSearch(WikiStorage(wiki_dir), tmp_path / "e.db", search_cfg=SearchConfig(vector=False))
-    search._embed_text = lambda text: [0.0, 1.0, 0.0]          # embeddings always prefer unix
-    matrix = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=np.float32)
-    slugs = ["eniac", "tcp-ip", "unix"]
-    plain = evaluate.FusionSearch(search, slugs, matrix)
-    pinned = evaluate.FusionSearch(search, slugs, matrix, pin_keyword_hits=True)
-
-    assert (await plain.hybrid_search(["eniac"], top_n=3))[0].slug == "eniac"     # tie broken by insertion
-    assert (await pinned.hybrid_search(["eniac"], top_n=3))[0].slug == "eniac"
-    assert (await pinned.hybrid_search(["software"], top_n=3))[0].slug == "unix"  # BM25 found nothing
+    monkeypatch.setitem(__import__("sys").modules, "fastembed", MagicMock())
+    monkeypatch.setattr(HybridSearch, "_embed_texts",
+                        lambda self, texts: np.ones((len(texts), 3), dtype=np.float32) / 3 ** 0.5)
+    logged: list[str] = []
+    search = await evaluate.make_search(wiki_dir, evaluate.CONFIGS["hybrid"], log=logged.append)
+    assert sorted(search._page_slugs) == ["eniac", "tcp-ip", "unix"]
+    assert "embedded 3 page(s)" in logged[0]
+    bm25 = await evaluate.make_search(wiki_dir, evaluate.CONFIGS["bm25"], log=logged.append)
+    assert bm25._vector_store is None

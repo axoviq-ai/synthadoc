@@ -3176,3 +3176,17 @@ async def test_run_stream_specific_content_query_not_hijacked_by_rewrite_trigger
     assert done_ev["data"].get("cacheable", True) is True, (
         "Content question must not be routed to live-data path due to rewrite trigger injection"
     )
+
+
+def test_detect_gap_ignores_embedding_only_candidates(tmp_wiki):
+    """Gap signals measure keyword evidence: pages that only the embedding
+    search found (BM25 score 0) must not make the wiki look better covered."""
+    from synthadoc.storage.search import SearchResult
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    question = "what is the capital of atlantis"
+    embedding_only = [SearchResult(slug=f"p{i}", score=0.0, title=f"P{i}", snippet="", rank_score=0.03)
+                      for i in range(5)]
+    assert agent._detect_gap(question, embedding_only, 0.0) == agent._detect_gap(question, [], 0.0)
+    assert agent._detect_gap(question, embedding_only, 0.0)[0] is True

@@ -9,7 +9,7 @@ from datetime import datetime
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.query_agent import QueryAgent
 from synthadoc.providers.base import LLMProvider
-from synthadoc.storage.search import HybridSearch
+from synthadoc.storage.search import HybridSearch, merge_results
 from synthadoc.storage.wiki import WikiStorage
 
 _WORDS_PER_TOKEN = 0.75  # rough approximation
@@ -113,13 +113,7 @@ class ContextAgent(BaseAgent):
             for q in sub_questions
         ])
 
-        # Merge — best score per slug
-        best: dict = {}
-        for results in results_per_q:
-            for r in results:
-                if r.slug not in best or r.score > best[r.slug].score:
-                    best[r.slug] = r
-        ranked = sorted(best.values(), key=lambda r: r.score, reverse=True)
+        ranked = merge_results(results_per_q)
 
         pages, omitted, used = [], [], 0
         for r in ranked:

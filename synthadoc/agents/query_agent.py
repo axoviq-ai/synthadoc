@@ -28,7 +28,7 @@ from synthadoc.agents.rewrite_agent import RewriteAgent
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB
-from synthadoc.storage.search import HybridSearch, SearchResult
+from synthadoc.storage.search import HybridSearch, SearchResult, merge_results
 from synthadoc.storage.wiki import WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -982,12 +982,7 @@ class QueryAgent(BaseAgent):
         results_per_sub = await asyncio.gather(
             *[_search_one(q, scoped_slugs) for q in sub_questions]
         )
-        best: dict[str, SearchResult] = {}
-        for results in results_per_sub:
-            for r in results:
-                if r.slug not in best or r.score > best[r.slug].score:
-                    best[r.slug] = r
-        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:_CANDIDATE_POOL_SIZE]
+        candidates = merge_results(results_per_sub, _CANDIDATE_POOL_SIZE)
 
         routing_warning = ""
         if scoped_slugs is not None:
@@ -1002,14 +997,7 @@ class QueryAgent(BaseAgent):
                 full_per_sub = await asyncio.gather(
                     *[_search_one(q, None) for q in sub_questions]
                 )
-                full_best: dict[str, SearchResult] = {}
-                for results in full_per_sub:
-                    for r in results:
-                        if r.slug not in full_best or r.score > full_best[r.slug].score:
-                            full_best[r.slug] = r
-                full_candidates = sorted(
-                    full_best.values(), key=lambda r: r.score, reverse=True
-                )[:_CANDIDATE_POOL_SIZE]
+                full_candidates = merge_results(full_per_sub, _CANDIDATE_POOL_SIZE)
                 if full_candidates:
                     candidates = full_candidates
                     routing_warning = (
@@ -1168,7 +1156,10 @@ class QueryAgent(BaseAgent):
 
         Returns (gap, discriminating_term, pages_with_overlap, min_specific_qualifying).
         Called by both run() and run_stream() so they share identical detection logic.
+        The signals measure keyword evidence, so pages found only by embedding
+        search (BM25 score 0) are left out.
         """
+        candidates = [r for r in candidates if r.score > 0]
         _any_term_missing = False
         _defining_term_absent = False
         _discriminating_term = ""
