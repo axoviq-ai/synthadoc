@@ -3828,10 +3828,11 @@ fetch_timeout_seconds = 60   # increase if slow sites time out during web search
 provider    = "tavily"
 max_results = 20
 
-# Optional: enable semantic re-ranking (downloads ~130 MB model once)
+# Optional: semantic search — BM25 fused with page embeddings
+# (pip install "synthadoc[vectors]"; downloads a ~65 MB model once)
 # [search]
-# vector = true
-# vector_top_candidates = 20   # BM25 candidate pool before cosine re-rank
+# vector = true                # or "auto": on whenever fastembed is installed
+# vector_top_candidates = 20   # candidates from each of BM25 and embeddings
 
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
@@ -3937,8 +3938,6 @@ Ensure the tool is installed and authenticated in your terminal before starting 
 ![Switching LLM providers in config.toml — Claude Code enabled](png/synthadoc-switch-provider.png)
 
 > **Web search still needs Tavily.** Even with a CLI provider, `search for:` ingest requires a `TAVILY_API_KEY`. The free tier (1,000 searches/month, no credit card required) is more than enough for typical Synthadoc use — see [Appendix D](#appendix-d--tavily-web-search-key).
-
-> **Note:** CLI providers use BM25 search only — vector/semantic search (`[search] vector = true`) is not supported and will be silently bypassed.
 
 > **Agentic workflows:** All seven maintenance workflows (ingest, wikilinks, citations, contradiction, orphan, lint, scaffold) are fully supported by CLI providers. Each workflow uses a Python-driven path that calls the same tool functions directly — no LLM wire-format loop is sent to the subprocess. See [Provider Compatibility](design.md#provider-compatibility) for the per-workflow execution model.
 

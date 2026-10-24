@@ -338,47 +338,48 @@ User input: "search for: yard gardening in Canadian climate zones"
 - Cap: 4 search strings maximum — prevents runaway Tavily API spend.
 - Fallback: if LLM call fails, JSON is invalid, or all entries are whitespace, use the original phrase as a single search query — the ingest always completes.
 
-### Semantic Re-ranking
+### Semantic Search
 
 > **Opt-in.** BM25 is the default and works without any additional dependencies.
 
 **Installation:**
 
 ```bash
-pip install fastembed
+pip install "synthadoc[vectors]"     # adds fastembed
 ```
 
 **Enable in config:**
 
 ```toml
 [search]
-vector = true
-vector_top_candidates = 20   # BM25 candidate pool; top_n returned after re-ranking
+vector = true                # or "auto": on when fastembed is installed, BM25 otherwise
+vector_top_candidates = 20   # candidates taken from each of BM25 and the embedding search
 ```
 
-**Embedding model:** `BAAI/bge-small-en-v1.5` (~130 MB), managed by `fastembed`. Downloaded once on the first server start with `vector = true`; cached at `~/.cache/fastembed/` thereafter.
+`true` logs a warning when fastembed is missing; `"auto"` treats a missing
+fastembed as the normal BM25 setup and logs it at info level.
 
-**On first enable**, the server prints and logs:
+**Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on; cached at `~/.synthadoc/models/` thereafter (override with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in).
 
-```
-Vector search enabled — downloading embedding model BAAI/bge-small-en-v1.5 (~130 MB)
-to ~/.cache/fastembed/. This is a one-time download.
-```
+**What is embedded:** each page's title, tags and the first 512 characters of its text — one embedding per page. Section-level embeddings (one per heading) were benchmarked and rejected: on their own they rank better, but fused with BM25 they did worse — they mostly find the pages BM25 already finds — and took ~20x longer to compute.
 
-**Search flow (when `vector = true`):**
+**Search flow (`HybridSearch.hybrid_search`, when vectors are on):**
 
-1. BM25 retrieves top `vector_top_candidates` (default 20) candidates
-2. The query is embedded; cosine similarity is computed against each candidate's stored vector
-3. Results are re-ranked by vector score; top `top_n` (default 8) are returned to the caller
+1. BM25 takes its top `vector_top_candidates` pages (default 20).
+2. The query is embedded and compared with every page embedding in memory; the top `vector_top_candidates` pages by similarity are taken, over the same scope (routing scope, query lifecycle states).
+3. The two rankings are merged with **reciprocal rank fusion** — each page scores `1 / (60 + rank)` in each list it appears in — so a page either method finds can surface, and a page high in both wins.
+4. **Keyword pin:** when BM25's best score is at least 1.05× its second, BM25's top 3 stay on top. A dominant keyword match is almost always an exact name or term, and re-ordering it by meaning would lose it.
 
-**Migration:** On first enable, a background task embeds all existing wiki pages into `embeddings.db`. BM25 continues to serve all queries during migration — no downtime. Progress is logged every 50 pages. New pages are embedded immediately on write.
+Each `SearchResult` keeps `score` as the BM25 score (0 for a page only the embedding search found), so the knowledge-gap signals and the routing-scope fallback keep their BM25 meaning; `rank_score` is the fused ordering key and `similarity` the embedding similarity. Callers merge sub-question searches with `merge_results()`, which orders by `rank_score`. Ingest's page matching stays on BM25.
 
-**Fallback:** If `embeddings.db` is empty, the model is unavailable, or `fastembed` is not installed, BM25 ranking is used automatically with no error.
+**Sync:** embeddings live in `embeddings.db` (`page_embeddings` table: one vector per page plus a hash of the text it was embedded from) and in memory as one matrix. A background sync embeds new and changed pages and drops pages that left the query corpus: at server start, after every ingest, and on the next search after any page write (`invalidate_index()`). Until the first sync finishes, search is BM25 only — no downtime. A failed sync (e.g. the model cannot be downloaded) is logged and search stays on BM25.
+
+**Measured:** see [benchmarks/retrieval](../benchmarks/retrieval/README.md). On a 1,985-page Wikipedia-derived wiki, fusion with the keyword pin raises paraphrased-question recall@5 from 0.48 to 0.68 while exact-name and own-words questions stay within 1 point of BM25.
 
 **Performance notes:**
 
-- First enable on a large wiki may take several minutes to embed all pages. Subsequent server starts are instant (model and embeddings already cached).
-- The re-ranking step is CPU-only and adds single-digit milliseconds per query after migration.
+- The first sync embeds every page — a few minutes of CPU for a couple of thousand pages. Later syncs only embed pages whose text changed.
+- A query adds one embedding (tens of ms on CPU) and an in-memory matrix product.
 - Set `vector = false` to revert to BM25-only at any time. Existing embeddings are not deleted.
 
 ---
@@ -764,7 +765,7 @@ See [Section 12 — Cache System](#12-cache-system).
 
 ### embeddings.db — Search index
 
-BM25 + optional vector index over all wiki pages. When vector search is disabled (default), only the BM25 index is used. When `[search] vector = true`, the same SQLite file also stores a `embeddings` table holding `float32` embedding vectors alongside the BM25 entries.
+Optional page-embedding store for [semantic search](#semantic-search). The BM25 index is built in memory (and cached per search scope) and never written to disk. When vectors are on, this SQLite file holds the `page_embeddings` table: one `float32` vector per page plus a hash of the embedded text, used to re-embed only pages that changed.
 
 **BM25 tokenizer** handles ASCII and CJK:
 
@@ -1371,7 +1372,6 @@ synthadoc serve -w <wiki-name> --provider claude-code
 
 **Limitations:**
 
-- Vector search (`search.vector = true`) is not supported — search falls back to BM25-only. Sufficient for wikis up to a few hundred pages.
 - Quota is shared with your coding tool usage. Heavy batch ingest consumes from the same daily budget. Quota exhaustion permanently fails the job (no retry) with a clear message.
 
 ### Per-project config — `<wiki-root>/.synthadoc/config.toml`
@@ -1487,8 +1487,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `logs.backup_count`                      | int   | `5`                  | Rotated log files to keep; total disk ≈`max_file_mb × (backup_count + 1)`                                                                                                                                                                                                |
 | `web_search.provider`                    | str   | `"tavily"`           | Web search provider (currently only`tavily` supported)                                                                                                                                                                                                                     |
 | `web_search.max_results`                 | int   | `20`                 | Maximum results fetched per web search query                                                                                                                                                                                                                               |
-| `search.vector`                          | bool  | `false`              | Enable semantic re-ranking; downloads`BAAI/bge-small-en-v1.5` (~130 MB) once on first enable                                                                                                                                                                               |
-| `search.vector_top_candidates`           | int   | `20`                 | BM25 candidate pool size when vector re-ranking is active                                                                                                                                                                                                                  |
+| `search.vector`                          | bool / `"auto"`| `false`              | Semantic search: fuse BM25 with embedding search.      `"auto"` = on when fastembed is installed. Downloads `BAAI/bge-small-en-v1.5` (~65 MB) once                                                                                                                     |
+| `search.vector_top_candidates`           | int   | `20`                 | Candidates taken from each of BM25 and the embedding search before fusion                                                                                                                                                                                                  |
 | `ingest.max_source_chars`                | int   | `32000`              | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's`sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_                   |
 | `ingest.citation_source_lines`           | int   | `400`                | Number of source lines the LLM sees during Pass 4 (citation annotation). Increase if lint reports`out_of_range` on long sources such as transcripts or PDFs. Raise `citation_max_tokens` in proportion when increasing this value.                                         |
 | `ingest.citation_max_tokens`             | int   | `8192`               | Output token budget for the annotated section returned by Pass 4. Increase when`citation_source_lines` is raised or wiki sections are long, to avoid truncated annotations.                                                                                                |
@@ -1581,7 +1581,7 @@ Four independent cache layers:
 
 ### Layer 1 — Vector embedding cache (`embeddings.db`) — optional
 
-Stores fastembed vector embeddings for each wiki page, used to re-rank BM25 results by semantic similarity. Only active when `[search] vector = true` in `config.toml` and the `fastembed` optional dependency is installed (`pip install synthadoc[vectors]`). BM25 search is always computed in-memory and is never persisted to disk.
+Stores fastembed embeddings for each page, used by [semantic search](#semantic-search) to fuse embedding similarity with BM25. Only active when `[search] vector` is `true` or `"auto"` and the `fastembed` optional dependency is installed (`pip install synthadoc[vectors]`). BM25 search is always computed in-memory and is never persisted to disk.
 
 ### Layer 2 — LLM response cache (`cache.db`)
 
@@ -3267,7 +3267,7 @@ Query context is allocated proportionally to the configured model's context wind
 
 | Slice                 | Default | Purpose                                                           |
 | --------------------- | ------- | ----------------------------------------------------------------- |
-| `context_wiki_pct`    | 60%     | Wiki page content (ranked by BM25 + vector score)                 |
+| `context_wiki_pct`    | 60%     | Wiki page content (ranked by BM25, fused with embeddings when on) |
 | `context_history_pct` | 20%     | Chat turn history (newest-first, oldest dropped when over budget) |
 | `context_system_pct`  | 15%     | System prompt and purpose document                                |
 | `context_index_pct`   | 5%      | `ROUTING.md` and search index                                     |

@@ -19,7 +19,7 @@ from synthadoc.observability.telemetry import get_tracer, setup_telemetry
 from synthadoc.providers import make_provider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.search import HybridSearch
+from synthadoc.storage.search import HybridSearch, fastembed_installed
 from synthadoc.storage.wiki import WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,6 @@ class Orchestrator:
         self._cost   = CostGuard(self._cfg.cost)
         self._hooks  = HookExecutor(self._cfg.hooks)
         self._wiki_epoch: int = 0
-        self._migration_task: "asyncio.Task[None] | None" = None
         # Serializes concurrent read-modify-write on blocked_domains.json
         self._block_domain_lock = asyncio.Lock()
         setup_telemetry(sd / "logs" / "traces.jsonl")
@@ -119,25 +118,25 @@ class Orchestrator:
         await self._audit.init()
         await self._cache.init()
         self._log_agent_config()
-        if self._cfg.search.vector:
-            logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — initialising…")
+        if self._search.vectors_requested():
             try:
                 await self._search.init_vector()
-                self._migration_task = asyncio.create_task(self._run_vector_migration())
             except ImportError:
-                logger.warning(
-                    "Vector search requires 'fastembed' which is not installed. "
-                    "Run: pip install fastembed  then restart the server. "
-                    "Falling back to BM25 search."
-                )
+                # "auto" means "use embeddings if available": stay quiet about it.
+                log = logger.info if self._cfg.search.vector == "auto" else logger.warning
+                log('Vector search needs fastembed, which is not installed — using BM25 only. '
+                    'Install with: pip install "synthadoc[vectors]"')
+            else:
+                logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — "
+                            "syncing embeddings in the background, BM25 only until done")
+                self._search.schedule_embedding_sync()
+        elif fastembed_installed():
+            # e.g. the Docker image, which ships the model: say how to turn it on.
+            logger.info("Semantic search is available but off. To turn it on, set "
+                        "vector = true under [search] in .synthadoc/config.toml and restart.")
 
     async def close(self) -> None:
-        if self._migration_task and not self._migration_task.done():
-            self._migration_task.cancel()
-            try:
-                await self._migration_task
-            except asyncio.CancelledError:
-                pass
+        await self._search.close()
         await self._cache.close()
         await asyncio.sleep(0.05)  # allow in-flight aiosqlite thread callbacks to post before loop teardown
 
@@ -147,35 +146,6 @@ class Orchestrator:
 
     async def __aexit__(self, *_: object) -> None:
         await self.close()
-
-    async def _run_vector_migration(self) -> None:
-        """Embed all existing wiki pages not yet in embeddings.db (background task)."""
-        import time
-        if not self._cfg.search.vector or self._search._vector_store is None:
-            return
-        slugs = self._store.list_pages()
-        embedded = set(await self._search._vector_store.list_slugs())
-        to_embed = [s for s in slugs if s not in embedded]
-        if not to_embed:
-            logger.info("Vector search: all %d page(s) already embedded — ready", len(embedded))
-            return
-        logger.info(
-            "Vector search: %d page(s) to embed (%d already done) — running background migration, BM25 active meanwhile",
-            len(to_embed), len(embedded),
-        )
-        start = time.monotonic()
-        for i, slug in enumerate(to_embed, 1):
-            page = self._store.read_page(slug)
-            if page:
-                text = f"{page.title} {' '.join(page.tags)} {page.content}"
-                await self._search.embed_page(slug, text)
-            if i % 50 == 0:
-                logger.info("Vector migration: %d/%d pages embedded…", i, len(to_embed))
-            await asyncio.sleep(0)
-        logger.info(
-            "Vector migration complete — %d pages, %.0fs",
-            len(to_embed), time.monotonic() - start,
-        )
 
     def _log_agent_config(self) -> None:
         """Log the effective provider/model for each named agent slot at startup."""
@@ -335,13 +305,8 @@ class Orchestrator:
             else:
                 await self._queue.complete(job_id, result=job_result)
                 self._bump_epoch()
-                # Embed newly written pages for vector search
-                if self._cfg.search.vector:
-                    for slug in result.pages_created + result.pages_updated:
-                        page = self._store.read_page(slug)
-                        if page:
-                            text = f"{page.title} {' '.join(page.tags)} {page.content}"
-                            await self._search.embed_page(slug, text)
+                # Embed new and updated pages for vector search (no-op when off)
+                self._search.schedule_embedding_sync()
                 self._hooks.fire("on_ingest_complete", {
                     "event": "on_ingest_complete", "wiki": str(self._root),
                     "source": source,

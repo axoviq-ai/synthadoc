@@ -214,3 +214,10 @@ def test_load_yaml_refuses_python_objects():
     from synthadoc.utils import load_yaml
     with pytest.raises(yaml.YAMLError):
         load_yaml("!!python/object/apply:os.system ['echo hi']")
+
+
+def test_strip_control_chars_keeps_tab_newline_and_cr():
+    from synthadoc.utils import strip_control_chars
+    assert strip_control_chars("a\x00b\x07c\x1fd") == "abcd"
+    assert strip_control_chars("line\tone\r\nline two\n") == "line\tone\r\nline two\n"
+    assert strip_control_chars("café · 中文") == "café · 中文"

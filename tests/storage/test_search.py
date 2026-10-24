@@ -197,337 +197,296 @@ def test_corpus_repopulated_after_invalidation(tmp_wiki):
     assert "nitrogen" in [r.slug for r in results]
 
 
-# ── VectorStore tests ─────────────────────────────────────────────────────────
+# ── VectorStore ───────────────────────────────────────────────────────────────
 
+import asyncio
+from pathlib import Path
+
+import numpy as np
 import pytest
-
-@pytest.mark.asyncio
-async def test_vector_store_upsert_and_get(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    emb = [0.1, 0.2, 0.3, 0.4]
-    await store.upsert("my-page", emb)
-    result = await store.get("my-page")
-    assert result is not None
-    assert len(result) == 4
-    assert abs(result[0] - 0.1) < 1e-5
-
-@pytest.mark.asyncio
-async def test_vector_store_get_missing_returns_none(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    assert await store.get("nonexistent") is None
-
-@pytest.mark.asyncio
-async def test_vector_store_list_slugs(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    await store.upsert("page-a", [0.1, 0.2])
-    await store.upsert("page-b", [0.3, 0.4])
-    slugs = await store.list_slugs()
-    assert set(slugs) == {"page-a", "page-b"}
-
-@pytest.mark.asyncio
-async def test_vector_store_upsert_overwrites(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    await store.upsert("page-a", [0.1, 0.2])
-    await store.upsert("page-a", [0.9, 0.8])
-    result = await store.get("page-a")
-    assert abs(result[0] - 0.9) < 1e-5
-
-@pytest.mark.asyncio
-async def test_vector_store_get_all(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    await store.upsert("a", [1.0, 0.0])
-    await store.upsert("b", [0.0, 1.0])
-    all_embs = await store.get_all()
-    assert set(all_embs.keys()) == {"a", "b"}
-    assert len(all_embs["a"]) == 2
-
-@pytest.mark.asyncio
-async def test_vector_store_count(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    assert await store.count() == 0
-    await store.upsert("x", [0.5, 0.5])
-    assert await store.count() == 1
-    await store.upsert("y", [0.1, 0.9])
-    assert await store.count() == 2
-
-@pytest.mark.asyncio
-async def test_vector_store_get_all_empty(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    result = await store.get_all()
-    assert result == {}
-
-@pytest.mark.asyncio
-async def test_vector_store_list_slugs_empty(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    assert await store.list_slugs() == []
-
-@pytest.mark.asyncio
-async def test_vector_store_init_idempotent(tmp_wiki):
-    from synthadoc.storage.search import VectorStore
-    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await store.init()
-    await store.init()  # second call must not crash
-    assert await store.count() == 0
-
-
-# ── HybridSearch vector support tests ────────────────────────────────────────
-
 from unittest.mock import MagicMock, patch
 
-@pytest.mark.asyncio
+from synthadoc.config import SearchConfig
+from synthadoc.storage.search import (
+    SearchResult, VectorStore, _keyword_dominates, embedding_text, merge_results,
+)
+
+
+async def _store(tmp_wiki) -> VectorStore:
+    store = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
+    await store.init()
+    return store
+
+
+async def test_vector_store_upsert_and_load_one_row_per_page(tmp_wiki):
+    store = await _store(tmp_wiki)
+    await store.upsert_many([("b", "h-b", [0, 1]), ("a", "h-a", [0.5, 0.5])])
+    slugs, matrix = await store.load()
+    assert slugs == ["a", "b"]
+    assert matrix.shape == (2, 2) and matrix[0].tolist() == [0.5, 0.5]
+    assert await store.text_hashes() == {"a": "h-a", "b": "h-b"}
+
+
+async def test_vector_store_upsert_replaces_a_page(tmp_wiki):
+    store = await _store(tmp_wiki)
+    await store.upsert_many([("a", "old", [1, 0])])
+    await store.upsert_many([("a", "new", [0.3, 0.7])])
+    slugs, matrix = await store.load()
+    assert slugs == ["a"] and matrix[0].tolist() == pytest.approx([0.3, 0.7])
+    assert await store.text_hashes() == {"a": "new"}
+
+
+async def test_vector_store_delete_and_empty_load(tmp_wiki):
+    store = await _store(tmp_wiki)
+    await store.upsert_many([("a", "h", [1, 0])])
+    await store.delete_pages(["a"])
+    slugs, matrix = await store.load()
+    assert slugs == [] and matrix.size == 0
+
+
+async def test_vector_store_init_is_idempotent_and_drops_the_untracked_table(tmp_wiki):
+    import aiosqlite
+    path = tmp_wiki / ".synthadoc" / "embeddings.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(path) as db:
+        await db.execute("CREATE TABLE embeddings (slug TEXT PRIMARY KEY, embedding BLOB)")
+        await db.commit()
+    store = VectorStore(path)
+    await store.init()
+    await store.init()
+    async with aiosqlite.connect(path) as db:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table'") as cur:
+            tables = {r[0] for r in await cur.fetchall()}
+    assert tables == {"page_embeddings"}
+
+
+def test_embedding_text_is_the_start_of_the_search_text():
+    page = _make_page("ENIAC was the first general-purpose computer. " * 40)
+    page.title, page.tags = "ENIAC", ["history"]
+    text = embedding_text(page)
+    assert text.startswith("ENIAC history ENIAC was")
+    assert len(text) == 512
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _res(slug, score, rank_score=None):
+    return SearchResult(slug=slug, score=score, title=slug, snippet="",
+                        rank_score=score if rank_score is None else rank_score)
+
+
+def test_merge_results_keeps_best_per_page_and_orders_by_rank_score():
+    merged = merge_results([[_res("a", 1, 0.2), _res("b", 5, 0.1)], [_res("a", 0, 0.9), _res("c", 2, 0.5)]])
+    assert [(r.slug, r.rank_score) for r in merged] == [("a", 0.9), ("c", 0.5), ("b", 0.1)]
+    assert len(merge_results([[_res("a", 1), _res("b", 2)]], top_n=1)) == 1
+
+
+def test_keyword_dominates():
+    assert _keyword_dominates([_res("a", 2.2), _res("b", 2.0)])
+    assert not _keyword_dominates([_res("a", 2.05), _res("b", 2.0)])
+    assert _keyword_dominates([_res("a", 1.0)])
+    assert not _keyword_dominates([])
+
+
+# ── HybridSearch with embeddings ─────────────────────────────────────────────
+
+_TOPICS = ("attention", "image", "feedback")
+
+
+def _fake_embed(texts):
+    """Deterministic embedding: one axis per topic word, plus a small bias."""
+    rows = [[float(t in text.lower()) for t in _TOPICS] + [0.01] for text in texts]
+    vectors = np.array(rows, dtype=np.float32)
+    return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+
+
+def _ml_wiki(tmp_wiki) -> WikiStorage:
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "transformers", "Transformers rely on attention between tokens.")
+    _write_page(store, "cnn", "Convolutional networks classify every image pixel by pixel.")
+    _write_page(store, "rlhf", "RLHF tunes models with human feedback rewards.")
+    return store
+
+
+async def _vector_search(tmp_wiki, store=None, **cfg) -> HybridSearch:
+    search = HybridSearch(store or _ml_wiki(tmp_wiki), tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=True, **cfg))
+    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
+        await search.init_vector()
+    search._embed_texts = _fake_embed
+    return search
+
+
 async def test_hybrid_search_bm25_only_when_vector_disabled(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    _write_page(store, "transformers", "transformers use self-attention mechanisms")
-    _write_page(store, "cnn", "CNNs use convolutional filters")
-    _write_page(store, "rlhf", "RLHF trains models with human feedback")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+    search = HybridSearch(_ml_wiki(tmp_wiki), tmp_wiki / ".synthadoc" / "embeddings.db",
                           search_cfg=SearchConfig(vector=False))
-    results = await search.hybrid_search(["attention", "transformer"])
-    assert any(r.slug == "transformers" for r in results)
-
-@pytest.mark.asyncio
-async def test_hybrid_search_returns_empty_for_empty_wiki(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=False))
-    results = await search.hybrid_search(["anything"])
-    assert results == []
-
-@pytest.mark.asyncio
-async def test_hybrid_search_reranks_with_vector(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch, VectorStore
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    _write_page(store, "transformers", "transformers use self-attention mechanisms")
-    _write_page(store, "cnn", "CNNs use convolutional filters for image recognition")
-    _write_page(store, "rlhf", "RLHF trains models with human feedback rewards")
-
-    cfg = SearchConfig(vector=True, vector_top_candidates=10)
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db", search_cfg=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await search.init_vector()
-
-    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await vs.upsert("transformers", [1.0, 0.0, 0.0, 0.0])
-    await vs.upsert("cnn",          [0.0, 1.0, 0.0, 0.0])
-    await vs.upsert("rlhf",         [0.0, 0.0, 1.0, 0.0])
-
-    # query embedding strongly points to "transformers"
-    with patch.object(search, "_embed_text", return_value=[1.0, 0.0, 0.0, 0.0]):
-        results = await search.hybrid_search(["attention", "transformer"], top_n=3)
-
+    results = await search.hybrid_search(["attention", "transformers"])
     assert results[0].slug == "transformers"
-
-@pytest.mark.asyncio
-async def test_hybrid_search_falls_back_to_bm25_when_no_embeddings(tmp_wiki):
-    """Vector enabled but embeddings.db is empty — should fall back to BM25 order."""
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    _write_page(store, "transformers", "transformers use self-attention mechanisms")
-    _write_page(store, "cnn", "CNNs use convolutional filters")
-    _write_page(store, "rlhf", "RLHF trains models with human feedback")
-
-    cfg = SearchConfig(vector=True, vector_top_candidates=10)
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db", search_cfg=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await search.init_vector()
-    # embeddings.db is empty — hybrid_search must fall back to BM25 without calling _embed_text
-    results = await search.hybrid_search(["attention", "transformer"], top_n=3)
-    assert any(r.slug == "transformers" for r in results)
-
-@pytest.mark.asyncio
-async def test_embed_page_stores_embedding(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch, VectorStore
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    cfg = SearchConfig(vector=True)
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db", search_cfg=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await search.init_vector()
-
-    with patch.object(search, "_embed_text", return_value=[0.5, 0.5, 0.0, 0.0]):
-        await search.embed_page("my-page", "some text content")
-
-    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    emb = await vs.get("my-page")
-    assert emb is not None
-    assert abs(emb[0] - 0.5) < 1e-5
-
-@pytest.mark.asyncio
-async def test_embed_page_noop_when_vector_disabled(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch, VectorStore
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=False))
-    await search.embed_page("my-page", "some text")
-    # embeddings.db should not be created / no entry stored
-    if (tmp_wiki / ".synthadoc" / "embeddings.db").exists():
-        vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-        await vs.init()
-        assert await vs.get("my-page") is None
-
-@pytest.mark.asyncio
-async def test_embed_page_noop_when_vector_store_not_initialised(tmp_wiki):
-    """embed_page before init_vector called must be a safe no-op."""
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=True))
-    # init_vector NOT called — _vector_store is None
-    await search.embed_page("my-page", "some text")  # must not raise
-
-def test_vector_enabled_false_by_default(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    assert search._vector_enabled() is False
-
-def test_vector_enabled_true_when_configured(tmp_wiki):
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=True))
-    assert search._vector_enabled() is True
-
-def test_get_embed_model_raises_on_missing_fastembed(tmp_wiki):
-    """When fastembed is not installed, _get_embed_model must raise ImportError."""
-    import sys
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=True))
-    # Temporarily hide fastembed from the import system
-    orig = sys.modules.get("fastembed")
-    sys.modules["fastembed"] = None  # type: ignore
-    try:
-        with pytest.raises((ImportError, TypeError)):
-            search._get_embed_model()
-    finally:
-        if orig is None:
-            sys.modules.pop("fastembed", None)
-        else:
-            sys.modules["fastembed"] = orig
-
-
-@pytest.mark.asyncio
-async def test_hybrid_search_partial_embeddings(tmp_wiki):
-    """Candidates missing embeddings get score 0.0 — not an error — and rank below those with embeddings."""
-    from synthadoc.storage.search import HybridSearch, VectorStore
-    from synthadoc.config import SearchConfig
-
-    store = WikiStorage(tmp_wiki / "wiki")
-    # Both pages are relevant to the query so they both appear as BM25 candidates
-    _write_page(store, "with-emb", "transformers attention mechanisms deep learning neural")
-    _write_page(store, "no-emb",   "transformer attention networks vision model")
-    _write_page(store, "extra",    "something completely unrelated content here about cooking")
-
-    cfg = SearchConfig(vector=True, vector_top_candidates=10)
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db", search_cfg=cfg)
-    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
-        await search.init_vector()
-
-    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
-    await vs.upsert("with-emb", [1.0, 0.0, 0.0, 0.0])
-    # "no-emb" intentionally has no embedding stored
-
-    with patch.object(search, "_embed_text", return_value=[1.0, 0.0, 0.0, 0.0]):
-        results = await search.hybrid_search(["attention", "transformer"], top_n=3)
-
-    slugs = [r.slug for r in results]
-    assert "with-emb" in slugs, "page with embedding must appear in results"
-    assert "no-emb" in slugs, "page without embedding must not be dropped — fallback score 0.0"
-    assert slugs.index("with-emb") < slugs.index("no-emb"), \
-        "page with matching embedding must rank above page with fallback score 0.0"
-
-
-# ── vector path gaps ──────────────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_init_vector_returns_early_when_vector_disabled(tmp_wiki):
-    """init_vector() is a no-op when vector search is not enabled."""
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=False))
-    await search.init_vector()  # must not raise and must not create a VectorStore
+    assert results[0].rank_score == results[0].score and results[0].similarity is None
     assert search._vector_store is None
 
 
-@pytest.mark.asyncio
-async def test_init_vector_raises_when_fastembed_not_installed(tmp_wiki):
-    """init_vector() raises ImportError when fastembed is not available."""
-    from unittest.mock import patch
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
-                          search_cfg=SearchConfig(vector=True))
+async def test_hybrid_search_returns_empty_for_empty_wiki(tmp_wiki):
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=False))
+    assert await search.hybrid_search(["anything"]) == []
+
+
+async def test_sync_embeds_each_page_once_and_only_changes_after(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    assert await search.sync_embeddings() == 3
+    assert search._page_slugs == ["cnn", "rlhf", "transformers"]
+    assert await search.sync_embeddings() == 0
+    _write_page(search._store, "rlhf", "RLHF tunes models with human feedback and a reward model.")
+    search.invalidate_index()
+    assert await search.sync_embeddings() == 1
+
+
+async def test_sync_drops_pages_that_leave_the_corpus(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    page = search._store.read_page("cnn")
+    page.status = "archived"
+    search._store.write_page("cnn", page)
+    search.invalidate_index()
+    await search.sync_embeddings()
+    assert "cnn" not in search._page_slugs
+    assert "cnn" not in await search._vector_store.text_hashes()
+
+
+async def test_hybrid_search_finds_a_paraphrase_bm25_misses(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    assert search.bm25_search(["picture"]) == []
+    search._embed_texts = lambda texts: _fake_embed(["image" if t == "picture" else t for t in texts])
+    results = await search.hybrid_search(["picture"], top_n=3)
+    assert results[0].slug == "cnn"
+    assert results[0].score == 0.0 and results[0].similarity == pytest.approx(1.0, abs=1e-3)
+    assert results[0].title == "Cnn" and results[0].snippet
+
+
+async def test_hybrid_search_keeps_a_dominant_keyword_hit_on_top(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    # Embeddings prefer the attention page; BM25 has one clear match for "rlhf".
+    search._embed_texts = lambda texts: _fake_embed(["attention"] * len(texts))
+    results = await search.hybrid_search(["rlhf"], top_n=3)
+    assert results[0].slug == "rlhf" and results[0].score > 0
+    assert results[0].rank_score > 1.0
+
+
+async def test_hybrid_search_respects_scope_and_corpus(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    scoped = await search.hybrid_search(["attention"], top_n=3, scoped_slugs=["cnn", "rlhf"])
+    assert {r.slug for r in scoped} <= {"cnn", "rlhf"}
+    page = search._store.read_page("transformers")
+    page.status = "contradicted"
+    search._store.write_page("transformers", page)
+    search._cached_corpus = None   # corpus changes before the embeddings re-sync
+    assert "transformers" not in [r.slug for r in await search.hybrid_search(["attention"], top_n=3)]
+
+
+async def test_hybrid_search_is_bm25_only_until_the_first_sync_and_schedules_it(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    results = await search.hybrid_search(["attention"], top_n=3)
+    assert [r.slug for r in results] == ["transformers"]
+    await search.wait_for_embedding_sync()
+    assert search._matrix is not None and not search._vectors_dirty
+
+
+async def test_invalidate_index_schedules_a_resync_on_the_next_search(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    _write_page(search._store, "gan", "GANs generate an image from noise.")
+    search.invalidate_index()
+    await search.hybrid_search(["image"], top_n=3)
+    await search.wait_for_embedding_sync()
+    assert "gan" in search._page_slugs
+
+
+async def test_failed_background_sync_is_logged_not_raised(tmp_wiki, caplog):
+    search = await _vector_search(tmp_wiki)
+    def boom(texts):
+        raise RuntimeError("model download failed")
+    search._embed_texts = boom
+    search.schedule_embedding_sync()
+    await search.wait_for_embedding_sync()
+    assert "embedding sync failed" in caplog.text
+    assert [r.slug for r in await search.hybrid_search(["attention"], top_n=3)] == ["transformers"]
+
+
+async def test_close_cancels_a_running_sync(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    started = asyncio.Event()
+    async def slow_sync():
+        started.set()
+        await asyncio.sleep(60)
+    search.sync_embeddings = slow_sync
+    search.schedule_embedding_sync()
+    await started.wait()
+    await search.close()
+    assert search._sync_task.cancelled()
+
+
+def test_vectors_requested_for_true_and_auto_only(tmp_wiki):
+    def requested(mode):
+        return HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
+                            search_cfg=SearchConfig(vector=mode)).vectors_requested()
+    assert requested(True) and requested("auto")
+    assert not requested(False)
+    assert not HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db").vectors_requested()
+
+
+@pytest.mark.parametrize("mode", [True, "auto"])
+async def test_init_vector_raises_when_fastembed_is_missing(tmp_wiki, mode):
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
+                          search_cfg=SearchConfig(vector=mode))
     with patch.dict("sys.modules", {"fastembed": None}):
-        with pytest.raises(ImportError, match="fastembed"):
+        with pytest.raises(ImportError, match="synthadoc\\[vectors\\]"):
             await search.init_vector()
+    assert search._vector_store is None
+
+
+async def test_init_vector_is_a_noop_when_disabled(tmp_wiki):
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
+                          search_cfg=SearchConfig(vector=False))
+    await search.init_vector()
+    assert search._vector_store is None
 
 
 def test_get_embed_model_creates_and_caches_model(tmp_wiki):
-    """_get_embed_model() constructs the TextEmbedding model once and caches it."""
-    from unittest.mock import MagicMock, patch
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
                           search_cfg=SearchConfig(vector=True))
-    mock_model = MagicMock()
-    mock_te_cls = MagicMock(return_value=mock_model)
+    mock_te_cls = MagicMock(return_value=MagicMock())
     with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=mock_te_cls)}):
-        model_first = search._get_embed_model()
-        model_second = search._get_embed_model()
-    assert model_first is mock_model
-    assert model_second is mock_model
-    mock_te_cls.assert_called_once()  # constructed only once
+        assert search._get_embed_model() is search._get_embed_model()
+    mock_te_cls.assert_called_once()
 
 
-def test_embed_text_returns_float_list(tmp_wiki):
-    """_embed_text() calls model.embed and returns a flat list of floats."""
-    from unittest.mock import MagicMock, patch
-    import numpy as np
-    from synthadoc.storage.search import HybridSearch
-    from synthadoc.config import SearchConfig
-    store = WikiStorage(tmp_wiki / "wiki")
-    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+def test_embed_model_is_cached_under_synthadoc_home_unless_overridden(tmp_wiki, monkeypatch):
+    from synthadoc.storage.search import embed_model_cache_dir
+    monkeypatch.delenv("FASTEMBED_CACHE_PATH", raising=False)
+    assert embed_model_cache_dir() == Path.home() / ".synthadoc" / "models"
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    assert embed_model_cache_dir() == tmp_wiki / "models"
+
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
                           search_cfg=SearchConfig(vector=True))
-    fake_embedding = np.array([0.1, 0.2, 0.3], dtype=np.float32)
-    mock_model = MagicMock()
-    mock_model.embed.return_value = [fake_embedding]
-    with patch.object(search, "_get_embed_model", return_value=mock_model):
-        result = search._embed_text("test text")
-    assert isinstance(result, list)
-    assert len(result) == 3
-    assert abs(result[0] - 0.1) < 1e-5
+    text_embedding = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}):
+        search._get_embed_model()
+    assert text_embedding.call_args.kwargs["cache_dir"] == str(tmp_wiki / "models")
+
+
+def test_embed_texts_returns_normalised_rows(tmp_wiki):
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
+                          search_cfg=SearchConfig(vector=True))
+    model = MagicMock()
+    model.embed.return_value = [np.array([3.0, 4.0]), np.array([0.0, 2.0])]
+    with patch.object(search, "_get_embed_model", return_value=model):
+        vectors = search._embed_texts(["a", "b"])
+    np.testing.assert_allclose(vectors, [[0.6, 0.8], [0.0, 1.0]], rtol=1e-6)
 
 
 # ── routing-scoped search ─────────────────────────────────────────────────────
@@ -736,3 +695,55 @@ def test_corpus_cache_invalidated_on_status_change(tmp_wiki):
     # Second search: page is contradicted → must not appear
     results_after = search.bm25_search(["gradient", "descent", "loss"], top_n=10)
     assert not any(r.slug == "grad-page" for r in results_after)
+
+
+# ── BM25 index cache ─────────────────────────────────────────────────────────
+
+def _three_page_search(tmp_wiki) -> HybridSearch:
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "chlorine", "chlorine treats algae in pools")
+    _write_page(store, "ph", "pH balance is important for pools")
+    _write_page(store, "nitrogen", "nitrogen fertiliser for lawns")
+    return HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+
+def test_bm25_index_reused_across_queries(tmp_wiki, monkeypatch):
+    """The BM25 index is built once per scope, not once per query."""
+    import synthadoc.storage.search as search_mod
+    builds = []
+    real = search_mod.BM25Okapi
+    monkeypatch.setattr(search_mod, "BM25Okapi", lambda corpus: builds.append(len(corpus)) or real(corpus))
+    search = _three_page_search(tmp_wiki)
+
+    search.bm25_search(["chlorine"])
+    search.bm25_search(["pools"])
+    search.bm25_search(["pools"], scoped_slugs=["chlorine", "ph"])
+    search.bm25_search(["algae"], scoped_slugs=["ph", "chlorine"])   # same scope, any order
+    assert builds == [3, 2]
+
+
+def test_scoped_search_only_returns_scoped_pages(tmp_wiki):
+    search = _three_page_search(tmp_wiki)
+    search.bm25_search(["pools"])                     # warm the full-corpus index
+    slugs = {r.slug for r in search.bm25_search(["pools", "lawns"], scoped_slugs=["ph", "nitrogen"])}
+    assert slugs <= {"ph", "nitrogen"} and slugs
+    assert search.bm25_search(["pools"], scoped_slugs=["no-such-page"]) == []
+
+
+def test_invalidate_index_drops_built_indexes(tmp_wiki):
+    search = _three_page_search(tmp_wiki)
+    search.bm25_search(["chlorine"])
+    search.bm25_search(["chlorine"], scoped_slugs=["chlorine"])
+    assert len(search._bm25_indexes) == 2
+    _write_page(search._store, "copper", "copper algaecide for pools")
+    search.invalidate_index()
+    assert search._bm25_indexes == {}
+    assert "copper" in [r.slug for r in search.bm25_search(["copper"])]
+
+
+def test_bm25_index_cache_is_bounded(tmp_wiki):
+    import synthadoc.storage.search as search_mod
+    search = _three_page_search(tmp_wiki)
+    for i in range(search_mod._MAX_CACHED_SCOPES + 3):
+        search.bm25_search(["pools"], scoped_slugs=["chlorine", "ph", f"missing-{i}"])
+    assert len(search._bm25_indexes) == search_mod._MAX_CACHED_SCOPES
