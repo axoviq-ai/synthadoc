@@ -655,6 +655,7 @@ claude mcp add --transport sse synthadoc-my-market-wiki http://127.0.0.1:7070/mc
 → Context packs and MCP integration: [docs/design.md — Context packs](docs/design.md#context-packs)
 → Knowledge gap workflow: [docs/design.md — Knowledge gap workflow](docs/design.md#knowledge-gap-workflow)
 → Semantic search (optional): [docs/design.md — Semantic search](docs/design.md#semantic-search)
+→ How retrieval quality and speed are measured, and how to rerun it: [benchmarks/README.md](benchmarks/README.md)
 
 ---
 
