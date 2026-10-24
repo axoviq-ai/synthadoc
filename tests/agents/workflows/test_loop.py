@@ -710,8 +710,8 @@ async def test_loop_executes_minimax_native_tool_call():
     assert "minimax" not in final[-1]["data"]["text"]
 
 
-async def test_loop_retries_unrecoverable_native_markup_then_reports_tag_error():
-    """Native markup that cannot be recovered is retried, never dumped raw."""
+async def test_loop_unrecoverable_native_markup_reports_tag_error_immediately():
+    """Native markup that cannot be recovered fails on the first attempt, never dumps raw JSON."""
     ctx, events = _make_ctx()
     broken = 'Fixing now.]<]minimax[>[<tool_call> name": "tool_x", "input": {truncated'
     calls = 0
@@ -728,12 +728,12 @@ async def test_loop_retries_unrecoverable_native_markup_then_reports_tag_error()
         system_prompt="s", initial_message="m", tool_fns={}, provider=provider, ctx=ctx,
     )]
 
-    assert calls == 3  # initial + 2 format-reminder retries
+    assert calls == 1  # no retries — fail fast
     final_text = [e for e in results if e["event"] == "final_text"][-1]["data"]["text"]
     assert "`<tool_call>`" in final_text
     assert "truncated" not in final_text
     retries = [e for e in events if e["data"].get("tool") == "_parse_retry"]
-    assert len(retries) == 2
+    assert len(retries) == 0  # no format-reminder retries
 
 
 # ---------------------------------------------------------------------------
@@ -837,14 +837,16 @@ async def test_native_format_recovery_is_logged_with_model(caplog):
     assert "tool_propose_and_apply" in drift[0].getMessage()
 
 
-async def test_parse_retries_and_exhaustion_are_logged(caplog):
+async def test_parse_failure_stops_immediately_and_is_logged(caplog):
+    """Unrecoverable parse failure stops on the first attempt with an ERROR log — no retries."""
     broken = 'x]<]minimax[>[<tool_call> name": "t", "input": {broken'
     with caplog.at_level(_logging.WARNING, logger="synthadoc.agents.workflows._loop"):
-        await _run([broken] * 3, {}, MagicMock(provider="minimax", model="MiniMax-M3"))
+        await _run([broken], {}, MagicMock(provider="minimax", model="MiniMax-M3"))
     retries = [r for r in caplog.records if "parse failure" in r.getMessage()]
     stopped = [r for r in caplog.records if "workflow stopped" in r.getMessage()]
-    assert len(retries) == 2 and "minimax/MiniMax-M3" in retries[0].getMessage()
+    assert len(retries) == 0  # no format-reminder retries
     assert len(stopped) == 1 and stopped[0].levelno == _logging.ERROR
+    assert "minimax/MiniMax-M3" in stopped[0].getMessage()
 
 
 # ── Replies truncated at max_tokens ───────────────────────────────────────────

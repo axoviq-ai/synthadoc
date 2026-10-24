@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -109,7 +109,8 @@ _SWITCH_PROVIDER_HINT = (
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import (
-        DailyQuotaExhaustedException, CodingToolQuotaExhaustedException, MissingApiKeyError,
+        DailyQuotaExhaustedException, CodingToolQuotaExhaustedException,
+        CodingToolPermanentError, MissingApiKeyError,
     )
     if isinstance(exc, MissingApiKeyError):
         return HTTPException(
@@ -134,6 +135,11 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         return HTTPException(
             status_code=503,
             detail=f"Coding tool quota exhausted — {exc}. {_SWITCH_PROVIDER_HINT}",
+        )
+    if isinstance(exc, CodingToolPermanentError):
+        return HTTPException(
+            status_code=503,
+            detail=f"Coding tool permanent error — {exc}. {_SWITCH_PROVIDER_HINT}",
         )
 
     # openai/anthropic SDKs set status_code directly on the exception;

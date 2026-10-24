@@ -118,6 +118,8 @@ class QueryResult:
     tokens_used: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     knowledge_gap: bool = False
     suggested_searches: list[str] = field(default_factory=list)
     sub_questions_count: int = 0
@@ -1157,6 +1159,8 @@ class QueryAgent(BaseAgent):
             tokens_used=resp2.total_tokens,
             input_tokens=resp2.input_tokens,
             output_tokens=resp2.output_tokens,
+            cache_read_tokens=resp2.cache_read_tokens,
+            cache_write_tokens=resp2.cache_write_tokens,
             knowledge_gap=_gap,
             suggested_searches=_suggested,
             sub_questions_count=len(sub_questions),
@@ -1526,6 +1530,8 @@ class QueryAgent(BaseAgent):
         # these after the generator is exhausted; others leave them at 0.
         _stream_input_tokens = self._provider.last_stream_input_tokens
         _stream_output_tokens = self._provider.last_stream_output_tokens
+        _stream_cache_read = self._provider.last_stream_cache_read_tokens
+        _stream_cache_write = self._provider.last_stream_cache_write_tokens
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
         _done_data: dict = {
@@ -1536,6 +1542,8 @@ class QueryAgent(BaseAgent):
             "tokens_used": _stream_input_tokens + _stream_output_tokens,
             "input_tokens": _stream_input_tokens,
             "output_tokens": _stream_output_tokens,
+            "cache_read_tokens": _stream_cache_read,
+            "cache_write_tokens": _stream_cache_write,
         }
         _pre_prompt = _build_pre_prompt(full_answer)
         if _pre_prompt:

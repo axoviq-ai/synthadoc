@@ -1,0 +1,26 @@
+Year,Event,Key Person(s),Significance,Related Wiki Page
+1843,First algorithm published for Babbage's Analytical Engine,Ada Lovelace,First program intended for machine execution; introduced loops and conditionals,ada-lovelace
+1936,On Computable Numbers establishes the theoretical basis of computation,Alan Turing,Defines the Turing machine; proves the halting problem is undecidable,alan-turing
+1945,Von Neumann architecture described in First Draft of a Report on EDVAC,John von Neumann,Stored-program model separates data and instructions; basis of modern CPUs,von-neumann-architecture
+1947,Transistor invented at Bell Laboratories,"Shockley, Bardeen, Brattain",Replaces vacuum tubes; enables miniaturisation and Moore's Law,transistor-and-microchip
+1952,A-0 system developed — subroutine library and loader for UNIVAC,Grace Hopper,Automated assembly of pre-written routines; precursor concept to compilers,grace-hopper
+1957,FORTRAN compiler released — first high-level language compiler,John Backus / IBM,Translates algebraic source to machine code,programming-languages-overview
+1969,Unix created at Bell Labs,"Ken Thompson, Dennis Ritchie",Portable multi-user OS; introduces pipes and the Unix philosophy,unix-history
+1971,Intel 4004 — first commercial microprocessor,Federico Faggin,2300 transistors on a single chip; launches the microprocessor era,transistor-and-microchip
+1975,Altair 8800 triggers the personal computer revolution,MITS / Ed Roberts,First mass-market personal computer; inspires Gates and Allen,personal-computer-revolution
+1983,GNU Project founded — free software movement begins,Richard Stallman,Launches open-source philosophy; leads to Linux and Apache,open-source-movement
+1991,Linux kernel released,Linus Torvalds,Open-source Unix-like kernel; dominant server OS when combined with GNU tools,open-source-movement
+2006,Deep learning renaissance — Hinton pretraining breakthrough,Geoffrey Hinton,Unlocks practical deep neural networks; leads to LLM era,artificial-intelligence-history
+
+People
+Name,Born,Died,Nationality,Primary Contribution
+Ada Lovelace,1815,1852,British,First algorithm; visionary of general-purpose computing
+Alan Turing,1912,1954,British,Computation theory; Enigma decryption; AI foundations
+John von Neumann,1903,1957,Hungarian-American,Stored-program architecture; game theory
+Grace Hopper,1906,1992,American,FLOW-MATIC; COBOL; human-readable programming advocacy
+John Backus,1924,2007,American,FORTRAN; Backus-Naur Form (BNF) grammar notation
+Ken Thompson,1943,,American,Unix; B language; UTF-8; Go language
+Dennis Ritchie,1941,2011,American,C language; Unix; The C Programming Language
+Linus Torvalds,1969,,Finnish,Linux kernel; Git version control system
+Richard Stallman,1953,,American,GNU Project; GPL licence; free software philosophy
+Geoffrey Hinton,1947,,British-Canadian,Deep learning; backpropagation; Boltzmann machines

@@ -208,7 +208,62 @@ async def test_cli_provider_rollback_unknown_page_reports_error(tmp_path):
 
     events = await _run_cli(ContentHealthResolverWorkflow(), ctx, "roll back hopper", provider)
 
-    assert "No content health fix recorded for 'hopper'" in events[-1]["data"]["text"]
+    # Falls all the way through to tool_rollback_orphan_fix, which reports
+    # there's genuinely nothing to roll back anywhere for this page.
+    assert "No fix record for 'hopper'" in events[-1]["data"]["text"]
+    assert "nothing to roll back" in events[-1]["data"]["text"]
+
+
+def _contradiction_fixed_page(slug):
+    """A page last changed by contradiction_resolver: last_fix_record, no CH record."""
+    page = _make_page(slug)
+    page.content = "# Page\n\n## Intro\n\nBell invented the telephone in 1876.\n"
+    page.last_fix_record = {"slug": slug, "snapshot_id": 42, "snapshot_index_before": 1,
+                            "timestamp": "2026-10-22T10:00:00Z",
+                            "strategy_name": "Strategy 1 — Content rewrite"}
+    return page
+
+
+_PRE_CONTRADICTION_FIX = "# Page\n\n## Intro\n\nEdison invented the telephone in 1901.\n"
+
+
+@pytest.mark.asyncio
+async def test_cli_provider_rollback_falls_back_to_last_fix_record(tmp_path):
+    """'roll back X' routed here must still undo a contradiction-resolver fix."""
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _contradiction_fixed_page("turing"))
+    ctx = _make_ctx(store)
+    ctx.audit_db.get_snapshot_by_index = AsyncMock(
+        return_value={"index": 1, "id": 42, "content_snapshot": _PRE_CONTRADICTION_FIX})
+    provider = MagicMock()
+    provider.complete = AsyncMock()
+
+    events = await _run_cli(ContentHealthResolverWorkflow(), ctx, "roll back turing", provider)
+
+    text = events[-1]["data"]["text"]
+    assert "No content health fix recorded" not in text
+    assert "Rolled back 'turing'" in text
+    restored = store.read_page("turing")
+    assert restored.content.strip() == _PRE_CONTRADICTION_FIX.strip()
+    assert restored.last_fix_record is None
+
+
+@pytest.mark.asyncio
+async def test_agentic_rollback_tool_falls_back_to_last_fix_record(tmp_path):
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("turing", _contradiction_fixed_page("turing"))
+    ctx = _make_ctx(store)
+    ctx.audit_db.get_snapshot_by_index = AsyncMock(
+        return_value={"index": 1, "id": 42, "content_snapshot": _PRE_CONTRADICTION_FIX})
+
+    wf = ContentHealthResolverWorkflow()
+    wf.build_initial_message("roll back turing")
+    result = await wf.get_tool_fns(ctx)["rollback_content_health_fix"](slug="turing")
+
+    assert result["status"] == "success"
+    restored = store.read_page("turing")
+    assert restored.content.strip() == _PRE_CONTRADICTION_FIX.strip()
+    assert restored.last_fix_record is None
 
 
 @pytest.mark.asyncio
@@ -224,6 +279,46 @@ async def test_cli_provider_bare_rollback_lists_fixes(tmp_path):
     text = events[-1]["data"]["text"]
     assert "turing" in text
     assert "roll back <slug>" in text
+
+
+@pytest.mark.asyncio
+async def test_rejected_fix_is_dismissed_not_silently_skipped(tmp_path, monkeypatch):
+    store = WikiStorage(tmp_path / "wiki")
+    content = "# Page\n\n## Intro\n" + " ".join(["word"] * 60) + "\n\n# Stray Title\n"
+    store.write_page("turing", WikiPage(
+        title="Turing", tags=[], content=content, status=LifecycleState.ACTIVE,
+        confidence="", sources=[],
+        content_health_issues=[{"type": "orphaned_heading", "severity": "medium",
+                                "location": "line 6", "description": "H1 outside title"}]))
+    ctx = _make_ctx(store)
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text="# Page\n\n## Stray Title\n", input_tokens=0, output_tokens=0,
+    ))  # drops the whole "## Intro" body — always rejected regardless of issue type
+
+    dismiss_calls = []
+    async def _fake_dismiss(ctx, slug, reason):
+        dismiss_calls.append((slug, reason))
+        # Clear issues from the page, just like the real function does
+        page = ctx.store.read_page(slug)
+        if page is not None:
+            page.content_health_issues = []
+            ctx.store.write_page(slug, page)
+        return {"status": "success", "slug": slug}
+    monkeypatch.setattr(
+        "synthadoc.agents.workflows.content_health_resolver.tool_dismiss_content_health_issues",
+        _fake_dismiss,
+    )
+
+    _, p_resolver, p_tools = _patch_confirm()
+    with p_resolver, p_tools:
+        _ = [e async for e in ContentHealthResolverWorkflow().run_for_cli_provider(
+            ctx, question="run content health", provider=provider)]
+
+    assert len(dismiss_calls) == 1
+    assert dismiss_calls[0][0] == "turing"
+    page = store.read_page("turing")
+    assert page.content_health_issues == []  # cleared, so it won't be re-attempted
 
 
 @pytest.mark.parametrize("question, expected", [

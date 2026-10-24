@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
+from synthadoc.cli._wiki import _fallback_wiki_root
 from synthadoc.cli._utils import (
     _extract_body,
     _extract_frontmatter_block,
@@ -19,6 +21,29 @@ from synthadoc.cli._utils import (
 
 template_app = typer.Typer(help="Browse and manage domain templates.")
 app.add_typer(template_app, name="templates")
+
+
+# ── Origin helpers ────────────────────────────────────────────────────────────
+
+def _read_origin(wiki_root: Path) -> dict:
+    """Read .synthadoc/origin.json; return {} if absent or unreadable."""
+    origin_file = wiki_root / ".synthadoc" / "origin.json"
+    if origin_file.exists():
+        try:
+            return json.loads(origin_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _print_sync_result(name: str, updated: list[str]) -> None:
+    """Print the standard sync result block for one wiki."""
+    if updated:
+        typer.echo(f"{name}:")
+        for line in updated:
+            typer.echo(line)
+    else:
+        typer.echo(f"{name}: already up to date")
 
 
 @template_app.command("list")
@@ -89,7 +114,9 @@ def sync_cmd(
       + wiki/<stub>.md    — new stubs added; existing pages never removed
       ~ wiki/<stub>.md    — updated only when --force AND sources: [] (never ingested)
 
-    For demo wikis, applies the same sync logic as 'synthadoc demo sync'.
+    For demo wikis, syncs raw_sources (removes superseded binary files replaced
+    by plain-text equivalents in the current package, copies in new files) and
+    updates wiki pages and dashboard.
 
     Use this after upgrading synthadoc to pick up updated guidelines, seeds,
     and new stub pages without reinstalling.
@@ -121,8 +148,13 @@ def _do_sync(name: Optional[str], force: bool) -> None:
             if (e.get("category") and e.get("template")) or n in _DEMOS
         ]
         if not targets:
-            typer.echo("No template or demo wikis found. Nothing to sync.")
-            raise typer.Exit(0)
+            # Docker fallback: no registry — use SYNTHADOC_WIKI or CWD
+            wiki_root = _fallback_wiki_root()
+            if wiki_root is None:
+                typer.echo("No template or demo wikis found. Nothing to sync.")
+                raise typer.Exit(0)
+            _do_sync_from_origin(wiki_root, force)
+            return
 
     any_changes = False
     for target in targets:
@@ -162,17 +194,68 @@ def _do_sync(name: Optional[str], force: bool) -> None:
                 # Scanning all wikis — skip silently
                 continue
 
-        if updated:
-            typer.echo(f"{target}:")
-            for line in updated:
-                typer.echo(line)
-            any_changes = True
-        else:
-            typer.echo(f"{target}: already up to date")
-            any_changes = True
+        _print_sync_result(target, updated)
+        any_changes = True
 
     if not any_changes:
         typer.echo("Already up to date - nothing to sync.")
+
+
+def _do_sync_from_origin(wiki_root: Path, force: bool) -> None:
+    """Sync a single wiki using its .synthadoc/origin.json — Docker path."""
+    from synthadoc.cli.install import _DEMOS
+    from synthadoc.core.template_engine import get_template_path
+
+    origin = _read_origin(wiki_root)
+    origin_type = origin.get("type")
+
+    if origin_type == "template":
+        ref = origin.get("ref", "")
+        # Validate the ref still exists in this version of Synthadoc
+        try:
+            get_template_path(ref)
+        except (ValueError, FileNotFoundError):
+            typer.echo(
+                f"Error: template '{ref}' not found in this version of Synthadoc.\n"
+                f"  Recorded in .synthadoc/origin.json — check for a typo.\n"
+                f"  Run 'synthadoc templates list' to see available templates.\n"
+                f"  To fix: synthadoc templates set-origin <correct-ref>",
+                err=True,
+            )
+            raise typer.Exit(1)
+        wiki_name = wiki_root.name
+        updated = _sync_template_wiki(
+            wiki_root=wiki_root,
+            template_ref=ref,
+            wiki_name=wiki_name,
+            force=force,
+        )
+        _print_sync_result(wiki_name, updated)
+
+    elif origin_type == "demo":
+        demo_name = origin.get("name", "")
+        if demo_name not in _DEMOS:
+            typer.echo(
+                f"Error: demo '{demo_name}' not found in this version of Synthadoc.\n"
+                f"  Recorded in .synthadoc/origin.json — check for a typo.\n"
+                f"  To fix: synthadoc templates set-origin <correct-demo-name>",
+                err=True,
+            )
+            raise typer.Exit(1)
+        wiki_name = wiki_root.name
+        updated = _sync_demo_wiki(
+            wiki_root=wiki_root,
+            demo_template=_DEMOS[demo_name],
+            force=force,
+        )
+        _print_sync_result(wiki_name, updated)
+
+    else:
+        typer.echo(
+            "No template or demo origin found for this wiki. Nothing to sync.\n"
+            "  (Custom wikis are not installed from a template and have nothing to sync.)"
+        )
+        raise typer.Exit(0)
 
 
 # ── Template-wiki sync ────────────────────────────────────────────────────────
@@ -283,9 +366,27 @@ def _sync_demo_wiki(
     """Sync a demo wiki against its bundled template. Mirrors the legacy demo sync logic."""
     updated: list[str] = []
 
-    # 1. raw_sources: additive copy
+    # 1. raw_sources: sync template files and remove superseded ones.
+    #
+    #    "Superseded" means the installed wiki has a file whose stem matches a
+    #    template file but with a different extension — e.g. report.pdf when the
+    #    template now ships report.md.  These were bundled with the demo (not
+    #    user-created), so removing them is always safe.  User-added files (stems
+    #    with no matching template entry) are never touched.
     demo_sources = demo_template / "raw_sources"
     installed_sources = wiki_root / "raw_sources"
+    installed_sources.mkdir(exist_ok=True)
+
+    tmpl_by_stem: dict[str, Path] = {
+        f.stem: f for f in demo_sources.rglob("*") if f.is_file()
+    }
+    tmpl_names = {f.name for f in tmpl_by_stem.values()}
+
+    for existing in list(installed_sources.rglob("*")):
+        if existing.is_file() and existing.stem in tmpl_by_stem and existing.name not in tmpl_names:
+            existing.unlink()
+            updated.append(f"  - raw_sources/{existing.relative_to(installed_sources)}  (superseded)")
+
     for src in demo_sources.rglob("*"):
         if not src.is_file():
             continue
@@ -345,3 +446,65 @@ def _sync_demo_wiki(
             updated.append(f"  ~ wiki/{src.name}  (type: backfilled)")
 
     return updated
+
+
+# ── set-origin ────────────────────────────────────────────────────────────────
+
+@template_app.command("set-origin")
+def set_origin_cmd(
+    ref: str = typer.Argument(
+        help=(
+            "Template ref (e.g. finance/investment) or demo name "
+            "(e.g. history-of-computing)."
+        )
+    ),
+) -> None:
+    """Record which template or demo this wiki was installed from.
+
+    Use this if .synthadoc/origin.json is missing or contains the wrong ref —
+    for example, after manually creating a wiki or after a registry corruption.
+
+    \b
+    Examples:
+      synthadoc templates set-origin finance/investment
+      synthadoc templates set-origin history-of-computing
+    """
+    from synthadoc.cli.install import _DEMOS, _write_origin
+    from synthadoc.core.template_engine import get_template_path
+
+    wiki_root = _fallback_wiki_root()
+    if wiki_root is None:
+        typer.echo(
+            "Error: could not determine the wiki directory.\n"
+            "  Set SYNTHADOC_WIKI or run from inside a wiki directory.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if "/" in ref:
+        # Template ref
+        try:
+            get_template_path(ref)
+        except (ValueError, FileNotFoundError):
+            typer.echo(
+                f"Error: template '{ref}' not found in this version of Synthadoc.\n"
+                f"  Run 'synthadoc templates list' to see available templates.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        label = f"template '{ref}'"
+        _write_origin(wiki_root, demo=None, template=ref)
+    else:
+        # Demo name
+        if ref not in _DEMOS:
+            typer.echo(
+                f"Error: demo '{ref}' not found in this version of Synthadoc.\n"
+                f"  Available demos: {', '.join(_DEMOS) or '(none)'}",
+                err=True,
+            )
+            raise typer.Exit(1)
+        label = f"demo '{ref}'"
+        _write_origin(wiki_root, demo=ref, template=None)
+
+    origin_file = wiki_root / ".synthadoc" / "origin.json"
+    typer.echo(f"Origin set to {label} in {origin_file}")

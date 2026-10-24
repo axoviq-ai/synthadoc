@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from typing import Optional
 import httpx
 import typer
 
-from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli._wiki import resolve_wiki_path, _read_registry, LOOPBACK_HOST
+from synthadoc.cli._wiki import resolve_wiki, resolve_wiki_path, _read_registry, LOOPBACK_HOST, _fallback_wiki_root
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
 
 _PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
@@ -297,7 +296,27 @@ def plugin_upgrade_cmd():
 
     registry = _read_registry()
     if not registry:
-        typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
+        # Docker fallback: no registry — upgrade the single wiki from SYNTHADOC_WIKI or CWD
+        wiki_path = _fallback_wiki_root()
+        if wiki_path is None:
+            typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
+            raise typer.Exit(0)
+        try:
+            copied = _install_plugin_into(wiki_path)
+            if copied:
+                _install_dataview(wiki_path)
+                _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
+                _set_reading_view_default(wiki_path)
+                _patch_workspace_reading_view(wiki_path)
+                typer.echo(f"Upgraded 1 wiki(s):")
+                typer.echo(f"  {wiki_path}")
+                typer.echo()
+                typer.echo("Restart Obsidian (or reopen the vault) for the changes to take effect.")
+            else:
+                typer.echo("No plugin files found - run: python scripts/sync_plugin.py")
+        except Exception as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1)
         raise typer.Exit(0)
 
     upgraded: list[str] = []

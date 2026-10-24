@@ -241,8 +241,13 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "deepseek",  model = "deepseek-flash" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
 # default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }}      # thinking/reasoning mode
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
-# default = {{ provider = "qwen",      model = "qwen-plus" }}                                  # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
-# default = {{ provider = "qwen",      model = "qwen-plus", thinking = "disabled" }}           # same, with thinking suppressed (faster, lower latency)
+# NOTE: all Qwen DashScope models have thinking ON by default; always use thinking="disabled"
+#       for synthadoc — thinking mode causes timeouts on large wiki contexts (tested 2026-10-17).
+# default = {{ provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }}      # free tier + $0.15/$0.47 per 1M — set QWEN_API_KEY (recommended)
+# default = {{ provider = "qwen",      model = "qwen3.8-max",   thinking = "disabled" }}      # free tier + $2.00/$6.00 per 1M, flagship MoE — set QWEN_API_KEY
+# default = {{ provider = "qwen",      model = "qwen-plus",     thinking = "disabled" }}      # paid, higher quality — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
+# NOTE: Kimi models on DashScope have extended thinking ON by default; thinking="disabled" is required.
+# default = {{ provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }}      # paid, $3/$15 per 1M, 1M ctx — set KIMI_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
@@ -323,6 +328,12 @@ session_retention_days = 30
 # Increase if users pick chips from a long multi-step clarify list; lower to
 # avoid routing unrelated follow-ups through the action agent.
 # clarify_lookback = 5
+
+[content_health]
+# Minimum word count for a section to be considered non-thin.
+# Sections with fewer words are flagged as "thin" during lint and ingest.
+# Lower this value for wikis with intentionally short reference sections (e.g. glossaries).
+thin_section_min_words = 40
 
 [security]
 # Automatically scan all wiki pages for sensitive data (API keys, emails, SSNs,

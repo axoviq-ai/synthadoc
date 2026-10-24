@@ -1,6 +1,6 @@
-﻿# Synthadoc User Quick-Start Guide
+# Synthadoc User Quick-Start Guide
 
-**Version: v1.4.2 (Community Edition)**
+**Version: v1.4.3 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -994,6 +994,8 @@ synthadoc workflow run --name contradiction-resolver --type source-conflict
 
 The CLI renders the same approval prompts and diff previews as the web UI.
 
+**Rollback after the fact:** every resolver write is preceded by a snapshot, and a rewrite that would add, remove, or rename a heading is rejected before you are asked. Say "roll back grace-hopper" (web UI or CLI) to restore a page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver).
+
 ### Option 2 — Manual resolution
 
 1. Open `wiki/grace-hopper.md` in Obsidian
@@ -1128,6 +1130,8 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 ```
 
 The CLI renders the same approval prompts and diff previews as the web UI.
+
+**Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to restore the page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
 
 ### Option 2 — Manual link insertion
 
@@ -2253,12 +2257,12 @@ Synthadoc exports your wiki in five machine-readable formats — all assembled s
 ### What each format contains
 
 
-| Format          | What it exports                                                                                                                                                                                                                                                                                                                                                                                                                          | Best used for                                                    |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `llms.txt`      | Page titles + one-line summaries, structured per the[llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                                                                                                                                                                                                                  | Feeding AI assistants a compact, navigable wiki index            |
-| `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                                                                                                                                                                                                                     | Large-context LLM prompts, RAG pipelines, offline reading        |
-| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.                                                                                                                                                                                           | Visualising knowledge structure, detecting hub pages and orphans |
-| `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships.                                                                                                                                                                                        | Agent pipelines, programmatic processing, compliance audits      |
+| Format          | What it exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Best used for                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `llms.txt`      | Page titles + one-line summaries, structured per the[llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                                                                                                                                                                                                                                                                                                                                                                                       | Feeding AI assistants a compact, navigable wiki index            |
+| `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                                                                                                                                                                                                                                                                                                                                                                                          | Large-context LLM prompts, RAG pipelines, offline reading        |
+| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.                                                                                                                                                                                                                                                                                                                                                                | Visualising knowledge structure, detecting hub pages and orphans |
+| `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships.                                                                                                                                                                                                                                                                                                                                                             | Agent pipelines, programmatic processing, compliance audits      |
 | `okf`           | [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`generated`, `status`, `synthadoc_lifecycle`, optional `sources`/`verified`/`stale_after`), an `index.md` with `okf_version: "0.2"`, and a plain-markdown `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry `status: draft`, `synthadoc_lifecycle: contradicted`, and a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool —**zero code changes needed**       |
 
 ### Status filter — export only what you trust
@@ -2442,6 +2446,7 @@ python tests/integration/okf_consumer_agent.py \
 The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (when `--type` is given), builds a grounded context, and asks the LLM to answer using only the OKF bundle content — citing the source file path for every claim.
 
 > **Requirements by provider:**
+>
 > - **Anthropic (default):** `pip install anthropic pyyaml` and `ANTHROPIC_API_KEY` set.
 > - **opencode:** `npm install -g opencode-ai` (must be authenticated) and `pip install pyyaml`. No API key needed in the environment.
 > - **OpenAI-compatible:** `pip install openai pyyaml` and `OPENAI_API_KEY` (or `MINIMAX_API_KEY`) set.
@@ -2630,11 +2635,12 @@ Increase the timeout when using a reasoning model (e.g. MiniMax M3, Qwen with th
 
 The **theme toggle** button sits at the right end of the tab bar (Chat | Graph | [toggle]). Clicking it cycles through three modes:
 
-| Mode | Effect |
-| --- | --- |
-| **System** (default) | Follows your OS `prefers-color-scheme` setting — dark on a dark-mode OS, light on a light-mode OS |
-| **Dark** | Deep navy background with purple/violet accent |
-| **Light** | Off-white background with the same accent |
+
+| Mode                 | Effect                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| **System** (default) | Follows your OS`prefers-color-scheme` setting — dark on a dark-mode OS, light on a light-mode OS |
+| **Dark**             | Deep navy background with purple/violet accent                                                    |
+| **Light**            | Off-white background with the same accent                                                         |
 
 Your choice is saved in your browser's `localStorage` and restored on the next page load. A small inline script applies the stored preference before React renders, so there is no flash of the wrong theme.
 
@@ -2976,17 +2982,17 @@ The web chat UI can drive wiki maintenance conversationally — no terminal requ
 Eight workflows are available, listed in the order the web UI will pre-prompt them at session start:
 
 
-| Workflow                          | Example phrase                   | Scope                                                                                                                                                                                                   |
-| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes                      |
-| **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                                                 |
-| **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                                                 |
-| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating          |
-| **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                |
-| **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
+| Workflow                          | Example phrase                   | Scope                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes                                                                                                                                                                          |
+| **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                                                                                                                                                                                                     |
+| **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                                                                                                                                                                                                     |
+| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating                                                                                                                                                              |
+| **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                                                                                                                                                                    |
+| **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan                                                                                                                                                     |
 | **Content health resolver**       | "run content health resolver"    | Scans pages for content quality issues (duplicate sections, empty sections, broken markdown structure) using heuristics on ingest; merges duplicates in Python and fixes the rest with one LLM rewrite per page; real diff approval per page; snapshot saved before every write for rollback. Thin sections are listed in the lint report for you to expand |
-| **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                      |
-| **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                  |
+| **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                                                                                                                                                                          |
+| **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                                                                                                                                                                      |
 
 ### Demo — resolve contradicted pages
 
@@ -3036,6 +3042,8 @@ rewrite, and displays the full unified diff:
 Click **Apply**.
 
 ![Contradiction resolver — diff approval UI with 6 contradicted pages queued](png/contradiction-resolver.png)
+
+![Contradiction resolver — von-neumann-architecture page example](png/contradiction-resolver2.png)
 
 **Step 3 — Scoped re-lint**
 
@@ -3281,7 +3289,7 @@ The workflow announces what it found and the order it will work in (highest seve
 For each page, you approve the real change, shown as a coloured diff (red lines removed, green lines added):
 
 - **Duplicate sections** are merged in Python, with no LLM: later copies are folded into the first one. Every sentence is kept and only paragraphs repeated word for word are dropped, so the merged section may read repetitively and is worth a quick edit afterwards.
-- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence is rejected before you are asked.
+- **Other structural issues** (an empty heading, a stray `#` title, an unclosed code fence, broken list indentation) get one LLM rewrite. A rewrite that would drop any sentence — or add, remove, or rename a heading — is rejected before you are asked.
 
 ```
 --- alan-turing (current)
@@ -3306,7 +3314,7 @@ If an issue cannot be fixed without writing new facts, the workflow asks before 
 
 Skipped pages are left untouched (no snapshot, no write) and are listed in the final summary.
 
-**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 50 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
+**What the scanner flags:** `duplicate_section` and `empty_section` (critical; a heading whose content is in its sub-sections is not empty), `thin_section` (fewer than 40 words including sub-sections; reference sections such as *See Also* and *Sources* are exempt; report-only) and `unclosed_code_block` (high), `orphaned_heading` and `broken_list_nesting` (medium).
 
 **From the CLI:**
 
@@ -3328,6 +3336,8 @@ synthadoc workflow run --name content-health roll back alan-turing
 ```
 
 These work with every provider, including the coding-tool providers (`claude-code`, `opencode`).
+
+The contradiction resolver ([Step 9](#step-9--resolve-a-contradiction)) and the orphan resolver ([Step 10](#step-10--fix-an-orphan-page)) share this same snapshot-and-rollback mechanism — say "roll back `<slug>`" to undo a fix from either one the same way you would undo a content health fix.
 
 **Only active pages are scanned.** Promote a stale or draft page to active first if its content needs checking.
 
@@ -3737,18 +3747,19 @@ Synthadoc defaults to **Gemini Flash** — free, no credit card, 1 million token
 Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server.
 
 
-| Provider      | Env var             | Free tier                                          | Vision          |
-| ------------- | ------------------- | -------------------------------------------------- | --------------- |
-| `gemini`      | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day       | Yes             |
-| `groq`        | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day                 | No              |
-| `ollama`      | _(none)_            | Yes — fully local;**GPU required** (CPU too slow) | Model-dependent |
-| `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                     | No              |
-| `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token               | Yes             |
-| `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                | Yes             |
-| `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
-| `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
-| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
-| `opencode`    | _(none)_            | Yes — free via Opencode Zen, no API key           | No              |
+| Provider      | Env var                                 | Free tier                                                                                               | Vision          |
+| ------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------- |
+| `gemini`      | `GEMINI_API_KEY`                        | **Yes — default** · 15 RPM / 1M tokens/day                                                            | Yes             |
+| `groq`        | `GROQ_API_KEY`                          | Yes — fast Llama, 100K tokens/day                                                                      | No              |
+| `ollama`      | _(none)_                                | Yes — fully local;**GPU required** (CPU too slow)                                                      | Model-dependent |
+| `minimax`     | `MINIMAX_API_KEY`                       | No — cheapest paid text rates                                                                          | No              |
+| `anthropic`   | `ANTHROPIC_API_KEY`                     | No — highest quality, pay-per-token                                                                    | Yes             |
+| `openai`      | `OPENAI_API_KEY`                        | No — pay-per-token                                                                                     | Yes             |
+| `qwen`        | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier available;`qwen3.8-flash` ($0.15/$0.47/1M), `qwen3.8-max` ($2/$6/1M), `qwen-plus` paid | Model-dependent |
+| `deepseek`    | `DEEPSEEK_API_KEY`                      | No — very affordable pricing                                                                           | No              |
+| `kimi`        | `KIMI_API_KEY` (or `QWEN_API_KEY`)      | No —`kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M), `kimi-k2.7-code` ($0.95/$4/1M)           | No              |
+| `claude-code` | _(none)_                                | Yes — uses your Claude Code subscription, no key                                                       | No              |
+| `opencode`    | _(none)_                                | Yes — free via Opencode Zen, no API key                                                                | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
 
@@ -3760,8 +3771,12 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
 # default = { provider = "groq",      model = "openai/gpt-oss-20b" }               # Groq (paid, $0.075/$0.30 per 1M)
-# default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
-# default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
+# default = { provider = "kimi",      model = "kimi-k3",       thinking = "disabled" }  # Kimi k3 flagship ($3/$15 per 1M, 1M ctx) — thinking must be disabled
+# NOTE: all Qwen DashScope models have thinking ON by default — always add thinking = "disabled"
+#       or responses will time out on large wiki contexts.
+# default = { provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }  # Qwen free tier ($0.15/$0.47 per 1M)
+# default = { provider = "qwen",      model = "qwen3.8-max",   thinking = "disabled" }  # Qwen free tier, flagship MoE ($2/$6 per 1M)
+# default = { provider = "qwen",      model = "qwen-plus",     thinking = "disabled" }  # Qwen paid via DashScope
 # default = { provider = "deepseek",  model = "deepseek-flash" }                                 # DeepSeek V4.1 Flash (very affordable, non-thinking)
 # default = { provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }          # DeepSeek thinking mode (chain-of-thought)
 # default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
@@ -3783,9 +3798,10 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq or MiniMax.
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
 > - **MiniMax:** no free tier. M3 supports multimodal (text + image) and a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
-> - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
+> - **Thinking field (MiniMax M3, Qwen DashScope, Kimi DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
-> - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
+> - **Qwen cloud (DashScope):** Set `QWEN_API_KEY` or `DASHSCOPE_API_KEY` (both accepted; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). **Free-tier models:** `qwen3.8-flash` ($0.15/$0.47 per 1M in/out after free quota) and `qwen3.8-max` ($2/$6 per 1M, flagship MoE). Paid models: `qwen-plus`, `qwen-max`. **Always add `thinking = "disabled"`** to your config — thinking is ON by default for all DashScope models and causes timeouts on large wiki contexts (188K chars times out at 120 s without it).
+> - **Kimi (DashScope):** Set `KIMI_API_KEY` (your DashScope API key also works via `QWEN_API_KEY`; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Models: `kimi-k3` (1M-token context, strong reasoning, $3/$15/1M), `kimi-k2.6` (256K ctx, general purpose, $0.95/$4/1M), `kimi-k2.7-code` (coding specialist). **Always add `thinking = "disabled"`** — kimi-k3 has extended thinking ON by default and will time out on large contexts without it.
 > - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
@@ -4324,20 +4340,20 @@ To request a tighter pack (forces prioritisation and shows omitted pages clearly
 **Claude** = Claude's LLM synthesises the answer (no Synthadoc LLM call). **Synthadoc** = Synthadoc's configured LLM provider runs (tokens billed to your provider account). **Neither** = pure data read or write, no LLM involved.
 
 
-| Tool                    | Parameters                                                                                                                                           | What it does                                                                                                                                                                      | Who calls LLM? |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| `synthadoc_search`      | `terms: str`                                                                                                                                         | BM25 keyword search — returns ranked titles, slugs, and snippets                                                                                                                 | Claude         |
-| `synthadoc_read_page`   | `slug: str`                                                                                                                                          | Read a page's full content, status, type, tags, adversarial warnings, and source citations                                                                                        | Claude         |
-| `synthadoc_list_pages`  | `status?: str` (default `"all"`)                                                                                                                     | List all pages with title, status, type, and`has_sources` flag; filterable by lifecycle state                                                                                     | Neither        |
-| `synthadoc_write_page`  | `slug: str`, `content: str`, `title?: str`                                                                                                           | Update page content (clears contradiction note, bumps epoch)                                                                                                                      | Neither        |
-| `synthadoc_status`      | *(none)*                                                                                                                                             | Get wiki page count and path                                                                                                                                                      | Neither        |
-| `synthadoc_jobs`        | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`)                                                         | List recent jobs, optionally filtered by status                                                                                                                                   | Neither        |
-| `synthadoc_lifecycle`   | `slug: str`, `to_state: str`, `reason: str`                                                                                                          | Transition a page's lifecycle state; writes an immutable audit record                                                                                                             | Neither        |
-| `synthadoc_lint_report` | *(none)*                                                                                                                                             | Instant wiki health read — contradicted pages, orphans, adversarial warning counts;**no job, no LLM**                                                                            | Neither        |
-| `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately                                                                | Neither        |
-| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. `pages` in the response = exported wiki pages only (system pages are always excluded). `files_written` (OKF only) includes index.md and log.md in addition to wiki pages. OKF with `status_filter="all"` exports active + contradicted pages only; draft, stale, and archived are excluded. Other formats export all pages matching the filter. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither        |
-| `synthadoc_ingest`      | `source: str`                                                                                                                                        | Enqueue a URL or file for ingest — returns a job ID                                                                                                                              | Synthadoc      |
-| `synthadoc_lint`        | `scope?: str` (default `"all"`)                                                                                                                      | Enqueue a full LLM lint analysis — returns a job ID; use`synthadoc_jobs` to poll                                                                                                 | Synthadoc      |
+| Tool                    | Parameters                                                                                                                                           | What it does                                                                                                                                                                                                                                                                                                                                                                                                                   | Who calls LLM? |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| `synthadoc_search`      | `terms: str`                                                                                                                                         | BM25 keyword search — returns ranked titles, slugs, and snippets                                                                                                                                                                                                                                                                                                                                                              | Claude         |
+| `synthadoc_read_page`   | `slug: str`                                                                                                                                          | Read a page's full content, status, type, tags, adversarial warnings, and source citations                                                                                                                                                                                                                                                                                                                                     | Claude         |
+| `synthadoc_list_pages`  | `status?: str` (default `"all"`)                                                                                                                     | List all pages with title, status, type, and`has_sources` flag; filterable by lifecycle state                                                                                                                                                                                                                                                                                                                                  | Neither        |
+| `synthadoc_write_page`  | `slug: str`, `content: str`, `title?: str`                                                                                                           | Update page content (clears contradiction note, bumps epoch)                                                                                                                                                                                                                                                                                                                                                                   | Neither        |
+| `synthadoc_status`      | *(none)*                                                                                                                                             | Get wiki page count and path                                                                                                                                                                                                                                                                                                                                                                                                   | Neither        |
+| `synthadoc_jobs`        | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`)                                                         | List recent jobs, optionally filtered by status                                                                                                                                                                                                                                                                                                                                                                                | Neither        |
+| `synthadoc_lifecycle`   | `slug: str`, `to_state: str`, `reason: str`                                                                                                          | Transition a page's lifecycle state; writes an immutable audit record                                                                                                                                                                                                                                                                                                                                                          | Neither        |
+| `synthadoc_lint_report` | *(none)*                                                                                                                                             | Instant wiki health read — contradicted pages, orphans, adversarial warning counts;**no job, no LLM**                                                                                                                                                                                                                                                                                                                         | Neither        |
+| `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately                                                                                                                                                                                                                                                                                                             | Neither        |
+| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki.`pages` in the response = exported wiki pages only (system pages are always excluded). `files_written` (OKF only) includes index.md and log.md in addition to wiki pages. OKF with `status_filter="all"` exports active + contradicted pages only; draft, stale, and archived are excluded. Other formats export all pages matching the filter. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither        |
+| `synthadoc_ingest`      | `source: str`                                                                                                                                        | Enqueue a URL or file for ingest — returns a job ID                                                                                                                                                                                                                                                                                                                                                                           | Synthadoc      |
+| `synthadoc_lint`        | `scope?: str` (default `"all"`)                                                                                                                      | Enqueue a full LLM lint analysis — returns a job ID; use`synthadoc_jobs` to poll                                                                                                                                                                                                                                                                                                                                              | Synthadoc      |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
 

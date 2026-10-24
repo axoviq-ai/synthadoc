@@ -14,7 +14,7 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.lint_agent import find_orphan_slugs
-from synthadoc.agents.workflows._tools import tool_confirm
+from synthadoc.agents.workflows._tools import ToolStatus, tool_confirm, tool_rollback_last_fix
 from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
@@ -119,6 +119,80 @@ async def tool_verify_orphan_resolved(
         return {"resolved": True, "linked_by": linked_by}
 
     return {"resolved": False, "linked_by": []}
+
+
+# ---------------------------------------------------------------------------
+# tool_rollback_orphan_fix
+# ---------------------------------------------------------------------------
+
+async def tool_rollback_orphan_fix(ctx: "WorkflowContext", orphan_slug: str) -> dict:
+    """Roll back whatever fix resolved *orphan_slug*'s orphan status.
+
+    Orphan resolution never writes to the orphan page itself — it edits the
+    HOST page that gets the new [[wikilink]] inserted. So last_fix_record
+    lives on that host page, not on orphan_slug, and a direct
+    tool_rollback_last_fix(orphan_slug) call fails with "no prior fix
+    recorded" even though the orphan was genuinely just resolved.
+
+    "Roll back orphan_slug" has exactly one correct meaning when the host
+    page is unambiguous: undo the edit that resolved it, which can only be
+    done by restoring that host page — there is nothing on orphan_slug
+    itself to undo. So when exactly one host page carries the fix, this
+    rolls it back directly rather than asking the user to name it
+    themselves, but the returned message says explicitly which page was
+    restored and why, so it's never mistaken for a rollback of orphan_slug.
+    Only when the host page is genuinely ambiguous (more than one linking
+    page has a pending fix) or there plainly isn't one does this hold off
+    and report instead of guessing.
+
+    Returns:
+        {"status": "success", "slug", "rolled_back_to_snapshot", "message"}
+            — slug is the HOST page actually restored, not necessarily
+            orphan_slug; message always names both explicitly.
+        {"status": "error", "error": str}
+            — lists multiple candidates without picking one, or says there
+            is nothing to roll back at all if orphan_slug was never resolved.
+    """
+    direct = await tool_rollback_last_fix(ctx, orphan_slug)
+    if direct.get("status") == ToolStatus.SUCCESS:
+        return direct
+
+    no_record = {
+        "status": ToolStatus.ERROR,
+        "error": f"No fix record for '{orphan_slug}' — nothing to roll back.",
+    }
+
+    verify = await tool_verify_orphan_resolved(ctx, orphan_slug)
+    if not verify.get("resolved") or ctx.store is None:
+        return no_record
+
+    candidates = [
+        host_slug for host_slug in verify.get("linked_by", [])
+        if (page := ctx.store.read_page(host_slug)) is not None and page.last_fix_record
+    ]
+
+    if not candidates:
+        return no_record
+    if len(candidates) > 1:
+        return {
+            "status": ToolStatus.ERROR,
+            "error": (
+                f"No fix record for '{orphan_slug}' — nothing to roll back. "
+                f"More than one linking page has a pending fix "
+                f"({', '.join(candidates)}) — say 'roll back <page>' naming "
+                f"one of those directly."
+            ),
+        }
+
+    host_slug = candidates[0]
+    result = await tool_rollback_last_fix(ctx, host_slug)
+    if result.get("status") == ToolStatus.SUCCESS:
+        result = dict(result, message=(
+            f"To move '{orphan_slug}' back to orphan status, rolled back "
+            f"'{host_slug}' — that's the page that was edited to add the "
+            f"[[{orphan_slug}]] link. {result.get('message', '')}"
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------

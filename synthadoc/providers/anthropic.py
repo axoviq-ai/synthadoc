@@ -20,6 +20,10 @@ _RATE_LIMIT = (anthropic_lib.RateLimitError,)
 _MAX_RETRIES = 3
 
 
+def _system_block(text: str) -> list[dict]:
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
 class AnthropicProvider(LLMProvider):
     def __init__(self, api_key: str, config: AgentConfig, timeout: int = 0) -> None:
         # timeout=0 means "use the SDK default" (600 s); any positive value caps the call.
@@ -37,7 +41,7 @@ class AnthropicProvider(LLMProvider):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = _system_block(system)
         # stream=True tells the Anthropic API this is a streaming request, which is
         # required for long-running calls (scaffold, large ingests, etc.).
         # We accumulate the chunks here so callers get the same CompletionResponse.
@@ -48,11 +52,16 @@ class AnthropicProvider(LLMProvider):
                 parts: list[str] = []
                 input_tokens = 0
                 output_tokens = 0
+                cache_read_tokens = 0
+                cache_write_tokens = 0
                 stop_reason = None
                 stream_resp = await self._client.messages.create(**kwargs)
                 async for event in stream_resp:
                     if event.type == "message_start":
-                        input_tokens = event.message.usage.input_tokens
+                        usage = event.message.usage
+                        input_tokens = usage.input_tokens
+                        cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+                        cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
                     elif event.type == "message_delta" and hasattr(event, "usage"):
                         output_tokens = event.usage.output_tokens
                         stop_reason = getattr(event.delta, "stop_reason", None) or stop_reason
@@ -62,7 +71,9 @@ class AnthropicProvider(LLMProvider):
                 return CompletionResponse(text="".join(parts),
                                          input_tokens=input_tokens,
                                          output_tokens=output_tokens,
-                                         truncated=stop_reason == "max_tokens")
+                                         truncated=stop_reason == "max_tokens",
+                                         cache_read_tokens=cache_read_tokens,
+                                         cache_write_tokens=cache_write_tokens)
             except _RATE_LIMIT:
                 raise  # quota exhaustion — propagate immediately, no retry
             except _RETRYABLE as exc:
@@ -85,12 +96,15 @@ class AnthropicProvider(LLMProvider):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = _system_block(system)
         async with self._client.messages.stream(**kwargs) as stream:
             async for event in stream:
                 # message_start carries input_tokens; message_delta carries cumulative output_tokens.
                 if event.type == "message_start":
-                    self.last_stream_input_tokens = event.message.usage.input_tokens
+                    usage = event.message.usage
+                    self.last_stream_input_tokens = usage.input_tokens
+                    self.last_stream_cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+                    self.last_stream_cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
                 elif event.type == "message_delta" and hasattr(event, "usage"):
                     self.last_stream_output_tokens = event.usage.output_tokens
                 elif (event.type == "content_block_delta"

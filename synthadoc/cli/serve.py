@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -13,17 +13,20 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._wiki import resolve_wiki_path, read_registry_all
+from synthadoc.cli._wiki import (
+    resolve_wiki_path, read_registry_all, _REGISTRY,
+)
 from synthadoc import errors as E
+from synthadoc.config import Provider
 
 # Internal env var set on the detached child to suppress duplicate banner output.
 _NO_BANNER_ENV = "_SYNTHADOC_NO_BANNER"
 
 _PROVIDER_HOSTS = {
-    "anthropic": ("api.anthropic.com", 443),
-    "openai":    ("api.openai.com", 443),
-    "gemini":    ("generativelanguage.googleapis.com", 443),
-    "groq":      ("api.groq.com", 443),
+    Provider.ANTHROPIC: ("api.anthropic.com", 443),
+    Provider.OPENAI:    ("api.openai.com", 443),
+    Provider.GEMINI:    ("generativelanguage.googleapis.com", 443),
+    Provider.GROQ:      ("api.groq.com", 443),
 }
 
 # Loopback addresses — the Obsidian plugin always connects via 127.0.0.1 for these.
@@ -297,10 +300,40 @@ def serve_cmd(
     from synthadoc.core.logging_config import setup_logging
 
     root = resolve_wiki_path(wiki)
+
     try:
         cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
+
+    # Name-based wikis (e.g. -w my-wiki) require a registry entry — the name
+    # alone does not locate the wiki on disk.
+    # Path-based wikis (e.g. -w /wiki in Docker, -w . from inside the wiki dir)
+    # are self-describing: config.toml loaded above is proof the wiki is valid.
+    _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
+    if wiki not in read_registry_all() and not _wiki_is_path:
+        import json as _json
+        abs_root = root.resolve()
+        # json.dumps produces a quoted, backslash-escaped string safe to paste into wikis.json
+        _path_json = _json.dumps(str(abs_root))
+        _port = cfg.server.port
+        _wiki_on_disk = (abs_root / ".synthadoc" / "config.toml").exists()
+        if _wiki_on_disk:
+            _hint = (
+                f"The wiki exists on disk but is not registered.\n"
+                f"Add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        else:
+            _hint = (
+                f"Register it by running from the parent directory:\n"
+                f"  synthadoc install {wiki} --target {abs_root.parent}\n"
+                f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
+                f'  "{wiki}": {{"path": {_path_json}, "port": {_port}}}\n'
+                f"Then retry: synthadoc serve -w {wiki}"
+            )
+        E.cli_error(E.WIKI_NOT_REGISTERED, f"Wiki '{wiki}' is not registered in {_REGISTRY}.", _hint)
     effective_port = port if port is not None else cfg.server.port
     if host is not None:
         cfg.server.host = host
@@ -330,16 +363,16 @@ def serve_cmd(
     setup_logging(root, cfg=cfg.logs, verbose=verbose)
 
     from synthadoc.providers import _require_env
-    if provider in ("claude-code", "opencode", "ollama"):
+    if provider in (Provider.CLAUDE_CODE, Provider.OPENCODE, Provider.OLLAMA):
         pass  # CLI and local providers — no API key required
-    elif provider == "anthropic":
+    elif provider == Provider.ANTHROPIC:
         _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
-    elif provider == "openai":
+    elif provider == Provider.OPENAI:
         _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")
-    elif provider == "gemini":
+    elif provider == Provider.GEMINI:
         _require_env("GEMINI_API_KEY", "Google Gemini",
                      "https://aistudio.google.com/app/apikey")
-    elif provider == "groq":
+    elif provider == Provider.GROQ:
         _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys")
 
     # Propagate web_search config to env so WebSearchSkill can read it

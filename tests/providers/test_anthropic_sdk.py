@@ -87,7 +87,10 @@ async def test_complete_works_and_never_sends_temperature(model):
     resp = await provider.complete([Message(role="user", content="hi")], system="sys", temperature=0.7)
     assert (resp.text, resp.input_tokens, resp.output_tokens) == ("Hello world", 12, 7)
     assert "temperature" not in requests[0]
-    assert requests[0]["system"] == "sys" and requests[0]["model"] == model
+    sys_block = requests[0]["system"]
+    assert isinstance(sys_block, list) and sys_block[0]["text"] == "sys"
+    assert sys_block[0]["cache_control"] == {"type": "ephemeral"}
+    assert requests[0]["model"] == model
 
 
 @pytest.mark.asyncio

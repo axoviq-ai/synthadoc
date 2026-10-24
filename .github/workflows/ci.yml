@@ -67,7 +67,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd obsidian-plugin && npm install && npm run build && npm test
+      - run: cd obsidian-plugin && npm ci && npm run build && npm test
       - run: python scripts/sync_plugin.py
       - name: Fail if compiled plugin files are not committed
         shell: bash
@@ -95,3 +95,8 @@ jobs:
             echo "  git add synthadoc/data/web-ui/"
             exit 1
           fi
+      # Must run after the build+sync steps above: the Obsidian eval-pattern fix
+      # (obsidian-plugin/esbuild.config.mjs patchBundle) runs at build time, and
+      # sync_plugin.py is what copies the patched main.js into the tracked path
+      # this scanner checks. Scanning before that point would see stale content.
+      - run: python scripts/security_scan.py

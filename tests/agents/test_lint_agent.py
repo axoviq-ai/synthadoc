@@ -1468,6 +1468,66 @@ async def test_adversarial_gate_demotes_page_at_threshold(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_adversarial_gate_demotion_clears_stale_last_fix_record(tmp_wiki):
+    """A fresh demotion starts a new resolution episode.
+
+    If this page was fixed and promoted once before, page.last_fix_record is
+    still set (nothing clears it on promotion — it stays so the user can roll
+    back the already-resolved episode). When the page is *later* re-demoted to
+    contradicted by the gate, that stale record must not leak into the new
+    episode — otherwise a retry inside the new episode's
+    tool_propose_and_apply would chain onto it and "roll back" would restore
+    content from the OLD, already-resolved episode instead of the page as it
+    stood just before this new contradiction was found.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("suspect", WikiPage(
+        title="Suspect", tags=[], content="A disputed factual claim lives here.",
+        status="active", confidence="high", sources=[],
+        last_fix_record={
+            "slug": "suspect", "snapshot_id": 1, "snapshot_index_before": 1,
+            "timestamp": "2026-01-01T00:00:00+00:00", "strategy_name": "Strategy 1",
+            "pre_fix_status": "contradicted", "pre_fix_contradiction_note": None,
+        },
+    ))
+    store.write_page("pad-a", WikiPage(title="Pad A", tags=[], content="Unrelated alpha.",
+        status="active", confidence="high", sources=[]))
+    store.write_page("pad-b", WikiPage(title="Pad B", tags=[], content="Unrelated beta.",
+        status="active", confidence="high", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=3))
+
+    three_warnings = [
+        {"claim": "Claim A", "concern": "unverified"},
+        {"claim": "Claim B", "concern": "disputed"},
+        {"claim": "Claim C", "concern": "contradicted by source X"},
+    ]
+
+    async def _mock_single(slug, content):
+        if slug == "suspect":
+            return three_warnings, 50
+        return [], 10
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        await agent.run(scope="all", adversarial=True, lifecycle=False)
+
+    page = store.read_page("suspect")
+    assert page is not None
+    assert page.status == "contradicted"
+    assert page.last_fix_record is None, (
+        "Stale last_fix_record from the earlier, already-promoted episode "
+        "must be cleared on a fresh demotion."
+    )
+
+
+@pytest.mark.asyncio
 async def test_adversarial_gate_disabled_when_threshold_is_none(tmp_wiki):
     """When adversarial_gate_threshold is None, pages are never auto-demoted."""
     store = WikiStorage(tmp_wiki / "wiki")

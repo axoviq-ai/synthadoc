@@ -181,6 +181,8 @@ def test_sanitize_domain_exactly_max_len_unchanged():
     assert _sanitize_domain(s) == s
 
 
+
+
 # ---------------------------------------------------------------------------
 # Domain resolution — CLI integration tests
 # ---------------------------------------------------------------------------

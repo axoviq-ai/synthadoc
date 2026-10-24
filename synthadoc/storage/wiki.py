@@ -15,7 +15,8 @@ from synthadoc.utils import atomic_write_text, load_yaml, strip_control_chars
 
 _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "updated", "sources", "orphan",
                        "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
-                       "type", "resource", "content_health_issues", "content_health_fix_record")
+                       "type", "resource", "content_health_issues", "content_health_fix_record",
+                       "last_fix_record")
 
 # Slugs that are system/metadata pages managed by Synthadoc itself.
 # These are excluded from page counts, search indexes, exports, lifecycle checks,
@@ -116,6 +117,7 @@ class WikiPage:
     resource: Optional[str] = None             # OKF primary source URL (URL sources only)
     content_health_issues: list[dict] = field(default_factory=list)
     content_health_fix_record: Optional[dict] = None
+    last_fix_record: Optional[dict] = None
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
@@ -200,6 +202,8 @@ class WikiStorage:
                 fm["content_health_issues"] = page.content_health_issues
             if page.content_health_fix_record is not None:
                 fm["content_health_fix_record"] = page.content_health_fix_record
+            if page.last_fix_record is not None:
+                fm["last_fix_record"] = page.last_fix_record
             body = page.content
         else:
             fm = frontmatter or {}
@@ -255,6 +259,7 @@ class WikiStorage:
             resource=fm.get("resource") or None,
             content_health_issues=fm.get("content_health_issues") or [],
             content_health_fix_record=fm.get("content_health_fix_record") or None,
+            last_fix_record=fm.get("last_fix_record") or None,
         )
 
     def page_exists(self, slug: str) -> bool:

@@ -68,13 +68,13 @@ def test_query_cli_gap_includes_command_palette_hint():
     assert "Synthadoc: Ingest..." in result.output
 
 
-def test_query_cli_default_timeout_is_60():
-    """Without --timeout, get() must be called with timeout=60."""
+def test_query_cli_default_timeout_is_none():
+    """Without --timeout, get() must be called with timeout=None so _http falls back to config."""
     ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
     with ctx:
         runner.invoke(app, ["query", "What is AI?", "-w", ".", "--no-stream"])
     _, kwargs = mock.call_args
-    assert kwargs.get("timeout") == 60
+    assert kwargs.get("timeout") is None
 
 
 def test_query_cli_custom_timeout_forwarded():

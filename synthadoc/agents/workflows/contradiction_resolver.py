@@ -13,13 +13,17 @@ import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.agents.workflows._rollback import parse_rollback_intent
+from synthadoc.storage.wiki import LifecycleState
 # Shared framework tools (usable by any workflow)
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_ingest_source,
+    tool_list_recent_fixes,
     tool_notify,
     tool_poll_job,
     tool_read_page_content,
+    tool_rollback_last_fix,
     tool_run_scoped_lint,
     tool_propose_and_apply,
     tool_transition_lifecycle_state,
@@ -27,6 +31,7 @@ from synthadoc.agents.workflows._tools import (
 )
 # Contradiction-domain tools (specific to this workflow)
 from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
+    ContradictionPageType,
     tool_get_contradicted_pages,
     tool_read_source_content,
     tool_cost_estimate,
@@ -146,7 +151,13 @@ STEP 4 — Per-page resolution loop
           "Strategy 4 — Cross-page resolution"
           "Strategy 5 — Escalate"
 
-    4e. If not applied (user skipped): mark page as skipped, continue to next page.
+    4e. If not applied:
+        - Result includes an "error" field (not a user decision — a structural or
+          content-loss rejection): treat exactly like a lint failure for retry
+          purposes. If attempt < 4, go to step 4h and select the next strategy.
+          If cap reached, go to step 4i (escalate).
+        - No "error" field (user declined via the confirm dialog): mark page as
+          skipped, continue to next page.
 
     4f. If applied: call tool_run_scoped_lint(slug).
 
@@ -174,6 +185,9 @@ STEP 4 — Per-page resolution loop
               current authoritative sources to support, replace, or ground disputed claims.
             • Strategy 3 (Force re-ingest) — preferred for source-conflict pages when
               source_path is available and the source itself may have updated.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
           Attempt 3 — use a strategy not yet tried; Strategy 1 (second use) is allowed
             only if strategies 2, 3, and 4 have all been tried or clearly ruled out:
@@ -183,10 +197,16 @@ STEP 4 — Per-page resolution loop
             • Strategy 1 (second use) — only if 2, 3, and 4 are all exhausted. Target
               different specific claims than attempt 1, or use stronger hedging and
               explicit source attribution for each disputed claim.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
           Attempt 4 — any remaining untried strategy; if all others have been tried,
             reuse Strategy 1 with a substantially different approach: target different
             claims, restructure the affected section, or add explicit per-claim citations.
+            In every case, preserve every heading from the current page content
+            exactly — same text, same level, same order — unless this specific
+            strategy's own description says otherwise.
 
         Repeat from 4c.
 
@@ -222,7 +242,9 @@ STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
     **⏭ Skipped (<N>):**
     - <slug>
 
-    **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
+    **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>.
+
+    A snapshot is saved before each change — say 'roll back [page]' to undo.
 
   When a section is empty write "- (none)" as the single list item.
   This plain-text output ends the loop — it must be your very last action.
@@ -286,6 +308,41 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     # CLI providers accept without safety objections.
     SUPPORTS_CLI_PROVIDER: bool = True
 
+    # Confirm gate — Pattern B (declarative GATED_TOOLS).
+    # tool_rollback_last_fix silently replaces a page's content, so during a
+    # normal resolution run the model must not call it without the user's
+    # approval.  Per-call: every rollback needs its own approval.  Note this
+    # workflow's confirm tool is registered as "tool_confirm", not "confirm",
+    # so the model's between-pages "continue?" confirms never open this gate —
+    # only the framework's fallback dialog (fired by the gated wrapper) does.
+    #
+    # An explicit user request ("roll back X", detected in build_initial_message)
+    # bypasses the gate — see build_guarded_tool_fns — matching
+    # content_health_resolver's precedent: the request itself is the approval.
+    # run_for_cli_provider calls tool_rollback_last_fix directly and never goes
+    # through this registry.
+    GATED_TOOLS: frozenset[str] = frozenset({"tool_rollback_last_fix"})
+    GATED_TOOLS_PER_CALL: frozenset[str] = frozenset({"tool_rollback_last_fix"})
+
+    def build_guarded_tool_fns(self, ctx: "WorkflowContext") -> dict:
+        """Gate tool_rollback_last_fix unless the user explicitly asked for a rollback.
+
+        ActionAgent calls this BEFORE build_initial_message, so the choice is
+        made at tool-call time (by then build_initial_message has recorded
+        whether the request was an explicit rollback).
+        """
+        guarded = super().build_guarded_tool_fns(ctx)
+        gated_rollback = guarded["tool_rollback_last_fix"]
+        direct_rollback = functools.partial(tool_rollback_last_fix, ctx)
+
+        async def _rollback(*args, **kwargs) -> dict:
+            if getattr(self, "_user_requested_rollback", False):
+                return await direct_rollback(*args, **kwargs)
+            return await gated_rollback(*args, **kwargs)
+
+        guarded["tool_rollback_last_fix"] = _rollback
+        return guarded
+
     def get_tool_budget(self) -> int:
         # Each page requires ~8 tool calls (read, propose, lint, transition, confirm ×2)
         # with 4-attempt retry headroom.  Allow up to 20 pages:
@@ -306,6 +363,22 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         user_input: str,
         **_kwargs,
     ) -> str:
+        is_rollback, rollback_slug = parse_rollback_intent(user_input)
+        # Read by build_guarded_tool_fns' rollback wrapper at call time.
+        self._user_requested_rollback = is_rollback
+        if is_rollback:
+            if rollback_slug:
+                return (
+                    f"The user wants to roll back the last fix on page '{rollback_slug}'.\n"
+                    f"Call tool_rollback_last_fix(slug='{rollback_slug}') and report the "
+                    f"result as plain text."
+                )
+            return (
+                "The user wants to roll back a fix but did not specify which page.\n"
+                "Call tool_list_recent_fixes() and report the list, asking the user "
+                "which page to roll back."
+            )
+
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
         type_match = re.search(
             r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
@@ -341,6 +414,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_notify":                     p(tool_notify, ctx),
             "tool_ingest_source":              p(tool_ingest_source, ctx),
             "tool_poll_job":                   p(tool_poll_job, ctx),
+            "tool_rollback_last_fix":          p(tool_rollback_last_fix, ctx),
+            "tool_list_recent_fixes":          p(tool_list_recent_fixes, ctx),
         }
 
     # ── CLI provider path ─────────────────────────────────────────────────────
@@ -354,11 +429,36 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         ("here is the page and its contradiction signals; revise it") — no fake
         tools, no identity redefinition.
 
-        Limitation vs. the Anthropic-API path: only Strategy 1 (content rewrite)
-        is attempted, with no retry loop.  Pages that fail scoped lint after the
-        rewrite are marked unresolved; the summary directs the user to run the
-        full resolver (with provider=anthropic) for those pages.
+        Limitation vs. the full multi-turn tool-call loop: only Strategy 1
+        (content rewrite) is attempted, with no retry loop. This limitation is
+        inherent to CLI-based coding-tool providers (claude-code, opencode) —
+        is_cli_provider gates this path on isinstance(provider,
+        CodingToolCLIProvider), not on any specific non-CLI provider. Pages
+        that fail scoped lint after the rewrite are marked unresolved; the
+        summary directs the user to run the full resolver with a non-CLI
+        provider (anthropic, gemini, minimax, groq, deepseek, qwen, ollama —
+        any provider other than claude-code/opencode) for those pages.
         """
+        # "roll back" / "roll back SLUG" intents need no LLM — answer them
+        # directly instead of starting a new scan-and-fix session.
+        is_rollback, rollback_slug = parse_rollback_intent(question)
+        if is_rollback and rollback_slug:
+            result = await tool_rollback_last_fix(ctx, rollback_slug)
+            text = result.get("message") or f"Rollback of '{rollback_slug}' failed."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+        if is_rollback:
+            listing = await tool_list_recent_fixes(ctx)
+            fixes = listing.get("fixes", [])
+            if not fixes:
+                text = "No recent fixes to roll back."
+            else:
+                lines = [f"- {f['slug']}: {f['strategy_name']} ({f['fixed_at']})" for f in fixes]
+                text = "Recent fixes:\n" + "\n".join(lines) + \
+                       "\nSay 'roll back <slug>' to restore one of these pages."
+            yield {"event": "final_text", "data": {"text": text}}
+            return
+
         # ── 1. Parse flags (same logic as build_initial_message) ──────────────
         slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
         type_match = re.search(
@@ -405,32 +505,45 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                 {"tool": "_resolve", "message": f"Resolving {slug} ({page_type})..."},
             )
 
-            # 4a. Unknown type: run lint first to determine whether state is stale
-            if page_type == "unknown":
+            # 4a. Stale-flag check: unknown type OR inferred conflict flag.
+            #     Both cases are handled identically — run scoped lint; if it
+            #     passes the contradicted state is not backed by a real issue
+            #     and can be cleared without a rewrite.
+            #     "inferred" in the note means the ingest agent guessed the
+            #     target page from topic similarity, not a verified claim match.
+            PT = ContradictionPageType
+            note = page_info.get("contradiction_note") or ""
+            is_inferred_conflict = (
+                page_type == PT.CONFLICT and "inferred" in note.lower()
+            )
+            if page_type == PT.UNKNOWN or is_inferred_conflict:
                 lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                 if lint_result.get("pass"):
-                    # Stale metadata — no rewrite needed; transition directly
-                    await tool_transition_lifecycle_state(
-                        ctx, slug=slug, to_state="active",
-                        reason=(
-                            "resolved: clean lint with no contradiction signals "
-                            "— contradicted state was stale metadata"
-                        ),
+                    reason = (
+                        "stale inferred contradiction note — disputed claim never "
+                        "confirmed on this page; scoped lint passed"
+                        if is_inferred_conflict else
+                        "resolved: clean lint with no contradiction signals "
+                        "— contradicted state was stale metadata"
                     )
-                    fixed.append({
-                        "slug": slug,
-                        "note": "Stale contradicted state; fresh lint passed, transitioned to active",
-                    })
-                    # Still need to confirm between pages below
-                else:
+                    await tool_transition_lifecycle_state(
+                        ctx, slug=slug, to_state=LifecycleState.ACTIVE, reason=reason,
+                    )
+                    fixed.append({"slug": slug, "note": reason})
+                    # Normalise page_type so the rewrite guard below skips this slug
+                    page_type = PT.UNKNOWN
+                    # Fall through to the confirm-between-pages block below
+                elif page_type == PT.UNKNOWN:
                     # Real issue — treat as gate-demoted and fall through to rewrite
-                    page_type = "gate"
+                    page_type = PT.GATE
+                # inferred-conflict that failed lint: page_type stays CONFLICT,
+                # falls through to rewrite attempt
 
-            if page_type != "unknown" or slug not in fixed:
+            if page_type != PT.UNKNOWN or slug not in fixed:
                 # 4b. Read page content (and source for conflict/both types)
                 page_content = await tool_read_page_content(ctx, slug=slug)
                 source_text: str | None = None
-                if page_type in ("conflict", "both"):
+                if page_type in (PT.CONFLICT, PT.BOTH):
                     source_result = await tool_read_source_content(ctx, slug=slug)
                     source_text = source_result.get("source_text") or None
 
@@ -460,13 +573,21 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                     )
 
                     if not apply_result.get("applied"):
-                        skipped.append(slug)
+                        error = apply_result.get("error")
+                        if error:
+                            unresolved.append({
+                                "slug": slug,
+                                "reason": f"{error} — re-run with a non-CLI provider "
+                                          f"(not claude-code/opencode) for multi-strategy retry",
+                            })
+                        else:
+                            skipped.append(slug)
                     else:
                         # 4e. Re-lint after applying the change
                         lint_result = await tool_run_scoped_lint(ctx, slug=slug)
                         if lint_result.get("pass"):
                             await tool_transition_lifecycle_state(
-                                ctx, slug=slug, to_state="active",
+                                ctx, slug=slug, to_state=LifecycleState.ACTIVE,
                                 reason=(
                                     "resolved by contradiction-resolver "
                                     "— CLI provider path, Strategy 1 (content rewrite)"
@@ -483,7 +604,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                                 message=(
                                     f"⚠ {slug} — rewrite applied but lint still failing "
                                     f"({wc} warning(s)); page remains contradicted. "
-                                    f"Re-run the contradiction resolver for multi-strategy retry."
+                                    f"Re-run the contradiction resolver with a non-CLI provider "
+                                    f"(not claude-code/opencode) for multi-strategy retry."
                                 ),
                                 level="warning",
                             )

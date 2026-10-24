@@ -1,6 +1,6 @@
-﻿# Synthadoc — Design Document
+# Synthadoc — Design Document
 
-**Version:** 1.4.2
+**Version:** 1.4.3
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -1204,7 +1204,7 @@ synthadoc audit events -n 100 --offset 100 -w my-wiki
 
 ### Wiki targeting
 
-The `-w` / `--wiki` option accepts either a **registry name** (registered via `install`) or a **filesystem path**. Without `-w`, defaults to the current working directory.
+The `-w` / `--wiki` option accepts either a **registry name** (registered via `install`) or a **filesystem path**. Without `-w`, defaults to the current working directory. `synthadoc serve` hard-fails with `ERR-WIKI-006` when a name-based wiki is not registered; path-based arguments (`-w /wiki`, `-w ./my-wiki`) bypass that check entirely.
 
 Registry stored at `~/.synthadoc/wikis.json`:
 
@@ -1251,7 +1251,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
 | `ERR-WIKI-004`   | Install target already exists on disk                     |
 | `ERR-WIKI-005`   | Unknown demo template name                                |
-| `ERR-WIKI-006`   | Name not in`~/.synthadoc/wikis.json`                      |
+| `ERR-WIKI-006`   | Name-based wiki not in `~/.synthadoc/wikis.json`; path-based wikis (`-w /wiki`, `-w .`) bypass this check |
 | `ERR-WIKI-007`   | Backup requires a newer`db_schema_version` than installed |
 | `ERR-CFG-001`    | Required API key environment variable not set             |
 | `ERR-CFG-002`    | Provider name not recognised                              |
@@ -1331,7 +1331,7 @@ otlp_endpoint = "http://localhost:4317"   # used when exporter = "otlp"
 
 ### Provider switching
 
-All eight supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`) share the same config key. Gemini, Groq, MiniMax, DeepSeek, and Qwen (DashScope) use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
+All nine supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `kimi`, `qwen`, `ollama`) share the same config key. Gemini, Groq, MiniMax, DeepSeek, Kimi, and Qwen (DashScope) use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
 
 ```toml
 # Switch from Claude to Gemini Flash (free tier available)
@@ -1350,7 +1350,8 @@ Required environment variables per provider:
 | `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
 | `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes                                          |
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
-| `qwen`      | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid DashScope                                      | Model-dependent                       |
+| `kimi`      | `KIMI_API_KEY` (or `QWEN_API_KEY`) | No — `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M, 256K ctx) | No (text-only)                       |
+| `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
 ### Coding tool CLI providers — no API key needed
@@ -1459,7 +1460,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.default.provider`                | str   | `"gemini"`           | LLM provider:`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`                                                                                                                                                                              |
 | `agents.default.model`                   | str   | `"gemini-2.5-flash"` | Model ID passed to the provider API                                                                                                                                                                                                                                        |
 | `agents.default.base_url`                | str   | `""`                 | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment).                                                                                                                       |
-| `agents.default.thinking`                | str   | `""`                 | Reasoning mode:`"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
+| `agents.default.thinking`                | str   | `""`                 | Reasoning mode:`"disabled"` turns off chain-of-thought. **Required for all Qwen DashScope models** — thinking is ON by default and causes timeouts on large wiki contexts; always set `thinking = "disabled"` for `qwen`. Also supported on MiniMax M3 (faster, cheaper) and DeepSeek (optional). `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
 | `agents.ingest.provider`                 | str   | (inherits default)   | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries.                                                                                                                             |
 | `agents.ingest.model`                    | str   | (inherits default)   | Model ID for the ingest agent override.                                                                                                                                                                                                                                    |
 | `agents.query.provider`                  | str   | (inherits default)   | Override provider/model for query answering only.                                                                                                                                                                                                                          |
@@ -1964,7 +1965,7 @@ class SlackExportSkill(BaseSkill):
 
 ### Writing a provider
 
-Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
+Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `kimi`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
 For a fully proprietary API, subclass `LLMProvider` and wire it into `synthadoc/providers/__init__.py`:
 
@@ -4282,11 +4283,19 @@ The content health resolver is the 8th agentic maintenance workflow. It detects 
 
 **Per-page loop:** Python merge and/or LLM rewrite → sentence-preservation check (`dropped_sentences()`; any lost sentence rejects the write before the user is asked) → approval card with the real unified diff (`unified_diff_preview()` → `tool_confirm(diff=…)`) → `snapshot_if_changed(reason="content-health-fix")` → write `content_health_fix_record` → apply fix → re-run heuristic scanner → summary line. Approval cards are built from the actual content inside the tools (Pattern A), never written by the model; dismissals and model-initiated rollbacks also ask first.
 
+**Heading preservation:** a deterministic post-output check (`heading_mismatch_error()`) rejects any rewrite that adds, removes, or renames a heading, in both the content-health and contradiction-resolver apply paths. The sentence-preservation check (`dropped_sentences()`) stays content-health-only — `tool_propose_and_apply` (contradiction-resolver, orphan-resolver) deliberately does not enforce it, since both callers' jobs are to change prose (hedge/correct a claim, insert a wikilink inline), not preserve it verbatim. Both workflows snapshot before every write via a shared rollback mechanism (`synthadoc/agents/workflows/_rollback.py`) — say "roll back `<slug>`" at any time to undo a fix from either resolver; content-health's own rollback entry points fall back to the generic mechanism when a page has no content-health-specific fix record but does have a generic one, so "roll back `<slug>`" works from chat regardless of which resolver made the fix.
+
 **Token budget:** `ContentHealthConfig.token_budget = 50_000` is defined in config but not currently enforced at runtime — it is a reserved field for a future gate. The only active budget is the tool-call budget (`get_tool_budget() → 200`) and the per-turn `max_tokens` (default 4096, configurable via `workflow_max_tokens` in `[agents]`).
 
 **Rollback traceability:** Two tools registered in both `ContentHealthResolverWorkflow` and `query_agent`:
 - `tool_list_content_health_fixes()` — returns all pages fixed, with timestamps and pre-fix snapshot indices
 - `tool_rollback_content_health_fix(slug)` — looks up the fix record, calls `POST /pages/{slug}/rollback` with the pre-fix snapshot index; clears the fix record and restores heuristic issue flags after rollback
+
+`contradiction_resolver` and `orphan_resolver` share a parallel, generic pair instead, registered in `_tools.py`:
+- `tool_list_recent_fixes()` — returns all pages with a `last_fix_record` (any `tool_propose_and_apply` write), with timestamps and the strategy name used
+- `tool_rollback_last_fix(slug)` — resolves the recorded snapshot via `restore_page_snapshot()` (shared with content-health's own rollback), restores content plus the pre-fix `status`/`contradiction_note`, and clears the record
+
+In `contradiction_resolver`, `tool_rollback_last_fix` is gated (`GATED_TOOLS` + `GATED_TOOLS_PER_CALL`) so the model cannot call it mid-resolution without a human confirm — except when the user's own message explicitly requested a rollback, which runs directly with no redundant second confirmation.
 
 **Pre-prompt priority:** 6th in the chain (contradicted → stale → orphan → broken_wikilinks → broken_citations → **content_health**). `lifecycle_summary["content_health"]` count; `initial_hints()` adds "Run content health resolver" chip when count > 0.
 
@@ -4538,7 +4547,7 @@ port 7070                      ── map  ──▶   7070    synthadoc serve -
 | --- | --- |
 | **One wiki per container** | Matches the one-process / one-port server model; multiple wikis run as multiple containers |
 | **Wiki files stay on the host** | `/wiki` is a bind mount, so Obsidian, git hooks, and backups work on the host files directly |
-| **No registry inside the container** | `CMD` starts the server with an explicit `-w /wiki`; `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` resolve the wiki without `-w` |
+| **No registry inside the container** | `CMD` starts the server with `-w /wiki`, a filesystem path — `serve` only consults the registry for name-based wiki arguments, so no registry entry is needed inside the container; `ENV SYNTHADOC_WIKI=/wiki` lets `docker exec … synthadoc <cmd>` resolve the wiki without `-w` |
 | **Symmetric port mapping** | The server reads `[server] port` from the wiki's `config.toml`; mapping `-p 7070:7070` keeps the Obsidian plugin, Web UI, and scripts unchanged between Docker and native `synthadoc serve` |
 | **HTTP API + Web UI + MCP on one port** | The default `CMD` runs without `--http-only`, so `/app` (Web UI) and `/mcp` (MCP over HTTP) are served alongside the REST API. MCP stdio is not used in containers |
 | **Secrets via environment only** | API keys are passed with `--env-file`; nothing is baked into the image |
@@ -4583,7 +4592,7 @@ The workflow can also be started manually (**Actions → Publish Docker Image �
 
 ### Upgrading a container deployment
 
-Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `plugin upgrade` and `templates sync` iterate the host wiki registry, which does not exist in a container, so they are unavailable there. Refreshing demo or template content is currently pip-only.
+Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
 
 ### Container-related fixes shipped with Docker support
 
@@ -4594,6 +4603,32 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.4.3
+
+**Major features**
+
+- **Anthropic prompt caching** — the system prompt is sent with `cache_control: {"type": "ephemeral"}` on every request, pinning it to the Anthropic 5-minute prompt cache. Cache-hit token counts (`cache_read_input_tokens`, `cache_creation_input_tokens`) are threaded through `estimate_cost()` and logged. Long repeated sessions (ingest, scaffold, lint) see measurably lower latency and cost on subsequent turns.
+- **Docker: in-container plugin and template upgrade** — `synthadoc plugin upgrade` and `synthadoc templates sync` now work correctly inside a running container. Previously these commands relied on the host registry and silently did nothing in Docker. The container detects its own wiki root via `SYNTHADOC_WIKI` and applies upgrades without host tooling.
+- **Qwen provider improvements** — `qwen3.8-flash` and `qwen3.8-max` added as free-tier DashScope models with `thinking: disabled` required. `DASHSCOPE_API_KEY` accepted as an alias for `QWEN_API_KEY`. `QWEN_BASE_URL` override supported for non-default endpoints.
+
+**Fixes**
+
+- **Tool-call JSON brace repair** — models that stream tool calls and truncate at `max_tokens` before closing braces are repaired by appending the missing `}` characters, keeping the agentic loop alive instead of failing with a parse error.
+- **MiniMax native tool calls** — MiniMax's deeply nested tool-call format (`choices[0].delta.tool_calls`) is parsed correctly; tool-call protocol is re-sent every turn to prevent drift.
+- **Content health resolver hardening** — resolver prompt tightened to reject rewrites that drop text, skip pages with draft artifacts, strip CLI tool artifacts from proposals, show affected sections in BEFORE/AFTER diff (not first 400 chars), make confirm-card code blocks scrollable, and support `list` / `roll back` intents with coding-tool CLI providers.
+- **Ingest: no text loss on re-ingest** — force re-ingest of one source no longer wipes text contributed by other sources; duplicate sections from repeated ingest are merged, keeping every sentence.
+- **Ingest: relative binary paths** — `.pdf`, `.docx`, `.pptx` passed as relative paths are resolved against the CWD instead of being interpreted as web-fetch intents.
+- **Broken-citation single-page mode** — `find_broken_citations` in STEP 5 of the broken citation resolver workflow now correctly scopes to the given `page_slug` instead of scanning the full wiki.
+- **OpenAI / Anthropic API compatibility** — `max_completion_tokens` used for GPT-5+ and o-series; temperature omitted for those models. Anthropic stops sending `temperature`; SDK 1.15+ required.
+- **Query timeout** — `--timeout` defaults to `None`, falling back to `client_stream_timeout_seconds` from config; server and client HTTP timeouts are now kept in sync.
+- **Provider refresh** — model list and pricing updated (2026-10-16); `kimi-k3` removed from DashScope template (returns empty responses).
+
+**Security**
+
+- **UTF-8 BOM removed** — BOM stripped from `README.md`, `README-pypi.md`, `docs/design.md`, `docs/user-quick-start-guide.md`, and four Python source files (`agents/ingest_agent.py`, `cli/cache.py`, `cli/candidates.py`, `cli/install.py`). The literal U+FEFF character in `cli/_utils.py:85` replaced with `chr(0xFEFF)` so no BOM byte appears in source.
+- **Obsidian plugin eval-pattern** — `Function("return this")()` (a bundler-injected UMD global-scope accessor from third-party dependencies) replaced with `globalThis` in `main.js`. The substitution is applied automatically by `patchBundle()` in `esbuild.config.mjs` on every production build.
+- **Binary demo sources converted** — seven `.pptx`, `.xlsx`, and `.pdf` demo source files replaced with reviewable `.md` / `.csv` equivalents. `synthadoc templates sync` removes superseded binary files from existing installs without touching user-added files.
 
 ### v1.4.2
 
@@ -4832,7 +4867,7 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 - **Session history sidebar** — the left navigation bar is now server-driven (`GET /sessions`) and shows sessions as a 2-level collapsible tree. Multi-turn sessions display a turn count badge and expand to show each follow-up question. Clicking any item restores the full conversation history via `GET /sessions/{id}/messages`. Two new API endpoints: `GET /sessions` and `GET /sessions/{session_id}/messages`.
 - **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
 - **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
-- **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
+- **Qwen provider routing** — model names matching `qwen<digits>.<digits>-<letter>` (e.g. `qwen3.8-flash`, `qwen3.8-max`), `qwen-<letter>` (e.g. `qwen-plus`, `qwen-max`), `qwq-`, or `kimi-` route to DashScope cloud API; all other names (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. Both `QWEN_API_KEY` and `DASHSCOPE_API_KEY` are accepted.
 
 ### v0.7.0 (Community Edition)
 

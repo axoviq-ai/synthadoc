@@ -105,7 +105,7 @@ Only one `default = ...` line may be uncommented at a time.
 | Gemini                 | `GEMINI_API_KEY`                              |
 | DeepSeek               | `DEEPSEEK_API_KEY`                            |
 | Groq                   | `GROQ_API_KEY`                                |
-| Qwen                   | `QWEN_API_KEY`                                |
+| Qwen                   | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`)       |
 | Ollama                 | *(no key required — runs locally)*           |
 | claude-code / opencode | *(no key required — uses your subscription)* |
 

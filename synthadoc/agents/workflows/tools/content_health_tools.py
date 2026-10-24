@@ -11,8 +11,11 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from synthadoc.agents.content_health_fixes import dropped_sentences, merge_duplicate_sections
+from synthadoc.agents.content_health_fixes import (
+    dropped_sentences, heading_mismatch_error, merge_duplicate_sections, text_loss_error,
+)
 from synthadoc.agents.content_health_scanner import resolvable_issues, scan_page
+from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.workflows._tools import tool_confirm, unified_diff_preview
 from synthadoc.storage.wiki import LifecycleState
 
@@ -83,27 +86,6 @@ async def tool_get_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     }
 
 
-def _text_loss_error(slug: str, current: str, proposed: str) -> dict | None:
-    """Error result when *proposed* drops any sentence of *current*, else None."""
-    dropped = dropped_sentences(current, proposed)
-    if not dropped:
-        return None
-    shown = "; ".join(f'"{d[:120]}"' for d in dropped[:5])
-    return {
-        "status": _STATUS_ERR,
-        "slug": slug,
-        "dropped_sentences": len(dropped),
-        "error": (
-            f"Rejected — nothing was written. The rewrite removes {len(dropped)} "
-            f"sentence(s) that exist in the current page, e.g. {shown}. "
-            "Content-health fixes must keep every sentence. Leave issues that cannot "
-            "be fixed without losing text for a human: dismiss them (notify, then "
-            "dismiss_content_health_issues) instead of writing. Do not retry with the "
-            "same content."
-        ),
-    }
-
-
 async def confirm_page_change(
     ctx: "WorkflowContext", slug: str, current: str, proposed: str, summary: str,
     yes_label: str = "Approve",
@@ -133,7 +115,9 @@ async def tool_apply_content_health_fix(
     page = ctx.store.read_page(slug)
     if page is None:
         return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
-    rejection = _text_loss_error(slug, page.content, content)
+    rejection = text_loss_error(slug, page.content, content)
+    if rejection is None:
+        rejection = heading_mismatch_error(slug, page.content, content, issues_fixed=issues_fixed)
     if rejection:
         return rejection
     summary = (
@@ -152,6 +136,8 @@ async def tool_write_content_health_fix(
     slug: str,
     content: str,
     issues_fixed: list[str],
+    *,
+    skip_heading_check: bool = False,
 ) -> dict:
     """Apply a content-health fix to a page.
 
@@ -162,6 +148,9 @@ async def tool_write_content_health_fix(
     Rejects (writes nothing) a rewrite that drops any prose sentence of the
     current page: the model's own BEFORE/AFTER summary cannot be trusted to
     report lost text, e.g. when duplicate sections hold different sentences.
+    Also rejects a heading change not accounted for by ``issues_fixed``, unless
+    ``skip_heading_check`` is set (the pure-Python duplicate-merge path
+    legitimately removes duplicate headings on purpose).
     """
     if ctx.store is None or ctx.audit_db is None:
         return {"status": _STATUS_ERR, "error": "No store or audit_db available"}
@@ -169,9 +158,14 @@ async def tool_write_content_health_fix(
     if page is None:
         return {"status": _STATUS_ERR, "error": f"Page '{slug}' not found"}
 
-    rejection = _text_loss_error(slug, page.content, content)
+    rejection = text_loss_error(slug, page.content, content)
     if rejection:
         return rejection
+
+    if not skip_heading_check:
+        rejection = heading_mismatch_error(slug, page.content, content, issues_fixed=issues_fixed)
+        if rejection:
+            return rejection
 
     # Snapshot CURRENT content (pre-fix) so it can be restored on rollback.
     await ctx.audit_db.snapshot_if_changed(
@@ -244,6 +238,7 @@ async def tool_merge_duplicate_sections(ctx: "WorkflowContext", slug: str) -> di
     result = await tool_write_content_health_fix(
         ctx, slug=slug, content=merge.content,
         issues_fixed=[f"duplicate_section x{len(merge.merged)} (merged, no sentences dropped)"],
+        skip_heading_check=True,
     )
     return {**result, "merged": merge.merged, "skipped": merge.skipped}
 
@@ -387,31 +382,18 @@ async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) ->
     stored_snapshot_id = page.content_health_fix_record.get("snapshot_id")
     stored_snapshot_index = page.content_health_fix_record.get("snapshot_index_before", 1)
 
-    # Resolve the current index for the stored snapshot id (robust to new snapshots added later).
-    if stored_snapshot_id is not None:
-        snapshots = await ctx.audit_db.list_page_snapshots(slug)
-        resolved_index = next(
-            (s["index"] for s in snapshots if s.get("id") == stored_snapshot_id),
-            stored_snapshot_index,  # fallback to stored index if id not found
-        )
-    else:
-        resolved_index = stored_snapshot_index
+    restore_result = await restore_page_snapshot(
+        ctx, slug, stored_snapshot_id, stored_snapshot_index,
+    )
+    if restore_result["status"] != _STATUS_OK:
+        return {"status": _STATUS_ERR, "message": restore_result["error"]}
 
-    snapshot = await ctx.audit_db.get_snapshot_by_index(slug, resolved_index)
-    if snapshot is None or snapshot.get("content_snapshot") is None:
-        return {
-            "status": _STATUS_ERR,
-            "message": f"Snapshot {resolved_index} for '{slug}' not found in audit log",
-        }
-
-    restored_content = snapshot["content_snapshot"]
-    page.content = restored_content
+    resolved_index = restore_result["resolved_index"]
+    restored_content = restore_result["restored_content"]
+    page = ctx.store.read_page(slug)
     page.content_health_fix_record = None
-    # Restore issues from the original content.
     page.content_health_issues = [asdict(i) for i in scan_page(slug, restored_content)]
     ctx.store.write_page(slug, page)
-    if ctx.bump_epoch:
-        ctx.bump_epoch()
 
     return {
         "status": _STATUS_OK,

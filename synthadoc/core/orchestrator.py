@@ -272,6 +272,8 @@ class Orchestrator:
                 result.input_tokens,
                 result.output_tokens,
                 is_local=_is_local,
+                cache_read_tokens=result.cache_read_tokens,
+                cache_write_tokens=result.cache_write_tokens,
             )
             await self._audit.update_ingest_cost(source, result.cost_usd)
             await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd)
@@ -527,6 +529,8 @@ class Orchestrator:
             result.input_tokens,
             result.output_tokens,
             is_local=_query_cfg.is_local,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_write_tokens=result.cache_write_tokens,
         )
         await self._audit.record_query(
             question=question,
@@ -576,6 +580,8 @@ class Orchestrator:
                 cost_usd = estimate_cost(
                     _query_cfg.model, _input_tok, _output_tok,
                     is_local=_query_cfg.is_local,
+                    cache_read_tokens=data.get("cache_read_tokens", 0),
+                    cache_write_tokens=data.get("cache_write_tokens", 0),
                 )
                 await self._audit.record_query(
                     question=question,

@@ -1,4 +1,4 @@
-﻿# Synthadoc
+# Synthadoc
 
 ```
       .-+###############+-.
@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.4.2
+    Community Edition  v1.4.3
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.4.2-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.4.3-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.4.2**
+**Document version: v1.4.3**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -415,6 +415,7 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 | Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)                                                                   |
 | MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)                                                                                 |
 | DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)                                                                     |
+| Kimi             | No — pay-per-token; `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M) | No | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
 | Anthropic        | No                                                        | Yes             | [console.anthropic.com](https://console.anthropic.com/)                                                                             |
 | OpenAI           | No                                                        | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)                                                                         |
 | **Claude Code**  | Included with subscription — no API key                  | No              | Set`provider = "claude-code"` in config.toml                                                                                        |
@@ -428,7 +429,8 @@ export ANTHROPIC_API_KEY=sk-ant-…    # paid — highest quality
 export OPENAI_API_KEY=sk-…           # paid
 export MINIMAX_API_KEY=…             # paid — text rates (image support)
 export DEEPSEEK_API_KEY=…            # paid — text rates (no image support)
-export QWEN_API_KEY=…                # DashScope cloud — 1M free tokens trial
+export QWEN_API_KEY=…                # DashScope cloud — 1M free tokens trial (DASHSCOPE_API_KEY also accepted)
+export KIMI_API_KEY=…                # Kimi (DashScope) — kimi-k3 flagship, kimi-k2.6 general (QWEN_API_KEY also accepted)
 export TAVILY_API_KEY=tvly-…         # web search (optional)
 
 # Windows cmd — current session only
@@ -438,7 +440,8 @@ set ANTHROPIC_API_KEY=sk-ant-…
 set OPENAI_API_KEY=sk-…
 set MINIMAX_API_KEY=…
 set DEEPSEEK_API_KEY=…
-set QWEN_API_KEY=…
+set QWEN_API_KEY=…                   # DASHSCOPE_API_KEY also accepted
+set KIMI_API_KEY=…                   # QWEN_API_KEY also accepted
 set TAVILY_API_KEY=tvly-…
 
 ```
@@ -488,7 +491,14 @@ synthadoc templates sync --force # demo and template wikis — refresh seeds, ro
 
 Neither command requires the server to be running.
 
-**Upgrading a Docker deployment:** `docker pull chenp/synthadoc:latest`, then remove and re-create the container with the same `docker run` command; wiki data on the host is untouched. To refresh the Obsidian plugin in the vault, run `docker exec <container> synthadoc plugin install`. (`plugin upgrade` and `templates sync` rely on the host registry and don't work inside a container.) See [Docker Deployment Guide — Updating the image](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md#updating-the-image).
+**Upgrading a Docker deployment:** `docker pull chenp/synthadoc:latest`, then remove and re-create the container with the same `docker run` command; wiki data on the host is untouched. Then run inside the container to sync the plugin and templates:
+
+```bash
+docker exec <container> synthadoc plugin upgrade      # push updated plugin binary to the wiki vault
+docker exec <container> synthadoc templates sync      # refresh seeds, routing, agent files, and stubs
+```
+
+See [Docker Deployment Guide — Updating the image](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md#updating-the-image).
 
 ---
 
@@ -936,13 +946,17 @@ synthadoc workflow run --name content-health list -w my-wiki
 synthadoc workflow run --name content-health roll back alan-turing -w my-wiki
 ```
 
-The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
+The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence — or add, remove, or rename a heading — is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#demo--content-health-resolver)
 
-The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
+The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Any rewrite that mutates a heading is rejected before you are asked, and every write is snapshotted — say "roll back `<slug>`" to undo a fix.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
+
+The orphan resolver finds pages with no inbound wikilinks and searches for the best page to link each one from, using up to four progressively broader strategies (title match, content match, then two LLM-assisted scans). It shows the full diff for each proposed `[[wikilink]]` insertion and waits for your approval. Every approved write is snapshotted the same way — say "roll back `<slug>`" to undo it.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Step 10](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)
 
 ### Sensitive data retraction
 

@@ -2,6 +2,7 @@
 
 All Synthadoc-related articles published on DEV.to.
 
+- [Harnessing the Nondeterministic Machine: Practical Lessons in Agentic AI Hardening](https://dev.to/paul_chen_90371fe7426cb44/harnessing-the-nondeterministic-machine-practical-lessons-in-agentic-ai-hardening-8bo)
 - [Hallucination Is an Architecture Problem, Not Only a Prompt Problem](https://dev.to/paul_chen_90371fe7426cb44/hallucination-is-an-architecture-problem-not-only-a-prompt-problem-51p8)
 - [From Manual Commands to Intent-Driven Maintenance: The Agentic Workflow](https://dev.to/paul_chen_90371fe7426cb44/from-manual-commands-to-intent-driven-maintenance-the-agentic-workflow-2d27)
 - [Google's OKF Is Proposing a Standard for How AI Agents Consume Domain Knowledge — Here's How Synthadoc Already Fits](https://dev.to/paul_chen_90371fe7426cb44/googles-okf-is-proposing-a-standard-for-how-ai-agents-consume-domain-knowledge-heres-how-3nh9)

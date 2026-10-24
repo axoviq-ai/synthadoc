@@ -941,6 +941,17 @@ class LintAgent(BaseAgent):
                 slug, from_state, to_state, reason, TriggerSource.LINT,
                 content_snapshot=page.content or None,
             )
+        if to_state == LifecycleState.CONTRADICTED and from_state in (
+            LifecycleState.ACTIVE, LifecycleState.STALE,
+        ):
+            # A fresh demotion starts a new resolution episode. last_fix_record
+            # is never cleared on promotion (it stays so the user can roll back
+            # the episode that was just resolved), so without this, a stale
+            # record from that earlier episode would still be here — and a
+            # retry inside tool_propose_and_apply would chain onto it, making
+            # "roll back" reach past this new contradiction into the old,
+            # already-resolved one.
+            page.last_fix_record = None
         page.status = to_state
         self._store.write_page(slug, page)
 
@@ -1261,6 +1272,30 @@ class LintAgent(BaseAgent):
                     continue
                 page = self._store.read_page(slug)
                 if page and page.status == LifecycleState.CONTRADICTED:
+                    # Clear stale inferred flags without an LLM call.
+                    # "inferred" in the note means the ingest agent admitted it was
+                    # guessing the target page from topic similarity — not a verified
+                    # match.  If the page also has no adversarial warnings there is
+                    # no real content problem, so the flag is stale and safe to clear.
+                    note = page.contradiction_note or ""
+                    if "inferred" in note.lower() and not page.lint_warnings:
+                        page.status = LifecycleState.ACTIVE
+                        page.contradiction_note = None
+                        self._store.write_page(slug, page)
+                        report.contradictions_resolved += 1
+                        if self._audit:
+                            await self._audit.set_page_state(
+                                slug, LifecycleState.ACTIVE, TriggerSource.LINT)
+                            await self._audit.record_lifecycle_event(
+                                slug, LifecycleState.CONTRADICTED, LifecycleState.ACTIVE,
+                                "stale inferred contradiction note cleared by lint "
+                                "— disputed claim was never confirmed on this page",
+                                TriggerSource.LINT,
+                                content_snapshot=page.content or None,
+                            )
+                            await self._audit.record_audit_event(
+                                job_id, "stale_contradiction_cleared", {"slug": slug})
+                        continue
                     report.contradictions_found += 1
                     if self._audit:
                         await self._audit.record_audit_event(

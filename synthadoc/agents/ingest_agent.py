@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -41,6 +41,8 @@ class IngestResult:
     tokens_used: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
     cache_hits: int = 0
     skipped: bool = False
@@ -343,8 +345,9 @@ def _slugify(title: str) -> str:
         "-",
         normalized.lower(),
     ).strip("-")
-    # Fallback: if title was entirely symbols with no slug-able chars, use a content hash
-    return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
+    # Fallback: if title was entirely symbols with no slug-able chars, use a content hash.
+    # Non-security use (filename collision avoidance only) — md5 is fine here.
+    return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]  # security-scan: allow
 
 
 def _url_sidecar_name(url: str) -> str:
@@ -1149,6 +1152,8 @@ class IngestAgent(BaseAgent):
             result.tokens_used += resp2.total_tokens
             result.input_tokens += resp2.input_tokens
             result.output_tokens += resp2.output_tokens
+            result.cache_read_tokens += resp2.cache_read_tokens
+            result.cache_write_tokens += resp2.cache_write_tokens
             decisions = _parse_json_response(resp2.text)
             await self._cache.set(ck2, decisions)
 

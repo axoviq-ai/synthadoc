@@ -398,6 +398,9 @@ docker exec history-of-computing synthadoc workflow run --name ingest-lint
 # Run the contradiction resolver (interactive — approves rewrites one by one)
 docker exec -it history-of-computing synthadoc workflow run --name contradiction-resolver
 
+# Undo a contradiction-resolver fix — restores the page's pre-fix snapshot
+docker exec history-of-computing synthadoc workflow run --name contradiction-resolver roll back alan-turing
+
 # Scan and fix broken wikilinks
 docker exec -it history-of-computing synthadoc workflow run --name broken-wikilinks
 
@@ -677,7 +680,28 @@ Then refresh the Obsidian plugin stored in the vault so it matches the new serve
 docker exec history-of-computing synthadoc plugin install
 ```
 
-> `synthadoc plugin upgrade` and `synthadoc templates sync`, the upgrade commands for pip installs, read the host wiki registry, which does not exist inside a container. They fail with "No wikis registered" or "is not registered". Use `plugin install` as shown above. Refreshing demo or template content (`templates sync`) is not currently available for container-only setups.
+You can also use `plugin upgrade` and `templates sync` directly inside the container — they fall back to `SYNTHADOC_WIKI` (set to `/wiki` in the image) automatically:
+
+```bash
+# Upgrade the Obsidian plugin in the running container
+docker exec history-of-computing synthadoc plugin upgrade
+
+# Re-sync wiki content from the original template or demo
+docker exec history-of-computing synthadoc templates sync
+
+# Force a full re-sync (overwrites local changes)
+docker exec history-of-computing synthadoc templates sync --force
+```
+
+These commands read `.synthadoc/origin.json` (written at install time) to determine which template or demo to sync from. If that file is missing or corrupted, restore it with:
+
+```bash
+# Restore origin for a template-based wiki (e.g. ai-research)
+docker exec history-of-computing synthadoc templates set-origin ai-research/main
+
+# Restore origin for a demo-based wiki (e.g. history-of-computing)
+docker exec history-of-computing synthadoc templates set-origin history-of-computing
+```
 
 ### Stop and restart
 
@@ -1399,6 +1423,61 @@ If the server started but `/health` does not respond, the wiki may have failed v
 
 - `container`: requires macOS 26 (Tahoe) on Apple Silicon. Not available on Intel Macs or macOS < 26.
 - `wslc`: requires WSL 2.9.3+ on Windows 11. Update WSL: `wsl --update`.
+
+**Running the host `synthadoc serve` for a wiki installed via Docker**
+
+When a wiki is created with `docker run --rm … synthadoc install`, the one-off container writes its registry entry inside the container and then exits — the host's `~/.synthadoc/wikis.json` is never touched. If you later want to run `synthadoc serve` directly on the host (without Docker), you have two options:
+
+*Option A — pass the full path instead of the name (no configuration needed):*
+
+```bash
+synthadoc serve -w ~/wikis/history-of-computing
+```
+
+Or from inside the wiki directory:
+
+```bash
+cd ~/wikis/history-of-computing
+synthadoc serve
+```
+
+*Option B — register the wiki by name on the host (needed if you want `synthadoc serve -w history-of-computing` to work):*
+
+Open `~/.synthadoc/wikis.json` in a text editor (create it if it does not exist) and add an entry for the wiki. Use the absolute path from your host filesystem and the port set in the wiki's `config.toml`:
+
+```json
+{
+  "history-of-computing": {
+    "path": "/home/yourname/wikis/history-of-computing",
+    "port": 7070
+  }
+}
+```
+
+On Windows, use forward slashes: `"C:/Users/yourname/wikis/history-of-computing"`.
+
+After saving, `synthadoc serve -w history-of-computing` works normally on the host. The Docker container is unaffected — it never reads the host registry.
+
+**Switching between Docker serve and host serve**
+
+Stop one before starting the other — both bind the same port.
+
+*Docker → host:*
+
+```bash
+docker stop history-of-computing
+synthadoc serve -w ~/wikis/history-of-computing
+```
+
+*Host → Docker:*
+
+```bash
+# Stop the host server (Ctrl+C if running in foreground, or:)
+synthadoc stop -w history-of-computing
+docker start history-of-computing
+```
+
+`docker start` resumes the existing named container — no new `docker run` needed.
 
 **Slow file operations on Windows**
 
