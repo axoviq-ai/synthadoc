@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
+from synthadoc.core.graph_views import cluster_detail, cluster_overview, enrich_graph
+from synthadoc.utils import load_yaml
 from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES
 from synthadoc.core.queue import JobStatus
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
@@ -21,7 +23,6 @@ import logging
 import re
 import shutil
 import tomllib
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -1681,7 +1682,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return {"hints": HintEngine.initial_hints(mode)}
 
     @app.get("/graph")
-    async def get_graph():
+    async def get_graph(view: Optional[str] = None, cluster: Optional[int] = None):
+        """The knowledge graph. Default: every page and link.
+
+        ``view=clusters`` returns one entry per cluster and the links between
+        clusters (for large wikis); ``cluster=N`` returns that cluster's pages
+        and their strongest links. See synthadoc.core.graph_views.
+        """
         global _graph_task
         orch = app.state.orch
         graph_data = await orch._audit.read_graph()
@@ -1690,34 +1697,25 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 _graph_task = asyncio.create_task(_background_build_graph())
                 logger.info("[graph] computation started (lazy hydration)")
             return JSONResponse(content={"status": "computing"}, headers=_NO_STORE)
-        enriched_nodes = []
-        valid_slugs: set[str] = set()
-        for n in graph_data["nodes"]:
-            page = orch._store.read_page(n["slug"])
-            if page is None:
-                continue  # page deleted since graph was cached; omit without forcing a rebuild
-            enriched_nodes.append({
-                "slug": n["slug"],
-                "title": page.title,
-                "type": page.type or "concept",
-                "state": page.status,
-                "cluster_id": n["cluster_id"],
-            })
-            valid_slugs.add(n["slug"])
-        clusters = len({n["cluster_id"] for n in enriched_nodes}) if enriched_nodes else 0
-        valid_edges = [
-            {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"], "edge_type": e.get("edge_type", "mixed")}
-            for e in graph_data["edges"]
-            if e["from_slug"] in valid_slugs and e["to_slug"] in valid_slugs
-        ]
-        return JSONResponse(content={
+        # Reads every page's frontmatter: off the event loop, so other requests
+        # are not held up on large wikis.
+        enriched_nodes, valid_edges = await asyncio.to_thread(enrich_graph, orch._store, graph_data)
+        clusters = len({n["cluster_id"] for n in enriched_nodes})
+        summary = {
             "status": "ready",
             "node_count": len(enriched_nodes),
             "edge_count": len(valid_edges),
             "cluster_count": clusters,
-            "nodes": enriched_nodes,
-            "edges": valid_edges,
-        }, headers=_NO_STORE)
+        }
+        if view == "clusters":
+            return JSONResponse(content={**summary, **cluster_overview(enriched_nodes, valid_edges)},
+                                headers=_NO_STORE)
+        if cluster is not None:
+            return JSONResponse(content={**summary, "cluster_id": cluster,
+                                         **cluster_detail(enriched_nodes, valid_edges, cluster)},
+                                headers=_NO_STORE)
+        return JSONResponse(content={**summary, "nodes": enriched_nodes, "edges": valid_edges},
+                            headers=_NO_STORE)
 
     async def _background_build_graph():
         try:
@@ -1877,7 +1875,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             fm: dict = {}
             if fm_m:
                 try:
-                    fm = yaml.safe_load(fm_m.group(1)) or {}
+                    fm = load_yaml(fm_m.group(1)) or {}
                 except Exception:
                     pass
             # Check only the parsed frontmatter status — a full-text search for
@@ -1906,7 +1904,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             status = ""
             if fm_m:
                 try:
-                    status = (yaml.safe_load(fm_m.group(1)) or {}).get("status", "")
+                    status = (load_yaml(fm_m.group(1)) or {}).get("status", "")
                 except Exception:
                     pass
             if status in {LifecycleState.ACTIVE, ""}:
@@ -1922,7 +1920,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             fm = {}
             if fm_m:
                 try:
-                    fm = yaml.safe_load(fm_m.group(1)) or {}
+                    fm = load_yaml(fm_m.group(1)) or {}
                 except Exception:
                     pass
             title = fm.get("title") or slug.replace("-", " ").title()
@@ -1982,7 +1980,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _fm: dict = {}
             if _fm_m:
                 try:
-                    _fm = yaml.safe_load(_fm_m.group(1)) or {}
+                    _fm = load_yaml(_fm_m.group(1)) or {}
                 except Exception:
                     pass
             _body = text[_fm_m.end():] if _fm_m else text
@@ -2484,36 +2482,44 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.storage.wiki import LifecycleState as _LS
         _all_slugs = set(orch._store.list_pages())
         _bwl_states = await orch._audit.get_live_page_states(orch._store.page_exists)
-        _active_scan: dict[str, str] = {}      # active pages — orphan candidates + wikilink sources
-        _all_content_scan: dict[str, str] = {} # active + contradicted — full link graph for orphan check
-        for _p in _bwl_states:
-            if _p["slug"] in LINT_SKIP_SLUGS:
-                continue
-            _pstate = _p.get("state", "")
-            _page = orch._store.read_page(_p["slug"])
-            if _page and _page.content:
-                if _pstate == _LS.ACTIVE:
-                    _active_scan[_p["slug"]] = _page.content
-                    _all_content_scan[_p["slug"]] = _page.content
-                elif _pstate == _LS.CONTRADICTED:
-                    _all_content_scan[_p["slug"]] = _page.content
-        orphan = len(_find_orphans(_active_scan, link_texts=_all_content_scan))
-        if orphan > 0:
-            counts["orphan"] = orphan
-        _broken = _find_broken(_active_scan, _all_slugs)
-        _broken_total = sum(len(refs) for refs in _broken.values())
-        if _broken_total > 0:
-            counts["broken_wikilinks"] = _broken_total
-        # Broken source citations: count broken ^[file:L-L] markers across active pages.
-        from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
-        _extracted_dir = wiki_root / ".synthadoc" / "extracted"
-        _broken_cite = _find_broken_cite(orch._store, _extracted_dir)
-        _broken_cite_total = sum(len(issues) for issues in _broken_cite.values())
-        if _broken_cite_total > 0:
-            counts["broken_citations"] = _broken_cite_total
-        _content_health_total = orch._store.count_content_health_issues(exclude_types=REPORT_ONLY_ISSUE_TYPES)
-        if _content_health_total > 0:
-            counts["content_health"] = _content_health_total
+
+        def _page_health_counts() -> dict[str, int]:
+            """Orphans, broken wikilinks/citations and content-health issues —
+            every page is read, so this runs off the event loop."""
+            health: dict[str, int] = {}
+            _active_scan: dict[str, str] = {}      # active pages — orphan candidates + wikilink sources
+            _all_content_scan: dict[str, str] = {} # active + contradicted — full link graph for orphan check
+            for _p in _bwl_states:
+                if _p["slug"] in LINT_SKIP_SLUGS:
+                    continue
+                _pstate = _p.get("state", "")
+                _page = orch._store.read_page(_p["slug"])
+                if _page and _page.content:
+                    if _pstate == _LS.ACTIVE:
+                        _active_scan[_p["slug"]] = _page.content
+                        _all_content_scan[_p["slug"]] = _page.content
+                    elif _pstate == _LS.CONTRADICTED:
+                        _all_content_scan[_p["slug"]] = _page.content
+            orphan = len(_find_orphans(_active_scan, link_texts=_all_content_scan))
+            if orphan > 0:
+                health["orphan"] = orphan
+            _broken = _find_broken(_active_scan, _all_slugs)
+            _broken_total = sum(len(refs) for refs in _broken.values())
+            if _broken_total > 0:
+                health["broken_wikilinks"] = _broken_total
+            # Broken source citations: count broken ^[file:L-L] markers across active pages.
+            from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
+            _extracted_dir = wiki_root / ".synthadoc" / "extracted"
+            _broken_cite = _find_broken_cite(orch._store, _extracted_dir)
+            _broken_cite_total = sum(len(issues) for issues in _broken_cite.values())
+            if _broken_cite_total > 0:
+                health["broken_citations"] = _broken_cite_total
+            _content_health_total = orch._store.count_content_health_issues(exclude_types=REPORT_ONLY_ISSUE_TYPES)
+            if _content_health_total > 0:
+                health["content_health"] = _content_health_total
+            return health
+
+        counts.update(await asyncio.to_thread(_page_health_counts))
         return counts
 
     @app.get("/lifecycle/events")

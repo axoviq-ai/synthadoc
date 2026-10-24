@@ -669,17 +669,21 @@ class LintAgent(BaseAgent):
                     source_map[slug] = hashes
 
         # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source.
+        # Pairs come from an index of pages per source, so the cost follows the
+        # pages each source produced rather than every pair of pages in the wiki.
         # Only store in canonical (min, max) direction to avoid spurious reverse edges.
-        cosource_slugs: set[tuple[str, str]] = set()
-        slug_list = list(source_map)
-        for i, s1 in enumerate(slug_list):
-            for s2 in slug_list[i + 1:]:
-                shared = source_map[s1] & source_map[s2]
-                if shared:
-                    increment = len(shared) * 2
-                    a, b = (s1, s2) if s1 < s2 else (s2, s1)
-                    edge_counts[(a, b)] += increment
-                    cosource_slugs.add((a, b))
+        pages_by_source: dict[str, list[str]] = defaultdict(list)
+        for slug, hashes in source_map.items():
+            for source_hash in hashes:
+                pages_by_source[source_hash].append(slug)
+        shared_sources: dict[tuple[str, str], int] = defaultdict(int)
+        for pages in pages_by_source.values():
+            for i, s1 in enumerate(pages):
+                for s2 in pages[i + 1:]:
+                    shared_sources[(s1, s2) if s1 < s2 else (s2, s1)] += 1
+        for pair, shared in shared_sources.items():
+            edge_counts[pair] += shared * 2
+        cosource_slugs = set(shared_sources)
 
         # Undirected graph: each page pair appears as one canonical edge (min slug → max slug)
         # for co-source; wikilinks are directed and already stored as (src, dst) in pass 1.
@@ -693,7 +697,8 @@ class LintAgent(BaseAgent):
 
         # Louvain requires undirected graph
         if _LOUVAIN_AVAILABLE and G.number_of_nodes() > 0:
-            partition = community_louvain.best_partition(G)
+            # Fixed seed: the same wiki keeps the same cluster ids (and colours) between runs.
+            partition = community_louvain.best_partition(G, random_state=0)
         else:
             partition = {slug: 0 for slug in slugs}
 

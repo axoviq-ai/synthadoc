@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from synthadoc.utils import load_yaml
 from synthadoc.skills.base import SkillMeta, Triggers
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def parse_skill_md(skill_dir: Path) -> SkillMeta:
     if len(parts) < 3:
         raise SkillManifestError(f"{skill_md}: unterminated frontmatter block")
     try:
-        fm = yaml.safe_load(parts[1]) or {}
+        fm = load_yaml(parts[1]) or {}
     except yaml.YAMLError as exc:
         raise SkillManifestError(f"{skill_md}: invalid YAML — {exc}") from exc
     missing = _REQUIRED - fm.keys()
