@@ -736,3 +736,55 @@ def test_corpus_cache_invalidated_on_status_change(tmp_wiki):
     # Second search: page is contradicted → must not appear
     results_after = search.bm25_search(["gradient", "descent", "loss"], top_n=10)
     assert not any(r.slug == "grad-page" for r in results_after)
+
+
+# ── BM25 index cache ─────────────────────────────────────────────────────────
+
+def _three_page_search(tmp_wiki) -> HybridSearch:
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "chlorine", "chlorine treats algae in pools")
+    _write_page(store, "ph", "pH balance is important for pools")
+    _write_page(store, "nitrogen", "nitrogen fertiliser for lawns")
+    return HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+
+def test_bm25_index_reused_across_queries(tmp_wiki, monkeypatch):
+    """The BM25 index is built once per scope, not once per query."""
+    import synthadoc.storage.search as search_mod
+    builds = []
+    real = search_mod.BM25Okapi
+    monkeypatch.setattr(search_mod, "BM25Okapi", lambda corpus: builds.append(len(corpus)) or real(corpus))
+    search = _three_page_search(tmp_wiki)
+
+    search.bm25_search(["chlorine"])
+    search.bm25_search(["pools"])
+    search.bm25_search(["pools"], scoped_slugs=["chlorine", "ph"])
+    search.bm25_search(["algae"], scoped_slugs=["ph", "chlorine"])   # same scope, any order
+    assert builds == [3, 2]
+
+
+def test_scoped_search_only_returns_scoped_pages(tmp_wiki):
+    search = _three_page_search(tmp_wiki)
+    search.bm25_search(["pools"])                     # warm the full-corpus index
+    slugs = {r.slug for r in search.bm25_search(["pools", "lawns"], scoped_slugs=["ph", "nitrogen"])}
+    assert slugs <= {"ph", "nitrogen"} and slugs
+    assert search.bm25_search(["pools"], scoped_slugs=["no-such-page"]) == []
+
+
+def test_invalidate_index_drops_built_indexes(tmp_wiki):
+    search = _three_page_search(tmp_wiki)
+    search.bm25_search(["chlorine"])
+    search.bm25_search(["chlorine"], scoped_slugs=["chlorine"])
+    assert len(search._bm25_indexes) == 2
+    _write_page(search._store, "copper", "copper algaecide for pools")
+    search.invalidate_index()
+    assert search._bm25_indexes == {}
+    assert "copper" in [r.slug for r in search.bm25_search(["copper"])]
+
+
+def test_bm25_index_cache_is_bounded(tmp_wiki):
+    import synthadoc.storage.search as search_mod
+    search = _three_page_search(tmp_wiki)
+    for i in range(search_mod._MAX_CACHED_SCOPES + 3):
+        search.bm25_search(["pools"], scoped_slugs=["chlorine", "ph", f"missing-{i}"])
+    assert len(search._bm25_indexes) == search_mod._MAX_CACHED_SCOPES

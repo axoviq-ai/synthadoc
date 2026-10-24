@@ -91,6 +91,9 @@ def page_search_text(page: WikiPage) -> str:
     return f"{page.title} {' '.join(page.tags)} {page.content}"
 
 
+# Built BM25 indexes kept per search scope (full corpus plus routing scopes).
+_MAX_CACHED_SCOPES = 8
+
 # Only pages in these lifecycle states enter the BM25 corpus.
 # contradicted, archived, and draft pages must not answer queries.
 _QUERY_STATES: frozenset[str] = frozenset({"active", "stale"})
@@ -104,6 +107,9 @@ class HybridSearch:
         self._store = store
         self._index_path = index_path
         self._cached_corpus: Optional[tuple[list[str], list[list[str]]]] = None
+        # scope (None = full corpus) -> (slugs, tokenized docs, index); building
+        # the index costs ~100x more than scoring a query, so reuse it.
+        self._bm25_indexes: dict[Optional[frozenset[str]], tuple[list[str], list[list[str]], BM25Okapi]] = {}
         self._search_cfg = search_cfg      # SearchConfig or None
         self._vector_store: Optional[VectorStore] = None
         self._embed_model = None            # lazy loaded
@@ -161,8 +167,9 @@ class HybridSearch:
         return compound + ascii_t + cjk_t
 
     def invalidate_index(self) -> None:
-        """Drop the in-memory corpus cache. Call after any page write."""
+        """Drop the in-memory corpus and index caches. Call after any page write."""
         self._cached_corpus = None
+        self._bm25_indexes.clear()
 
     def _corpus(self) -> tuple[list[str], list[list[str]]]:
         if self._cached_corpus is not None:
@@ -181,19 +188,30 @@ class HybridSearch:
         self._cached_corpus = (filtered_slugs, tokenized)
         return self._cached_corpus
 
+    def _bm25_index(self, scoped_slugs: list[str] | None
+                    ) -> Optional[tuple[list[str], list[list[str]], BM25Okapi]]:
+        """The BM25 index over the corpus (or its *scoped_slugs* subset), cached
+        until invalidate_index(). None when the scope holds no pages."""
+        key = frozenset(scoped_slugs) if scoped_slugs is not None else None
+        if key in self._bm25_indexes:
+            return self._bm25_indexes[key]
+        slugs, corpus = self._corpus()
+        if key is not None:
+            pairs = [(s, t) for s, t in zip(slugs, corpus) if s in key]
+            slugs, corpus = [p[0] for p in pairs], [p[1] for p in pairs]
+        if not corpus:
+            return None
+        if len(self._bm25_indexes) >= _MAX_CACHED_SCOPES:
+            self._bm25_indexes.pop(next(iter(self._bm25_indexes)))   # oldest first
+        self._bm25_indexes[key] = (slugs, corpus, BM25Okapi(corpus))
+        return self._bm25_indexes[key]
+
     def bm25_search(self, query_terms: list[str], top_n: int = 10,
                     scoped_slugs: list[str] | None = None) -> list[SearchResult]:
-        slugs, corpus = self._corpus()
-        if not corpus:
+        index = self._bm25_index(scoped_slugs)
+        if index is None:
             return []
-        if scoped_slugs is not None:
-            scoped_set = set(scoped_slugs)
-            pairs = [(s, t) for s, t in zip(slugs, corpus) if s in scoped_set]
-            if not pairs:
-                return []
-            slugs = [p[0] for p in pairs]
-            corpus = [p[1] for p in pairs]
-        bm25 = BM25Okapi(corpus)
+        slugs, corpus, bm25 = index
         scores = bm25.get_scores(self._tokenize(" ".join(query_terms)))
         _used_tf_fallback = False
         if not any(s > 0 for s in scores):
