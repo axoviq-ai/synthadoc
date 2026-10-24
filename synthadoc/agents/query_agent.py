@@ -35,6 +35,22 @@ logger = logging.getLogger(__name__)
 
 _MIN_TERM_FREQ = 2
 
+# Word endings stripped when the gap check asks whether some page covers a query
+# term in depth (signal 5), so "codebreaker" is covered by a page that says
+# "codebreaking" and "decrypting" by "decryption". Only stripped when at least
+# _MIN_STEM_LEN letters remain. Not used for the on-topic page count: there
+# "container" -> "contain" would match every page that says "contains".
+_GAP_SUFFIXES = ("ations", "ation", "ings", "ing", "ers", "er", "ions", "ion", "ed")
+_MIN_STEM_LEN = 5
+
+
+def _gap_match_form(term: str) -> str:
+    """The form of a query term the gap check looks for in page text."""
+    for suffix in _GAP_SUFFIXES:
+        if term.endswith(suffix) and len(term) - len(suffix) >= _MIN_STEM_LEN:
+            return term[: -len(suffix)]
+    return term
+
 # ── bundled system knowledge (answers Synthadoc product questions) ────────────
 _KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
 
@@ -1229,8 +1245,11 @@ class QueryAgent(BaseAgent):
                 _page_on_topic = False
                 for _t in _specific:
                     if _content.count(_t) >= _MIN_TERM_FREQ:
-                        _term_qualifying_pages[_t] += 1
                         _page_on_topic = True
+                    # A page covers the term in depth when its word family recurs:
+                    # "codebreaker" is covered by a page saying "codebreaking".
+                    if _content.count(_gap_match_form(_t)) >= _MIN_TERM_FREQ:
+                        _term_qualifying_pages[_t] += 1
                 if _page_on_topic:
                     _pages_with_overlap += 1
 
