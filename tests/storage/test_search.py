@@ -747,3 +747,51 @@ def test_bm25_index_cache_is_bounded(tmp_wiki):
     for i in range(search_mod._MAX_CACHED_SCOPES + 3):
         search.bm25_search(["pools"], scoped_slugs=["chlorine", "ph", f"missing-{i}"])
     assert len(search._bm25_indexes) == search_mod._MAX_CACHED_SCOPES
+
+
+async def test_hybrid_search_embeds_a_repeated_query_once(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    calls = []
+    search._embed_texts = lambda texts: calls.append(texts) or _fake_embed(texts)
+    first = await search.hybrid_search(["attention"], top_n=3)
+    again = await search.hybrid_search(["attention"], top_n=3)
+    assert calls == [["attention"]]
+    assert [r.slug for r in again] == [r.slug for r in first]
+
+
+async def test_query_embedding_cache_drops_the_least_recently_used(tmp_wiki, monkeypatch):
+    import synthadoc.storage.search as search_mod
+    monkeypatch.setattr(search_mod, "_QUERY_CACHE_SIZE", 2)
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    calls = []
+    search._embed_texts = lambda texts: calls.append(texts[0]) or _fake_embed(texts)
+    for q in ("attention", "image", "attention", "feedback", "image"):
+        await search.hybrid_search([q], top_n=3)
+    # "attention" was used again before "feedback" arrived, so "image" was the one dropped.
+    assert calls == ["attention", "image", "feedback", "image"]
+    assert list(search._query_vecs) == ["feedback", "image"]
+
+
+async def test_query_embedding_runs_while_bm25_searches(tmp_wiki):
+    import threading
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    started = threading.Event()
+
+    def embed(texts):
+        started.set()
+        return _fake_embed(texts)
+
+    bm25 = search.bm25_search
+    overlapped = []
+
+    def slow_bm25(*args, **kwargs):
+        overlapped.append(started.wait(timeout=2))   # embedding already submitted?
+        return bm25(*args, **kwargs)
+
+    search._embed_texts = embed
+    search.bm25_search = slow_bm25
+    await search.hybrid_search(["attention"], top_n=3)
+    assert overlapped == [True]

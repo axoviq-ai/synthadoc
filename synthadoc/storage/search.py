@@ -8,6 +8,7 @@ import importlib.util
 import logging
 import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -132,6 +133,10 @@ _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 # find the pages BM25 already finds) and took ~20x longer to compute.
 _EMBED_CHARS = 512
 _EMBED_BATCH = 64
+# Recent query embeddings, by query text. Embedding a query is most of the
+# extra latency of semantic search; an embedding depends only on the text and
+# the model, never on the wiki, so entries never go stale.
+_QUERY_CACHE_SIZE = 256
 
 # Fusion of the BM25 and embedding rankings (see hybrid_search). Tuned on the
 # retrieval benchmark in benchmarks/retrieval.
@@ -196,6 +201,7 @@ class HybridSearch:
         self._search_cfg = search_cfg      # SearchConfig or None
         self._vector_store: Optional[VectorStore] = None
         self._embed_model = None            # lazy loaded
+        self._query_vecs: OrderedDict[str, "np.ndarray"] = OrderedDict()   # LRU, _QUERY_CACHE_SIZE
         # In-memory embeddings: one row per page, in _page_slugs order.
         self._matrix: Optional["np.ndarray"] = None
         self._page_slugs: list[str] = []
@@ -391,12 +397,10 @@ class HybridSearch:
             for slug, score in ranked[:top_n] if score > 0
         ]
 
-    async def _vector_ranking(self, query: str, scoped_slugs: list[str] | None,
-                              top_n: int) -> list[tuple[str, float]]:
-        """Pages closest to *query* by embedding similarity, within the corpus/scope."""
+    def _vector_ranking(self, query_vec: "np.ndarray", scoped_slugs: list[str] | None,
+                        top_n: int) -> list[tuple[str, float]]:
+        """Pages closest to *query_vec* by embedding similarity, within the corpus/scope."""
         import numpy as np
-        loop = asyncio.get_running_loop()
-        query_vec = (await loop.run_in_executor(None, self._embed_texts, [query]))[0]
         page_sims = self._matrix @ query_vec
         allowed = set(self._corpus()[0])
         if scoped_slugs is not None:
@@ -446,8 +450,25 @@ class HybridSearch:
         if self._vectors_dirty:
             self.schedule_embedding_sync()
         pool = max(top_n, self._pool_size())
-        keyword = self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)
         if self._matrix is None:
-            return keyword[:top_n]
-        semantic = await self._vector_ranking(" ".join(query_terms), scoped_slugs, pool)
+            return self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)[:top_n]
+        # Start embedding the query in a worker thread before BM25 runs, so the
+        # two overlap (the model releases the GIL while it runs).
+        query = " ".join(query_terms)
+        query_vec = self._query_vecs.get(query)
+        pending = None
+        if query_vec is None:
+            pending = asyncio.get_running_loop().run_in_executor(None, self._embed_texts, [query])
+        keyword = self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)
+        if pending is not None:
+            query_vec = (await pending)[0]
+            self._remember_query(query, query_vec)
+        else:
+            self._query_vecs.move_to_end(query)
+        semantic = self._vector_ranking(query_vec, scoped_slugs, pool)
         return self._fuse(keyword, semantic, top_n)
+
+    def _remember_query(self, query: str, vector: "np.ndarray") -> None:
+        self._query_vecs[query] = vector
+        if len(self._query_vecs) > _QUERY_CACHE_SIZE:
+            self._query_vecs.popitem(last=False)
