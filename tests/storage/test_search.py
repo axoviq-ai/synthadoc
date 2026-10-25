@@ -795,3 +795,58 @@ async def test_query_embedding_runs_while_bm25_searches(tmp_wiki):
     search.bm25_search = slow_bm25
     await search.hybrid_search(["attention"], top_n=3)
     assert overlapped == [True]
+
+
+def test_is_mostly_cjk_counts_cjk_against_latin_letters():
+    from synthadoc.storage.search import is_mostly_cjk
+    assert is_mostly_cjk("国家法定节假日共多少天")
+    assert is_mostly_cjk("Konrad Zuse 是德国工程师，他在1941年完成了Z3计算机。")   # names in Latin, prose in Chinese
+    assert is_mostly_cjk("チューリングはエニグマを解読した")
+    assert not is_mostly_cjk("Alan Turing broke the Enigma cipher at Bletchley Park (布莱切利园).")
+    assert not is_mostly_cjk("Numbers only: 1941, 1945.")
+
+
+async def test_sync_embeds_only_pages_that_are_not_mostly_cjk(tmp_wiki, caplog):
+    import logging
+    store = _ml_wiki(tmp_wiki)
+    _write_page(store, "chunjie", "春节是中国最重要的传统节日，放假三天。")
+    search = await _vector_search(tmp_wiki, store=store)
+    with caplog.at_level(logging.INFO, logger="synthadoc.storage.search"):
+        assert await search.sync_embeddings() == 3
+    assert search._page_slugs == ["cnn", "rlhf", "transformers"]
+    assert "1 mostly Chinese/Japanese/Korean page(s) left to keyword search" in caplog.text
+    assert [r.slug for r in search.bm25_search(["春节"])] == ["chunjie"]    # still found by keyword
+
+
+async def test_a_page_rewritten_in_chinese_loses_its_embedding(tmp_wiki):
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+    _write_page(search._store, "rlhf", "基于人类反馈的强化学习用奖励模型来调整语言模型。")
+    search.invalidate_index()
+    await search.sync_embeddings()
+    assert "rlhf" not in search._page_slugs
+    assert "rlhf" not in await search._vector_store.text_hashes()
+
+
+async def test_cjk_query_is_answered_by_bm25_alone(tmp_wiki):
+    store = _ml_wiki(tmp_wiki)
+    _write_page(store, "attention-zh", "注意力机制 attention 让模型关注重要的词。")
+    search = await _vector_search(tmp_wiki, store=store)
+    await search.sync_embeddings()
+    calls = []
+    search._embed_texts = lambda texts: calls.append(texts) or _fake_embed(texts)
+    results = await search.hybrid_search(["注意力机制"], top_n=3)
+    assert calls == []
+    assert [r.slug for r in results] == [r.slug for r in search.bm25_search(["注意力机制"], top_n=3)]
+    assert all(r.similarity is None for r in results)
+
+
+async def test_a_wiki_of_cjk_pages_falls_back_to_bm25(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "chunjie", "春节是中国最重要的传统节日。")
+    _write_page(store, "zhongqiu", "中秋节人们赏月吃月饼。")
+    search = await _vector_search(tmp_wiki, store=store)
+    assert await search.sync_embeddings() == 0
+    assert search._matrix is None
+    results = await search.hybrid_search(["moon", "festival"], top_n=3)
+    assert results == search.bm25_search(["moon", "festival"], top_n=3)
