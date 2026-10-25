@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter W. / axoviq.com
 """Views over the knowledge graph for large wikis.
 
 The full graph (every page and link) is too much to draw past a few hundred

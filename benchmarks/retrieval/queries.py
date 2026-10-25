@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter W. / axoviq.com
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Generate the frozen benchmark queries for the Wikipedia corpus with an LLM.
 

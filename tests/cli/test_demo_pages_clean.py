@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter W. / axoviq.com
 """Shipped demo pages are installed into every demo wiki, so keep them clean."""
 from __future__ import annotations
 

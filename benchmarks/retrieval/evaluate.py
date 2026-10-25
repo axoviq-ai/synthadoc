@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter W. / axoviq.com
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Run the retrieval benchmark: no LLM, deterministic, offline once cached.
 
