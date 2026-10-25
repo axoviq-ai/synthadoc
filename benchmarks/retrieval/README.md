@@ -73,6 +73,23 @@ Metrics, per query type and wiki size: recall@5/10/20 (share of the right
 pages in the top k), MRR@10 and nDCG@10 (how high they rank), and P50/P95
 search latency.
 
+### Latency
+
+P95 search latency, all queries (each query is asked once, so the query
+embedding cache never helps here):
+
+| Pages | `bm25` | `hybrid`, embedding after BM25 | `hybrid`, embedding alongside BM25 |
+| ---: | ---: | ---: | ---: |
+| 200 | 4 ms | 66 ms | 27 ms |
+| 500 | 5 ms | 64 ms | 29 ms |
+| 1,000 | 8 ms | 70 ms | 62 ms |
+| 1,985 | 15 ms | 166 ms | 74 ms |
+
+Embedding the query is most of the extra time (about 20 ms on CPU); comparing
+it with every page embedding takes under 2 ms. Starting the query embedding
+in a worker thread before BM25 runs overlaps the two, with identical results.
+Latency varies by roughly ±10 ms between runs on the same machine.
+
 ### Maintainers only
 
 ```bash

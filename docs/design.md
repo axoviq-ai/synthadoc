@@ -388,7 +388,7 @@ Each `SearchResult` keeps `score` as the BM25 score (0 for a page only the embed
 **Performance notes:**
 
 - The first sync embeds every page — a few minutes of CPU for a couple of thousand pages. Later syncs only embed pages whose text changed.
-- A query adds one embedding (tens of ms on CPU) and an in-memory matrix product.
+- A query adds one embedding of the query text (about 20 ms on CPU) and an in-memory matrix product (under 2 ms at 5,000 pages). The query embedding is started in a worker thread before BM25 runs, so the two overlap, and the last 256 query embeddings are kept (LRU, keyed by query text; an embedding depends only on the text and the model, so entries never go stale). P95 search latency on the 1,985-page benchmark wiki: 15 ms BM25, 74 ms fused (166 ms before the overlap).
 - Set `vector = false` to revert to BM25-only at any time. Existing embeddings are not deleted.
 
 ---

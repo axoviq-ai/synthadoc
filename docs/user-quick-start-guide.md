@@ -4947,7 +4947,7 @@ If you see `embedding sync failed`, search keeps working on keywords alone and r
 ### Good to know
 
 - **English only.** The model, `BAAI/bge-small-en-v1.5`, is trained on English. For wikis mainly in Chinese, Japanese or Korean, keep `vector = false` for now.
-- **Speed:** each question takes about 100 ms longer, the time to run the model on your question. Keyword search itself became about 18× faster in the same release, for everyone.
+- **Speed:** finding the pages for a question takes about 60 ms longer on a 2,000-page wiki (74 ms instead of 15 ms, P95), the time to run the model on your question. It runs at the same time as keyword search, and a question asked again reuses its embedding. That is well under 1% of a typical answer, which spends seconds in the LLM. Keyword search itself became about 18× faster in the same release, for everyone.
 - **Knowledge gap warnings** are still based on keyword evidence only, so a page that is merely similar in meaning cannot hide a real gap.
 - **Works with every LLM provider**, including the coding-tool providers ([Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider)): the embedding model runs locally and never calls the LLM.
 - **Cross-wiki queries** use semantic search in each wiki that has it turned on ([Appendix L](#appendix-l--cross-wiki-queries)).
