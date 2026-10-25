@@ -11,6 +11,9 @@ deterministic, cheap and work offline once the corpora are cached.
 | --- | --- | --- | --- |
 | **wikipedia** | ~2,000 English Wikipedia articles from 24 overlapping computing categories, pinned to fixed revisions, converted to wiki pages (lead + sections, capped at 1,500 words) | 3 LLM-written queries for each of 500 sampled pages | `lexical` (page's own terms), `paraphrase` (same need, no title words or distinctive terms — the case embeddings target), `identifier` (exact name / acronym / number lookup — regressions show here) |
 | **hotpot** | ~2,900 Wikipedia intro paragraphs | 300 human-written HotpotQA questions, 2 gold paragraphs each | Questions people actually wrote, as a check on LLM-written queries |
+| **scifact** | 5,183 scientific abstracts ([BEIR](https://github.com/beir-cellar/beir) SciFact) | 300 human-written claims, judged by experts | An English domain the fusion settings were not tuned on |
+| **nfcorpus** | 3,633 medical documents (BEIR NFCorpus) | 323 human queries, ~38 judged documents each | A second untuned English domain, with many relevant documents per query |
+| **duretrieval** | The first 3,000 passages of C-MTEB DuRetrieval (Chinese web Q&A), which hold every judged passage of the first ~440 queries | 300 human queries sampled from those, ~4.7 relevant passages each | Chinese text, for the English-only embedding model |
 
 The wikipedia corpus is also scored at 200, 500 and 1,000 pages as well as in full
 (nested seeded subsets), to see whether the gap between keyword and semantic
@@ -23,9 +26,10 @@ Only small files (see [NOTICE.md](NOTICE.md) for licences):
 - `data/articles.json` — article titles, revision IDs, source category
 - `data/queries.jsonl` — the frozen generated queries
 - `data/hotpot.json` — the HotpotQA question IDs used
+- `data/external.json` — what was evaluated for scifact, nfcorpus and duretrieval (dataset, split, page and query counts; the sampled DuRetrieval query IDs)
 - `data/baseline.json` — the latest recorded scores
 
-Article text, HotpotQA paragraphs and embeddings live in a local cache,
+Article text, HotpotQA paragraphs, the check corpora and embeddings live in a local cache,
 `~/.cache/synthadoc-bench` (override with `SYNTHADOC_BENCH_CACHE` or `--cache`).
 
 ## Running
@@ -38,7 +42,12 @@ python -m benchmarks.retrieval evaluate                    # BM25 only
 pip install -e ".[vectors]"                                # for embedding configs
 python -m benchmarks.retrieval evaluate --configs bm25,hybrid
 python -m benchmarks.retrieval evaluate --configs bm25,hybrid --write-baseline
+python -m benchmarks.retrieval evaluate --corpora scifact,nfcorpus,duretrieval --configs bm25,hybrid
+python -m benchmarks.retrieval charts                      # redraw docs/png/benchmarks/*.png (needs matplotlib)
 ```
+
+`fetch` also downloads the check corpora from the Hugging Face dataset server,
+pacing its requests; NFCorpus takes about 15 minutes.
 
 Configurations:
 
@@ -63,6 +72,8 @@ Measured on the full 1,985-page corpus while designing semantic search
 | Fusion + keyword pin (BM25 top 3 kept when its best score ≥ 1.05× its second) | 0.998 | 0.984 | 0.676 | 0.896 |
 | Same, but one embedding per section instead of per page | 0.998 | 0.986 | 0.613 | 0.878 |
 
+![Recall@5 by question type for each setup](../../docs/png/benchmarks/design-choices.png)
+
 Section embeddings rank better on their own (paraphrase recall@5 0.669 vs
 0.616 for the embedding search alone) but fuse worse, because they mostly
 find the pages BM25 already finds, and embedding the 14,511 sections took
@@ -73,6 +84,37 @@ Metrics, per query type and wiki size: recall@5/10/20 (share of the right
 pages in the top k), MRR@10 and nDCG@10 (how high they rank), and P50/P95
 search latency.
 
+### Results by wiki size
+
+The gap between keyword and semantic search grows with the wiki: paraphrased
+questions found in the top 5 fall from 0.71 to 0.48 with BM25 between 200 and
+1,985 pages, and from 0.80 to 0.68 with semantic search.
+
+![Paraphrased-question recall@5 by wiki size](../../docs/png/benchmarks/paraphrase-by-wiki-size.png)
+
+### Independent checks
+
+The fusion settings were chosen on the wikipedia corpus. The other corpora have
+human-written queries and human relevance judgements (nDCG@10; recall@5 understates
+NFCorpus, whose queries have ~38 relevant documents each):
+
+| Corpus | `bm25` nDCG@10 | `hybrid` nDCG@10 | `bm25` MRR@10 | `hybrid` MRR@10 |
+| --- | ---: | ---: | ---: | ---: |
+| hotpot | 0.755 | **0.808** | 0.848 | **0.880** |
+| scifact | 0.658 | **0.693** | 0.629 | **0.654** |
+| nfcorpus | 0.305 | **0.344** | 0.505 | **0.547** |
+| duretrieval (Chinese) | 0.853 | 0.853 | 0.924 | 0.924 |
+
+![nDCG@10 on every corpus](../../docs/png/benchmarks/independent-corpora.png)
+
+Semantic search is better on every English corpus, including the two it was
+not tuned on. On Chinese, the English-only embedding model made it worse before
+CJK handling was added (recall@5 0.751 → 0.645, nDCG@10 0.853 → 0.780): it pulled
+unrelated passages into the fused results. Since then, pages whose text is
+mostly Chinese, Japanese or Korean are not embedded and a query with CJK
+characters is answered by BM25 alone, so `hybrid` scores exactly as `bm25`
+there. These results are why new wikis are created with `vector = "auto"`.
+
 ### Latency
 
 P95 search latency, all queries (each query is asked once, so the query
@@ -80,15 +122,17 @@ embedding cache never helps here):
 
 | Pages | `bm25` | `hybrid`, embedding after BM25 | `hybrid`, embedding alongside BM25 |
 | ---: | ---: | ---: | ---: |
-| 200 | 4 ms | 66 ms | 27 ms |
-| 500 | 5 ms | 64 ms | 29 ms |
-| 1,000 | 8 ms | 70 ms | 62 ms |
-| 1,985 | 15 ms | 166 ms | 74 ms |
+| 200 | 4 ms | 66 ms | 25 ms |
+| 500 | 5 ms | 64 ms | 27 ms |
+| 1,000 | 8 ms | 70 ms | 29 ms |
+| 1,985 | 15 ms | 166 ms | 62 ms |
 
 Embedding the query is most of the extra time (about 20 ms on CPU); comparing
 it with every page embedding takes under 2 ms. Starting the query embedding
 in a worker thread before BM25 runs overlaps the two, with identical results.
-Latency varies by roughly ±10 ms between runs on the same machine.
+
+![P95 search latency by wiki size](../../docs/png/benchmarks/search-latency.png)
+Latency varies by roughly ±10–30 ms between runs on the same machine; the table is the committed baseline.
 
 ### Maintainers only
 
@@ -113,3 +157,8 @@ still do). Re-generating changes the queries, so commit the new
   wording; the human-written HotpotQA set is the check on that.
 - HotpotQA distractor paragraphs were chosen for word overlap with the
   question, which makes that corpus deliberately hard for keyword search.
+- The duretrieval corpus is a slice: its pages are the judged passages of
+  ~440 queries, so each query's distractors are other queries' answers rather
+  than the full 100,000-passage collection.
+- Only Chinese was measured among CJK languages; Japanese and Korean pages are
+  handled the same way (left to BM25), unmeasured.

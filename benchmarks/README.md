@@ -16,7 +16,7 @@ python -m benchmarks.retrieval fetch                         # once, ~30 min: do
 python -m benchmarks.retrieval evaluate --configs bm25,hybrid
 ```
 
-Headline result on 1,985 pages: semantic search raises paraphrased questions found in the top 5 from 48% to 68%, with exact-name lookups at 98% (keyword search: 99%). Committed results: [`retrieval/data/baseline.json`](retrieval/data/baseline.json). This benchmark decides changes to search and to the semantic-search default.
+Headline result on 1,985 pages: semantic search raises paraphrased questions found in the top 5 from 48% to 68%, with exact-name lookups at 98% (keyword search: 99%). Checked on corpora it was not tuned on: better on two English sets with human-written queries (SciFact, NFCorpus), and unchanged on Chinese, which is left to keyword search. Committed results: [`retrieval/data/baseline.json`](retrieval/data/baseline.json). This benchmark decides changes to search and to the semantic-search default.
 
 ## Search latency with and without routing
 
