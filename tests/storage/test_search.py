@@ -488,8 +488,9 @@ def test_embed_model_loads_from_its_plain_folder(tmp_wiki, monkeypatch):
     monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
     folder = _model_files(tmp_wiki / "models" / "bge-small-en-v1.5")
     text_embedding = MagicMock()
-    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}), \
-         patch("huggingface_hub.snapshot_download") as download:
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
         load_embed_model()
     download.assert_not_called()
     assert text_embedding.call_args.kwargs == {"specific_model_path": str(folder)}
@@ -501,8 +502,9 @@ def test_embed_model_reuses_a_hub_cache_from_earlier_versions(tmp_wiki, monkeypa
     snapshot = _model_files(tmp_wiki / "models" / "models--Qdrant--bge-small-en-v1.5-onnx-Q"
                             / "snapshots" / "aa8f8b0")
     text_embedding = MagicMock()
-    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}), \
-         patch("huggingface_hub.snapshot_download") as download:
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
         load_embed_model()
     download.assert_not_called()
     assert text_embedding.call_args.kwargs == {"specific_model_path": str(snapshot)}
@@ -514,8 +516,9 @@ def test_embed_model_downloads_plain_files_the_first_time(tmp_wiki, monkeypatch)
     monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
     folder = tmp_wiki / "models" / "bge-small-en-v1.5"
     text_embedding = MagicMock()
-    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}), \
-         patch("huggingface_hub.snapshot_download") as download:
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
         load_embed_model()
     download.assert_called_once_with("Qdrant/bge-small-en-v1.5-onnx-Q", local_dir=str(folder),
                                      allow_patterns=list(_EMBED_MODEL_FILES))
