@@ -3292,3 +3292,32 @@ async def test_detect_gap_still_reports_a_missing_topic_with_vector_search(tmp_w
     }, "What is the Kubernetes container orchestration system")
     assert any(r.score == 0 for r in candidates)
     assert gap is True
+
+
+@pytest.mark.asyncio
+async def test_translated_cjk_question_is_also_searched_as_written(tmp_wiki):
+    """A Chinese question finds a Chinese page, though only the original can match it.
+
+    The question is translated to English for retrieval. Real BM25 (no stub): the
+    English translation matches the English page, and only the original Chinese
+    question matches the page written in Chinese.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("transistor-zh", WikiPage(
+        title="晶体管", tags=[], status="active", confidence="high", sources=[],
+        content="1947年，贝尔实验室的巴丁、布拉顿和肖克利发明了晶体管，取代了真空管。"))
+    store.write_page("grace-hopper", WikiPage(
+        title="Grace Hopper", tags=[], status="active", confidence="high", sources=[],
+        content="Grace Hopper invented an early compiler, the A-0 system, in 1952."))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text="Who invented the transistor and the compiler?", input_tokens=5, output_tokens=5),
+        CompletionResponse(text='["Who invented the transistor and the compiler?"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="晶体管由巴丁等人发明。", input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.01)
+
+    _, candidates, _ = await agent._run_search("谁发明了晶体管和编译器？")
+
+    assert {"transistor-zh", "grace-hopper"} <= {r.slug for r in candidates}
