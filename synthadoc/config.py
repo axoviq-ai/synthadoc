@@ -212,8 +212,13 @@ class LintConfig:
 
 @dataclass
 class SearchConfig:
-    # True: BM25 fused with embedding search (warns if fastembed is missing).
-    # "auto": the same when fastembed is installed, silently BM25 otherwise.
+    # "auto": BM25 fused with embedding search when fastembed is installed,
+    #         silently BM25 otherwise. New wikis are created with "auto".
+    # True: the same, but warns if fastembed is missing.
+    # False: BM25 only. Also the value when the config has no vector line
+    #        (wikis created before "auto" have false written in their config).
+    # Either way, Chinese/Japanese/Korean pages and queries stay on BM25 (the
+    # embedding model is English-only; see search.is_mostly_cjk).
     vector: Union[bool, str] = False
     vector_top_candidates: int = 20   # candidates taken from each of BM25 and embeddings
 

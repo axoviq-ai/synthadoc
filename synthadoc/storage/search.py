@@ -8,6 +8,7 @@ import importlib.util
 import logging
 import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -132,6 +133,24 @@ _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 # find the pages BM25 already finds) and took ~20x longer to compute.
 _EMBED_CHARS = 512
 _EMBED_BATCH = 64
+# Recent query embeddings, by query text. Embedding a query is most of the
+# extra latency of semantic search; an embedding depends only on the text and
+# the model, never on the wiki, so entries never go stale.
+_QUERY_CACHE_SIZE = 256
+
+# The embedding model (BAAI/bge-small-en-v1.5) is English-only. On Chinese text
+# it hurt fused retrieval (DuRetrieval benchmark: recall@5 0.751 -> 0.645), so
+# pages whose embedded text is mostly CJK are left to BM25, and a query with
+# any CJK character is answered by BM25 alone.
+_CJK_RE = re.compile("[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+_CJK_PAGE_SHARE = 0.3     # CJK share of letters above which a page is not embedded
+
+
+def is_mostly_cjk(text: str) -> bool:
+    """True when CJK characters are at least _CJK_PAGE_SHARE of the letters in *text*."""
+    cjk = len(_CJK_RE.findall(text))
+    return cjk > 0 and cjk / (cjk + len(_LATIN_RE.findall(text))) >= _CJK_PAGE_SHARE
 
 # Fusion of the BM25 and embedding rankings (see hybrid_search). Tuned on the
 # retrieval benchmark in benchmarks/retrieval.
@@ -196,6 +215,7 @@ class HybridSearch:
         self._search_cfg = search_cfg      # SearchConfig or None
         self._vector_store: Optional[VectorStore] = None
         self._embed_model = None            # lazy loaded
+        self._query_vecs: OrderedDict[str, "np.ndarray"] = OrderedDict()   # LRU, _QUERY_CACHE_SIZE
         # In-memory embeddings: one row per page, in _page_slugs order.
         self._matrix: Optional["np.ndarray"] = None
         self._page_slugs: list[str] = []
@@ -256,22 +276,29 @@ class HybridSearch:
             slugs, _ = self._corpus()
             stored = await self._vector_store.text_hashes()
             todo: list[tuple[str, str, str]] = []   # (slug, hash, text)
+            embeddable: set[str] = set()
             for slug in slugs:
                 page = self._store.read_page(slug)
                 if page is None:
                     continue
                 text = embedding_text(page)
+                if is_mostly_cjk(text):
+                    continue                         # BM25 only: see _CJK_PAGE_SHARE
+                embeddable.add(slug)
                 if stored.get(slug) != (text_hash := _text_hash(text)):
                     todo.append((slug, text_hash, text))
             if todo:
-                logger.info("Vector search: embedding %d page(s)…", len(todo))
+                skipped = len(slugs) - len(embeddable)
+                logger.info("Vector search: embedding %d page(s)…%s", len(todo),
+                            f" ({skipped} mostly Chinese/Japanese/Korean page(s) left to keyword search)"
+                            if skipped else "")
             loop = asyncio.get_running_loop()
             for i in range(0, len(todo), _EMBED_BATCH * 4):
                 batch = todo[i:i + _EMBED_BATCH * 4]
                 vectors = await loop.run_in_executor(None, self._embed_texts, [t for _, _, t in batch])
                 await self._vector_store.upsert_many(
                     [(slug, text_hash, vec) for (slug, text_hash, _), vec in zip(batch, vectors)])
-            if removed := set(stored) - set(slugs):
+            if removed := set(stored) - embeddable:
                 await self._vector_store.delete_pages(removed)
             await self._load_matrix()
             return len(todo)
@@ -391,12 +418,10 @@ class HybridSearch:
             for slug, score in ranked[:top_n] if score > 0
         ]
 
-    async def _vector_ranking(self, query: str, scoped_slugs: list[str] | None,
-                              top_n: int) -> list[tuple[str, float]]:
-        """Pages closest to *query* by embedding similarity, within the corpus/scope."""
+    def _vector_ranking(self, query_vec: "np.ndarray", scoped_slugs: list[str] | None,
+                        top_n: int) -> list[tuple[str, float]]:
+        """Pages closest to *query_vec* by embedding similarity, within the corpus/scope."""
         import numpy as np
-        loop = asyncio.get_running_loop()
-        query_vec = (await loop.run_in_executor(None, self._embed_texts, [query]))[0]
         page_sims = self._matrix @ query_vec
         allowed = set(self._corpus()[0])
         if scoped_slugs is not None:
@@ -446,8 +471,25 @@ class HybridSearch:
         if self._vectors_dirty:
             self.schedule_embedding_sync()
         pool = max(top_n, self._pool_size())
+        query = " ".join(query_terms)
+        if self._matrix is None or _CJK_RE.search(query):
+            return self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)[:top_n]
+        # Start embedding the query in a worker thread before BM25 runs, so the
+        # two overlap (the model releases the GIL while it runs).
+        query_vec = self._query_vecs.get(query)
+        pending = None
+        if query_vec is None:
+            pending = asyncio.get_running_loop().run_in_executor(None, self._embed_texts, [query])
         keyword = self.bm25_search(query_terms, top_n=pool, scoped_slugs=scoped_slugs)
-        if self._matrix is None:
-            return keyword[:top_n]
-        semantic = await self._vector_ranking(" ".join(query_terms), scoped_slugs, pool)
+        if pending is not None:
+            query_vec = (await pending)[0]
+            self._remember_query(query, query_vec)
+        else:
+            self._query_vecs.move_to_end(query)
+        semantic = self._vector_ranking(query_vec, scoped_slugs, pool)
         return self._fuse(keyword, semantic, top_n)
+
+    def _remember_query(self, query: str, vector: "np.ndarray") -> None:
+        self._query_vecs[query] = vector
+        if len(self._query_vecs) > _QUERY_CACHE_SIZE:
+            self._query_vecs.popitem(last=False)
