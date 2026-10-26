@@ -331,3 +331,66 @@ async def test_make_search_syncs_embeddings_for_the_hybrid_config(tmp_path, monk
     assert "embedded 3 page(s)" in logged[0]
     bm25 = await evaluate.make_search(wiki_dir, evaluate.CONFIGS["bm25"], log=logged.append)
     assert bm25._vector_store is None
+
+
+# ── independent check corpora ───────────────────────────────────────────────
+
+def _fake_external(monkeypatch, rows_by_split):
+    from benchmarks.retrieval import external
+    monkeypatch.setattr(external, "fetch_rows",
+                        lambda split, limit, cache_dir: rows_by_split[split.split][:limit] if limit
+                        else rows_by_split[split.split])
+    return external
+
+
+def test_external_build_writes_docs_and_maps_judged_queries(tmp_path, monkeypatch):
+    external = _fake_external(monkeypatch, {
+        "corpus": [{"_id": "MED-10", "title": "Statins and survival", "text": "Statin use after diagnosis."},
+                   {"_id": "MED-11", "title": "", "text": "Vitamin D levels in winter months were low."}],
+        "queries": [{"_id": "q1", "title": "", "text": "do statins help"},
+                    {"_id": "q2", "title": "", "text": "sunlight vitamins"},
+                    {"_id": "q3", "title": "", "text": "unjudged"}],
+        "test": [{"query-id": "q1", "corpus-id": "MED-10", "score": 2},
+                 {"query-id": "q2", "corpus-id": "MED-11", "score": 1},
+                 {"query-id": "q2", "corpus-id": "MED-10", "score": 0},      # judged not relevant
+                 {"query-id": "q4", "corpus-id": "MED-10", "score": 1}],     # query text missing
+    })
+    wiki_dir, judged = external.build("nfcorpus", tmp_path)
+    assert sorted(p.stem for p in wiki_dir.glob("*.md")) == ["d-med-10", "d-med-11"]
+    assert [(q.id, q.type, q.relevant) for q in judged] == [("q1", "human", ["d-med-10"]),
+                                                             ("q2", "human", ["d-med-11"])]
+    page = WikiStorage(wiki_dir).read_page("d-med-11")
+    assert page.title == "Vitamin D levels in winter months were low."   # no title: its opening
+
+
+def test_external_build_keeps_only_queries_whose_passages_are_in_the_slice(tmp_path, monkeypatch):
+    external = _fake_external(monkeypatch, {
+        "corpus": [{"id": "p1", "text": "一年国家法定节假日为11天。根据公布的方案"}, {"id": "p2", "text": "春节放假3天"}],
+        "queries": [{"id": "a", "text": "国家法定节假日共多少天"}, {"id": "b", "text": "春节放几天"}],
+        "dev": [{"qid": "a", "pid": "p1", "score": 1}, {"qid": "b", "pid": "p2", "score": 1},
+                {"qid": "b", "pid": "p9", "score": 1}],                  # p9 is outside the slice
+    })
+    wiki_dir, judged = external.build("duretrieval", tmp_path)
+    assert [q.id for q in judged] == ["a"]
+    assert WikiStorage(wiki_dir).read_page("d-p1").title == "一年国家法定节假日为11天"
+
+
+def test_external_pin_detects_a_changed_dataset(tmp_path):
+    from benchmarks.retrieval import external
+    pin_file = tmp_path / "external.json"
+    judged = [queries.Query("a", "human", "x", ["d-p1"])]
+    external.pin("duretrieval", judged, 3000, pin_file)
+    assert external.check_pin("duretrieval", judged, 3000, pin_file) is None
+    assert "pinned 3000" in external.check_pin("duretrieval", judged, 2999, pin_file)
+    other = [queries.Query("b", "human", "x", ["d-p1"])]
+    assert "query IDs differ" in external.check_pin("duretrieval", other, 3000, pin_file)
+    assert external.check_pin("scifact", judged, 10, pin_file) is None      # not pinned yet
+
+
+def test_charts_render_from_the_committed_baseline(tmp_path):
+    pytest.importorskip("matplotlib")
+    from benchmarks.retrieval import charts
+    paths = charts.write_all(tmp_path)
+    assert [p.name for p in paths] == ["design-choices.png", "paraphrase-by-wiki-size.png",
+                                       "independent-corpora.png", "search-latency.png", "graph-load-time.png"]
+    assert all(p.stat().st_size > 10_000 for p in paths)

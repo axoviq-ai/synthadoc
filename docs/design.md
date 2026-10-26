@@ -342,7 +342,7 @@ User input: "search for: yard gardening in Canadian climate zones"
 
 ### Semantic Search
 
-> **Opt-in.** BM25 is the default and works without any additional dependencies.
+> **On by default for new wikis when installed.** New wikis are created with `vector = "auto"`: semantic search runs whenever fastembed is installed (the Docker image includes it), and BM25 alone otherwise. BM25 needs no extra dependencies.
 
 **Installation:**
 
@@ -350,11 +350,11 @@ User input: "search for: yard gardening in Canadian climate zones"
 pip install "synthadoc[vectors]"     # adds fastembed
 ```
 
-**Enable in config:**
+**Config:**
 
 ```toml
 [search]
-vector = true                # or "auto": on when fastembed is installed, BM25 otherwise
+vector = "auto"              # template default: on when fastembed is installed; true = always; false = BM25 only
 vector_top_candidates = 20   # candidates taken from each of BM25 and the embedding search
 ```
 
@@ -363,10 +363,25 @@ fastembed as the normal BM25 setup and logs it at info level. With `vector = fal
 and fastembed installed (as in the Docker image), startup logs one info line saying
 how to turn semantic search on; nothing switches on by itself.
 
-**Default:** the `synthadoc init` template writes `vector = false`, and so does every
-wiki created since v0.2.0, so changing the template default would only affect new
-wikis. `"auto"` becomes the template default once a second independent corpus and a
-CJK check confirm the benchmark result; existing configs are never rewritten.
+**Default:** the `synthadoc init` template writes `vector = "auto"`. Wikis created
+before that have `vector = false` written in their config (every template since
+v0.2.0 wrote it) and keep it: existing configs are never rewritten. The built-in
+default for a config with no `vector` line is still `false`. The switch followed
+two independent English corpora with human-written queries (SciFact, NFCorpus:
+fusion better on every measure) and a Chinese corpus (DuRetrieval: the English
+model hurt, which the CJK handling below removes); see
+[benchmarks/retrieval](../benchmarks/retrieval/README.md).
+
+**Chinese, Japanese and Korean:** the model is English-only. During sync, a page
+whose embedded text is mostly CJK (CJK characters ≥ 30% of its letters,
+`is_mostly_cjk()`) is not embedded and stays searchable by BM25 only; a page that
+becomes mostly CJK loses its stored embedding. A query containing any CJK
+character is answered by BM25 alone. The query agent translates CJK questions
+to English for retrieval and searches the original question too, merging the
+results: the translation finds English pages (with embeddings), the original
+finds CJK pages (with BM25). A mixed wiki therefore gets semantic search over its
+English pages and BM25 over all pages. An English question cannot find a page
+written only in Chinese — no shared keywords, and no embedding.
 
 **Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on; cached at `~/.synthadoc/models/` thereafter (override with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in).
 
@@ -388,7 +403,7 @@ Each `SearchResult` keeps `score` as the BM25 score (0 for a page only the embed
 **Performance notes:**
 
 - The first sync embeds every page — a few minutes of CPU for a couple of thousand pages. Later syncs only embed pages whose text changed.
-- A query adds one embedding (tens of ms on CPU) and an in-memory matrix product.
+- A query adds one embedding of the query text (about 20 ms on CPU) and an in-memory matrix product (under 2 ms at 5,000 pages). The query embedding is started in a worker thread before BM25 runs, so the two overlap, and the last 256 query embeddings are kept (LRU, keyed by query text; an embedding depends only on the text and the model, so entries never go stale). P95 search latency on the 1,985-page benchmark wiki: 15 ms BM25, 62 ms fused (166 ms before the overlap).
 - Set `vector = false` to revert to BM25-only at any time. Existing embeddings are not deleted.
 
 ---
@@ -1501,7 +1516,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `logs.backup_count`                      | int   | `5`                  | Rotated log files to keep; total disk ≈`max_file_mb × (backup_count + 1)`                                                                                                                                                                                                |
 | `web_search.provider`                    | str   | `"tavily"`           | Web search provider (currently only`tavily` supported)                                                                                                                                                                                                                     |
 | `web_search.max_results`                 | int   | `20`                 | Maximum results fetched per web search query                                                                                                                                                                                                                               |
-| `search.vector`                          | bool / `"auto"`| `false`              | Semantic search: fuse BM25 with embedding search.      `"auto"` = on when fastembed is installed. Downloads `BAAI/bge-small-en-v1.5` (~65 MB) once                                                                                                                     |
+| `search.vector`                          | bool / `"auto"`| `false`              | Semantic search: fuse BM25 with embedding search.      `"auto"` = on when fastembed is installed; new wikis are created with `"auto"`, and `false` applies only when the line is missing. Downloads `BAAI/bge-small-en-v1.5` (~65 MB) once                                                                                                                     |
 | `search.vector_top_candidates`           | int   | `20`                 | Candidates taken from each of BM25 and the embedding search before fusion                                                                                                                                                                                                  |
 | `ingest.max_source_chars`                | int   | `32000`              | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's`sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_                   |
 | `ingest.citation_source_lines`           | int   | `400`                | Number of source lines the LLM sees during Pass 4 (citation annotation). Increase if lint reports`out_of_range` on long sources such as transcripts or PDFs. Raise `citation_max_tokens` in proportion when increasing this value.                                         |
@@ -3398,7 +3413,7 @@ The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed
 
 Opening a 289-page cluster takes about 2 s at 60 fps. At 5,000 pages the `/graph?view=clusters` request itself takes ~1.4 s; most of the remaining time is `/lifecycle/status`, which the UI requests at the same moment and which reads every page.
 
-In the page view, nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
+In the page view, nodes are colored by cluster, and the legend and the node sidebar name each cluster with the same `label` as the overview (its three most-connected page titles), falling back to its number. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster (by name), and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
 
 Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 

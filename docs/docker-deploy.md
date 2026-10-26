@@ -574,12 +574,14 @@ docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-com
 
 ### Semantic search
 
-The image includes [semantic search](design.md#semantic-search) (`fastembed` and the ~65 MB embedding model, built in so containers never download it). It is off by default (the server logs a one-line reminder at startup that it is available); turn it on in `config.toml` and restart:
+The image includes [semantic search](design.md#semantic-search) (`fastembed` and the ~65 MB embedding model, built in so containers never download it). Wikis created with this version have `vector = "auto"` in `config.toml`, so semantic search is on in the container with nothing to do. A wiki created with an earlier version has `vector = false` (the server logs a one-line reminder at startup that semantic search is available); to turn it on, change it and restart:
 
 ```toml
 [search]
-vector = true
+vector = "auto"
 ```
+
+Pages and questions in Chinese, Japanese or Korean stay on keyword search automatically (the embedding model is English-only), so a mixed-language wiki gets semantic search for its English pages; see the [user guide, Appendix N](user-quick-start-guide.md#appendix-n--semantic-search).
 
 On the first start the server embeds every page in the background (a few minutes for a couple of thousand pages); search answers with BM25 until it finishes. Embeddings are stored in the wiki's `.synthadoc/embeddings.db`, on the mounted volume, so later restarts only embed pages that changed.
 

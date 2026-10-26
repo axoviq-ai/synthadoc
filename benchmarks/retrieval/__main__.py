@@ -5,7 +5,9 @@
     python -m benchmarks.retrieval fetch                 # download + build cached wikis
     python -m benchmarks.retrieval evaluate              # score configs, print tables
     python -m benchmarks.retrieval evaluate --write-baseline
+    python -m benchmarks.retrieval evaluate --corpora scifact,nfcorpus,duretrieval --configs bm25,hybrid
     python -m benchmarks.retrieval generate --provider anthropic --model claude-sonnet-5-5
+    python -m benchmarks.retrieval charts                # draw the result charts from baseline.json
     python -m benchmarks.retrieval select                # maintainers: re-pin the article list
 """
 from __future__ import annotations
@@ -19,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from benchmarks.retrieval import corpus, evaluate, queries
+from benchmarks.retrieval import corpus, evaluate, external, queries
 
 BASELINE_FILE = corpus.DATA_DIR / "baseline.json"
 HOTPOT_QUESTIONS = 300
@@ -40,6 +42,16 @@ def _hotpot(cache: Path) -> tuple[Path, list[queries.Query]]:
     return wiki_dir, [queries.Query(q.id, "human", q.question, q.gold) for q in questions]
 
 
+def _external(name: str, cache: Path) -> tuple[Path, list[queries.Query]]:
+    """Build an independent check corpus, checking it against data/external.json."""
+    wiki_dir, judged = external.build(name, cache)
+    pages = len(list(wiki_dir.glob("*.md")))
+    if problem := external.check_pin(name, judged, pages):
+        sys.exit(f"{problem} — the upstream dataset changed.")
+    external.pin(name, judged, pages)
+    return wiki_dir, judged
+
+
 def cmd_select(args) -> None:
     articles = corpus.select_articles(args.target)
     corpus.save_articles(articles)
@@ -52,6 +64,9 @@ def cmd_fetch(args) -> None:
     print(f"  → {wiki_dir}")
     print("HotpotQA:")
     print(f"  → {_hotpot(args.cache)[0]}")
+    for name in external.SPECS:
+        print(f"{name}:")
+        print(f"  → {_external(name, args.cache)[0]}")
 
 
 def cmd_generate(args) -> None:
@@ -89,11 +104,22 @@ def cmd_evaluate(args) -> None:
         print("HotpotQA:")
         wiki_dir, hotpot_queries = _hotpot(args.cache)
         results["hotpot"] = asyncio.run(evaluate.evaluate_corpus(wiki_dir, hotpot_queries, configs, None))
+    for name in external.SPECS:
+        if name in args.corpora:
+            print(f"{name}:")
+            wiki_dir, judged = _external(name, args.cache)
+            results[name] = asyncio.run(evaluate.evaluate_corpus(wiki_dir, judged, configs, None))
     for name, res in results.items():
         print("\n" + evaluate.format_table(name, res))
     if args.write_baseline:
         write_baseline(results)
         print(f"\nUpdated {BASELINE_FILE}")
+
+
+def cmd_charts(args) -> None:
+    from benchmarks.retrieval import charts
+    for path in charts.write_all():
+        print(f"  {path}")
 
 
 def write_baseline(results: dict, path: Path = BASELINE_FILE) -> None:
@@ -127,9 +153,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--concurrency", type=int, default=4)
     p.set_defaults(func=cmd_generate)
 
+    sub.add_parser("charts", help="draw docs/png/benchmarks/*.png from baseline.json").set_defaults(func=cmd_charts)
+
     p = sub.add_parser("evaluate", help="score search configurations")
     p.add_argument("--configs", default="bm25", help=f"comma list of {', '.join(evaluate.CONFIGS)}")
-    p.add_argument("--corpora", default="wikipedia,hotpot")
+    p.add_argument("--corpora", default="wikipedia,hotpot",
+                   help=f"comma list of wikipedia, hotpot, {', '.join(external.SPECS)}")
     p.add_argument("--write-baseline", action="store_true", help=f"write {BASELINE_FILE.name}")
     p.set_defaults(func=cmd_evaluate)
 

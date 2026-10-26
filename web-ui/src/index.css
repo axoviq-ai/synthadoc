@@ -1074,6 +1074,8 @@ text.node-label { fill: var(--graph-label-fill); stroke: var(--graph-label-strok
 .graph-legend-btn:hover .graph-legend-label { color: var(--text-primary); text-decoration: underline; }
 .graph-legend-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .graph-legend-size { opacity: 0.7; }
+.graph-meta-cluster { min-width: 0; max-width: 170px; }
+.graph-meta-cluster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .graph-conn-label { color: var(--text-muted); font-size: 10.5px; }
 .graph-sidebar-hint { font-size: 11px; color: #f59e0b; background: rgba(245,158,11,0.08); border-radius: 5px; padding: 6px 8px; margin: 0; }
 .graph-sidebar-hint-list { display: flex; flex-direction: column; gap: 5px; }

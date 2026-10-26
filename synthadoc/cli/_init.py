@@ -316,7 +316,7 @@ adversarial_concurrency = 8
 adversarial_gate_threshold = 2
 
 [search]
-vector = false             # true or "auto": fuse BM25 with semantic search (pip install "synthadoc[vectors]"; ~65 MB model, downloaded once)
+vector = "auto"            # semantic search when "synthadoc[vectors]" is installed (Docker: built in); true = always, false = keyword search only
 vector_top_candidates = 20
 
 [chat]

@@ -8,6 +8,7 @@ interface GraphEdge { from: string; to: string; weight: number; }
 interface Props {
     node: GraphNode | null;
     clusterColor: string;
+    clusterName?: string;        // the cluster's name; its number when absent
     edges: GraphEdge[];
     totalNodes: number;
     onAsk: (query: string, hints: string[]) => void;
@@ -64,7 +65,7 @@ function generateHints(node: GraphNode): string[] {
     }
 }
 
-export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onClose }: Props) {
+export function GraphSidebar({ node, clusterColor, clusterName, edges, totalNodes, onAsk, onClose }: Props) {
     const [showInfo, setShowInfo] = useState(false);
 
     if (!node) return null;
@@ -109,9 +110,9 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
             <div className="graph-sidebar-meta">
                 <div className="graph-meta-row">
                     <span className="graph-meta-label">Cluster</span>
-                    <span className="graph-meta-value">
+                    <span className="graph-meta-value graph-meta-cluster" title={clusterName || undefined}>
                         <span className="graph-cluster-dot" style={{ background: clusterColor }} />
-                        {node.cluster_id}
+                        <span className="graph-meta-cluster-name">{clusterName || node.cluster_id}</span>
                     </span>
                 </div>
                 <div className="graph-meta-row">

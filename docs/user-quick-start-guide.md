@@ -2750,7 +2750,7 @@ The force-directed graph appears: nodes are wiki pages, edge thickness reflects 
 
 ### Explore clusters
 
-Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods.
+Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods. The legend below the graph names each cluster after its most-connected pages, and clicking a page shows its cluster's name in the side panel.
 
 In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
 
@@ -3882,11 +3882,11 @@ fetch_timeout_seconds = 60   # increase if slow sites time out during web search
 provider    = "tavily"
 max_results = 20
 
-# Optional: semantic search — BM25 fused with page embeddings, see Appendix N
-# (pip install "synthadoc[vectors]"; downloads a ~65 MB model once)
-# [search]
-# vector = true                # or "auto": on whenever fastembed is installed
-# vector_top_candidates = 20   # candidates from each of BM25 and embeddings
+# Semantic search — BM25 fused with page embeddings, see Appendix N
+# (needs pip install "synthadoc[vectors]"; built into the Docker image)
+[search]
+vector = "auto"              # default for new wikis: on when installed; true = always; false = keyword only
+vector_top_candidates = 20   # candidates from each of BM25 and embeddings
 
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
@@ -4873,7 +4873,7 @@ Your pages, audit trail, and config are untouched; they live in the host folder,
 
 ## Appendix N — Semantic search
 
-By default, Synthadoc finds the pages for an answer with keyword search ([BM25](design.md#semantic-search)): it ranks pages by the words they share with your question. That is fast and precise when you use the same words as the page, but it can miss a page when you describe the topic in your own words. **Semantic search** adds a second search that compares meaning, using a small embedding model that runs on your machine, and merges the two result lists.
+Synthadoc always finds the pages for an answer with keyword search ([BM25](design.md#semantic-search)): it ranks pages by the words they share with your question. That is fast and precise when you use the same words as the page, but it can miss a page when you describe the topic in your own words. **Semantic search** adds a second search that compares meaning, using a small embedding model that runs on your machine, and merges the two result lists. New wikis turn it on automatically whenever the add-on is installed, as it is in the Docker image.
 
 ### When it helps
 
@@ -4902,20 +4902,22 @@ The square brackets ask pip to install Synthadoc together with an optional group
 
 **Docker:** nothing to install. The image already includes the add-on and the model ([Docker guide](docker-deploy.md#semantic-search)).
 
-**2. Switch it on** in the wiki's `.synthadoc/config.toml`:
+**2. Check the setting** in the wiki's `.synthadoc/config.toml`. Wikis created with this version already have:
 
 ```toml
 [search]
-vector = true
+vector = "auto"
 ```
+
+Wikis created with an earlier version have `vector = false` and keep it; change it to `"auto"` or `true` to turn semantic search on.
 
 | Setting | Meaning |
 | --- | --- |
-| `false` | Keyword search only. The default. |
+| `"auto"` | On whenever the add-on is installed, keyword search otherwise, with no warning. **The default for new wikis.** |
 | `true` | Semantic search on. If the add-on is missing, the server logs a warning and uses keyword search. |
-| `"auto"` | On whenever the add-on is installed, keyword search otherwise, with no warning. Useful for one config shared by machines with and without the add-on. |
+| `false` | Keyword search only. Earlier versions wrote this into every new wiki. |
 
-**3. Restart the server** (`docker restart <container>` in Docker).
+**3. Restart the server** (`docker restart <container>` in Docker) if you changed the setting.
 
 What you get, by how Synthadoc was installed:
 
@@ -4934,7 +4936,7 @@ Vector search: enabled (model: BAAI/bge-small-en-v1.5) — syncing embeddings in
 Vector search: embedding 214 page(s)…
 ```
 
-In Docker: `docker logs <container> 2>&1 | grep -i vector`.
+In Docker: `docker logs <container> 2>&1 | grep -i vector`. In a wiki with Chinese, Japanese or Korean pages, the `embedding` line also says how many of those pages were left to keyword search.
 
 - **First start:** outside Docker, the ~65 MB model is downloaded once, into `~/.synthadoc/models`. Then every page is embedded in the background, a few minutes for a couple of thousand pages. Questions are answered with keyword search until that finishes.
 - **Later starts** embed only pages that are new or changed, and the log shows no `embedding` line when nothing changed.
@@ -4946,8 +4948,8 @@ If you see `embedding sync failed`, search keeps working on keywords alone and r
 
 ### Good to know
 
-- **English only.** The model, `BAAI/bge-small-en-v1.5`, is trained on English. For wikis mainly in Chinese, Japanese or Korean, keep `vector = false` for now.
-- **Speed:** each question takes about 100 ms longer, the time to run the model on your question. Keyword search itself became about 18× faster in the same release, for everyone.
+- **Chinese, Japanese and Korean are handled automatically.** The model, `BAAI/bge-small-en-v1.5`, is trained on English, and on Chinese text it made results worse. So pages written mostly in Chinese, Japanese or Korean are not embedded and are found by keyword search, and a question containing those characters uses keyword search alone. A wiki that mixes languages gets semantic search for its English pages. Nothing to configure.
+- **Speed:** finding the pages for a question takes about 50 ms longer on a 2,000-page wiki (62 ms instead of 15 ms, P95), the time to run the model on your question. It runs at the same time as keyword search, and a question asked again reuses its embedding. That is well under 1% of a typical answer, which spends seconds in the LLM. Keyword search itself became about 18× faster in the same release, for everyone.
 - **Knowledge gap warnings** are still based on keyword evidence only, so a page that is merely similar in meaning cannot hide a real gap.
 - **Works with every LLM provider**, including the coding-tool providers ([Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider)): the embedding model runs locally and never calls the LLM.
 - **Cross-wiki queries** use semantic search in each wiki that has it turned on ([Appendix L](#appendix-l--cross-wiki-queries)).
