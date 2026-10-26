@@ -354,6 +354,9 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
     const types = ["all", ...Array.from(new Set(nodes.map(n => n.type))).sort()];
     const filteredNodes = typeFilter === "all" ? nodes : nodes.filter(n => n.type === typeFilter);
     const clusterIds = [...new Set(filteredNodes.map(n => n.cluster_id))].sort((a, b) => a - b);
+    // Clusters are named after their most-connected pages (from the cluster summary).
+    const clusterById = new Map(clusters.map(c => [c.id, c]));
+    const clusterName = (cid: number) => clusterById.get(cid)?.label || `Cluster ${cid}`;
 
     return (
         <div className="graph-view">
@@ -393,6 +396,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                             <GraphSidebar
                                 node={selected}
                                 clusterColor={selected ? clusterColor(selected.cluster_id) : ""}
+                                clusterName={selected ? clusterName(selected.cluster_id) : ""}
                                 edges={edges}
                                 totalNodes={totalNodes || nodes.length}
                                 onAsk={(q, hints) => { onAskQuery(q, hints); setSelected(null); }}
@@ -415,9 +419,12 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                     {mode === "pages" && !openCluster && (
                         <div className="graph-legend">
                             {clusterIds.map(cid => (
-                                <div key={cid} className="graph-legend-item">
+                                <div key={cid} className="graph-legend-item" title={clusterName(cid)}>
                                     <span className="graph-cluster-dot" style={{ background: clusterColor(cid) }} />
-                                    Cluster {cid}
+                                    <span className="graph-legend-label">{clusterName(cid)}</span>
+                                    {clusterById.has(cid) && (
+                                        <span className="graph-legend-size">{clusterById.get(cid)!.size}</span>
+                                    )}
                                 </div>
                             ))}
                         </div>

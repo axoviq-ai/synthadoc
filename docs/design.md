@@ -3413,7 +3413,7 @@ The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed
 
 Opening a 289-page cluster takes about 2 s at 60 fps. At 5,000 pages the `/graph?view=clusters` request itself takes ~1.4 s; most of the remaining time is `/lifecycle/status`, which the UI requests at the same moment and which reads every page.
 
-In the page view, nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
+In the page view, nodes are colored by cluster, and the legend and the node sidebar name each cluster with the same `label` as the overview (its three most-connected page titles), falling back to its number. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster (by name), and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
 
 Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 
