@@ -376,10 +376,12 @@ model hurt, which the CJK handling below removes); see
 whose embedded text is mostly CJK (CJK characters ≥ 30% of its letters,
 `is_mostly_cjk()`) is not embedded and stays searchable by BM25 only; a page that
 becomes mostly CJK loses its stored embedding. A query containing any CJK
-character is answered by BM25 alone. The query agent already translates CJK
-questions to English before retrieval, so this mainly protects direct callers
-(MCP search, context packs, `/retrieve`) and a failed translation. A mixed wiki
-gets semantic search over its English pages and BM25 over all pages.
+character is answered by BM25 alone. The query agent translates CJK questions
+to English for retrieval and searches the original question too, merging the
+results: the translation finds English pages (with embeddings), the original
+finds CJK pages (with BM25). A mixed wiki therefore gets semantic search over its
+English pages and BM25 over all pages. An English question cannot find a page
+written only in Chinese — no shared keywords, and no embedding.
 
 **Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on; cached at `~/.synthadoc/models/` thereafter (override with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in).
 

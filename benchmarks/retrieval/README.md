@@ -115,6 +115,21 @@ mostly Chinese, Japanese or Korean are not embedded and a query with CJK
 characters is answered by BM25 alone, so `hybrid` scores exactly as `bm25`
 there. These results are why new wikis are created with `vector = "auto"`.
 
+What that means for a mixed wiki (from a test wiki with six Chinese and three
+English pages):
+
+| Question | Page found | By |
+| --- | --- | --- |
+| 谁发明了晶体管？ | 晶体管 (Chinese page) | BM25 on the Chinese question |
+| 谁发明了第一个编译器？ | Grace Hopper (English page) | BM25 + embeddings on its English translation |
+| the woman who found a moth in a machine | Grace Hopper | embeddings (no shared keywords) |
+| Who invented the transistor? | not found | English words cannot match Chinese text, and Chinese pages are not embedded |
+
+The query agent translates CJK questions to English for retrieval and searches
+the original question too, so pages in either language are found. This
+benchmark calls search directly, without that step, so a DuRetrieval query is
+always searched in Chinese.
+
 ### Latency
 
 P95 search latency, all queries (each query is asked once, so the query
