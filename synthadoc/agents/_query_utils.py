@@ -88,6 +88,7 @@ _LATIN_STOPWORDS: dict[str, frozenset[str]] = {
         "this", "that", "with", "from", "they", "what", "which",
         "how", "when", "where", "did", "does", "and", "not", "for",
         "been", "will", "its", "their", "than", "then",
+        "who", "why", "really", "just", "do", "an", "by", "or",
     }),
     "French": frozenset({
         "le", "la", "les", "de", "du", "des", "est", "son", "une",
@@ -333,7 +334,9 @@ def build_synthesis_system(question: str) -> str:
     return (
         "Respond in the same language as the user's question. "
         "Do NOT use the language of the wiki pages or the conversation history — "
-        "always match the language of the current question exactly."
+        "always match the language of the current question exactly. "
+        "Do NOT respond in French, Spanish, German, Italian, or Portuguese "
+        "unless the question itself is written in that language."
     )
 
 
