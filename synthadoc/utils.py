@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
+
+
+# libyaml's C parser when PyYAML was built with it (~7x faster on page
+# frontmatter, identical results); the pure-Python parser otherwise.
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def load_yaml(text: str):
+    """``yaml.safe_load`` using the C parser when available."""
+    return yaml.load(text, Loader=_YAML_LOADER)
 
 
 def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
@@ -59,6 +72,16 @@ def normalise_ts(ts: str) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# C0 control characters other than tab, newline and carriage return. They have
+# no place in Markdown, and a NUL makes grep and editors treat the file as binary.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def strip_control_chars(text: str) -> str:
+    """*text* without C0 control characters, keeping tab, newline and CR."""
+    return _CONTROL_CHARS_RE.sub("", text)
 
 
 def atomic_write_text(

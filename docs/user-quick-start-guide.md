@@ -60,6 +60,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix K — Domain Templates](#appendix-k--domain-templates)
 - [Appendix L — Cross-Wiki Queries](#appendix-l--cross-wiki-queries)
 - [Appendix M — Run the Demo in Docker](#appendix-m--run-the-demo-in-docker)
+- [Appendix N — Semantic search](#appendix-n--semantic-search)
 
 ---
 
@@ -335,6 +336,8 @@ Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
 
 The suggested search strings are generated automatically. Run one of the suggestions
 after Step 12 to fill the gap.
+
+> **Asking in your own words?** Keyword search can miss a page when your question uses different words from it. On larger wikis, [semantic search (Appendix N)](#appendix-n--semantic-search) finds pages by meaning as well.
 
 ![CLI query result with knowledge gap callout](png/cli-gap-detection.png)
 
@@ -2759,6 +2762,45 @@ After lint resolves dangling links and the graph is rebuilt, the same wiki becom
 
 ![Knowledge graph after lint — 110 nodes, denser cluster structure with fewer isolated pages](png/synthadoc-knowledge-graph.png)
 
+### Large wikis: cluster overview
+
+The demo's 110 pages fit comfortably on screen. A wiki with thousands of pages does not: drawing every page and link at once means animating tens of thousands of shapes, and the result is too dense to read. So a wiki with **more than 300 pages** opens on a **cluster overview**, and you drill into one cluster at a time. Smaller wikis show every page, as above.
+
+The 300 counts the pages in the graph: `active`, `stale` and `contradicted` pages. Drafts, archived pages and system pages (`index`, `dashboard`, `purpose`, `overview`, `log`) are left out, so the node count in the Graph tab's header is the number that matters. The limit is fixed; it is not a `config.toml` setting.
+
+![Cluster overview of a 5,000-page wiki — 24 cluster bubbles sized by page count, the strongest links between clusters, and a clickable list of clusters below the graph](png/synthadoc-graph-cluster-overview.png)
+
+*A 5,000-page test wiki built from Wikipedia articles (titles past the first 1,985 repeat, hence "part 2" and "part 3"): 100,801 links summarised as 24 clusters.*
+
+**Reading the overview:**
+
+- **Each bubble is a cluster**: a group of pages that link densely to each other, found by the same Louvain clustering that colours the page view. Its size and the number after its name give its page count.
+- **The name** joins the titles of the cluster's most-connected pages, so you can tell what it is about at a glance.
+- **Lines between bubbles** are the strongest connections between clusters; a thicker line means more links between their pages.
+- **The list below the graph** names every cluster with its page count, largest first. Hover an entry to see its full name.
+- Colours stay the same from one lint run to the next, as long as the wiki has not changed much.
+
+**Drill in:** click a bubble, or an entry in the list, to open that cluster.
+
+![Inside one 268-page cluster — every page with its strongest links, and a selected page's detail panel](png/synthadoc-graph-cluster-detail.png)
+
+*Inside a cluster: all of its pages, each with its three strongest links (605 here) rather than every link, so the drawing stays readable. Click a page for the usual detail panel; its connection count includes links to other clusters.*
+
+Everything from the page view works here: the type filter, zoom and pan, dragging pages, and **Ask about this →**. Click **← All clusters** to go back.
+
+**Speed.** Measured in a browser on test wikis of 500 to 5,000 pages:
+
+| Pages | Before: graph appears | Before: smoothness | Now: overview appears | Now: smoothness |
+| ---: | ---: | ---: | ---: | ---: |
+| 500 | 1.7 s | 40 fps | 0.8 s | 60 fps |
+| 1,000 | 5.2 s | 12 fps | 1.3 s | 60 fps |
+| 2,000 | 10.1 s | 2 fps | 2.8 s | 60 fps |
+| 5,000 | 34 s, then a frozen tab | 0 fps | about 6 s | 60 fps |
+
+Opening a cluster takes about 2 seconds. The server side got faster too: page frontmatter is parsed with the C YAML parser (libyaml) when it is available — PyYAML's prebuilt packages include it — about 7× faster, which helps every feature that reads pages.
+
+> The **Obsidian graph panel** (below) does not use the cluster overview yet: on wikis with more than 300 pages it shows the 300 most-connected pages. Use the web UI to explore all of a large wiki.
+
 ### Click a node to query it
 
 Click any node to open its detail panel:
@@ -3228,7 +3270,7 @@ If the wiki has no broken citations, the workflow reports: *"No broken citations
 
 ### Demo — content health resolver
 
-Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes the structural ones with your approval. It never writes new facts: thin sections (under 50 words) are listed under **Short Sections** in the lint report — each with its heading and word count, up to five per page (the full list is in the page's `content_health_issues` property) — for you to expand by hand or by ingesting a source that covers the topic. They do not trigger the resolver on their own.
+Wiki pages can accumulate quality issues over time — duplicate sections from multiple ingest passes, thin or empty sections from incomplete sources, and structural markdown problems. The content health resolver detects these automatically and fixes the structural ones with your approval. It never writes new facts: thin sections (under 40 words by default; `thin_section_min_words` under `[content_health]` in `config.toml`) are listed under **Short Sections** in the lint report — each with its heading and word count, up to five per page (the full list is in the page's `content_health_issues` property) — for you to expand by hand or by ingesting a source that covers the topic. They do not trigger the resolver on their own.
 
 **How it surfaces:** A fast heuristic scanner (no LLM) checks pages for known issue patterns in three situations: after every ingest on changed pages; immediately after any workflow fix is written (so structural problems introduced by the contradiction, orphan, or broken-citation resolver are caught right away); and during every full `synthadoc lint run`, which refreshes all active pages. If any issues are found:
 
@@ -3840,10 +3882,11 @@ fetch_timeout_seconds = 60   # increase if slow sites time out during web search
 provider    = "tavily"
 max_results = 20
 
-# Optional: enable semantic re-ranking (downloads ~130 MB model once)
+# Optional: semantic search — BM25 fused with page embeddings, see Appendix N
+# (pip install "synthadoc[vectors]"; downloads a ~65 MB model once)
 # [search]
-# vector = true
-# vector_top_candidates = 20   # BM25 candidate pool before cosine re-rank
+# vector = true                # or "auto": on whenever fastembed is installed
+# vector_top_candidates = 20   # candidates from each of BM25 and embeddings
 
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
@@ -3949,8 +3992,6 @@ Ensure the tool is installed and authenticated in your terminal before starting 
 ![Switching LLM providers in config.toml — Claude Code enabled](png/synthadoc-switch-provider.png)
 
 > **Web search still needs Tavily.** Even with a CLI provider, `search for:` ingest requires a `TAVILY_API_KEY`. The free tier (1,000 searches/month, no credit card required) is more than enough for typical Synthadoc use — see [Appendix D](#appendix-d--tavily-web-search-key).
-
-> **Note:** CLI providers use BM25 search only — vector/semantic search (`[search] vector = true`) is not supported and will be silently bypassed.
 
 > **Agentic workflows:** All seven maintenance workflows (ingest, wikilinks, citations, contradiction, orphan, lint, scaffold) are fully supported by CLI providers. Each workflow uses a Python-driven path that calls the same tool functions directly — no LLM wire-format loop is sent to the subprocess. See [Provider Compatibility](design.md#provider-compatibility) for the per-workflow execution model.
 
@@ -4284,7 +4325,7 @@ architecture (1945), and includes tags for deep-learning milestones.
 | Field                        | Meaning                                                                                |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full  |
-| `relevance`                  | BM25 score — higher means stronger keyword match to your goal                         |
+| `relevance`                  | BM25 score — higher means stronger keyword match to your goal; `0.00` for a page found only by [semantic search](#appendix-n--semantic-search) |
 | `confidence`                 | LLM-assigned confidence in the page's coverage of the topic                            |
 | `omitted`                    | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
 
@@ -4827,3 +4868,88 @@ docker rm history-of-computing            # remove the container
 After editing `config.toml`, run `docker restart history-of-computing`. After changing `.env`, remove and re-create the container (Step 3), because `restart` does not re-read `.env`.
 
 Your pages, audit trail, and config are untouched; they live in the host folder, not in the container. pip users can switch back to the native server at any time with `synthadoc serve -w history-of-computing --background`.
+
+---
+
+## Appendix N — Semantic search
+
+By default, Synthadoc finds the pages for an answer with keyword search ([BM25](design.md#semantic-search)): it ranks pages by the words they share with your question. That is fast and precise when you use the same words as the page, but it can miss a page when you describe the topic in your own words. **Semantic search** adds a second search that compares meaning, using a small embedding model that runs on your machine, and merges the two result lists.
+
+### When it helps
+
+Turn it on when your wiki has a few hundred pages or more, and people ask questions in their own words rather than the wiki's terminology. Measured on a 1,985-page wiki built from Wikipedia ([benchmark](../benchmarks/retrieval/README.md)):
+
+| Question type | Keyword search | With semantic search |
+| --- | ---: | ---: |
+| Paraphrased ("the first electronic machine built to compute artillery tables") | 48% | **68%** |
+| Uses the page's own words | 100% | 100% |
+| Exact name, acronym or number ("Moore School 1946") | 99% | 98% |
+| **All questions** | 84% | **90%** |
+
+*How often the right page is among the top 5 handed to the LLM.* The gain grows with the size of the wiki: on a 200-page wiki, paraphrased questions improve by 9 points; at 2,000 pages, by 20. On a small wiki such as the demo, keyword search usually finds the right pages already.
+
+When keyword search has one clear winner (typically an exact name or term), that page stays on top, so precise lookups keep working as before.
+
+### Turn it on
+
+**1. Install it.** Semantic search needs the optional `vectors` add-on:
+
+```bash
+pip install "synthadoc[vectors]"
+```
+
+The square brackets ask pip to install Synthadoc together with an optional group of extra packages, here `fastembed` (which runs the model) and `numpy`, about 175 MB. Keep the quotes: zsh, the default macOS shell, otherwise reads the brackets as a file pattern and fails with `no matches found`. Running it on an existing install only adds the extra packages. From a source checkout, use `pip install -e ".[vectors]"`.
+
+**Docker:** nothing to install. The image already includes the add-on and the model ([Docker guide](docker-deploy.md#semantic-search)).
+
+**2. Switch it on** in the wiki's `.synthadoc/config.toml`:
+
+```toml
+[search]
+vector = true
+```
+
+| Setting | Meaning |
+| --- | --- |
+| `false` | Keyword search only. The default. |
+| `true` | Semantic search on. If the add-on is missing, the server logs a warning and uses keyword search. |
+| `"auto"` | On whenever the add-on is installed, keyword search otherwise, with no warning. Useful for one config shared by machines with and without the add-on. |
+
+**3. Restart the server** (`docker restart <container>` in Docker).
+
+What you get, by how Synthadoc was installed:
+
+| Installed with | `vector = false` | `vector = true` | `vector = "auto"` |
+| --- | --- | --- | --- |
+| `pip install synthadoc` | Keyword search | Keyword search + a warning to install the add-on | Keyword search |
+| `pip install "synthadoc[vectors]"` | Keyword search + a startup reminder that semantic search is available | Semantic search | Semantic search |
+| Docker image | Keyword search + the startup reminder | Semantic search | Semantic search |
+
+### Check that it is working
+
+The server log shows:
+
+```
+Vector search: enabled (model: BAAI/bge-small-en-v1.5) — syncing embeddings in the background, BM25 only until done
+Vector search: embedding 214 page(s)…
+```
+
+In Docker: `docker logs <container> 2>&1 | grep -i vector`.
+
+- **First start:** outside Docker, the ~65 MB model is downloaded once, into `~/.synthadoc/models`. Then every page is embedded in the background, a few minutes for a couple of thousand pages. Questions are answered with keyword search until that finishes.
+- **Later starts** embed only pages that are new or changed, and the log shows no `embedding` line when nothing changed.
+- **What counts as a change:** each page is embedded from its title, tags and the first 512 characters of its text. Editing further down a page does not re-embed it. This is deliberate: in the benchmark, embedding the whole page made results worse.
+- Embeddings are stored in `.synthadoc/embeddings.db`. It is safe to delete; it is rebuilt on the next start.
+- Draft, archived and contradicted pages are not embedded, just as they are left out of keyword search.
+
+If you see `embedding sync failed`, search keeps working on keywords alone and retries after the next page change.
+
+### Good to know
+
+- **English only.** The model, `BAAI/bge-small-en-v1.5`, is trained on English. For wikis mainly in Chinese, Japanese or Korean, keep `vector = false` for now.
+- **Speed:** each question takes about 100 ms longer, the time to run the model on your question. Keyword search itself became about 18× faster in the same release, for everyone.
+- **Knowledge gap warnings** are still based on keyword evidence only, so a page that is merely similar in meaning cannot hide a real gap.
+- **Works with every LLM provider**, including the coding-tool providers ([Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider)): the embedding model runs locally and never calls the LLM.
+- **Cross-wiki queries** use semantic search in each wiki that has it turned on ([Appendix L](#appendix-l--cross-wiki-queries)).
+
+How it works in detail: [design doc — Semantic search](design.md#semantic-search).

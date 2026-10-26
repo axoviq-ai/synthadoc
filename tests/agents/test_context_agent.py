@@ -10,6 +10,7 @@ def _mock_search_result(slug: str, score: float, content: str):
     r = MagicMock()
     r.slug = slug
     r.score = score
+    r.rank_score = score   # BM25-only search orders by its score
     page = MagicMock()
     page.title = slug.replace("-", " ").title()
     page.content = content

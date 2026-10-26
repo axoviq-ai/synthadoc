@@ -14,6 +14,7 @@ def _make_search_result(slug: str, score: float = 0.9):
     r = MagicMock()
     r.slug = slug
     r.score = score
+    r.rank_score = score   # BM25-only search orders by its score
     r.title = slug.replace("-", " ").title()
     r.snippet = f"Snippet for {slug}"
     return r

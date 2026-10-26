@@ -102,6 +102,11 @@ Synthadoc scales from a single researcher to a company-wide knowledge platform:
 | **Small team (3–20)**  | Centralized internal knowledge base for startups and departments that aggregates diverse individual data sources into a unified, high-integrity wiki. The system automatically resolves contradictions and scales autonomously, ensuring organizational intelligence grows in tandem with your team |
 | **Medium / enterprise** | Compliance-sensitive knowledge bases that must stay local; per-department wikis on separate ports; audit trail for every ingest and cost event; hook system for CI/CD integration; OpenTelemetry for ops dashboards                                                                                 |
 
+**Built for large wikis.** Measured on wikis of thousands of pages: keyword search finds the pages for an answer in about 20 ms at 2,000 pages; optional [semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search) puts the right page in the top 5 for 68% of questions asked in your own words, up from 48%; and the [knowledge graph](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#large-wikis-cluster-overview) opens a 5,000-page wiki as a clickable overview of named topic clusters in about 6 seconds.
+
+![Knowledge graph of a 5,000-page wiki: one bubble per topic cluster, named after its main pages, with a clickable list of clusters below](https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docs/png/synthadoc-graph-cluster-overview.png)
+*The web UI's Graph tab on a 5,000-page test wiki: 100,801 links summarised as 24 named clusters. Click a cluster to see its pages. [How it works](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#large-wikis-cluster-overview)*
+
 No cloud account. No vendor lock-in. The wiki is plain Markdown — open it in any editor, back it up with git, sync it with any cloud drive.
 
 ---
@@ -169,12 +174,12 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | ----------- | ---------- | --------- |
-| **[Weighted knowledge graph + D3 visualisation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query; Obsidian graph panel: same graph inside Obsidian via Canvas, type filter, click node to open page | **Yes**   | No          | Partial    | No        |
+| **[Weighted knowledge graph + D3 visualisation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query; **scales to thousands of pages** — wikis over 300 pages open on a cluster overview (named clusters, click to drill in), 5,000 pages in ~6 s at 60 fps; Obsidian graph panel: same graph inside Obsidian via Canvas, type filter, click node to open page | **Yes**   | No          | Partial    | No        |
 | **[Orphan page detection](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries                                                                                                                                                                                                                                                                                             | **Yes**   | No          | No         | No        |
 | **[Query-scoped routing](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted                                                                                                                                                                                                                                            | **Yes**   | No          | No         | No        |
 | **[Candidates staging](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki                                                                                                                                                                                                                                                          | **Yes**   | No          | No         | No        |
 | **[Scaffold automation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
-| **[Domain templates](synthadoc/templates/README.md)** — 30 fully-authored templates (finance, technology, healthcare, legal, and more) so you start with the right agent guidelines, routing, and structure from day one                                                                                                                                                                                                                                    | **Yes**   | No          | No         | No        |
+| **[Domain templates](https://github.com/axoviq-ai/synthadoc/blob/main/synthadoc/templates/README.md)** — 30 fully-authored templates (finance, technology, healthcare, legal, and more) so you start with the right agent guidelines, routing, and structure from day one                                                                                                                                                                                                                                    | **Yes**   | No          | No         | No        |
 
 ### Search & Query
 
@@ -183,7 +188,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Query decomposition + gap detection](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#knowledge-gap-detection)** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches              | **Yes**            | Partial     | No         | No        |
 | **[BM25 TF fallback + compound identifier search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes**            | No          | No         | No        |
 | **[Web search → wiki pages](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline                                                | **Yes**            | No          | No         | No        |
-| **[Semantic re-ranking](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback                                                      | **Yes** (optional) | Varies      | No         | No        |
+| **[Semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search)** — optional: BM25 fused with local embeddings (`BAAI/bge-small-en-v1.5`)     ; finds pages asked about in your own words, keeps exact-name precision ([benchmark](https://github.com/axoviq-ai/synthadoc/blob/main/benchmarks/retrieval/README.md))| **Yes** (optional) | Varies      | No         | No        |
 | **[Streaming output + query cache](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change                                        | **Yes**            | Partial     | Partial    | Partial   |
 | **[Proportional context budget](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap                         | **Yes**            | No          | No         | No        |
 | **[Cross-wiki federation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-l--cross-wiki-queries)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; `[[wiki-name::PageTitle]]` citation pills; amber offline banner when a target wiki is unreachable; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
@@ -528,7 +533,7 @@ The guide covers:
 21. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
 22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 23. Backup and restore — create a portable wiki zip, restore on a different machine
-24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
+24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it; large wikis open on a cluster overview
 25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
 26. Agentic maintenance workflows — eight conversational workflows via web UI or CLI: re-ingest stale pages (bulk or by slug), scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required), resolve orphaned pages by inserting natural wikilinks into related content, fix broken source citation markers, detect and repair content quality issues (duplicate sections, thin/empty sections, broken markdown structure) with LLM-assisted analysis — agent confirms before touching anything, streams inline progress
 27. Scan and retract sensitive data — dry-run to surface API keys, emails, SSNs, credit cards, and custom patterns; apply redactions with a single confirmation; incremental `--changed-only` mode for recurring runs; audit trail records pattern names only (never the values)
@@ -560,7 +565,7 @@ If none of the 30 templates fits, install without one and provide a `--domain` d
 synthadoc install my-wiki --target ~/wikis --domain "Your domain description"
 ```
 
-→ Full template catalog and per-category install commands: [synthadoc/templates/README.md](synthadoc/templates/README.md)
+→ Full template catalog and per-category install commands: [synthadoc/templates/README.md](https://github.com/axoviq-ai/synthadoc/blob/main/synthadoc/templates/README.md)
 
 ### 2. Configure your LLM provider and start the server
 
@@ -594,7 +599,7 @@ synthadoc ingest "search for: Bank of Canada rate outlook 2025"  # web search
 synthadoc jobs list                            # watch progress
 ```
 
-→ Supported formats, subfolder layout, and web search tips: [templates/README.md — Adding your own content](synthadoc/templates/README.md#adding-your-own-content)
+→ Supported formats, subfolder layout, and web search tips: [templates/README.md — Adding your own content](https://github.com/axoviq-ai/synthadoc/blob/main/synthadoc/templates/README.md#adding-your-own-content)
 
 ### 4. Review and promote candidates
 
@@ -606,7 +611,7 @@ synthadoc candidates promote --all     # or promote individually by slug
 synthadoc candidates discard <slug>
 ```
 
-→ CLI commands and Obsidian plugin walkthrough: [templates/README.md — Reviewing and promoting candidates](synthadoc/templates/README.md#reviewing-and-promoting-candidates)
+→ CLI commands and Obsidian plugin walkthrough: [templates/README.md — Reviewing and promoting candidates](https://github.com/axoviq-ai/synthadoc/blob/main/synthadoc/templates/README.md#reviewing-and-promoting-candidates)
 
 ### 5. Query, lint, and scaffold
 
@@ -619,7 +624,7 @@ synthadoc scaffold          # regenerates index.md with richer category links
 
 Lint and scaffold run automatically on a weekly schedule (Sunday 2 AM and 3 AM). Your own content above the `<!-- synthadoc:scaffold -->` marker in `index.md` and `purpose.md` is never overwritten.
 
-→ Schedule customisation and scaffold zone rules: [templates/README.md — Scheduled maintenance](synthadoc/templates/README.md#scheduled-maintenance)
+→ Schedule customisation and scaffold zone rules: [templates/README.md — Scheduled maintenance](https://github.com/axoviq-ai/synthadoc/blob/main/synthadoc/templates/README.md#scheduled-maintenance)
 
 ### 6. Context packs and MCP
 
@@ -641,7 +646,8 @@ claude mcp add --transport sse synthadoc-my-market-wiki http://127.0.0.1:7070/mc
 → Routing performance benchmarks: [Quick-Start Guide — Appendix H](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-h--bm25-routing-performance-benchmarks)
 → Context packs and MCP integration: [docs/design.md — Context packs](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#context-packs)
 → Knowledge gap workflow: [docs/design.md — Knowledge gap workflow](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#knowledge-gap-workflow)
-→ Semantic re-ranking (optional vector search): [docs/design.md — Semantic re-ranking](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-re-ranking)
+→ Semantic search (optional): [docs/design.md — Semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search)
+→ How retrieval quality and speed are measured, and how to rerun it: [benchmarks/README.md](https://github.com/axoviq-ai/synthadoc/blob/main/benchmarks/README.md)
 
 ---
 

@@ -397,3 +397,15 @@ def test_append_to_index_uses_unix_line_endings(tmp_wiki):
     for kwargs in calls:
         assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
     assert b"\r\n" not in index.read_bytes()
+
+
+def test_write_page_strips_control_characters(tmp_wiki):
+    # A NUL once replaced "&" in a shipped demo page ("GC\x00CS"), so grep and
+    # editors treated the page as binary. Tabs and newlines are kept.
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Turing", tags=[], content="GC\x00CS and the Bomb\x00e\x1b.\n\tIndented",
+                    status="active", confidence="high", sources=[])
+    store.write_page("turing", page)
+    raw = (tmp_wiki / "wiki" / "turing.md").read_bytes()
+    assert b"\x00" not in raw and b"\x1b" not in raw
+    assert store.read_page("turing").content == "GCCS and the Bombe.\n\tIndented"

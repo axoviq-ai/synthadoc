@@ -14,6 +14,8 @@ from pathlib import Path
 
 GITHUB_BLOB = "https://github.com/axoviq-ai/synthadoc/blob/main/"
 GITHUB_RAW = "https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/"
+# A link target inside the repo: not a URL, an in-page anchor or a mail link.
+_RELATIVE = r"(?!https?://|#|mailto:)([^)\s]+)"
 
 
 def transform(content: str) -> str:
@@ -26,22 +28,18 @@ def transform(content: str) -> str:
     )
 
     # Rewrite inline images with relative paths → raw.githubusercontent.com
-    # Must run before doc-link rewrite to avoid double-replacing image hrefs
+    # Must run before the link rewrite to avoid double-replacing image hrefs
     content = re.sub(
-        r"!\[([^\]]*)\]\((docs/[^)]+)\)",
+        rf"!\[([^\]]*)\]\({_RELATIVE}\)",
         lambda m: f"![{m.group(1)}]({GITHUB_RAW}{m.group(2)})",
         content,
     )
 
-    # Rewrite relative doc links → github.com blob URLs
+    # Rewrite relative repo links (docs/, benchmarks/, synthadoc/templates/,
+    # CONTRIBUTING.md, ...) → github.com blob URLs; PyPI cannot resolve them
     content = re.sub(
-        r"\]\((docs/[^)]+)\)",
-        lambda m: f"]({GITHUB_BLOB}{m.group(1)})",
-        content,
-    )
-    content = re.sub(
-        r"\]\(CONTRIBUTING\.md([^)]*)\)",
-        lambda m: f"]({GITHUB_BLOB}CONTRIBUTING.md{m.group(1)})",
+        rf"(?<!!)(\[[^\]]*\])\({_RELATIVE}\)",
+        lambda m: f"{m.group(1)}({GITHUB_BLOB}{m.group(2)})",
         content,
     )
 

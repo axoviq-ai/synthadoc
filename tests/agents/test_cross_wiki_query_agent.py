@@ -205,6 +205,20 @@ async def test_merge_results_with_retrieve_response_object_and_warning():
     assert any("partial index" in w for w in warnings)
 
 
+def test_merge_results_interleaves_wikis_by_rank_not_raw_score():
+    """BM25 scores are not comparable across wikis: each wiki's best page comes
+    first, whatever its score, and a wiki's own order is kept."""
+    agent = CrossWikiQueryAgent(provider=_make_provider(), registry=REGISTRY, own_wiki_name="coordinator")
+    raw_results = [
+        {"pages": [{"slug": "a1", "score": 40.0}, {"slug": "a2", "score": 35.0}, {"slug": "a3", "score": 30.0}]},
+        {"pages": [{"slug": "b1", "score": 0.0}, {"slug": "b2", "score": 3.0}]},   # b1: embedding-only hit
+    ]
+    pages, offline, _ = agent._merge_results([("a", "u"), ("b", "u")], raw_results)
+    assert [p["slug"] for p in pages] == ["a1", "b1", "a2", "b2", "a3"]
+    assert [p["wiki_name"] for p in pages][:2] == ["a", "b"]
+    assert offline == []
+
+
 def test_build_context_truncates_long_content():
     """Context builder truncates when total exceeds _MAX_CONTEXT_CHARS (lines 313-314)."""
     from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _MAX_CONTEXT_CHARS
