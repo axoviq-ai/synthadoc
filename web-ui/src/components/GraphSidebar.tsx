@@ -2,12 +2,13 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { useState } from "react";
 
-interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
+interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; degree?: number; }
 interface GraphEdge { from: string; to: string; weight: number; }
 
 interface Props {
     node: GraphNode | null;
     clusterColor: string;
+    clusterName?: string;        // the cluster's name; its number when absent
     edges: GraphEdge[];
     totalNodes: number;
     onAsk: (query: string, hints: string[]) => void;
@@ -64,13 +65,14 @@ function generateHints(node: GraphNode): string[] {
     }
 }
 
-export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onClose }: Props) {
+export function GraphSidebar({ node, clusterColor, clusterName, edges, totalNodes, onAsk, onClose }: Props) {
     const [showInfo, setShowInfo] = useState(false);
 
     if (!node) return null;
 
     const displayTitle = node.title || node.slug;
-    const connections = edges.filter(e => e.from === node.slug || e.to === node.slug).length;
+    // A cluster view carries only the strongest links, so it sends each page's full count.
+    const connections = node.degree ?? edges.filter(e => e.from === node.slug || e.to === node.slug).length;
     const density = totalNodes > 1 ? connections / (totalNodes - 1) : 0;
     const connStrength = connections === 0 ? "Isolated"
         : connections < 3 ? "Sparse"
@@ -108,9 +110,9 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
             <div className="graph-sidebar-meta">
                 <div className="graph-meta-row">
                     <span className="graph-meta-label">Cluster</span>
-                    <span className="graph-meta-value">
+                    <span className="graph-meta-value graph-meta-cluster" title={clusterName || undefined}>
                         <span className="graph-cluster-dot" style={{ background: clusterColor }} />
-                        {node.cluster_id}
+                        <span className="graph-meta-cluster-name">{clusterName || node.cluster_id}</span>
                     </span>
                 </div>
                 <div className="graph-meta-row">

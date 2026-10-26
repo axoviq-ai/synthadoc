@@ -198,3 +198,26 @@ def test_write_page_is_atomic(tmp_wiki):
     assert not tmp.exists(), ".tmp file must not be left behind"
     assert "body text" in target.read_text(encoding="utf-8")
     assert b"\r\n" not in target.read_bytes()
+
+
+def test_load_yaml_matches_safe_load():
+    import yaml
+    from synthadoc.utils import load_yaml
+    text = "title: ENIAC\ntags: [history, hardware]\ncreated: 2026-01-01\nsources:\n  - file: a.pdf\n    size: 12\n"
+    assert load_yaml(text) == yaml.safe_load(text)
+    assert load_yaml("") is None
+
+
+def test_load_yaml_refuses_python_objects():
+    import pytest
+    import yaml
+    from synthadoc.utils import load_yaml
+    with pytest.raises(yaml.YAMLError):
+        load_yaml("!!python/object/apply:os.system ['echo hi']")
+
+
+def test_strip_control_chars_keeps_tab_newline_and_cr():
+    from synthadoc.utils import strip_control_chars
+    assert strip_control_chars("a\x00b\x07c\x1fd") == "abcd"
+    assert strip_control_chars("line\tone\r\nline two\n") == "line\tone\r\nline two\n"
+    assert strip_control_chars("café · 中文") == "café · 中文"

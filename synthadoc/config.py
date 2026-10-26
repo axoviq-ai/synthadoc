@@ -12,7 +12,7 @@ import tomllib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 # ---------------------------------------------------------------------------
 # Known providers
@@ -212,8 +212,15 @@ class LintConfig:
 
 @dataclass
 class SearchConfig:
-    vector: bool = False
-    vector_top_candidates: int = 20
+    # "auto": BM25 fused with embedding search when fastembed is installed,
+    #         silently BM25 otherwise. New wikis are created with "auto".
+    # True: the same, but warns if fastembed is missing.
+    # False: BM25 only. Also the value when the config has no vector line
+    #        (wikis created before "auto" have false written in their config).
+    # Either way, Chinese/Japanese/Korean pages and queries stay on BM25 (the
+    # embedding model is English-only; see search.is_mostly_cjk).
+    vector: Union[bool, str] = False
+    vector_top_candidates: int = 20   # candidates taken from each of BM25 and embeddings
 
 
 @dataclass
@@ -318,6 +325,18 @@ def _validate_lint(lint: "LintConfig") -> None:
             f"threshold. Set adversarial_max_per_page >= adversarial_gate_threshold in "
             f"config.toml."
         )
+
+
+def _parse_vector_mode(value) -> Union[bool, str]:
+    """[search] vector: true, false or "auto" (strings accepted case-insensitively)."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "false"):
+        return text == "true"
+    if text == "auto":
+        return "auto"
+    raise ValueError(f'[search] vector must be true, false or "auto", not {value!r}')
 
 
 def _validate_ingest_staging(policy: str, confidence_min: str) -> None:
@@ -499,7 +518,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     # --- search ---
     sr = raw.get("search", {})
     search = SearchConfig(
-        vector=bool(sr.get("vector", False)),
+        vector=_parse_vector_mode(sr.get("vector", False)),
         vector_top_candidates=int(sr.get("vector_top_candidates", 20)),
     )
 

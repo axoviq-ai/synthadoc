@@ -572,6 +572,25 @@ docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-com
 
 `.env` must contain that provider's key (here `OPENAI_API_KEY`).
 
+### Semantic search
+
+The image includes [semantic search](design.md#semantic-search) (`fastembed` and the ~65 MB embedding model, built in so containers never download it). Wikis created with this version have `vector = "auto"` in `config.toml`, so semantic search is on in the container with nothing to do. A wiki created with an earlier version has `vector = false` (the server logs a one-line reminder at startup that semantic search is available); to turn it on, change it and restart:
+
+```toml
+[search]
+vector = "auto"
+```
+
+Pages and questions in Chinese, Japanese or Korean stay on keyword search automatically (the embedding model is English-only), so a mixed-language wiki gets semantic search for its English pages; see the [user guide, Appendix N](user-quick-start-guide.md#appendix-n--semantic-search).
+
+On the first start the server embeds every page in the background (a few minutes for a couple of thousand pages); search answers with BM25 until it finishes. Embeddings are stored in the wiki's `.synthadoc/embeddings.db`, on the mounted volume, so later restarts only embed pages that changed.
+
+To build a smaller BM25-only image, leave the extra out:
+
+```bash
+docker build --build-arg SYNTHADOC_EXTRAS= -t synthadoc:bm25 .
+```
+
 ---
 
 ## Maintenance

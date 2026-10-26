@@ -316,7 +316,7 @@ adversarial_concurrency = 8
 adversarial_gate_threshold = 2
 
 [search]
-vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)
+vector = "auto"            # semantic search when "synthadoc[vectors]" is installed (Docker: built in); true = always, false = keyword search only
 vector_top_candidates = 20
 
 [chat]

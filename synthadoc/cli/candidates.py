@@ -7,14 +7,13 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-import yaml
 
 from synthadoc.cli._utils import _patch_toml, _toml_value  # noqa: F401  (re-exported for internal callers)
 from synthadoc.cli._wiki import resolve_wiki
 from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc.cli.main import app
 from synthadoc.config import STAGING_POLICIES, STAGING_CONFIDENCE_LEVELS
-from synthadoc.utils import atomic_write_text
+from synthadoc.utils import atomic_write_text, load_yaml
 
 staging_app = typer.Typer(name="staging", help="Manage staging policy for new wiki pages.")
 candidates_app = typer.Typer(name="candidates", help="Review, promote, or discard candidate pages.")
@@ -178,6 +177,6 @@ def _read_frontmatter(path: Path) -> dict:
     if len(parts) < 3:
         return {}
     try:
-        return yaml.safe_load(parts[1]) or {}
+        return load_yaml(parts[1]) or {}
     except Exception:
         return {}

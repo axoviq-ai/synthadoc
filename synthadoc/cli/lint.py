@@ -9,6 +9,7 @@ from typing import Optional
 
 import typer
 
+from synthadoc.utils import load_yaml
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get, post
 
@@ -61,7 +62,7 @@ def _parse_frontmatter(text: str) -> dict:
     if not m:
         return {}
     try:
-        return yaml.safe_load(m.group(1)) or {}
+        return load_yaml(m.group(1)) or {}
     except yaml.YAMLError:
         return {}
 
@@ -96,7 +97,7 @@ def _sync_orphan_frontmatter(
         if not m:
             continue
         try:
-            fm_data = yaml.safe_load(m.group(1)) or {}
+            fm_data = load_yaml(m.group(1)) or {}
         except yaml.YAMLError:
             continue
         fm_data["orphan"] = desired
