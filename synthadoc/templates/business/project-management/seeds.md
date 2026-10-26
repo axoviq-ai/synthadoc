@@ -9,7 +9,7 @@ synthadoc ingest "https://kissflow.com/workflow/project-charter-guide" -w <wiki>
 
 **RAID log templates -- risks, assumptions, issues, dependencies (Smartsheet)**
 ```
-synthadoc ingest "https://www.smartsheet.com/content/raid-templates" -w <wiki>
+synthadoc ingest "https://www.groupmap.com/templates/raid-analysis" -w <wiki>
 ```
 
 ## Recommended web searches
