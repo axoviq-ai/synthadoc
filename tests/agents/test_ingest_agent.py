@@ -2775,6 +2775,112 @@ def test_update_section_with_existing_heading_folds_into_it():
     assert "Text that came from source B." in page.content
 
 
+def test_force_reingest_replaces_cited_sections_not_duplicates():
+    """Force re-ingest of a source already in a multi-source page strips its old
+    cited sections before adding the new content, so no duplicate sections appear
+    even when the new section has a different heading or sub-sections.
+    """
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    # Page compiled from a.txt (with citations) + b.txt; a.txt is being force re-ingested.
+    page = WikiPage(
+        title="Internet",
+        tags=[],
+        status=LifecycleState.ACTIVE,
+        confidence="high",
+        sources=[
+            SourceRef(file="raw_sources/a.txt", hash="h1", size=10, ingested="2026-10-01"),
+            SourceRef(file="raw_sources/b.txt", hash="h2", size=10, ingested="2026-10-02"),
+        ],
+        content=(
+            "# Internet\n\n"
+            "## Origins\n"
+            "ARPANET was created in 1969. ^[a.txt:1-3]\n\n"
+            "## Flag Day\n"
+            "Text that came from source B. ^[b.txt:1-2]\n"
+        ),
+    )
+    # New section for a.txt uses a different heading than "Origins"
+    new_section = "## ARPANET History\n\nUpdated text from source A. ^[a.txt:1-5]\n"
+    _merge_section_into_page(page, new_section, "raw_sources/a.txt", "h1b", 15, False)
+
+    # The old "Origins" section (attributed to a.txt) must be gone
+    assert "Origins" not in page.content
+    # The new section is present
+    assert "ARPANET History" in page.content
+    assert "Updated text from source A." in page.content
+    # Source B's content is preserved
+    assert "Text that came from source B." in page.content
+    # No duplicate headings
+    assert page.content.count("## ARPANET History") == 1
+
+
+def test_force_reingest_with_subsection_replaces_attributed_section():
+    """Sections that have sub-sections are stripped correctly when they carry citations."""
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    page = WikiPage(
+        title="AI",
+        tags=[],
+        status=LifecycleState.ACTIVE,
+        confidence="high",
+        sources=[
+            SourceRef(file="raw_sources/ai.md", hash="h1", size=10, ingested="2026-10-01"),
+            SourceRef(file="raw_sources/other.md", hash="h2", size=10, ingested="2026-10-02"),
+        ],
+        content=(
+            "# AI\n\n"
+            "## Deep Learning\n"
+            "Neural networks. ^[ai.md:1-2]\n\n"
+            "### CNNs\n"
+            "Convolutional networks. ^[ai.md:3-4]\n\n"
+            "## Other Topic\n"
+            "From other source. ^[other.md:1-2]\n"
+        ),
+    )
+    new_section = "## Machine Learning\n\nFresh take on ML. ^[ai.md:1-10]\n"
+    _merge_section_into_page(page, new_section, "raw_sources/ai.md", "h1b", 20, False)
+
+    assert "Deep Learning" not in page.content
+    assert "CNNs" not in page.content
+    assert "Machine Learning" in page.content
+    assert "From other source." in page.content
+    assert page.content.count("## Machine Learning") == 1
+
+
+def test_force_reingest_preserves_uncited_intro():
+    """Sections with no citations (LLM-written intro) are preserved on force re-ingest."""
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    page = WikiPage(
+        title="Topic",
+        tags=[],
+        status=LifecycleState.ACTIVE,
+        confidence="high",
+        sources=[
+            SourceRef(file="raw_sources/a.md", hash="h1", size=5, ingested="2026-10-01"),
+            SourceRef(file="raw_sources/b.md", hash="h2", size=5, ingested="2026-10-02"),
+        ],
+        content=(
+            "# Topic\n\n"
+            "An overview with no citations.\n\n"
+            "## Details\n"
+            "Specific claim. ^[a.md:1-2]\n\n"
+            "## More\n"
+            "Content from b. ^[b.md:1-2]\n"
+        ),
+    )
+    new_section = "## Updated Details\n\nNew claim. ^[a.md:1-4]\n"
+    _merge_section_into_page(page, new_section, "raw_sources/a.md", "h1b", 10, False)
+
+    # Uncited intro preserved
+    assert "An overview with no citations." in page.content
+    # Old cited section gone, new section present
+    assert "## Details\n" not in page.content
+    assert "Updated Details" in page.content
+    assert "Content from b." in page.content
+
+
 @pytest.mark.asyncio
 async def test_decision_prompt_lists_existing_section_headings(tmp_wiki, cache):
     """The update decision sees each candidate page's ## headings so it can reuse them."""

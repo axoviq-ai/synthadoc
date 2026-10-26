@@ -16,7 +16,11 @@ from typing import Optional
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.agents.content_health_fixes import merge_duplicate_sections
-from synthadoc.agents.content_health_scanner import section_headings
+from synthadoc.agents.content_health_scanner import (
+    _section_spans,
+    _strip_code_blocks,
+    section_headings,
+)
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -475,6 +479,34 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
     page.sources.append(ref)
 
 
+def _strip_sections_from_source(content: str, source_stem: str) -> str:
+    """Remove top-level sections that are attributed to *source_stem* via citation markers.
+
+    A section is considered attributed to *source_stem* when its body (up to the next
+    same-or-higher-level heading) contains at least one ``^[source_stem:N-M]`` citation.
+    Sections with no citations are left in place — they are LLM-written intro text that
+    cannot be attributed to any single source.
+
+    Called during force re-ingest of a source already present in a multi-source page so
+    the old contribution is replaced rather than accumulated alongside the new one.
+    """
+    pat = re.compile(r"\^\[" + re.escape(source_stem) + r":\d+-\d+\]", re.IGNORECASE)
+    lines = content.split("\n")
+    spans = _section_spans(_strip_code_blocks(content).split("\n"))
+    if not spans:
+        return content
+
+    remove: set[int] = set()
+    for span in spans:
+        body_lines = lines[span.start + 1:span.end]
+        if pat.search("\n".join(body_lines)):
+            remove.update(range(span.start, span.end))
+
+    if not remove:
+        return content
+    return "\n".join(l for i, l in enumerate(lines) if i not in remove).strip()
+
+
 def _merge_section_into_page(
     page: "WikiPage",
     section: str,
@@ -487,13 +519,21 @@ def _merge_section_into_page(
 
     When *source* is the page's only source (e.g. a re-ingested session transcript),
     the body is replaced so the source never accumulates copies of itself.
+    When the source is already present in a multi-source page (force re-ingest), the
+    old sections attributed to this source are stripped by citation markers before
+    appending the new section — so headings never need to match and sub-sections are
+    handled correctly.
     Otherwise the section is appended and any heading it repeats is folded into
-    the existing one (:func:`merge_duplicate_sections`, which keeps every
-    sentence), so other sources' text is never replaced and re-ingests do not
-    stack duplicate sections.
+    the existing one (:func:`merge_duplicate_sections`, which keeps every sentence).
     """
     if _is_sole_source(page, source):
         page.content = section
+    elif _source_in_page(page, source):
+        # Force re-ingest of a source already in this multi-source page:
+        # strip the source's old cited sections, then append the fresh one.
+        stem = Path(source).name
+        stripped = _strip_sections_from_source(page.content, stem)
+        page.content = (stripped.rstrip() + f"\n\n{section}") if stripped else section
     else:
         page.content = merge_duplicate_sections(page.content.rstrip() + f"\n\n{section}").content
     _append_source_ref(page, SourceRef(
