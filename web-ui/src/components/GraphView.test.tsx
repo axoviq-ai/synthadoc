@@ -39,7 +39,10 @@ describe("GraphView", () => {
         render(<GraphView onAskQuery={vi.fn()} />);
         await waitFor(() => expect(screen.getByText(/3 nodes · 0 edges/)).toBeDefined());
         expect(urls).toEqual(["/graph?view=clusters", "/graph"]);
-        expect(screen.getByText("Cluster 1")).toBeDefined();          // legend unchanged
+        // The legend names clusters after their main pages, like the overview does.
+        expect(screen.getByText("Alpha · Beta")).toBeDefined();
+        expect(screen.getByText("Gamma")).toBeDefined();
+        expect(screen.queryByText("Cluster 1")).toBeNull();
         expect(screen.queryByText("← All clusters")).toBeNull();
     });
 
@@ -98,5 +101,26 @@ describe("GraphView", () => {
         await vi.advanceTimersByTimeAsync(2100);
         await waitFor(() => expect(screen.getByText(/click a cluster to explore it/)).toBeDefined());
         vi.useRealTimers();
+    });
+
+    it("falls back to cluster numbers when the summary has no names", async () => {
+        stubFetch({
+            "/graph?view=clusters": { ...overview(2), clusters: [] },
+            "/graph": { status: "ready", nodes: [node("a"), node("b", 1)], edges: [] },
+        });
+        render(<GraphView onAskQuery={vi.fn()} />);
+        await waitFor(() => expect(screen.getByText("Cluster 1")).toBeDefined());
+        expect(screen.getByText("Cluster 0")).toBeDefined();
+    });
+
+    it("names the selected page's cluster in the side panel", async () => {
+        stubFetch({
+            "/graph?view=clusters": overview(3),
+            "/graph": { status: "ready", nodes: [node("a"), node("b"), node("c", 1)], edges: [] },
+        });
+        render(<GraphView onAskQuery={vi.fn()} />);
+        await waitFor(() => expect(document.querySelectorAll("svg circle").length).toBe(3));
+        fireEvent.click(document.querySelectorAll("svg circle")[2]);     // page "c", cluster 1
+        await waitFor(() => expect(document.querySelector(".graph-meta-cluster-name")?.textContent).toBe("Gamma"));
     });
 });

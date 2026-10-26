@@ -2750,7 +2750,7 @@ The force-directed graph appears: nodes are wiki pages, edge thickness reflects 
 
 ### Explore clusters
 
-Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods.
+Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods. The legend below the graph names each cluster after its most-connected pages, and clicking a page shows its cluster's name in the side panel.
 
 In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
 
