@@ -802,6 +802,93 @@ async def test_find_page_source_unknown_slug():
     assert "no-such-page" in result["error"]
 
 
+async def test_find_page_source_no_sources_returns_candidates_when_raw_sources_exist(tmp_path):
+    """Template-scaffolded page (empty sources) with raw_sources/ files → candidates list returned."""
+    raw_dir = tmp_path / "raw_sources" / "brand"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "template-brand-brief.md").write_text("brand content")
+    (tmp_path / "raw_sources" / "content").mkdir()
+    (tmp_path / "raw_sources" / "content" / "template-content-calendar.md").write_text("content")
+
+    store = MagicMock()
+    page = MagicMock()
+    page.sources = []
+    store.read_page = MagicMock(return_value=page)
+
+    ctx, _ = _make_ctx(store=store)
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None,
+        store=store,
+        audit_db=None,
+        send_sse_event=ctx.send_sse_event,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await tool_find_page_source(ctx, "messaging")
+
+    assert "error" in result
+    assert "candidates" in result
+    assert len(result["candidates"]) == 2
+    assert all("raw_sources" in c for c in result["candidates"])
+
+
+async def test_find_page_source_no_sources_slug_match_sorts_first(tmp_path):
+    """When a candidate's stem contains the slug, it sorts first."""
+    raw_dir = tmp_path / "raw_sources"
+    (raw_dir / "brand").mkdir(parents=True)
+    (raw_dir / "brand" / "template-brand-brief.md").write_text("brand")
+    (raw_dir / "messaging").mkdir()
+    (raw_dir / "messaging" / "messaging-guide.md").write_text("messaging")
+
+    store = MagicMock()
+    page = MagicMock()
+    page.sources = []
+    store.read_page = MagicMock(return_value=page)
+
+    ctx_base, _ = _make_ctx(store=store)
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None,
+        store=store,
+        audit_db=None,
+        send_sse_event=ctx_base.send_sse_event,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await tool_find_page_source(ctx, "messaging")
+
+    assert "candidates" in result
+    first = result["candidates"][0]
+    assert "messaging-guide" in first
+
+
+async def test_find_page_source_no_sources_no_raw_dir_returns_plain_error(tmp_path):
+    """Empty sources with no raw_sources/ dir → plain error with no candidates key."""
+    store = MagicMock()
+    page = MagicMock()
+    page.sources = []
+    store.read_page = MagicMock(return_value=page)
+
+    ctx_base, _ = _make_ctx(store=store)
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None,
+        store=store,
+        audit_db=None,
+        send_sse_event=ctx_base.send_sse_event,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await tool_find_page_source(ctx, "messaging")
+
+    assert "error" in result
+    assert "candidates" not in result
+
+
 async def test_get_page_states_returns_state_for_each_slug():
     """tool_get_page_states maps each slug to its current lifecycle state."""
     audit_db = MagicMock()

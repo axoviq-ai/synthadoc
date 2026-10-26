@@ -220,7 +220,17 @@ class IngestLintWorkflow(AgenticWorkflow):
             # ── Workflow B: single page by slug ──────────────────────────────
             source_result = await tool_find_page_source(ctx, slug=page_slug)
             if "error" in source_result:
-                msg = f"Cannot re-ingest '{page_slug}': {source_result['error']}"
+                if "candidates" in source_result:
+                    cand_lines = "\n".join(
+                        f"  • {c}" for c in source_result["candidates"][:5]
+                    )
+                    msg = (
+                        f"Cannot re-ingest '{page_slug}': page has no recorded source.\n\n"
+                        f"Available raw source files you can ingest first:\n{cand_lines}\n\n"
+                        f"Ingest a source file, then re-ingest this page."
+                    )
+                else:
+                    msg = f"Cannot re-ingest '{page_slug}': {source_result['error']}"
                 yield {"event": "token", "data": {"text": msg}}
                 yield {"event": "final_text", "data": {"text": msg}}
                 return
