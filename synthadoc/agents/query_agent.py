@@ -976,7 +976,8 @@ class QueryAgent(BaseAgent):
         """Decompose question, apply routing scope, run parallel BM25 search.
 
         Returns (sub_questions, candidates, routing_warning).  When *question* contains
-        CJK characters it is translated to English before retrieval.  If routing-scoped
+        CJK characters it is translated to English before retrieval, and searched as
+        written too, so pages in either language are found.  If routing-scoped
         results are too weak (max_score below threshold), falls back to full-corpus BM25
         and returns a non-empty routing_warning string explaining the fallback.
         """
@@ -997,8 +998,12 @@ class QueryAgent(BaseAgent):
                 sub_q.lower().split(), top_n=_CANDIDATE_POOL_SIZE, scoped_slugs=slugs
             )
 
+        # A translated CJK question is also searched as written: the English
+        # translation finds English pages, the original finds pages written in
+        # Chinese, Japanese or Korean, which the translation cannot match.
+        search_queries = sub_questions + ([question] if retrieval_question != question else [])
         results_per_sub = await asyncio.gather(
-            *[_search_one(q, scoped_slugs) for q in sub_questions]
+            *[_search_one(q, scoped_slugs) for q in search_queries]
         )
         candidates = merge_results(results_per_sub, _CANDIDATE_POOL_SIZE)
 
@@ -1013,7 +1018,7 @@ class QueryAgent(BaseAgent):
             if scoped_weak:
                 # Routing-scoped results are below threshold — fall back to full corpus.
                 full_per_sub = await asyncio.gather(
-                    *[_search_one(q, None) for q in sub_questions]
+                    *[_search_one(q, None) for q in search_queries]
                 )
                 full_candidates = merge_results(full_per_sub, _CANDIDATE_POOL_SIZE)
                 if full_candidates:
