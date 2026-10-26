@@ -360,12 +360,14 @@ def _detect_backend(
         # happens to have configured (it may not support chat completions).
         return _win_wrap(["opencode", "run", "-m", opencode_model])
 
+    # label must match a valid --backend choice (see argparse below) — it's
+    # printed in status lines and would be invalid if echoed back by a user.
     if prefer == "anthropic":
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if api_key:
             try:
                 import anthropic
-                return _Backend(label="anthropic-sdk",
+                return _Backend(label="anthropic",
                                 client=anthropic.AsyncAnthropic(api_key=api_key),
                                 model=model)
             except ImportError:
@@ -379,14 +381,14 @@ def _detect_backend(
         if shutil.which("claude"):
             return _Backend(label="claude", cli_cmd=_win_wrap(["claude", "-p"]))
         return None
-    # auto: anthropic-sdk → claude CLI → opencode
+    # auto: anthropic → claude CLI → opencode
     # claude -p is preferred over opencode because it has a stable one-shot interface;
     # opencode's default model varies by user config and may not support chat completions.
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if api_key:
         try:
             import anthropic
-            return _Backend(label="anthropic-sdk",
+            return _Backend(label="anthropic",
                             client=anthropic.AsyncAnthropic(api_key=api_key),
                             model=model)
         except ImportError:

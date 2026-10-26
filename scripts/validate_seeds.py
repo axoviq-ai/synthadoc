@@ -157,7 +157,7 @@ def _detect_backend(model: str, prefer: str = "auto") -> "_Backend | None":
     """Return the requested (or first usable) LLM backend.
 
     prefer values:
-      "auto"       — try anthropic-sdk → opencode → claude in order
+      "auto"       — try anthropic → opencode → claude in order
       "anthropic"  — force ANTHROPIC_API_KEY / anthropic SDK
       "opencode"   — force opencode CLI
       "claude"     — force claude -p (Claude Code CLI)
@@ -167,8 +167,12 @@ def _detect_backend(model: str, prefer: str = "auto") -> "_Backend | None":
         if api_key:
             try:
                 import anthropic
+                # label must match a valid --backend choice (see argparse below) —
+                # it gets echoed back verbatim in the "to fix, re-run..." command
+                # print_summary generates, so "anthropic-sdk" would produce a
+                # command argparse rejects.
                 return _Backend(
-                    label="anthropic-sdk",
+                    label="anthropic",
                     client=anthropic.AsyncAnthropic(api_key=api_key),
                     model=model,
                 )
@@ -565,7 +569,7 @@ def main() -> None:
         default="auto",
         help=(
             "LLM backend for scope checks: "
-            "'auto' tries anthropic-sdk → opencode → claude in order (default); "
+            "'auto' tries anthropic → opencode → claude in order (default); "
             "'anthropic' forces ANTHROPIC_API_KEY / SDK; "
             "'opencode' forces opencode CLI; "
             "'claude' forces claude -p (Claude Code CLI)."
