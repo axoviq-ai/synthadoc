@@ -455,7 +455,17 @@ async def test_init_vector_is_a_noop_when_disabled(tmp_wiki):
     assert search._vector_store is None
 
 
-def test_get_embed_model_creates_and_caches_model(tmp_wiki):
+def _model_files(folder):
+    from synthadoc.storage.search import _EMBED_MODEL_FILES
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in _EMBED_MODEL_FILES:
+        (folder / name).write_text("x")
+    return folder
+
+
+def test_get_embed_model_creates_and_caches_model(tmp_wiki, monkeypatch):
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    _model_files(tmp_wiki / "models" / "bge-small-en-v1.5")
     search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
                           search_cfg=SearchConfig(vector=True))
     mock_te_cls = MagicMock(return_value=MagicMock())
@@ -465,18 +475,54 @@ def test_get_embed_model_creates_and_caches_model(tmp_wiki):
 
 
 def test_embed_model_is_cached_under_synthadoc_home_unless_overridden(tmp_wiki, monkeypatch):
-    from synthadoc.storage.search import embed_model_cache_dir
+    from synthadoc.storage.search import embed_model_cache_dir, embed_model_dir
     monkeypatch.delenv("FASTEMBED_CACHE_PATH", raising=False)
     assert embed_model_cache_dir() == Path.home() / ".synthadoc" / "models"
     monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
     assert embed_model_cache_dir() == tmp_wiki / "models"
+    assert embed_model_dir() == tmp_wiki / "models" / "bge-small-en-v1.5"
 
-    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db",
-                          search_cfg=SearchConfig(vector=True))
+
+def test_embed_model_loads_from_its_plain_folder(tmp_wiki, monkeypatch):
+    from synthadoc.storage.search import load_embed_model
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    folder = _model_files(tmp_wiki / "models" / "bge-small-en-v1.5")
     text_embedding = MagicMock()
-    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding)}):
-        search._get_embed_model()
-    assert text_embedding.call_args.kwargs["cache_dir"] == str(tmp_wiki / "models")
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
+        load_embed_model()
+    download.assert_not_called()
+    assert text_embedding.call_args.kwargs == {"specific_model_path": str(folder)}
+
+
+def test_embed_model_reuses_a_hub_cache_from_earlier_versions(tmp_wiki, monkeypatch):
+    from synthadoc.storage.search import load_embed_model
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    snapshot = _model_files(tmp_wiki / "models" / "models--Qdrant--bge-small-en-v1.5-onnx-Q"
+                            / "snapshots" / "aa8f8b0")
+    text_embedding = MagicMock()
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
+        load_embed_model()
+    download.assert_not_called()
+    assert text_embedding.call_args.kwargs == {"specific_model_path": str(snapshot)}
+
+
+def test_embed_model_downloads_plain_files_the_first_time(tmp_wiki, monkeypatch):
+    """No symlinks: Windows refuses them without Developer Mode (WinError 1314)."""
+    from synthadoc.storage.search import _EMBED_MODEL_FILES, load_embed_model
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_wiki / "models"))
+    folder = tmp_wiki / "models" / "bge-small-en-v1.5"
+    text_embedding = MagicMock()
+    download = MagicMock()
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=text_embedding),
+                                    "huggingface_hub": MagicMock(snapshot_download=download)}):
+        load_embed_model()
+    download.assert_called_once_with("Qdrant/bge-small-en-v1.5-onnx-Q", local_dir=str(folder),
+                                     allow_patterns=list(_EMBED_MODEL_FILES))
+    assert text_embedding.call_args.kwargs == {"specific_model_path": str(folder)}
 
 
 def test_embed_texts_returns_normalised_rows(tmp_wiki):

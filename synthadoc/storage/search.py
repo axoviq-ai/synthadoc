@@ -119,11 +119,53 @@ def fastembed_installed() -> bool:
     return importlib.util.find_spec("fastembed") is not None
 
 
+# The ONNX build of _EMBED_MODEL_NAME that fastembed loads, and the files it needs.
+_EMBED_MODEL_REPO = "Qdrant/bge-small-en-v1.5-onnx-Q"
+_EMBED_MODEL_FILES = ("config.json", "model_optimized.onnx", "special_tokens_map.json",
+                      "tokenizer.json", "tokenizer_config.json")
+
+
+def embed_model_dir() -> Path:
+    """The plain folder the embedding model's files are downloaded into."""
+    return embed_model_cache_dir() / "bge-small-en-v1.5"
+
+
+def _hub_cache_snapshot() -> Optional[Path]:
+    """A complete copy in fastembed's own Hugging Face cache layout (how earlier
+    versions and images stored it), so it is reused rather than downloaded again."""
+    snapshots = embed_model_cache_dir() / f"models--{_EMBED_MODEL_REPO.replace('/', '--')}" / "snapshots"
+    for snapshot in sorted(snapshots.glob("*")) if snapshots.is_dir() else []:
+        if all((snapshot / name).exists() for name in _EMBED_MODEL_FILES):
+            return snapshot
+    return None
+
+
+def _download_embed_model(folder: Path) -> None:
+    """Download the model's files into *folder* as plain files.
+
+    fastembed's default download keeps the Hugging Face cache layout, which links
+    files with symlinks; Windows refuses those without Developer Mode or admin
+    rights (WinError 1314), so the first start failed and retried. Downloading
+    to a local folder writes real files on every OS.
+    """
+    from huggingface_hub import snapshot_download
+    # Unauthenticated downloads of this public model are fine; skip the HF_TOKEN nag.
+    logging.getLogger("huggingface_hub.utils._http").setLevel(logging.ERROR)
+    logger.info("Vector search: downloading the embedding model (~67 MB, once) to %s", folder)
+    snapshot_download(_EMBED_MODEL_REPO, local_dir=str(folder), allow_patterns=list(_EMBED_MODEL_FILES))
+
+
 def load_embed_model():
-    """Load the embedding model, downloading it into embed_model_cache_dir()
-    the first time. The Docker build calls this to bake the model in."""
+    """Load the embedding model, downloading it into embed_model_dir() the first
+    time. The Docker build calls this to bake the model in."""
     from fastembed import TextEmbedding
-    return TextEmbedding(_EMBED_MODEL_NAME, cache_dir=str(embed_model_cache_dir()))
+    folder = embed_model_dir()
+    if not all((folder / name).exists() for name in _EMBED_MODEL_FILES):
+        if (cached := _hub_cache_snapshot()) is not None:
+            folder = cached
+        else:
+            _download_embed_model(folder)
+    return TextEmbedding(_EMBED_MODEL_NAME, specific_model_path=str(folder))
 
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 

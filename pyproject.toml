@@ -64,6 +64,7 @@ Changelog = "https://github.com/axoviq-ai/synthadoc/releases"
 vectors = [
     "fastembed>=0.3",   # local embedding model runtime (onnxruntime); prebuilt wheels
     "numpy>=1.24",      # embedding matrix maths in storage/search.py
+    "huggingface-hub>=0.23",  # downloads the model as plain files (local_dir); fastembed depends on it too
 ]
 dev = [
     "pytest>=8",
