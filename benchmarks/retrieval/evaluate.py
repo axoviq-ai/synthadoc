@@ -39,7 +39,8 @@ class Config:
 
 CONFIGS = {
     "bm25": Config("bm25", SearchConfig(vector=False)),
-    # Production semantic search: BM25 fused with section embeddings + keyword pin.
+    # Production semantic search (what vector = "auto" or true runs): BM25 fused with
+    # page embeddings + keyword pin; CJK pages and queries stay on BM25.
     "hybrid": Config("hybrid", SearchConfig(vector=True, vector_top_candidates=CANDIDATE_POOL)),
 }
 

@@ -581,6 +581,8 @@ The image includes [semantic search](design.md#semantic-search) (`fastembed` and
 vector = "auto"
 ```
 
+Pages and questions in Chinese, Japanese or Korean stay on keyword search automatically (the embedding model is English-only), so a mixed-language wiki gets semantic search for its English pages; see the [user guide, Appendix N](user-quick-start-guide.md#appendix-n--semantic-search).
+
 On the first start the server embeds every page in the background (a few minutes for a couple of thousand pages); search answers with BM25 until it finishes. Embeddings are stored in the wiki's `.synthadoc/embeddings.db`, on the mounted volume, so later restarts only embed pages that changed.
 
 To build a smaller BM25-only image, leave the extra out:

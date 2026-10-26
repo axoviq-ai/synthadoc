@@ -12,8 +12,9 @@ ARG SYNTHADOC_VERSION=
 
 # SYNTHADOC_EXTRAS: optional dependency groups. "vectors" (default) adds
 # semantic search: fastembed plus the embedding model, baked into the image so
-# containers never download it at runtime. Build with SYNTHADOC_EXTRAS= for a
-# smaller BM25-only image.
+# containers never download it at runtime. Wikis created with vector = "auto"
+# (the default for new wikis) use it automatically. Build with
+# SYNTHADOC_EXTRAS= for a smaller BM25-only image.
 ARG SYNTHADOC_EXTRAS=vectors
 ENV FASTEMBED_CACHE_PATH=/opt/synthadoc/models
 

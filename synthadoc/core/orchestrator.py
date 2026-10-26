@@ -131,9 +131,10 @@ class Orchestrator:
                             "syncing embeddings in the background, BM25 only until done")
                 self._search.schedule_embedding_sync()
         elif fastembed_installed():
-            # e.g. the Docker image, which ships the model: say how to turn it on.
+            # e.g. a wiki created before "auto" became the default, in the Docker
+            # image that ships the model: say how to turn it on.
             logger.info("Semantic search is available but off. To turn it on, set "
-                        "vector = true under [search] in .synthadoc/config.toml and restart.")
+                        'vector = "auto" under [search] in .synthadoc/config.toml and restart.')
 
     async def close(self) -> None:
         await self._search.close()
