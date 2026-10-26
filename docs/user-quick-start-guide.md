@@ -4938,7 +4938,7 @@ Vector search: embedding 214 page(s)…
 
 In Docker: `docker logs <container> 2>&1 | grep -i vector`. In a wiki with Chinese, Japanese or Korean pages, the `embedding` line also says how many of those pages were left to keyword search.
 
-- **First start:** outside Docker, the ~65 MB model is downloaded once, into `~/.synthadoc/models`. Then every page is embedded in the background, a few minutes for a couple of thousand pages. Questions are answered with keyword search until that finishes.
+- **First start:** outside Docker, the ~65 MB model is downloaded once, into `~/.synthadoc/models/bge-small-en-v1.5` (the log says `Vector search: downloading the embedding model`). This works on Windows without Developer Mode or administrator rights. Then every page is embedded in the background, a few minutes for a couple of thousand pages. Questions are answered with keyword search until that finishes.
 - **Later starts** embed only pages that are new or changed, and the log shows no `embedding` line when nothing changed.
 - **What counts as a change:** each page is embedded from its title, tags and the first 512 characters of its text. Editing further down a page does not re-embed it. This is deliberate: in the benchmark, embedding the whole page made results worse.
 - Embeddings are stored in `.synthadoc/embeddings.db`. It is safe to delete; it is rebuilt on the next start.

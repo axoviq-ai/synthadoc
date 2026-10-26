@@ -383,7 +383,7 @@ finds CJK pages (with BM25). A mixed wiki therefore gets semantic search over it
 English pages and BM25 over all pages. An English question cannot find a page
 written only in Chinese — no shared keywords, and no embedding.
 
-**Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on; cached at `~/.synthadoc/models/` thereafter (override with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in).
+**Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on, as five plain files in `~/.synthadoc/models/bge-small-en-v1.5/` (override the parent folder with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in). It is fetched with `huggingface_hub.snapshot_download(local_dir=…)` and loaded with fastembed's `specific_model_path`, not fastembed's own download: that keeps the Hugging Face cache layout, which needs symlinks, and Windows refuses those without Developer Mode or admin rights (WinError 1314). A copy already in that layout (from earlier versions) is reused.
 
 **What is embedded:** each page's title, tags and the first 512 characters of its text — one embedding per page. Section-level embeddings (one per heading) were benchmarked and rejected: on their own they rank better, but fused with BM25 they did worse — they mostly find the pages BM25 already finds — and took ~20x longer to compute.
 
