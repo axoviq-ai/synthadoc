@@ -8,6 +8,7 @@ import importlib.util
 import logging
 import os
 import re
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,6 +141,9 @@ def _hub_cache_snapshot() -> Optional[Path]:
     return None
 
 
+_EMBED_DOWNLOAD_LOCK = threading.Lock()
+
+
 def _download_embed_model(folder: Path) -> None:
     """Download the model's files into *folder* as plain files.
 
@@ -160,11 +164,14 @@ def load_embed_model():
     time. The Docker build calls this to bake the model in."""
     from fastembed import TextEmbedding
     folder = embed_model_dir()
-    if not all((folder / name).exists() for name in _EMBED_MODEL_FILES):
-        if (cached := _hub_cache_snapshot()) is not None:
-            folder = cached
-        else:
-            _download_embed_model(folder)
+    # Lock prevents two threads from downloading simultaneously (Windows raises
+    # WinError 32 when a second download tries to unlink a file the first has open).
+    with _EMBED_DOWNLOAD_LOCK:
+        if not all((folder / name).exists() for name in _EMBED_MODEL_FILES):
+            if (cached := _hub_cache_snapshot()) is not None:
+                folder = cached
+            else:
+                _download_embed_model(folder)
     return TextEmbedding(_EMBED_MODEL_NAME, specific_model_path=str(folder))
 
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
