@@ -36,12 +36,17 @@
 | **Windows isolation** | Avoids Python path and encoding edge cases; the container is always Linux regardless of the host OS |
 | **Reproducible deployments** | Pinned image tag guarantees the same runtime version across dev, staging, and production |
 | **Sidecar LLM (Ollama)** | Run Synthadoc alongside a local Ollama instance in one Compose stack — no cloud API key needed |
+| **Agent sandboxing** | All agent operations — URL fetch, PDF extraction, skill subprocesses, LLM-driven file writes — run inside the container and cannot reach the host OS outside the mounted wiki folder. Teams with a policy that agent workloads must stay off the host satisfy it by default |
 
 For personal use, `pip install synthadoc` is the simpler path — but Docker still adds value: the container is fully isolated from your OS, Python environment, and system libraries. Only the mounted wiki folder is shared with the host. If isolation and a clean sandbox matter to you (especially on Windows, where Python environment conflicts are common), Docker is a reasonable personal choice too.
+
+> **Disk growth:** Docker does not cap bind-mount size — the wiki folder can grow until the host disk is full. For production deployments, place the wiki directory on a dedicated partition or LVM/ZFS/BTRFS volume with a quota enforced at the OS level. On Kubernetes, a `PersistentVolumeClaim` with a `storage:` limit is the clean solution. Synthadoc's `max_pages_per_ingest` and `max_source_chars` settings provide a soft guard against runaway ingest growth but do not cap total wiki size.
 
 ---
 
 ## Architecture
+
+> The diagram and examples throughout this guide use **`history-of-computing`** as the example wiki. Substitute your own wiki name and folder wherever you see it.
 
 ```
 Host machine
@@ -209,7 +214,7 @@ Install makes no LLM call, so no API key is needed for this step. `/wikis` is on
 
 ---
 
-This guide continues with the Option A demo. After running the install command, you will see:
+This guide continues with the **Option A demo** (`history-of-computing`) to illustrate each step. If you installed a different wiki in Step 2, substitute its name wherever `history-of-computing` appears. After running the install command, you will see:
 
 ```
 Wiki 'history-of-computing' installed.
@@ -334,10 +339,7 @@ pre-configured so commands work without extra flags:
 > right after queuing — before the job finishes — and you see no results.
 > Add `--wait` to keep the process alive until the job completes.
 
-All examples below use `docker exec <container-name>`, which works regardless
-of how the container was started. The container name is whatever you passed to
-`--name` in `docker run`, or the `container_name:` in your Compose file
-(e.g. `synthadoc-wiki`).
+All examples below use `history-of-computing` as the container name (the demo wiki from Quick Start). Substitute your own container name — whatever you passed to `--name` in `docker run`, or the `container_name:` in your Compose file (e.g. `synthadoc-wiki`).
 
 If you are using Docker Compose, you can also address the container by its
 **service name** using `docker compose exec <service-name>` — for example,
@@ -1213,7 +1215,7 @@ docker exec history-of-computing synthadoc export --format okf --output /wiki/ex
 
 ### F. Security
 
-Synthadoc has **no built-in authentication**. For localhost-only use this is fine. For any deployment reachable beyond localhost:
+The **Synthadoc Open Source Community Edition** does not yet include built-in authentication. For localhost-only use this is fine. For any deployment reachable beyond localhost:
 
 - Put a reverse proxy (nginx, Traefik, Caddy) with TLS and basic auth in front of the container
 - Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`

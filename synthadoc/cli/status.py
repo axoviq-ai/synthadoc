@@ -44,8 +44,17 @@ def render_status_all(registry: dict) -> None:
         if port and probe_port(port):
             try:
                 import httpx
+                from pathlib import Path as _Path
                 resp = httpx.get(f"http://{LOOPBACK_HOST}:{port}/status", timeout=2)
                 data = resp.json()
+                # Verify the running server is actually this wiki, not a different
+                # wiki that happens to share the same port number in the registry.
+                running_path = data.get("wiki", "")
+                expected_path = entry.get("path", "")
+                if running_path and expected_path:
+                    if _Path(running_path).resolve() != _Path(expected_path).resolve():
+                        typer.echo(f"{name:<20} {str(port):<8} {'stopped':<10} {'—':<8} —")
+                        continue
                 pages = data.get("pages", "?")
                 last = data.get("last_ingest", "—")
                 typer.echo(f"{name:<20} {port:<8} {'running':<10} {str(pages):<8} {last}")
