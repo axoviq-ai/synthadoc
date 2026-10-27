@@ -212,7 +212,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Web search decomposition](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated                                     | **Yes**   | No          | No         | Partial   |
 | **[YouTube transcript ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported                                      | **Yes**   | No          | Yes        | No        |
 | **[Multilingual / CJK queries](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps                                                                                                               | **Yes**   | Limited     | No         | No        |
-| **[Multiple LLM providers + coding tools](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes**   | No          | No         | No        |
+| **[Multiple LLM providers + coding tools](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama, Kimi; Claude Code and Opencode (no API key needed) | **Yes**   | No          | No         | No        |
 
 ### Operations & Trust
 
