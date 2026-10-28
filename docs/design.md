@@ -383,13 +383,13 @@ model hurt, which the CJK handling below removes); see
 1. BM25 takes its top `vector_top_candidates` pages (default 20).
 2. The query is embedded and compared with every page embedding in memory; the top `vector_top_candidates` pages by similarity are taken, over the same scope (routing scope, query lifecycle states).
 3. The two rankings are merged with **reciprocal rank fusion** — each page scores `1 / (60 + rank)` in each list it appears in — so a page either method finds can surface, and a page high in both wins.
-4. **Keyword pin:** when BM25's best score is at least 1.05× its second, BM25's top 3 stay on top. A dominant keyword match is almost always an exact name or term, and re-ordering it by meaning would lose it.
+4. **Keyword pin:** when BM25's best score is at least 1.05× its second, BM25's top hit stays on top. A dominant keyword match is almost always an exact name or term, and re-ordering it by meaning would lose it. Only the top hit is pinned: at 1.05× the pin fires on 53% of paraphrased questions, and BM25's second and third results were the labelled page for at most 6% of the questions it fired on. Pinning the top 3 (the first release) cost paraphrase recall@5 (0.699 → 0.676) for 3 of 499 exact-name lookups, and was no better on any held-out corpus.
 
 Each `SearchResult` keeps `score` as the BM25 score (0 for a page only the embedding search found), so the knowledge-gap signals and the routing-scope fallback keep their BM25 meaning; `rank_score` is the fused ordering key and `similarity` the embedding similarity. Callers merge sub-question searches with `merge_results()`, which orders by `rank_score`. Ingest's page matching stays on BM25.
 
 **Sync:** embeddings live in `embeddings.db` (`page_embeddings` table: one vector per page plus a hash of the text it was embedded from) and in memory as one matrix. A background sync embeds new and changed pages and drops pages that left the query corpus: at server start, after every ingest, and on the next search after any page write (`invalidate_index()`). Until the first sync finishes, search is BM25 only — no downtime. A failed sync (e.g. the model cannot be downloaded) is logged and search stays on BM25.
 
-**Measured:** see [benchmarks/retrieval](../benchmarks/retrieval/README.md). On a 1,985-page Wikipedia-derived wiki, fusion with the keyword pin raises paraphrased-question recall@5 from 0.48 to 0.68 while exact-name and own-words questions stay within 1 point of BM25.
+**Measured:** see [benchmarks/retrieval](../benchmarks/retrieval/README.md). On a 1,985-page Wikipedia-derived wiki, fusion with the keyword pin raises paraphrased-question recall@5 from 0.48 to 0.70 and all questions from 0.84 to 0.90; own-words questions are unchanged and exact-name lookups are 1.6 points under BM25 (0.978 vs 0.994).
 
 **Performance notes:**
 
