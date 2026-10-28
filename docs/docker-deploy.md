@@ -409,7 +409,7 @@ docker exec -it history-of-computing synthadoc workflow run --name broken-wikili
 # Fix broken ^[file:L-L] citation markers
 docker exec -it history-of-computing synthadoc workflow run --name broken-citation-resolver
 
-# Content health resolver (v1.4.2) — fix duplicate/thin/empty sections and broken
+# Content health resolver (v1.5.0) — fix duplicate/thin/empty sections and broken
 # markdown structure; side-by-side diff approval per page, snapshot before every write
 docker exec -it history-of-computing synthadoc workflow run --name content-health
 docker exec -it history-of-computing synthadoc workflow run --name content-health --slug alan-turing
@@ -619,21 +619,21 @@ curl http://localhost:7070/health
 `latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
 
 ```bash
-docker pull chenp/synthadoc:1.4.2
+docker pull chenp/synthadoc:1.5.0
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file ~/wikis/.env \
-  chenp/synthadoc:1.4.2
+  chenp/synthadoc:1.5.0
 ```
 
 <details>
 <summary>Windows (Command Prompt)</summary>
 
 ```bat
-docker pull chenp/synthadoc:1.4.2
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.4.2
+docker pull chenp/synthadoc:1.5.0
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.0
 ```
 
 </details>
