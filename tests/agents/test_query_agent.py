@@ -3321,3 +3321,27 @@ async def test_translated_cjk_question_is_also_searched_as_written(tmp_wiki):
     _, candidates, _ = await agent._run_search("谁发明了晶体管和编译器？")
 
     assert {"transistor-zh", "grace-hopper"} <= {r.slug for r in candidates}
+
+
+def test_detect_gap_accepts_a_single_mention_on_a_top_page_matching_the_whole_question(tmp_wiki):
+    """Exact-name lookups: each rare term appears once, on the right page.
+
+    Regression: on the retrieval benchmark the gap check fired on 36% of exact-name
+    questions whose labelled page was in the top 5 ("OARnet", "1656" appear once).
+    A single mention now covers a term on a top-3 page that contains every
+    specific term of the question; the quantum test above keeps the passing-mention
+    case (a page about something else) a gap.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "ohio-supercomputer-center": "The Ohio Supercomputer Center hosted OARnet, whose director ran it from 1988.",
+        "filler-1": "Transistors replaced vacuum tubes in the 1950s.",
+        "filler-2": "Unix was written at Bell Labs in 1969.",
+        "filler-3": "The ENIAC was completed in 1945.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [SearchResult(slug=s, score=10.0 - i, title=s, snippet="") for i, s in enumerate(pages)]
+    gap, *_ = agent._detect_gap(question="OARnet director Ohio Supercomputer",
+                                candidates=candidates, max_score=10.0)
+    assert gap is False
