@@ -204,8 +204,12 @@ def is_mostly_cjk(text: str) -> bool:
 # Fusion of the BM25 and embedding rankings (see hybrid_search). Tuned on the
 # retrieval benchmark in benchmarks/retrieval.
 _RRF_K = 60
-_PIN_DOMINANCE = 1.05    # BM25 best score >= this x its second -> trust BM25's top hits
-_PIN_TOP = 3
+_PIN_DOMINANCE = 1.05    # BM25 best score >= this x its second -> trust BM25's top hit
+# Only BM25's top hit is pinned. Pinning its top 3 cost paraphrased questions
+# (recall@5 0.699 -> 0.676) for 3 of 499 exact-name lookups, and was no better
+# on any held-out corpus: ranks 2-3 were the right page for at most 6% of the
+# questions the pin fired on.
+_PIN_TOP = 1
 
 
 def page_search_text(page: WikiPage) -> str:
@@ -485,7 +489,7 @@ class HybridSearch:
 
     def _fuse(self, keyword: list[SearchResult], semantic: list[tuple[str, float]],
               top_n: int) -> list[SearchResult]:
-        """Reciprocal rank fusion of both rankings; BM25's top hits stay on top
+        """Reciprocal rank fusion of both rankings; BM25's top hit stays on top
         when BM25 has a dominant match."""
         fused: dict[str, float] = {}
         for ranking in ([r.slug for r in keyword], [slug for slug, _ in semantic]):
