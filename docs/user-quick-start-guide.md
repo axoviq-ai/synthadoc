@@ -1,6 +1,6 @@
 # Synthadoc User Quick-Start Guide
 
-**Version: v1.4.3 (Community Edition)**
+**Version: v1.5.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2214,7 +2214,7 @@ Citation faithfulness is **informational** — it flags which claims need attent
 
 The faithfulness audit uses the same LLM you have configured under `[agents.adversarial]` — the same dedicated judge model that runs the adversarial lint pass. This is intentional: both tasks are *judgment* tasks (the model reads content and renders a verdict), so sharing one "judge" role keeps configuration simple.
 
-By default, if you have not set `[agents.adversarial]`, the audit falls back to your `[agents]` default model. To use a different, potentially cheaper or more neutral model for all judgment tasks — both adversarial lint and citation faithfulness — set it once in `synthadoc.toml`:
+By default, if you have not set `[agents.adversarial]`, the audit falls back to your `[agents]` default model. To use a different, potentially cheaper or more neutral model for all judgment tasks — both adversarial lint and citation faithfulness — set it once in `.synthadoc/config.toml`:
 
 ```toml
 [agents]

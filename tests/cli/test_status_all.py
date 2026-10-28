@@ -80,3 +80,24 @@ def test_port_from_config_empty_path_returns_none():
     """_port_from_config returns None immediately when wiki_path is empty string."""
     from synthadoc.cli.status import _port_from_config
     assert _port_from_config("", "any-name") is None
+
+
+def test_status_all_shows_stopped_when_port_serves_different_wiki():
+    """A wiki whose port responds but serves a different wiki path reports as stopped."""
+    from synthadoc.cli.main import app
+    import httpx as _httpx
+
+    registry = {
+        "wiki-a": {"port": 7070, "path": "/wikis/wiki-a"},
+        "wiki-b": {"port": 7070, "path": "/wikis/wiki-b"},
+    }
+
+    def fake_get(url, **kwargs):
+        return _httpx.Response(200, json={"wiki": "/wikis/wiki-a", "pages": 10, "jobs_pending": 0})
+
+    with patch("synthadoc.cli.status.read_registry_all", return_value=registry):
+        with patch("httpx.get", side_effect=fake_get):
+            result = runner.invoke(app, ["status", "--all"])
+
+    wiki_b_line = next(l for l in result.output.splitlines() if "wiki-b" in l)
+    assert "stopped" in wiki_b_line

@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.4.3
+**Version:** 1.5.0
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -372,16 +372,7 @@ fusion better on every measure) and a Chinese corpus (DuRetrieval: the English
 model hurt, which the CJK handling below removes); see
 [benchmarks/retrieval](../benchmarks/retrieval/README.md).
 
-**Chinese, Japanese and Korean:** the model is English-only. During sync, a page
-whose embedded text is mostly CJK (CJK characters ≥ 30% of its letters,
-`is_mostly_cjk()`) is not embedded and stays searchable by BM25 only; a page that
-becomes mostly CJK loses its stored embedding. A query containing any CJK
-character is answered by BM25 alone. The query agent translates CJK questions
-to English for retrieval and searches the original question too, merging the
-results: the translation finds English pages (with embeddings), the original
-finds CJK pages (with BM25). A mixed wiki therefore gets semantic search over its
-English pages and BM25 over all pages. An English question cannot find a page
-written only in Chinese — no shared keywords, and no embedding.
+**Chinese, Japanese and Korean:** `vector = "auto"` detects language and selects the right strategy automatically — no configuration needed for a mixed-language wiki. The embedding model is English-only, so the system routes each page and query accordingly: during sync, a page whose embedded text is mostly CJK (CJK characters ≥ 30% of its letters, `is_mostly_cjk()`) is not embedded and stays searchable by BM25 only; a page that becomes mostly CJK loses its stored embedding. A query containing any CJK character is answered by BM25 alone, and the query agent also translates it to English and searches both — the translation finds English pages (with embeddings), the original finds CJK pages (with BM25), and the results are merged. A mixed wiki therefore gets semantic search over its English pages and BM25 over all pages. An English question cannot retrieve a page written entirely in Chinese — no keyword overlap and no embedding bridge. Add an English summary or English tags to the page if cross-lingual retrieval in that direction matters.
 
 **Embedding model:** `BAAI/bge-small-en-v1.5` (~65 MB), run locally by `fastembed` — it works with every LLM provider, including the CLI providers. Downloaded once on the first server start with vectors on, as five plain files in `~/.synthadoc/models/bge-small-en-v1.5/` (override the parent folder with `FASTEMBED_CACHE_PATH`; the Docker image ships with it built in). It is fetched with `huggingface_hub.snapshot_download(local_dir=…)` and loaded with fastembed's `specific_model_path`, not fastembed's own download: that keeps the Hugging Face cache layout, which needs symlinks, and Windows refuses those without Developer Mode or admin rights (WinError 1314). A copy already in that layout (from earlier versions) is reused.
 
@@ -2012,7 +2003,7 @@ class MyProvider(LLMProvider):
             yield token
 ```
 
-Add the provider name to `KNOWN_PROVIDERS` in `synthadoc/config.py` and add an `if name == "my_provider":` branch in `synthadoc/providers/__init__.py` that imports and returns an instance of your class.
+Add a member to the `Provider` StrEnum in `synthadoc/config.py` (e.g. `MY_PROVIDER = "my_provider"`). `KNOWN_PROVIDERS` is derived from the enum automatically. Then add an `if name == Provider.MY_PROVIDER:` branch in `synthadoc/providers/__init__.py` that imports and returns an instance of your class.
 
 ### Writing a hook
 
@@ -4618,6 +4609,35 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.0
+
+**Major features**
+
+- **Semantic search — on by default, CJK-aware, benchmarked** — new wikis ship with `vector = "auto"` so semantic search activates automatically when the `vectors` add-on is installed (or in Docker, where it is built in). BM25 fuses with `BAAI/bge-small-en-v1.5` embeddings; top-5 precision rises from 48% to 68% on paraphrase questions (independent corpus). `vector = "auto"` detects query language and selects the right strategy automatically — CJK queries use BM25 (the accurate path for scripts the embedding model was not trained on) and are also translated to English to surface English pages; no extra configuration needed for a mixed-language wiki. Query embedding runs in parallel with BM25 fetch; recent query embeddings are cached so repeated questions pay no extra latency. See [§38 — Semantic search](#semantic-search).
+- **Knowledge graph cluster overview for large wikis** — wikis with more than 300 pages now open on a cluster overview: each Louvain cluster is shown as a named bubble labelled after its most-connected member pages, with a clickable cluster list below. Clicking a cluster drills into its pages. 5,000-page test wiki opens in ~6 seconds at 60 fps. Cluster names are stable across refreshes (co-source pairs indexed for cluster stability). Obsidian graph panel uses the same view. See [§32 — Knowledge Graph](#32-knowledge-graph).
+- **Heading-invariant check + apply-path parity** — `heading_mismatch_error()` rejects any rewrite that adds, removes, or renames a heading on both apply paths: the content-health resolver and the contradiction resolver. Previously only the content-health path enforced this; contradiction resolver rewrites could silently rename headings, breaking wikilinks and the knowledge graph. Both paths now share `tool_propose_and_apply`, which snapshots before every write. Sentence-preservation remains content-health-only (contradiction and orphan resolvers deliberately change prose). See [§40 — Content health resolver](#40-content-health-resolver-workflow).
+- **Shared rollback across contradiction, orphan, and content-health resolvers** — `_rollback.py` provides `restore_page_snapshot()`, `tool_rollback_last_fix()`, `tool_list_recent_fixes()`, and `parse_rollback_intent()`. All three resolvers use these shared helpers. Say `"roll back <slug>"` from chat at any time to undo the last resolver write on that page, regardless of which resolver made it. Rollback is itself snapshotted. Content-health falls back to the generic mechanism when no content-health-specific record exists. See [§40 — Content health resolver](#40-content-health-resolver-workflow).
+- **Kimi as a provider via DashScope streaming** — `kimi-k3` (1M-token context), `kimi-k2.6` (256 K), and `kimi-k2.7-code` supported. Kimi models return empty content for non-streaming calls; the provider uses collect-stream internally. `temperature` is omitted (DashScope rejects it for kimi). `thinking = "disabled"` is required for `kimi-k3`. `KIMI_API_KEY` or `QWEN_API_KEY` (alias). New-wiki `config.toml` includes the kimi block with the correct flag. See [§10 — Provider switching](#provider-switching).
+
+**Refactoring and tooling**
+
+- **Provider StrEnum** — `Provider(StrEnum)` in `synthadoc/config.py` defines all 11 provider names as a single enum. `KNOWN_PROVIDERS` is derived from it. All provider string literals replaced with enum members across four files. String comparisons (`== "kimi"`) continue to work without callsite changes.
+- **Deterministic security scanner in CI** — zero-LLM-cost scanner checks for eval/exec patterns, zero-width characters, binary blobs, weak hashes, and path traversal on every push and pull request.
+- **Windows embed model download** — `threading.Lock()` serialises the fastembed model download path, preventing `WinError 32` when two threads race on first startup.
+- **MiniMax language enforcement** — short English queries (e.g. `"who really wrote the first compiler"`) now correctly detect as English; `"You MUST respond in {lang}"` added to synthesis system prompt.
+- **CJK cross-lingual query** — a translated CJK question is also searched as written so pages whose bodies use the translation's romanisation or original-language spelling are found.
+
+**Fixes**
+
+- Lint source path `raw_sources/file` now falls back to `wiki_root/file` when not found with the prefix.
+- `parse_rollback_intent` accepts single-word slugs and underscore-led slugs.
+- Rollback restores `status` and `contradiction_note` together with the page body.
+- Multi-attempt rollback retries chain onto the first attempt's snapshot.
+- `tool_rollback_last_fix` is gated in contradiction resolver (per-call confirm required except when user explicitly requested it).
+- Contradiction resolver does not single out Anthropic as the only multi-strategy provider.
+
+---
 
 ### v1.4.3
 
