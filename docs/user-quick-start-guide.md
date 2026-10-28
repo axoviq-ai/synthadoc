@@ -4881,12 +4881,12 @@ Turn it on when your wiki has a few hundred pages or more, and people ask questi
 
 | Question type | Keyword search | With semantic search |
 | --- | ---: | ---: |
-| Paraphrased ("the first electronic machine built to compute artillery tables") | 48% | **68%** |
+| Paraphrased ("the first electronic machine built to compute artillery tables") | 48% | **70%** |
 | Uses the page's own words | 100% | 100% |
 | Exact name, acronym or number ("Moore School 1946") | 99% | 98% |
 | **All questions** | 84% | **90%** |
 
-*How often the right page is among the top 5 handed to the LLM.* The gain grows with the size of the wiki: on a 200-page wiki, paraphrased questions improve by 9 points; at 2,000 pages, by 20. On a small wiki such as the demo, keyword search usually finds the right pages already.
+*How often the right page is among the top 5 handed to the LLM.* The gain grows with the size of the wiki: on a 200-page wiki, paraphrased questions improve by 13 points; at 2,000 pages, by 22. On a small wiki such as the demo, keyword search usually finds the right pages already.
 
 When keyword search has one clear winner (typically an exact name or term), that page stays on top, so precise lookups keep working as before.
 
