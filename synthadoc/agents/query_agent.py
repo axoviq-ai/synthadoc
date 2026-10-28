@@ -34,6 +34,7 @@ from synthadoc.storage.wiki import WikiStorage
 logger = logging.getLogger(__name__)
 
 _MIN_TERM_FREQ = 2
+_TOP_PAGES_ONE_MENTION = 3   # signal 5: one mention covers a term on a top page matching every specific term
 
 # Word endings stripped when the gap check asks whether some page covers a query
 # term in depth (signal 5), so "codebreaker" is covered by a page that says
@@ -1246,18 +1247,25 @@ class QueryAgent(BaseAgent):
 
             _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
             _pages_with_overlap = 0
-            for _r in candidates:
+            for _rank, _r in enumerate(candidates):
                 _p = self._store.read_page(_r.slug)
                 if not _p:
                     continue
                 _content = _p.content.lower().replace("-", " ")
                 _page_on_topic = False
+                # One mention suffices on a top-ranked page that matches the whole
+                # question: an exact name or number ("OARnet", "1656") usually appears
+                # once, on exactly the right page. A passing mention on a page about
+                # something else ("quantum" with no "error correction") does not count.
+                _matches_all = _rank < _TOP_PAGES_ONE_MENTION and all(
+                    _gap_match_form(_t) in _content for _t in _specific)
+                _needed = 1 if _matches_all else _MIN_TERM_FREQ
                 for _t in _specific:
                     if _content.count(_t) >= _MIN_TERM_FREQ:
                         _page_on_topic = True
                     # A page covers the term in depth when its word family recurs:
                     # "codebreaker" is covered by a page saying "codebreaking".
-                    if _content.count(_gap_match_form(_t)) >= _MIN_TERM_FREQ:
+                    if _content.count(_gap_match_form(_t)) >= _needed:
                         _term_qualifying_pages[_t] += 1
                 if _page_on_topic:
                     _pages_with_overlap += 1
@@ -1332,15 +1340,18 @@ class QueryAgent(BaseAgent):
             _acronym_absent = False
             _prominent_term_absent = False
 
-        gap = self._gap_score_threshold > 0 and (
-            (len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold)
-            or (bool(_key_terms) and not used_tf_fallback and max_score < self._gap_score_threshold)  # skip when no content words or TF fallback
-            or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
-            or _any_term_missing
-            or _defining_term_absent
-            or _acronym_absent
-            or _prominent_term_absent
-        )
+        _signals = {
+            "1 few candidates": len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold,
+            "2 weak score": bool(_key_terms) and not used_tf_fallback and max_score < self._gap_score_threshold,  # skip when no content words or TF fallback
+            "3 little overlap": _pages_with_overlap < 2 and max_score < self._gap_score_threshold,  # one strong page is enough
+            "4 term missing": _any_term_missing,
+            "5 defining term absent": _defining_term_absent,
+            "6 acronym absent": _acronym_absent,
+            "7 prominent term absent": _prominent_term_absent,
+        }
+        gap = self._gap_score_threshold > 0 and any(_signals.values())
+        if gap:
+            logger.debug("gap signals fired: %s", [name for name, fired in _signals.items() if fired])
         logger.info(
             "query retrieval — pages=%d, max_score=%.2f, "
             "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
