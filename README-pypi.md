@@ -40,6 +40,8 @@
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
 
+**Documentation, FAQ and articles:** https://axoviq.com/resources/synthadoc
+
 Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, videos, Word files, TXTs, and AI session transcripts (.jsonl) — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
 
 ---
@@ -272,8 +274,9 @@ Choose one way to run Synthadoc:
 **Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
 
 ```bash
-pip install synthadoc
-synthadoc --version   # confirm it works
+pip install "synthadoc[vectors]"   # recommended — includes semantic search
+pip install synthadoc              # lightweight install, no semantic search
+synthadoc --version                # confirm it works
 ```
 
 The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
