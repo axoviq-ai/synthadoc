@@ -35,6 +35,8 @@ export interface ConfirmRequestData {
 
 export interface StreamCallbacks {
     onToken: (text: string) => void;
+    /** The final answer text (citation links resolved); replaces the streamed tokens. */
+    onAnswer?: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap: (suggestions: string[]) => void;
     onDone: (nextHints: string[], prePrompt?: string) => void;
@@ -163,6 +165,10 @@ export function dispatch(event: string, data: Record<string, unknown>, cb: Strea
         case "token": {
             const text = typeof data.text === "string" ? data.text : "";
             cb.onToken(text);
+            break;
+        }
+        case "answer": {
+            if (typeof data.text === "string") cb.onAnswer?.(data.text);
             break;
         }
         case "citations": {

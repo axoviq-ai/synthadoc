@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from synthadoc.agents._utils import parse_json_string_array
@@ -300,6 +301,41 @@ def history_block(history: list[dict], question: str = "") -> str:
 _ANSWER_TAG_RE = __import__("re").compile(
     r"^\s*<answer>\s*(.*?)\s*</answer>\s*$", __import__("re").DOTALL | __import__("re").IGNORECASE
 )
+
+
+_WIKILINK_RE = re.compile(r"\[\[([^\[\]|#]+?)((?:[|#][^\]]*)?)\]\]")
+
+
+def _link_key(name: str) -> str:
+    """Case- and punctuation-insensitive form of a link target or title."""
+    return re.sub(r"[\W_]+", "-", name.lower()).strip("-")
+
+
+def resolve_wikilinks(text: str, pages: dict[str, tuple[str, list[str]]]) -> str:
+    """Point [[...]] links that name a page by title or alias at its slug.
+
+    The synthesis prompt asks for [[PageTitle]], but a page's file is its slug,
+    so a title link ("Konrad Zuse Z3 Computer", or the LLM's own slugified
+    version, "konrad-zuse-z3-computer") is a broken link in Obsidian, where
+    clicking it creates an empty note. *pages* maps each candidate slug to its
+    (title, aliases). Links that already name a slug, cross-wiki [[wiki::Page]]
+    links and unrecognised targets are left as they are; a |display or #heading
+    suffix is kept.
+    """
+    lookup: dict[str, str] = {}
+    for slug, (title, aliases) in pages.items():
+        for name in (slug, title, *aliases):
+            if name:
+                lookup.setdefault(_link_key(name), slug)
+
+    def _fix(m: re.Match) -> str:
+        target, suffix = m.group(1).strip(), m.group(2)
+        if "::" in target or target in pages:
+            return m.group(0)
+        slug = lookup.get(_link_key(target))
+        return f"[[{slug}{suffix}]]" if slug else m.group(0)
+
+    return _WIKILINK_RE.sub(_fix, text)
 
 
 def strip_answer_tags(text: str) -> str:

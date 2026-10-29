@@ -17,6 +17,7 @@ from synthadoc.agents._query_utils import (
     history_block,
     build_synthesis_system,
     strip_answer_tags,
+    resolve_wikilinks,
     trim_history,
     decompose_question,
     STOPWORDS,
@@ -898,6 +899,14 @@ class QueryAgent(BaseAgent):
             f"Question: {question}\n\nPages:\n{context}"
         )
 
+    def _resolve_links(self, text: str, candidates: list[SearchResult]) -> str:
+        """*text* with [[Title]] citations pointed at the cited pages' slugs."""
+        pages = {}
+        for r in candidates:
+            if (page := self._store.read_page(r.slug)) is not None:
+                pages[r.slug] = (page.title or "", list(page.aliases or []))
+        return resolve_wikilinks(text, pages) if pages else text
+
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
         page = self._store.read_page("purpose")
@@ -1155,6 +1164,7 @@ class QueryAgent(BaseAgent):
         _missing_slugs, answer_text = _extract_missing_slugs(answer_text)
         if _missing_slugs:
             logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
+        answer_text = self._resolve_links(answer_text, candidates)
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -1528,6 +1538,13 @@ class QueryAgent(BaseAgent):
         # use it to re-enable gap — Guard C's assessment is final.
         if _missing_slugs:
             logger.debug("run_stream: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
+
+        # Title links already streamed as tokens; send the text with them pointed at
+        # page slugs, for clients to show in place of the streamed text.
+        resolved = self._resolve_links(full_answer, candidates)
+        if resolved != full_answer:
+            full_answer = resolved
+            yield {"event": "answer", "data": {"text": full_answer}}
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 

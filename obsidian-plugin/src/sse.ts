@@ -5,6 +5,8 @@ export interface SSECallbacks {
     onStatus?: (phase: string, sources?: number) => void;
     onToolProgress?: (tool: string, message: string) => void;
     onToken: (text: string) => void;
+    /** The final answer text (citation links resolved); replaces the streamed tokens. */
+    onAnswer?: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap?: (suggestions: string[]) => void;
     onDone: (nextHints: string[]) => void | Promise<void>;
@@ -61,6 +63,9 @@ async function _dispatch(event: string, data: Record<string, unknown>, cb: SSECa
             break;
         case "token":
             cb.onToken(data.text as string);
+            break;
+        case "answer":
+            if (typeof data.text === "string") cb.onAnswer?.(data.text);
             break;
         case "citations":
             cb.onCitations((data.citations as string[]) ?? []);

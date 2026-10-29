@@ -3345,3 +3345,22 @@ def test_detect_gap_accepts_a_single_mention_on_a_top_page_matching_the_whole_qu
     gap, *_ = agent._detect_gap(question="OARnet director Ohio Supercomputer",
                                 candidates=candidates, max_score=10.0)
     assert gap is False
+
+
+def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),
+             "alan-turing": ("Alan Turing", []),
+             "transistor-zh": ("晶体管", [])}
+    text = ("[[Konrad Zuse Z3 Computer]] [[konrad-zuse-z3-computer]] [[Zuse]] [[alan turing]] "
+            "[[晶体管]] [[alan-turing]] [[Alan Turing|Turing]] [[Alan Turing#Enigma]] "
+            "[[finance-wiki::Revenue]] [[Unknown Page]]")
+    assert resolve_wikilinks(text, pages) == (
+        "[[konrad-zuse]] [[konrad-zuse]] [[konrad-zuse]] [[alan-turing]] "
+        "[[transistor-zh]] [[alan-turing]] [[alan-turing|Turing]] [[alan-turing#Enigma]] "
+        "[[finance-wiki::Revenue]] [[Unknown Page]]")
+
+
+def test_resolve_wikilinks_leaves_text_without_links_alone():
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    assert resolve_wikilinks("No links here.", {"a": ("A", [])}) == "No links here."

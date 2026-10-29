@@ -2833,6 +2833,7 @@ data: {"event": "done", "data": {"next_hints": [...], "input_tokens": 1240, "out
 | `status`    | `{"phase": "retrieving"}`                                                       | Phase 1 starts                                                  |
 | `status`    | `{"phase": "synthesizing", "sources": N}`                                       | Phase 2 starts                                                  |
 | `token`     | `{"text": "…"}`                                                                | Each LLM token                                                  |
+| `answer`    | `{"text": "…"}`                                                                | After last token, only when citation links were rewritten: the full answer with `[[Page Title]]` links pointed at page slugs, replacing the streamed tokens |
 | `citations` | `{"citations": […]}`                                                           | After last token                                                |
 | `gap`       | `{"suggested_searches": […]}`                                                  | If knowledge gap detected                                       |
 | `clarify`   | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}`                | Action agent needs disambiguation (e.g. which page to activate) |
