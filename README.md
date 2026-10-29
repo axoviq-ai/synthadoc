@@ -294,8 +294,9 @@ Choose one way to run Synthadoc:
 **Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
 
 ```bash
-pip install synthadoc
-synthadoc --version   # confirm it works
+pip install "synthadoc[vectors]"   # recommended — includes semantic search
+pip install synthadoc              # lightweight install, no semantic search
+synthadoc --version                # confirm it works
 ```
 
 The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
