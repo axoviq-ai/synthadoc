@@ -901,11 +901,12 @@ class QueryAgent(BaseAgent):
 
     def _resolve_links(self, text: str, candidates: list[SearchResult]) -> str:
         """*text* with [[Title]] citations pointed at the cited pages' slugs."""
-        pages = {}
+        pages, sources = {}, {}
         for r in candidates:
             if (page := self._store.read_page(r.slug)) is not None:
                 pages[r.slug] = (page.title or "", list(page.aliases or []))
-        return resolve_wikilinks(text, pages) if pages else text
+                sources[r.slug] = [s.file for s in page.sources or [] if getattr(s, "file", "")]
+        return resolve_wikilinks(text, pages, sources) if pages else text
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""

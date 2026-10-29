@@ -3364,3 +3364,19 @@ def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
 def test_resolve_wikilinks_leaves_text_without_links_alone():
     from synthadoc.agents._query_utils import resolve_wikilinks
     assert resolve_wikilinks("No links here.", {"a": ("A", [])}) == "No links here."
+
+
+def test_resolve_wikilinks_points_a_source_file_name_at_its_page():
+    """The LLM turns ^[konrad-zuse-z3-computer.md:5-7] into [[konrad-zuse-z3-computer]]."""
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    pages = {"konrad-zuse": ("Konrad Zuse", []), "grace-hopper": ("Grace Hopper", []),
+             "eniac": ("ENIAC", []), "univac": ("UNIVAC", []),
+             "von-neumann": ("Von Neumann", [])}
+    sources = {"konrad-zuse": ["/wiki/raw_sources/konrad-zuse-z3-computer.md"],
+               "grace-hopper": ["raw_sources\\hopper-biography-usn.txt"],
+               "eniac": ["/wiki/raw_sources/early-machines.pdf"],      # shared by two pages
+               "univac": ["/wiki/raw_sources/early-machines.pdf"],
+               "von-neumann": ["/wiki/raw_sources/eniac.md"]}         # "eniac" is a page title too
+    text = "[[konrad-zuse-z3-computer]] [[hopper-biography-usn]] [[early-machines]] [[eniac]]"
+    assert resolve_wikilinks(text, pages, sources) == (
+        "[[konrad-zuse]] [[grace-hopper]] [[early-machines]] [[eniac]]")

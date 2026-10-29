@@ -311,22 +311,35 @@ def _link_key(name: str) -> str:
     return re.sub(r"[\W_]+", "-", name.lower()).strip("-")
 
 
-def resolve_wikilinks(text: str, pages: dict[str, tuple[str, list[str]]]) -> str:
+def resolve_wikilinks(text: str, pages: dict[str, tuple[str, list[str]]],
+                      sources: dict[str, list[str]] | None = None) -> str:
     """Point [[...]] links that name a page by title or alias at its slug.
 
     The synthesis prompt asks for [[PageTitle]], but a page's file is its slug,
     so a title link ("Konrad Zuse Z3 Computer", or the LLM's own slugified
     version, "konrad-zuse-z3-computer") is a broken link in Obsidian, where
     clicking it creates an empty note. *pages* maps each candidate slug to its
-    (title, aliases). Links that already name a slug, cross-wiki [[wiki::Page]]
-    links and unrecognised targets are left as they are; a |display or #heading
-    suffix is kept.
+    (title, aliases). *sources* maps a slug to its source files: the LLM also
+    turns a page's source citation (^[konrad-zuse-z3-computer.md:5-7]) into a
+    link, so a source file's name points at the page, when only one candidate
+    page has that source and no title or alias claims the name. Links that
+    already name a slug, cross-wiki [[wiki::Page]] links and unrecognised
+    targets are left as they are; a |display or #heading suffix is kept.
     """
     lookup: dict[str, str] = {}
     for slug, (title, aliases) in pages.items():
         for name in (slug, title, *aliases):
             if name:
                 lookup.setdefault(_link_key(name), slug)
+    by_source: dict[str, set[str]] = {}
+    for slug, files in (sources or {}).items():
+        for f in files:
+            stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", re.split(r"[\\/]", f.rstrip("/\\"))[-1])
+            if stem:
+                by_source.setdefault(_link_key(stem), set()).add(slug)
+    for key, slugs in by_source.items():
+        if len(slugs) == 1 and key not in lookup:
+            lookup[key] = next(iter(slugs))
 
     def _fix(m: re.Match) -> str:
         target, suffix = m.group(1).strip(), m.group(2)
