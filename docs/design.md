@@ -2326,6 +2326,15 @@ Empty list when no warnings exist or the pass was skipped.
 
 Every compiled wiki page is a synthesis — the LLM reads source documents and rewrites them as prose. Claim-level provenance closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in `audit.db`. In Obsidian they render as interactive chips — one click opens the Source Viewer.
 
+### IngestAgent — updating an existing page
+
+On `action=update` the LLM writes only what the page does not already cover (`update_content`), and `_merge_section_into_page()` adds it **without ever discarding existing text**:
+
+- **A source already on the page is re-ingested** (its hash changed, or `--force`): its old contribution is replaced by the new section, so old and new versions do not sit side by side: the whole body when it is the page's only source, or the sections that cite it (`_strip_sections_from_source()`) when the page has others too. The replacement is kept only if it drops no sentence of the page (`dropped_sentences()`). Otherwise the old text stays and the new section is appended.
+- **Otherwise, and for a new source:** the section is appended and `merge_duplicate_sections()` folds a repeated heading into the existing one and drops paragraphs repeated word for word, keeping every sentence. If merging would still lose a sentence, the section is appended without merging.
+
+Replacing without that check lost text: the update section is a delta, so a demo batch ingest, which re-ingests each page's only source (the shipped pages record placeholder hashes), cut `alan-turing.md` from 55 KB to 2 KB and eight other pages likewise (v1.4.3–v1.5.0). Before each live update the page's previous text is stored as a lifecycle snapshot (`triggered_by = ingest`, reason `before ingest update from <source>`), so any ingest update can be rolled back with the snapshot tools.
+
 ### IngestAgent Pass 4 — `_annotate_citations()`
 
 Called within the Write pass for each page section immediately before it is appended to the page. The LLM receives:

@@ -2753,15 +2753,37 @@ def test_reingesting_one_source_never_wipes_other_sources_text():
     assert "Updated text from source A." in page.content
 
 
-def test_reingesting_the_only_source_replaces_its_body():
-    """Session transcripts: one source owns the page, so a re-ingest replaces it."""
+def test_reingesting_the_only_source_keeps_text_the_new_section_does_not_restate():
+    """The update step writes only what is new; replacing the page with it lost the rest.
+
+    Regression: a demo batch ingest re-ingested each page's only source and cut
+    alan-turing.md from 55 KB to 2 KB.
+    """
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    page = WikiPage(title="Internet", tags=[], status=LifecycleState.ACTIVE, confidence="",
+                    sources=[SourceRef(file="public-domain/leiner.txt", hash="placeholder", size=0,
+                                       ingested="2026-04-08")],
+                    content=("## ARPANET (1969)\nThe first message was sent between UCLA and SRI in 1969. ^[leiner.txt:1-2]\n\n"
+                             "## TCP/IP (1974)\nCerf and Kahn designed TCP/IP in 1974 for every network. ^[leiner.txt:3-4]\n"))
+    _merge_section_into_page(page, "## World Wide Web\nMosaic brought the web to a general audience in 1993. ^[leiner.txt:9-9]",
+                             "/wiki/raw_sources/public-domain/leiner.txt", "real-hash", 6051, False)
+    assert "The first message was sent between UCLA and SRI in 1969." in page.content
+    assert "Cerf and Kahn designed TCP/IP in 1974 for every network." in page.content
+    assert "Mosaic brought the web to a general audience in 1993." in page.content
+    assert [s.hash for s in page.sources] == ["real-hash"]
+
+
+def test_reingesting_the_only_source_replaces_it_when_the_new_text_restates_it():
+    """Session transcripts: a re-ingest that restates the page replaces it, no copies."""
     from synthadoc.agents.ingest_agent import _merge_section_into_page
     from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
     page = WikiPage(title="S", tags=[], status=LifecycleState.ACTIVE, confidence="",
                     sources=[SourceRef(file="session.jsonl", hash="h", size=1, ingested="2026-10-01")],
-                    content="# S\n\nOld summary of the session.\n")
-    _merge_section_into_page(page, "# S\n\nNew summary of the session.", "session.jsonl", "h2", 1, False)
-    assert page.content == "# S\n\nNew summary of the session."
+                    content="# S\n\nWe fixed the login bug in the session.\n")
+    new = "# S\n\nWe fixed the login bug in the session.\n\nThen we added rate limiting to the API."
+    _merge_section_into_page(page, new, "session.jsonl", "h2", 1, False)
+    assert page.content == new
 
 
 def test_update_section_with_existing_heading_folds_into_it():
@@ -2775,44 +2797,42 @@ def test_update_section_with_existing_heading_folds_into_it():
     assert "Text that came from source B." in page.content
 
 
-def test_force_reingest_replaces_cited_sections_not_duplicates():
-    """Force re-ingest of a source already in a multi-source page strips its old
-    cited sections before adding the new content, so no duplicate sections appear
-    even when the new section has a different heading or sub-sections.
+def test_force_reingest_replaces_cited_sections_that_the_new_text_restates():
+    """Force re-ingest of a source in a multi-source page strips its old cited
+    sections when the new section restates them, so no duplicate sections appear
+    even when the new section has a different heading.
     """
     from synthadoc.agents.ingest_agent import _merge_section_into_page
-    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
-    # Page compiled from a.txt (with citations) + b.txt; a.txt is being force re-ingested.
-    page = WikiPage(
-        title="Internet",
-        tags=[],
-        status=LifecycleState.ACTIVE,
-        confidence="high",
-        sources=[
-            SourceRef(file="raw_sources/a.txt", hash="h1", size=10, ingested="2026-10-01"),
-            SourceRef(file="raw_sources/b.txt", hash="h2", size=10, ingested="2026-10-02"),
-        ],
-        content=(
-            "# Internet\n\n"
-            "## Origins\n"
-            "ARPANET was created in 1969. ^[a.txt:1-3]\n\n"
-            "## Flag Day\n"
-            "Text that came from source B. ^[b.txt:1-2]\n"
-        ),
-    )
-    # New section for a.txt uses a different heading than "Origins"
-    new_section = "## ARPANET History\n\nUpdated text from source A. ^[a.txt:1-5]\n"
+    page = _force_reingest_page()
+    new_section = ("## ARPANET History\n\nARPANET was created in 1969 by ARPA. "
+                   "It later moved to TCP/IP in 1983. ^[a.txt:1-5]\n")
     _merge_section_into_page(page, new_section, "raw_sources/a.txt", "h1b", 15, False)
-
-    # The old "Origins" section (attributed to a.txt) must be gone
-    assert "Origins" not in page.content
-    # The new section is present
-    assert "ARPANET History" in page.content
-    assert "Updated text from source A." in page.content
-    # Source B's content is preserved
+    assert "## Origins" not in page.content
+    assert page.content.count("ARPANET was created in 1969 by ARPA.") == 1
     assert "Text that came from source B." in page.content
-    # No duplicate headings
-    assert page.content.count("## ARPANET History") == 1
+
+
+def test_force_reingest_keeps_cited_sections_the_new_text_does_not_restate():
+    """Stripping a source's old sections for a section that only adds new facts
+    would lose them: keep them, append the new section."""
+    from synthadoc.agents.ingest_agent import _merge_section_into_page
+    page = _force_reingest_page()
+    new_section = "## Later History\n\nThe network was decommissioned in 1990. ^[a.txt:6-7]\n"
+    _merge_section_into_page(page, new_section, "raw_sources/a.txt", "h1b", 15, False)
+    assert "ARPANET was created in 1969 by ARPA." in page.content
+    assert "The network was decommissioned in 1990." in page.content
+    assert "Text that came from source B." in page.content
+
+
+def _force_reingest_page():
+    from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage
+    return WikiPage(
+        title="Internet", tags=[], status=LifecycleState.ACTIVE, confidence="high",
+        sources=[SourceRef(file="raw_sources/a.txt", hash="h1", size=10, ingested="2026-10-01"),
+                 SourceRef(file="raw_sources/b.txt", hash="h2", size=10, ingested="2026-10-02")],
+        content=("# Internet\n\n## Origins\nARPANET was created in 1969 by ARPA. ^[a.txt:1-3]\n\n"
+                 "## Flag Day\nText that came from source B. ^[b.txt:1-2]\n"),
+    )
 
 
 def test_force_reingest_with_subsection_replaces_attributed_section():
@@ -2918,3 +2938,34 @@ def test_section_headings_lists_h2_outside_code():
     from synthadoc.agents.content_health_scanner import section_headings
     content = "# T\n\n## A\nx\n\n### A1\ny\n\n```\n## not a heading\n```\n\n## B\nz\n"
     assert section_headings(content) == ["A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_ingest_update_snapshots_the_page_before_changing_it(tmp_wiki, mock_provider, cache):
+    """An ingest update keeps the page's earlier text, so it can be rolled back."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    agent = IngestAgent(provider=mock_provider, store=store, search=search,
+                        log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), audit_db=audit,
+                        cache=cache, max_pages=15)
+    await agent._snapshot_before_update("internet-origins", "active",
+                                        "## ARPANET\nThe first message was sent in 1969.", "leiner.txt")
+    events, _ = await audit.get_lifecycle_events(slug="internet-origins")
+    assert events[0]["triggered_by"] == "ingest"
+    assert "before ingest update from leiner.txt" in events[0]["reason"]
+    snap = await audit.get_snapshot_by_index("internet-origins", 1)   # 1 = newest
+    assert snap["content_snapshot"] == "## ARPANET\nThe first message was sent in 1969."
+
+
+@pytest.mark.asyncio
+async def test_ingest_snapshot_failure_never_fails_the_ingest(tmp_wiki, mock_provider, cache):
+    from unittest.mock import AsyncMock, MagicMock
+    audit = MagicMock(record_lifecycle_event=AsyncMock(side_effect=RuntimeError("db locked")))
+    store = WikiStorage(tmp_wiki / "wiki")
+    agent = IngestAgent(provider=mock_provider, store=store,
+                        search=HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db"),
+                        log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), audit_db=audit,
+                        cache=cache, max_pages=15)
+    await agent._snapshot_before_update("p", "active", "Some text here.", "s.txt")   # no exception
