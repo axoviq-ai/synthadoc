@@ -485,7 +485,7 @@ To stop a background server:
 synthadoc stop -w history-of-computing
 ```
 
-**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
+**Upgrading:** after updating synthadoc (via `pip install --upgrade "synthadoc[vectors]"` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
 synthadoc plugin upgrade         # push updated Obsidian plugin binary to all registered wikis
