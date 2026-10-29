@@ -536,8 +536,8 @@ def _merge_section_into_page(
             _append_source_ref(page, SourceRef(file=source, hash=src_hash, size=source_len,
                                                ingested=date.today().isoformat(), truncated=truncated))
             return
-        logger.warning("ingest: re-ingesting %s would drop text the new section does not "
-                       "restate; keeping it and appending the new section", name)
+        # The usual case: the update adds new material rather than restating the page.
+        logger.info("ingest: kept the existing text and added the new section from %s", name)
     combined = f"{before.rstrip()}\n\n{section}" if before.strip() else section
     merged = merge_duplicate_sections(combined).content
     if before.strip() and dropped_sentences(before, merged):
