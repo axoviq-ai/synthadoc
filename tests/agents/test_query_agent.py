@@ -3380,3 +3380,21 @@ def test_resolve_wikilinks_points_a_source_file_name_at_its_page():
     text = "[[konrad-zuse-z3-computer]] [[hopper-biography-usn]] [[early-machines]] [[eniac]]"
     assert resolve_wikilinks(text, pages, sources) == (
         "[[konrad-zuse]] [[grace-hopper]] [[early-machines]] [[eniac]]")
+
+
+@pytest.mark.asyncio
+async def test_run_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
+    long_cited = ("Quantum error correction spreads one logical qubit over many physical qubits. " * 12
+                  + "See [[quantum-computing]].")
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["quantum error correction"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text='["quantum error correction codes"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="[GAP]\n" + long_cited, input_tokens=50, output_tokens=200),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=2.0)
+    result = await agent.run("quantum error correction")
+    assert result.knowledge_gap is True
+    assert not result.answer.startswith("[GAP]") and result.answer.startswith("Quantum error")

@@ -862,7 +862,10 @@ class QueryAgent(BaseAgent):
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
                 f"Answer the question using the wiki pages below and your general knowledge. "
-                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n\n"
+                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it. "
+                f"If the wiki pages below do not answer the question, so your answer relies mainly on "
+                f"general knowledge, start your reply with [GAP] on its own line; if they do answer it, "
+                f"do not write [GAP].\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available:\n{context}"
             )
@@ -1148,14 +1151,17 @@ class QueryAgent(BaseAgent):
         # could not find enough in the wiki pages despite pre-synthesis gap detection
         # saying no gap (Guard B false negative). Strip the marker before displaying.
         answer_text = strip_answer_tags(resp2.text)
-        if not _gap and answer_text.startswith("[GAP]"):
-            _gap = True
-            answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
-            _suggested = await SearchDecomposeAgent(self._provider).run(
-                question, domain_context=_purpose_ctx
-            ) or [question]
-
-        _gap = _guard_c_suppress(_gap, answer_text, "query")
+        if answer_text.startswith("[GAP]"):
+            # The LLM judged that the pages do not answer the question (asked for in
+            # gap mode, the Guard B sentinel otherwise): Guard C must not overrule it.
+            answer_text = answer_text[len("[GAP]"):].lstrip("\n")
+            if not _gap:
+                _gap = True
+                _suggested = await SearchDecomposeAgent(self._provider).run(
+                    question, domain_context=_purpose_ctx
+                ) or [question]
+        else:
+            _gap = _guard_c_suppress(_gap, answer_text, "query")
 
         # [MISSING: ...] sentinel — re-enable gap and chip generation even when
         # Guard C suppressed it for a well-cited answer.  Strip the marker from
@@ -1476,6 +1482,7 @@ class QueryAgent(BaseAgent):
         # the line starts with "[" — the sole prefix for "[MISSING: ...]" sentinels.
         # Non-"[" fragments are flushed immediately so normal streaming is unaffected.
         _last_line_buf = ""
+        _streamed: list[str] = []      # token text sent to the client, to compare with the final text
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             system=_synthesis_system,
@@ -1492,10 +1499,17 @@ class QueryAgent(BaseAgent):
             combined = _last_line_buf + token
             if "\n" in combined:
                 parts = combined.split("\n")
-                yield {"event": "token", "data": {"text": "\n".join(parts[:-1]) + "\n"}}
+                # A [GAP] sentinel on the first line is a verdict, not text: never show it.
+                if not _streamed and parts[0].strip() == "[GAP]":
+                    parts = parts[1:]
+                if len(parts) > 1:
+                    text = "\n".join(parts[:-1]) + "\n"
+                    _streamed.append(text)
+                    yield {"event": "token", "data": {"text": text}}
                 _last_line_buf = parts[-1]
             elif not combined.startswith("["):
                 # Cannot be a [MISSING: ...] sentinel — yield immediately.
+                _streamed.append(combined)
                 yield {"event": "token", "data": {"text": combined}}
                 _last_line_buf = ""
             else:
@@ -1511,6 +1525,7 @@ class QueryAgent(BaseAgent):
         if not full_answer:
             logger.warning("run_stream: LLM returned empty response for question %r", question)
             fallback = "(No response was generated. Please try again.)"
+            _streamed.append(fallback)
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
             _last_line_buf = ""
@@ -1519,7 +1534,8 @@ class QueryAgent(BaseAgent):
         # If the sentinel is present, _last_line_buf holds it — don't emit that line.
         # If absent, flush _last_line_buf to the client now.
         _missing_slugs, full_answer = _extract_missing_slugs(full_answer)
-        if not _missing_slugs and _last_line_buf:
+        if not _missing_slugs and _last_line_buf and _last_line_buf.strip() != "[GAP]":
+            _streamed.append(_last_line_buf)
             yield {"event": "token", "data": {"text": _last_line_buf}}
 
         # Strip outer <answer>...</answer> wrapper that some providers (e.g. MiniMax) emit.
@@ -1528,23 +1544,26 @@ class QueryAgent(BaseAgent):
         # Guard B: post-synthesis gap detection — same logic as run().
         # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
         # still could not answer from the available pages.
-        if not _gap and full_answer.startswith("[GAP]"):
+        if full_answer.startswith("[GAP]"):
+            # The LLM judged that the pages do not answer the question: in gap mode
+            # Guard C must not overrule it; otherwise this is Guard B.
+            if not _gap:
+                logger.debug("run_stream: guard B fired — post-synthesis gap detected")
             _gap = True
             full_answer = full_answer[len("[GAP]"):].lstrip("\n")
-            logger.debug("run_stream: guard B fired — post-synthesis gap detected")
-
-        _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
+        else:
+            _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
         # Strip any stray [MISSING: ...] text the LLM may have written; do not
         # use it to re-enable gap — Guard C's assessment is final.
         if _missing_slugs:
             logger.debug("run_stream: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
 
-        # Title links already streamed as tokens; send the text with them pointed at
-        # page slugs, for clients to show in place of the streamed text.
-        resolved = self._resolve_links(full_answer, candidates)
-        if resolved != full_answer:
-            full_answer = resolved
+        # Point [[Title]] links at page slugs. If the final text differs from what
+        # was streamed (links, or a [GAP]/[MISSING]/<answer> marker), send it for
+        # clients to show in place of the streamed tokens.
+        full_answer = self._resolve_links(full_answer, candidates)
+        if full_answer != "".join(_streamed):
             yield {"event": "answer", "data": {"text": full_answer}}
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}

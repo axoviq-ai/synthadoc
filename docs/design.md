@@ -310,6 +310,8 @@ When a gap fires:
 
 When no gap is detected, `suggested_searches` is `[]` and no callout is shown.
 
+**After the answer is written,** the LLM's own verdict is checked. In gap mode the prompt tells the LLM to use the wiki pages *and* general knowledge, and to start its reply with `[GAP]` on its own line only if the pages do not answer the question. When the reply starts with `[GAP]`, the gap stands (outside gap mode this is Guard B, which turns a missed gap on). Otherwise Guard C cancels a pre-synthesis gap when the answer is substantial and cited: over 300 characters with two or more `[[...]]` citations, or over 800 characters with one. Guard C used to run even when the LLM had declared `[GAP]`, so a long general-knowledge answer with one passing citation ("quantum error correction", citing the quantum computing page once) hid a real gap. `[GAP]` is never shown: a leading `[GAP]` line is not streamed, and it is stripped from the final text.
+
 ---
 
 ### Web Search Decomposition (v0.2.0)
@@ -2833,7 +2835,7 @@ data: {"event": "done", "data": {"next_hints": [...], "input_tokens": 1240, "out
 | `status`    | `{"phase": "retrieving"}`                                                       | Phase 1 starts                                                  |
 | `status`    | `{"phase": "synthesizing", "sources": N}`                                       | Phase 2 starts                                                  |
 | `token`     | `{"text": "…"}`                                                                | Each LLM token                                                  |
-| `answer`    | `{"text": "…"}`                                                                | After last token, only when citation links were rewritten: the full answer with `[[Page Title]]` links, and links named after a page's source file, pointed at page slugs, replacing the streamed tokens |
+| `answer`    | `{"text": "…"}`                                                                | After last token, only when the final text differs from what was streamed: the full answer with `[[Page Title]]` links (and links named after a page's source file) pointed at page slugs and any `[GAP]`/`[MISSING]` marker removed; replaces the streamed tokens |
 | `citations` | `{"citations": […]}`                                                           | After last token                                                |
 | `gap`       | `{"suggested_searches": […]}`                                                  | If knowledge gap detected                                       |
 | `clarify`   | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}`                | Action agent needs disambiguation (e.g. which page to activate) |
