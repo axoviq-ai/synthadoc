@@ -670,6 +670,26 @@ def load_config(
                 "agents.default is required but missing from the configuration."
             )
 
+    # An [agents] section was written (by either file) but every "default ="
+    # line under it is commented out. Almost certainly the user forgot to
+    # activate a choice, not a "no agents needed" file — that case is
+    # "agents" not in raw at all (e.g. a project_config with only [wikis]),
+    # handled by the silent default just below. Silently falling back to
+    # gemini here would start the server on a provider the user never
+    # chose and never see why, so this must be a loud, specific error.
+    if "agents" in raw and "default" not in raw["agents"]:
+        from synthadoc.errors import ConfigError, CFG_NO_PROVIDER, _short_wiki_path
+        source = project_config if (project_config is not None and Path(project_config).exists()) \
+            else global_config
+        where = f" in {_short_wiki_path(source)}" if source else ""
+        raise ConfigError(
+            CFG_NO_PROVIDER,
+            f"No LLM provider is configured{where} — every 'default =' line "
+            f"under [agents] is commented out.",
+            "Uncomment exactly one 'default = { provider = ..., model = ... }' "
+            "line under [agents] and restart the server.",
+        )
+
     # If agents section is absent (e.g. project_config with only [wikis]),
     # inject built-in defaults so the rest of the build succeeds.
     if "agents" not in raw or "default" not in raw.get("agents", {}):

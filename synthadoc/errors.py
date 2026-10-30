@@ -40,6 +40,7 @@ CFG_MISSING_API_KEY  = "ERR-CFG-001"   # Required env var (API key) not set
 CFG_UNKNOWN_PROVIDER = "ERR-CFG-002"   # Provider name not recognised
 CFG_DUPLICATE_KEY    = "ERR-CFG-003"   # Duplicate TOML key (e.g. two active "default =" lines)
 CFG_INVALID_TOML     = "ERR-CFG-004"   # TOML syntax error in config file
+CFG_NO_PROVIDER      = "ERR-CFG-005"   # [agents] section present but every "default =" line is commented out
 
 
 class ConfigError(Exception):
