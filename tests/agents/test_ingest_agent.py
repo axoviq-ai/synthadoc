@@ -2753,7 +2753,7 @@ def test_reingesting_one_source_never_wipes_other_sources_text():
     assert "Updated text from source A." in page.content
 
 
-def test_reingesting_the_only_source_keeps_text_the_new_section_does_not_restate():
+def test_reingesting_the_only_source_keeps_text_the_new_section_does_not_restate(tmp_path):
     """The update step writes only what is new; replacing the page with it lost the rest.
 
     Regression: a demo batch ingest re-ingested each page's only source and cut
@@ -2767,7 +2767,7 @@ def test_reingesting_the_only_source_keeps_text_the_new_section_does_not_restate
                     content=("## ARPANET (1969)\nThe first message was sent between UCLA and SRI in 1969. ^[leiner.txt:1-2]\n\n"
                              "## TCP/IP (1974)\nCerf and Kahn designed TCP/IP in 1974 for every network. ^[leiner.txt:3-4]\n"))
     _merge_section_into_page(page, "## World Wide Web\nMosaic brought the web to a general audience in 1993. ^[leiner.txt:9-9]",
-                             "/wiki/raw_sources/public-domain/leiner.txt", "real-hash", 6051, False)
+                             str(tmp_path / "raw_sources" / "public-domain" / "leiner.txt"), "real-hash", 6051, False)
     assert "The first message was sent between UCLA and SRI in 1969." in page.content
     assert "Cerf and Kahn designed TCP/IP in 1974 for every network." in page.content
     assert "Mosaic brought the web to a general audience in 1993." in page.content
