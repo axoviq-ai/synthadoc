@@ -55,6 +55,20 @@ class ConfigError(Exception):
         self.hint = hint
 
 
+def _short_wiki_path(path) -> str:
+    """Format a wiki-relative display path for error messages.
+
+    config_path is always <wiki_root>/.synthadoc/config.toml (every load_config
+    call site in this codebase builds it that way) — an absolute path, which
+    would otherwise print the user's home directory and OS username into a
+    message that can end up in logs, bug reports, or screenshots. Keep only
+    the last 3 components: "<wiki-dir-name>/.synthadoc/config.toml".
+    """
+    from pathlib import Path
+    parts = Path(path).parts
+    return "/".join(parts[-3:]) if len(parts) >= 3 else str(path)
+
+
 class MissingApiKeyError(RuntimeError):
     """Raised by ``make_provider`` when a required API key env var is not set.
 
@@ -68,7 +82,7 @@ class MissingApiKeyError(RuntimeError):
         self.provider = provider
         self.url = url
         self.config_path = config_path
-        config_ref = f"{config_path}'s" if config_path else "config.toml's"
+        config_ref = f"{_short_wiki_path(config_path)}'s" if config_path else "config.toml's"
         super().__init__(
             f"[{CFG_MISSING_API_KEY}] {var} is not set. "
             f"synthadoc is configured to use {provider} as its LLM provider "

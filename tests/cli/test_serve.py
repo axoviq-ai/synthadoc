@@ -229,7 +229,9 @@ def test_check_api_key_missing_env_exits_cleanly_without_traceback(monkeypatch, 
 
 def test_check_api_key_missing_env_names_the_real_config_path(monkeypatch, capsys):
     """When a config_path is known, the message must point at that real file
-    rather than a generic 'config.toml' mention."""
+    (shortened to the wiki-dir-relative form) rather than a generic
+    'config.toml' mention — and must NOT leak the full absolute path, which
+    would expose the user's home directory and OS username."""
     import click
     import typer
     from pathlib import Path
@@ -243,7 +245,8 @@ def test_check_api_key_missing_env_names_the_real_config_path(monkeypatch, capsy
         _check_api_key(Provider.ANTHROPIC, config_path=real_path)
 
     captured = capsys.readouterr()
-    assert f"see {real_path}'s [agents] section" in captured.err
+    assert "see history-of-computing/.synthadoc/config.toml's [agents] section" in captured.err
+    assert "/Users/paulchen" not in captured.err
 
 
 def test_check_api_key_present_env_does_not_raise(monkeypatch):
