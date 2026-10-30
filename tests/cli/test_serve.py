@@ -227,6 +227,25 @@ def test_check_api_key_missing_env_exits_cleanly_without_traceback(monkeypatch, 
     assert "ERR-CFG-001" in captured.err
 
 
+def test_check_api_key_missing_env_names_the_real_config_path(monkeypatch, capsys):
+    """When a config_path is known, the message must point at that real file
+    rather than a generic 'config.toml' mention."""
+    import click
+    import typer
+    from pathlib import Path
+    from synthadoc.cli.serve import _check_api_key
+    from synthadoc.config import Provider
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    real_path = Path("/Users/paulchen/wikis/history-of-computing/.synthadoc/config.toml")
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)):
+        _check_api_key(Provider.ANTHROPIC, config_path=real_path)
+
+    captured = capsys.readouterr()
+    assert f"see {real_path}'s [agents] section" in captured.err
+
+
 def test_check_api_key_present_env_does_not_raise(monkeypatch):
     """A present API key must not raise anything."""
     from synthadoc.cli.serve import _check_api_key

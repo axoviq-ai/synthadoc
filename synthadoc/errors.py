@@ -63,14 +63,16 @@ class MissingApiKeyError(RuntimeError):
     and formats it with ``cli_error``.
     """
 
-    def __init__(self, var: str, provider: str, url: str) -> None:
+    def __init__(self, var: str, provider: str, url: str, config_path=None) -> None:
         self.var = var
         self.provider = provider
         self.url = url
+        self.config_path = config_path
+        config_ref = f"{config_path}'s" if config_path else "config.toml's"
         super().__init__(
             f"[{CFG_MISSING_API_KEY}] {var} is not set. "
             f"synthadoc is configured to use {provider} as its LLM provider "
-            f"(see config.toml's [agents] section). "
+            f"(see {config_ref} [agents] section). "
             f"Set the env var before starting the server: "
             f"export {var}=<your-key>  (get one at {url})"
         )

@@ -279,6 +279,11 @@ class Config:
     content_health: ContentHealthConfig = field(default_factory=ContentHealthConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
+    # The config.toml this Config was actually loaded from — project_config
+    # when given, else global_config, else None (defaults only, no file).
+    # Set by load_config(); exists so error messages (e.g. MissingApiKeyError)
+    # can point at the real file instead of a generic "config.toml" mention.
+    config_path: Optional[Path] = None
 
 
 # ---------------------------------------------------------------------------
@@ -673,4 +678,13 @@ def load_config(
             "model": "gemini-2.5-flash-lite",
         }
 
-    return _raw_to_config(raw, source_has_agents=True)
+    cfg = _raw_to_config(raw, source_has_agents=True)
+    # project_config is the wiki-specific file (<wiki>/.synthadoc/config.toml
+    # at every call site in this codebase) and is where [agents] normally
+    # lives, so prefer it over global_config for error messages that point
+    # the user at "the config file" to go edit.
+    if project_config is not None and Path(project_config).exists():
+        cfg.config_path = Path(project_config)
+    elif global_config is not None and Path(global_config).exists():
+        cfg.config_path = Path(global_config)
+    return cfg
