@@ -69,10 +69,20 @@ Measured on the full 1,985-page corpus while designing semantic search
 | BM25 | 0.998 | 0.994 | 0.479 | 0.840 |
 | BM25 top 20 re-sorted by embedding similarity (the former `vector = true`) | 0.986 | 0.625 | 0.595 | 0.742 |
 | BM25 + embedding search, reciprocal rank fusion | 0.994 | 0.936 | 0.694 | 0.883 |
-| Fusion + keyword pin (BM25 top 3 kept when its best score ≥ 1.05× its second) | 0.998 | 0.984 | 0.676 | 0.896 |
-| Same, but one embedding per section instead of per page | 0.998 | 0.986 | 0.613 | 0.878 |
+| Fusion + keyword pin of BM25's top 3 when its best score ≥ 1.05× its second (first release) | 0.998 | 0.984 | 0.676 | 0.896 |
+| **Fusion + keyword pin of BM25's top hit only (shipped)** | 0.998 | 0.978 | **0.699** | **0.901** |
+| First release, but one embedding per section instead of per page | 0.998 | 0.986 | 0.613 | 0.878 |
 
 ![Recall@5 by question type for each setup](../../docs/png/benchmarks/design-choices.png)
+
+**Why only the top hit is pinned.** At 1.05× the pin fires on 96% of
+own-words, 98% of exact-name and 53% of paraphrased questions. When it fires,
+BM25's top result is the labelled page 99%, 94% and 45% of the time, but its
+second and third results are the labelled page for at most 6%. Pinning all
+three cost 10 paraphrased questions to save 3 exact-name ones, and on the
+held-out corpora (below) pinning only the top hit is at least as good on every
+measure. Pinning the top hit at 1.05× and the top three only at a larger
+margin (1.1×–3×) never beat it.
 
 Section embeddings rank better on their own (paraphrase recall@5 0.669 vs
 0.616 for the embedding search alone) but fuse worse, because they mostly
@@ -88,7 +98,7 @@ search latency.
 
 The gap between keyword and semantic search grows with the wiki: paraphrased
 questions found in the top 5 fall from 0.71 to 0.48 with BM25 between 200 and
-1,985 pages, and from 0.80 to 0.68 with semantic search.
+1,985 pages, and from 0.84 to 0.70 with semantic search.
 
 ![Paraphrased-question recall@5 by wiki size](../../docs/png/benchmarks/paraphrase-by-wiki-size.png)
 
@@ -100,9 +110,9 @@ NFCorpus, whose queries have ~38 relevant documents each):
 
 | Corpus | `bm25` nDCG@10 | `hybrid` nDCG@10 | `bm25` MRR@10 | `hybrid` MRR@10 |
 | --- | ---: | ---: | ---: | ---: |
-| hotpot | 0.755 | **0.808** | 0.848 | **0.880** |
-| scifact | 0.658 | **0.693** | 0.629 | **0.654** |
-| nfcorpus | 0.305 | **0.344** | 0.505 | **0.547** |
+| hotpot | 0.755 | **0.822** | 0.848 | **0.886** |
+| scifact | 0.658 | **0.697** | 0.629 | **0.659** |
+| nfcorpus | 0.305 | **0.346** | 0.505 | **0.554** |
 | duretrieval (Chinese) | 0.853 | 0.853 | 0.924 | 0.924 |
 
 ![nDCG@10 on every corpus](../../docs/png/benchmarks/independent-corpora.png)

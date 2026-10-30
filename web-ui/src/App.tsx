@@ -13,7 +13,8 @@ import { useTheme } from "./useTheme";
 import type { Message } from "./useQueryStream";
 import heroBg from "./assets/hero-bg.png";
 
-// How many chat responses to keep graph-sourced hint chips before replacing them.
+// How many chat responses to keep graph-sourced hint chips before replacing them,
+// unless the user types a question of their own first.
 const GRAPH_HINT_PIN_TURNS = 3;
 
 export default function App() {
@@ -186,6 +187,9 @@ export default function App() {
                         injectedQuery={injectedQuery}
                         onInjected={() => setInjectedQuery(null)}
                         onQuerySent={handleQuerySent}
+                        // A question of the user's own moves on from the graph page,
+                        // so its pinned "Questions to explore" give way to fresh hints.
+                        onOwnQuestion={() => setHintLockLeft(0)}
                         showTip={sessions.length > 0}
                         initialMessages={initialMessages}
                         pendingPrompt={pendingPrompt}

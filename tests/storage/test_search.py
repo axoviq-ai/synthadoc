@@ -373,6 +373,7 @@ async def test_hybrid_search_keeps_a_dominant_keyword_hit_on_top(tmp_wiki):
     results = await search.hybrid_search(["rlhf"], top_n=3)
     assert results[0].slug == "rlhf" and results[0].score > 0
     assert results[0].rank_score > 1.0
+    assert all(r.rank_score < 1.0 for r in results[1:])     # only the top hit is pinned
 
 
 async def test_hybrid_search_respects_scope_and_corpus(tmp_wiki):
@@ -896,3 +897,13 @@ async def test_a_wiki_of_cjk_pages_falls_back_to_bm25(tmp_wiki):
     assert search._matrix is None
     results = await search.hybrid_search(["moon", "festival"], top_n=3)
     assert results == search.bm25_search(["moon", "festival"], top_n=3)
+
+
+def test_fuse_pins_only_bm25s_top_hit(tmp_wiki):
+    search = HybridSearch(WikiStorage(tmp_wiki / "wiki"), tmp_wiki / "e.db")
+    keyword = [_res("a", 10.0), _res("b", 5.0), _res("c", 4.0)]       # "a" dominates
+    semantic = [("x", 0.9), ("c", 0.8), ("y", 0.7)]
+    fused = search._fuse(keyword, semantic, top_n=5)
+    assert fused[0].slug == "a" and fused[0].rank_score > 1.0
+    assert all(r.rank_score < 1.0 for r in fused[1:])
+    assert fused[1].slug == "c"            # in both rankings, so fusion ranks it above "b"

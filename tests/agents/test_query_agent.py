@@ -3321,3 +3321,80 @@ async def test_translated_cjk_question_is_also_searched_as_written(tmp_wiki):
     _, candidates, _ = await agent._run_search("谁发明了晶体管和编译器？")
 
     assert {"transistor-zh", "grace-hopper"} <= {r.slug for r in candidates}
+
+
+def test_detect_gap_accepts_a_single_mention_on_a_top_page_matching_the_whole_question(tmp_wiki):
+    """Exact-name lookups: each rare term appears once, on the right page.
+
+    Regression: on the retrieval benchmark the gap check fired on 36% of exact-name
+    questions whose labelled page was in the top 5 ("OARnet", "1656" appear once).
+    A single mention now covers a term on a top-3 page that contains every
+    specific term of the question; the quantum test above keeps the passing-mention
+    case (a page about something else) a gap.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "ohio-supercomputer-center": "The Ohio Supercomputer Center hosted OARnet, whose director ran it from 1988.",
+        "filler-1": "Transistors replaced vacuum tubes in the 1950s.",
+        "filler-2": "Unix was written at Bell Labs in 1969.",
+        "filler-3": "The ENIAC was completed in 1945.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [SearchResult(slug=s, score=10.0 - i, title=s, snippet="") for i, s in enumerate(pages)]
+    gap, *_ = agent._detect_gap(question="OARnet director Ohio Supercomputer",
+                                candidates=candidates, max_score=10.0)
+    assert gap is False
+
+
+def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),
+             "alan-turing": ("Alan Turing", []),
+             "transistor-zh": ("晶体管", [])}
+    text = ("[[Konrad Zuse Z3 Computer]] [[konrad-zuse-z3-computer]] [[Zuse]] [[alan turing]] "
+            "[[晶体管]] [[alan-turing]] [[Alan Turing|Turing]] [[Alan Turing#Enigma]] "
+            "[[finance-wiki::Revenue]] [[Unknown Page]]")
+    assert resolve_wikilinks(text, pages) == (
+        "[[konrad-zuse]] [[konrad-zuse]] [[konrad-zuse]] [[alan-turing]] "
+        "[[transistor-zh]] [[alan-turing]] [[alan-turing|Turing]] [[alan-turing#Enigma]] "
+        "[[finance-wiki::Revenue]] [[Unknown Page]]")
+
+
+def test_resolve_wikilinks_leaves_text_without_links_alone():
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    assert resolve_wikilinks("No links here.", {"a": ("A", [])}) == "No links here."
+
+
+def test_resolve_wikilinks_points_a_source_file_name_at_its_page():
+    """The LLM turns ^[konrad-zuse-z3-computer.md:5-7] into [[konrad-zuse-z3-computer]]."""
+    from synthadoc.agents._query_utils import resolve_wikilinks
+    pages = {"konrad-zuse": ("Konrad Zuse", []), "grace-hopper": ("Grace Hopper", []),
+             "eniac": ("ENIAC", []), "univac": ("UNIVAC", []),
+             "von-neumann": ("Von Neumann", [])}
+    sources = {"konrad-zuse": ["/wiki/raw_sources/konrad-zuse-z3-computer.md"],
+               "grace-hopper": ["raw_sources\\hopper-biography-usn.txt"],
+               "eniac": ["/wiki/raw_sources/early-machines.pdf"],      # shared by two pages
+               "univac": ["/wiki/raw_sources/early-machines.pdf"],
+               "von-neumann": ["/wiki/raw_sources/eniac.md"]}         # "eniac" is a page title too
+    text = "[[konrad-zuse-z3-computer]] [[hopper-biography-usn]] [[early-machines]] [[eniac]]"
+    assert resolve_wikilinks(text, pages, sources) == (
+        "[[konrad-zuse]] [[grace-hopper]] [[early-machines]] [[eniac]]")
+
+
+@pytest.mark.asyncio
+async def test_run_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
+    long_cited = ("Quantum error correction spreads one logical qubit over many physical qubits. " * 12
+                  + "See [[quantum-computing]].")
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["quantum error correction"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text='["quantum error correction codes"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="[GAP]\n" + long_cited, input_tokens=50, output_tokens=200),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=2.0)
+    result = await agent.run("quantum error correction")
+    assert result.knowledge_gap is True
+    assert not result.answer.startswith("[GAP]") and result.answer.startswith("Quantum error")

@@ -1555,6 +1555,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             continue
                         elif evt["event"] == "token":
                             full_answer += evt["data"].get("text", "")
+                        elif evt["event"] == "answer":
+                            # Final text with citation links resolved; replaces the tokens.
+                            full_answer = evt["data"].get("text", full_answer)
                         elif evt["event"] == "citations":
                             citations = evt["data"].get("citations", [])
                         elif evt["event"] == "gap":

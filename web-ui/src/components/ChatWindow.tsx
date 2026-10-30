@@ -24,6 +24,8 @@ interface Props {
     injectedQuery: string | null;
     onInjected: () => void;
     onQuerySent: () => void;
+    /** A question the user typed, as opposed to a suggestion chip or a graph question. */
+    onOwnQuestion?: () => void;
     showTip: boolean;
     initialMessages?: Message[];
     pendingPrompt?: string | null;
@@ -34,7 +36,7 @@ interface Props {
 
 export function ChatWindow({
     sessionId, mode, hints, onHints, wikiName,
-    injectedQuery, onInjected, onQuerySent, showTip,
+    injectedQuery, onInjected, onQuerySent, onOwnQuestion, showTip,
     initialMessages = [],
     pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
     resolvedDark,
@@ -48,6 +50,8 @@ export function ChatWindow({
     const [crossWikiBarState, setCrossWikiBarState] = useState<"idle" | "searching" | "done">("idle");
     const [crossWikiWikis, setCrossWikiWikis] = useState<string[]>([]);
     const [crossWikiResponded, setCrossWikiResponded] = useState<string[]>([]);
+    // Text a suggestion chip put in the input box, to tell it apart from a typed question.
+    const chipText = useRef<string | null>(null);
     const [crossWikiOffline, setCrossWikiOffline] = useState<string[]>([]);
 
     const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(
@@ -130,6 +134,9 @@ export function ChatWindow({
         if (!q) return;
         setInput("");
         onPendingPromptConsumed?.();
+        // A suggestion sent as-is is not a question of the user's own.
+        if (q !== chipText.current) onOwnQuestion?.();
+        chipText.current = null;
         if (crossWikiEnabled) {
             setCrossWikiBarState("idle");
             setCrossWikiWikis([]);
@@ -224,7 +231,7 @@ export function ChatWindow({
                 </div>
             )}
             <div className="input-dock">
-                <HintChips hints={hints} onSelect={(h) => { setInput(h); setTimeout(() => inputRef.current?.focus(), 0); }} />
+                <HintChips hints={hints} onSelect={(h) => { chipText.current = h; setInput(h); setTimeout(() => inputRef.current?.focus(), 0); }} />
                 <div className="input-options">
                     <label className="bypass-cache-label">
                         <input

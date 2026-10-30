@@ -296,7 +296,7 @@ After the BM25 merge step, a knowledge gap is detected when ANY of three indepen
 2. `max_score < gap_score_threshold` (default: `2.0`, configurable via `[query] gap_score_threshold` in `config.toml`) — low keyword overlap
 3. Fewer than 2 candidates contain any key noun from the question with sufficient frequency — corpus-relative BM25 scores can be inflated by shared vocabulary; this content-overlap check catches off-topic matches
 
-Signals 4–7 check each key term of the (decomposed) question against the candidate pages. A page is *on topic* when it contains a specific term at least twice, matched as the exact word. Signal 5 asks whether every specific term is covered in depth by at least one page; there a term also matches its word family — common endings (`-ing`, `-er(s)`, `-ion(s)`, `-ation(s)`, `-ed`) are stripped when at least 5 letters remain — so a page that says "codebreaking" covers "codebreakers". The family match is kept out of the on-topic count, where "container" → "contain" would make every page that says "contains" look on topic. With semantic search on, only candidates with a BM25 score above 0 are considered: a page found only by the embedding search is not keyword evidence.
+Signals 4–7 check each key term of the (decomposed) question against the candidate pages. A page is *on topic* when it contains a specific term at least twice, matched as the exact word. Signal 5 asks whether every specific term is covered in depth by at least one page; there a term also matches its word family — common endings (`-ing`, `-er(s)`, `-ion(s)`, `-ation(s)`, `-ed`) are stripped when at least 5 letters remain — so a page that says "codebreaking" covers "codebreakers". The family match is kept out of the on-topic count, where "container" → "contain" would make every page that says "contains" look on topic. On the top 3 candidates, one mention covers a term when that page contains every specific term of the question: exact names and numbers ("OARnet", "1656") usually appear once, on exactly the right page, while a passing mention on a page about something else ("quantum" on a page without "error correction") still leaves a gap. On the retrieval benchmark this cut false gap alarms on exact-name questions whose page was found from 36% to 3.5%, at the cost of 4 of 499 simulated real gaps (labelled page removed). When the check fires, the signals that fired are logged at debug level (`gap signals fired: [...]`). With semantic search on, only candidates with a BM25 score above 0 are considered: a page found only by the embedding search is not keyword evidence.
 
 When a gap fires:
 
@@ -309,6 +309,8 @@ When a gap fires:
 5. The Obsidian `QueryModal` renders the same callout using `MarkdownRenderer.render()`
 
 When no gap is detected, `suggested_searches` is `[]` and no callout is shown.
+
+**After the answer is written,** the LLM's own verdict is checked. In gap mode the prompt tells the LLM to use the wiki pages *and* general knowledge, and to start its reply with `[GAP]` on its own line only if the pages do not answer the question. When the reply starts with `[GAP]`, the gap stands (outside gap mode this is Guard B, which turns a missed gap on). Otherwise Guard C cancels a pre-synthesis gap when the answer is substantial and cited: over 300 characters with two or more `[[...]]` citations, or over 800 characters with one. Guard C used to run even when the LLM had declared `[GAP]`, so a long general-knowledge answer with one passing citation ("quantum error correction", citing the quantum computing page once) hid a real gap. `[GAP]` is never shown: a leading `[GAP]` line is not streamed, and it is stripped from the final text.
 
 ---
 
@@ -383,13 +385,13 @@ model hurt, which the CJK handling below removes); see
 1. BM25 takes its top `vector_top_candidates` pages (default 20).
 2. The query is embedded and compared with every page embedding in memory; the top `vector_top_candidates` pages by similarity are taken, over the same scope (routing scope, query lifecycle states).
 3. The two rankings are merged with **reciprocal rank fusion** — each page scores `1 / (60 + rank)` in each list it appears in — so a page either method finds can surface, and a page high in both wins.
-4. **Keyword pin:** when BM25's best score is at least 1.05× its second, BM25's top 3 stay on top. A dominant keyword match is almost always an exact name or term, and re-ordering it by meaning would lose it.
+4. **Keyword pin:** when BM25's best score is at least 1.05× its second, BM25's top hit stays on top. A dominant keyword match is almost always an exact name or term, and re-ordering it by meaning would lose it. Only the top hit is pinned: at 1.05× the pin fires on 53% of paraphrased questions, and BM25's second and third results were the labelled page for at most 6% of the questions it fired on. Pinning the top 3 (the first release) cost paraphrase recall@5 (0.699 → 0.676) for 3 of 499 exact-name lookups, and was no better on any held-out corpus.
 
 Each `SearchResult` keeps `score` as the BM25 score (0 for a page only the embedding search found), so the knowledge-gap signals and the routing-scope fallback keep their BM25 meaning; `rank_score` is the fused ordering key and `similarity` the embedding similarity. Callers merge sub-question searches with `merge_results()`, which orders by `rank_score`. Ingest's page matching stays on BM25.
 
 **Sync:** embeddings live in `embeddings.db` (`page_embeddings` table: one vector per page plus a hash of the text it was embedded from) and in memory as one matrix. A background sync embeds new and changed pages and drops pages that left the query corpus: at server start, after every ingest, and on the next search after any page write (`invalidate_index()`). Until the first sync finishes, search is BM25 only — no downtime. A failed sync (e.g. the model cannot be downloaded) is logged and search stays on BM25.
 
-**Measured:** see [benchmarks/retrieval](../benchmarks/retrieval/README.md). On a 1,985-page Wikipedia-derived wiki, fusion with the keyword pin raises paraphrased-question recall@5 from 0.48 to 0.68 while exact-name and own-words questions stay within 1 point of BM25.
+**Measured:** see [benchmarks/retrieval](../benchmarks/retrieval/README.md). On a 1,985-page Wikipedia-derived wiki, fusion with the keyword pin raises paraphrased-question recall@5 from 0.48 to 0.70 and all questions from 0.84 to 0.90; own-words questions are unchanged and exact-name lookups are 1.6 points under BM25 (0.978 vs 0.994).
 
 **Performance notes:**
 
@@ -2324,6 +2326,15 @@ Empty list when no warnings exist or the pass was skipped.
 
 Every compiled wiki page is a synthesis — the LLM reads source documents and rewrites them as prose. Claim-level provenance closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in `audit.db`. In Obsidian they render as interactive chips — one click opens the Source Viewer.
 
+### IngestAgent — updating an existing page
+
+On `action=update` the LLM writes only what the page does not already cover (`update_content`), and `_merge_section_into_page()` adds it **without ever discarding existing text**:
+
+- **A source already on the page is re-ingested** (its hash changed, or `--force`): its old contribution is replaced by the new section, so old and new versions do not sit side by side: the whole body when it is the page's only source, or the sections that cite it (`_strip_sections_from_source()`) when the page has others too. The replacement is kept only if it drops no sentence of the page (`dropped_sentences()`). Otherwise the old text stays and the new section is appended.
+- **Otherwise, and for a new source:** the section is appended and `merge_duplicate_sections()` folds a repeated heading into the existing one and drops paragraphs repeated word for word, keeping every sentence. If merging would still lose a sentence, the section is appended without merging.
+
+Replacing without that check lost text: the update section is a delta, so a demo batch ingest, which re-ingests each page's only source (the shipped pages record placeholder hashes), cut `alan-turing.md` from 55 KB to 2 KB and eight other pages likewise (v1.4.3–v1.5.0). Before each live update the page's previous text is stored as a lifecycle snapshot (`triggered_by = ingest`, reason `before ingest update from <source>`), so any ingest update can be rolled back with the snapshot tools.
+
 ### IngestAgent Pass 4 — `_annotate_citations()`
 
 Called within the Write pass for each page section immediately before it is appended to the page. The LLM receives:
@@ -2833,6 +2844,7 @@ data: {"event": "done", "data": {"next_hints": [...], "input_tokens": 1240, "out
 | `status`    | `{"phase": "retrieving"}`                                                       | Phase 1 starts                                                  |
 | `status`    | `{"phase": "synthesizing", "sources": N}`                                       | Phase 2 starts                                                  |
 | `token`     | `{"text": "…"}`                                                                | Each LLM token                                                  |
+| `answer`    | `{"text": "…"}`                                                                | After last token, only when the final text differs from what was streamed: the full answer with `[[Page Title]]` links (and links named after a page's source file) pointed at page slugs and any `[GAP]`/`[MISSING]` marker removed; replaces the streamed tokens |
 | `citations` | `{"citations": […]}`                                                           | After last token                                                |
 | `gap`       | `{"suggested_searches": […]}`                                                  | If knowledge gap detected                                       |
 | `clarify`   | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}`                | Action agent needs disambiguation (e.g. which page to activate) |

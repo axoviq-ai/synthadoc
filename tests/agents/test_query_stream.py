@@ -245,3 +245,71 @@ async def test_run_stream_done_event_tokens_zero_when_provider_unsupported(tmp_w
     assert done["tokens_used"] == 0
     assert done["input_tokens"] == 0
     assert done["output_tokens"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_stream_sends_the_answer_with_title_links_pointed_at_slugs(tmp_wiki):
+    """[[Title]] citations name no file; the stream ends with the text linked by slug."""
+    from synthadoc.storage.wiki import WikiPage
+    store, search, provider = _make_streaming_agent(
+        tmp_wiki, tokens=("Zuse designed Plankalkül ", "([[konrad-zuse-z3-computer]])."))
+    store.write_page("konrad-zuse", WikiPage(
+        title="Konrad Zuse Z3 Computer", tags=[], content="Zuse designed Plankalkül in 1945.",
+        status="active", confidence="high", sources=[]))
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["Who designed Plankalkül?"]', input_tokens=10, output_tokens=5))
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    events = await _collect_stream(agent, "Who designed Plankalkül?")
+    answers = [e for e in events if e["event"] == "answer"]
+    assert answers == [{"event": "answer",
+                        "data": {"text": "Zuse designed Plankalkül ([[konrad-zuse]])."}}]
+    names = [e["event"] for e in events]
+    assert names.index("answer") < names.index("citations")
+
+
+@pytest.mark.asyncio
+async def test_run_stream_sends_no_answer_event_when_links_are_already_slugs(tmp_wiki):
+    store, search, provider = _make_streaming_agent(tmp_wiki, tokens=("See ", "[[ai-overview]]."))
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    events = await _collect_stream(agent, "What is AI?")
+    assert not [e for e in events if e["event"] == "answer"]
+
+
+_LONG_CITED = ("Quantum error correction spreads one logical qubit over many physical qubits. " * 12
+               + "See [[quantum-computing]].")      # > 800 chars, one citation: Guard C would suppress
+
+
+def _gap_agent_streaming(tmp_wiki, tokens):
+    store, search, provider = _make_streaming_agent(tmp_wiki, tokens=tokens)
+    return QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=2.0), provider
+
+
+@pytest.mark.asyncio
+async def test_run_stream_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
+    """Gap mode asks the LLM to start with [GAP] when the pages do not answer the
+    question; a long, cited answer must not let Guard C overrule that verdict."""
+    agent, _ = _gap_agent_streaming(tmp_wiki, tokens=("[GAP]\n", _LONG_CITED))
+    events = await _collect_stream(agent, "quantum error correction")
+    assert [e for e in events if e["event"] == "gap"]
+    shown = "".join(e["data"]["text"] for e in events if e["event"] in ("token", "answer"))
+    assert "[GAP]" not in shown
+
+
+@pytest.mark.asyncio
+async def test_run_stream_guard_c_still_suppresses_a_gap_when_the_llm_finds_coverage(tmp_wiki):
+    """No [GAP]: the LLM found the pages answer the question (Plankalkul on the Zuse page)."""
+    agent, _ = _gap_agent_streaming(tmp_wiki, tokens=(_LONG_CITED,))
+    events = await _collect_stream(agent, "quantum error correction")
+    assert not [e for e in events if e["event"] == "gap"]
+
+
+@pytest.mark.asyncio
+async def test_gap_mode_prompt_asks_for_the_gap_sentinel(tmp_wiki):
+    agent, provider = _gap_agent_streaming(tmp_wiki, tokens=("ok",))
+    prompts = []
+    async def _stream(*a, **kw):
+        prompts.append(kw["messages"][0].content)
+        yield "ok"
+    provider.complete_stream = _stream
+    await _collect_stream(agent, "quantum error correction")
+    assert "start your reply with [GAP] on its own line" in prompts[0]

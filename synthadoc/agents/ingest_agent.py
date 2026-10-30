@@ -15,7 +15,7 @@ from typing import Optional
 
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
-from synthadoc.agents.content_health_fixes import merge_duplicate_sections
+from synthadoc.agents.content_health_fixes import dropped_sentences, merge_duplicate_sections
 from synthadoc.agents.content_health_scanner import (
     _section_spans,
     _strip_code_blocks,
@@ -415,11 +415,6 @@ def _source_in_page(page: "WikiPage", source: str) -> bool:
     return any(_files_match(s.file, source) for s in (page.sources or []))
 
 
-def _is_sole_source(page: "WikiPage", source: str) -> bool:
-    """Return True if *source* is the only source recorded in page.sources."""
-    return bool(page.sources) and all(_files_match(s.file, source) for s in page.sources)
-
-
 def _local_source_exists(file: str, wiki_root: "Path | None") -> bool:
     """Return True when a local (non-URL) source file still exists on disk.
 
@@ -515,27 +510,40 @@ def _merge_section_into_page(
     source_len: int,
     truncated: bool,
 ) -> None:
-    """Apply *section* to *page* and record the source reference.
+    """Add *section* to *page* and record the source reference, never losing text.
 
-    When *source* is the page's only source (e.g. a re-ingested session transcript),
-    the body is replaced so the source never accumulates copies of itself.
-    When the source is already present in a multi-source page (force re-ingest), the
-    old sections attributed to this source are stripped by citation markers before
-    appending the new section — so headings never need to match and sub-sections are
-    handled correctly.
-    Otherwise the section is appended and any heading it repeats is folded into
-    the existing one (:func:`merge_duplicate_sections`, which keeps every sentence).
+    When *source* is re-ingested, its old contribution is replaced by the new
+    section, so a changed source does not leave old and new versions side by
+    side: the whole body when it is the page's only source, or the sections that
+    cite it (:func:`_strip_sections_from_source`) when the page has others too.
+    That replacement is kept only if it drops no sentence of the page. The update
+    step writes only what the page does not already cover, so replacing blindly
+    discarded everything else: a demo batch ingest cut alan-turing.md from 55 KB
+    to 2 KB. Otherwise, and for a new source, the section is appended and any
+    heading it repeats is folded into the existing one
+    (:func:`merge_duplicate_sections`, which keeps every sentence and drops
+    paragraphs repeated word for word). If even that would lose a sentence, the
+    section is appended without merging.
     """
-    if _is_sole_source(page, source):
-        page.content = section
-    elif _source_in_page(page, source):
-        # Force re-ingest of a source already in this multi-source page:
-        # strip the source's old cited sections, then append the fresh one.
-        stem = Path(source).name
-        stripped = _strip_sections_from_source(page.content, stem)
-        page.content = (stripped.rstrip() + f"\n\n{section}") if stripped else section
-    else:
-        page.content = merge_duplicate_sections(page.content.rstrip() + f"\n\n{section}").content
+    before = page.content or ""
+    name = Path(source).name
+    if before.strip() and any(_files_match(s.file, source) for s in (page.sources or [])):
+        others = [s for s in page.sources if not _files_match(s.file, source)]
+        stripped = _strip_sections_from_source(before, name) if others else ""
+        replaced = f"{stripped.rstrip()}\n\n{section}" if stripped.strip() else section
+        if not dropped_sentences(before, replaced):
+            page.content = replaced
+            _append_source_ref(page, SourceRef(file=source, hash=src_hash, size=source_len,
+                                               ingested=date.today().isoformat(), truncated=truncated))
+            return
+        # The usual case: the update adds new material rather than restating the page.
+        logger.info("ingest: kept the existing text and added the new section from %s", name)
+    combined = f"{before.rstrip()}\n\n{section}" if before.strip() else section
+    merged = merge_duplicate_sections(combined).content
+    if before.strip() and dropped_sentences(before, merged):
+        logger.warning("ingest: merging %s into the page would drop text; appending without merging", name)
+        merged = combined
+    page.content = merged
     _append_source_ref(page, SourceRef(
         file=source,
         hash=src_hash,
@@ -900,6 +908,18 @@ class IngestAgent(BaseAgent):
 
     def _staging_policy(self) -> str:
         return self._cfg.ingest.staging_policy if self._cfg else "off"
+
+    async def _snapshot_before_update(self, slug: str, state: str, content: str, source_name: str) -> None:
+        """Keep a page's text from before an ingest update, so the update can be
+        rolled back with the snapshot tools. Best effort: never fails the ingest."""
+        if not content.strip():
+            return
+        try:
+            await self._audit.record_lifecycle_event(
+                slug, state, state, f"before ingest update from {source_name}",
+                TriggerSource.INGEST, content_snapshot=content)
+        except Exception:  # noqa: BLE001
+            logger.warning("ingest: could not snapshot %s before updating it", slug, exc_info=True)
 
     def _write_or_stage(self, slug: str, page: "WikiPage", policy: str) -> bool:
         """Write page directly to wiki/ or to candidates/ when policy requires it.
@@ -1288,6 +1308,7 @@ class IngestAgent(BaseAgent):
                 with self._store.page_lock(target):
                     page = self._store.read_page(target)
                     if page:
+                        _before_state, _before_content = page.status, page.content or ""
                         # Reset stale pages to draft on re-ingest
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
@@ -1314,6 +1335,8 @@ class IngestAgent(BaseAgent):
                         )
                         _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
                         staged = self._write_or_stage(target, page, policy)
+                        if not staged:
+                            await self._snapshot_before_update(target, _before_state, _before_content, p.name)
                 if staged:
                     logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
                 else:
@@ -1349,6 +1372,7 @@ class IngestAgent(BaseAgent):
                     with self._store.page_lock(slug):
                         page = self._store.read_page(slug)
                         if page:
+                            _before_state, _before_content = page.status, page.content or ""
                             # Reset stale pages to draft on re-ingest
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
@@ -1373,6 +1397,8 @@ class IngestAgent(BaseAgent):
                             )
                             _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
                             staged = self._write_or_stage(slug, page, policy)
+                            if not staged:
+                                await self._snapshot_before_update(slug, _before_state, _before_content, p.name)
                     if staged:
                         logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
                     else:
