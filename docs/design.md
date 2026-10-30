@@ -1262,7 +1262,10 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-WIKI-006`   | Name-based wiki not in `~/.synthadoc/wikis.json`; path-based wikis (`-w /wiki`, `-w .`) bypass this check |
 | `ERR-WIKI-007`   | Backup requires a newer`db_schema_version` than installed |
 | `ERR-CFG-001`    | Required API key environment variable not set             |
-| `ERR-CFG-002`    | Provider name not recognised                              |
+| `ERR-CFG-002`    | Provider name not recognised                               |
+| `ERR-CFG-003`    | Duplicate TOML key (e.g. two active `default =` lines)     |
+| `ERR-CFG-004`    | TOML syntax error in config file                           |
+| `ERR-CFG-005`    | `[agents]` section present but every `default =` line is commented out |
 | `ERR-SKILL-001`  | No skill matched the source string                        |
 | `ERR-SKILL-002`  | Required pip package for skill not installed              |
 | `ERR-SKILL-003`  | URL returned 403 (bot/paywall protection)                 |

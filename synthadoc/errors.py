@@ -40,6 +40,7 @@ CFG_MISSING_API_KEY  = "ERR-CFG-001"   # Required env var (API key) not set
 CFG_UNKNOWN_PROVIDER = "ERR-CFG-002"   # Provider name not recognised
 CFG_DUPLICATE_KEY    = "ERR-CFG-003"   # Duplicate TOML key (e.g. two active "default =" lines)
 CFG_INVALID_TOML     = "ERR-CFG-004"   # TOML syntax error in config file
+CFG_NO_PROVIDER      = "ERR-CFG-005"   # [agents] section present but every "default =" line is commented out
 
 
 class ConfigError(Exception):
@@ -55,6 +56,20 @@ class ConfigError(Exception):
         self.hint = hint
 
 
+def _short_wiki_path(path) -> str:
+    """Format a wiki-relative display path for error messages.
+
+    config_path is always <wiki_root>/.synthadoc/config.toml (every load_config
+    call site in this codebase builds it that way) — an absolute path, which
+    would otherwise print the user's home directory and OS username into a
+    message that can end up in logs, bug reports, or screenshots. Keep only
+    the last 3 components: "<wiki-dir-name>/.synthadoc/config.toml".
+    """
+    from pathlib import Path
+    parts = Path(path).parts
+    return "/".join(parts[-3:]) if len(parts) >= 3 else str(path)
+
+
 class MissingApiKeyError(RuntimeError):
     """Raised by ``make_provider`` when a required API key env var is not set.
 
@@ -63,13 +78,16 @@ class MissingApiKeyError(RuntimeError):
     and formats it with ``cli_error``.
     """
 
-    def __init__(self, var: str, provider: str, url: str) -> None:
+    def __init__(self, var: str, provider: str, url: str, config_path=None) -> None:
         self.var = var
         self.provider = provider
         self.url = url
+        self.config_path = config_path
+        config_ref = f"{_short_wiki_path(config_path)}'s" if config_path else "config.toml's"
         super().__init__(
             f"[{CFG_MISSING_API_KEY}] {var} is not set. "
-            f"synthadoc uses {provider} as its LLM provider. "
+            f"synthadoc is configured to use {provider} as its LLM provider "
+            f"(see {config_ref} [agents] section). "
             f"Set the env var before starting the server: "
             f"export {var}=<your-key>  (get one at {url})"
         )

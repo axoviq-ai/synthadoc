@@ -128,7 +128,7 @@ class Orchestrator:
                     'Install with: pip install "synthadoc[vectors]"')
             else:
                 logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — "
-                            "syncing embeddings in the background, BM25 only until done")
+                            "checking embeddings in the background (BM25 only until that finishes)")
                 self._search.schedule_embedding_sync()
         elif fastembed_installed():
             # e.g. a wiki created before "auto" became the default, in the Docker

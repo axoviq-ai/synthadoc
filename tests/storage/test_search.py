@@ -342,6 +342,19 @@ async def test_sync_embeds_each_page_once_and_only_changes_after(tmp_wiki):
     assert await search.sync_embeddings() == 1
 
 
+async def test_sync_with_nothing_to_do_logs_a_completion_message(tmp_wiki, caplog):
+    """A sync that finds nothing to embed must say so — otherwise the only
+    thing a user sees is orchestrator's "checking embeddings in the
+    background" at schedule time, with no signal it already finished."""
+    import logging
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()  # first sync: real work, not what's under test
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="synthadoc.storage.search"):
+        assert await search.sync_embeddings() == 0
+    assert "already up to date" in caplog.text
+
+
 async def test_sync_drops_pages_that_leave_the_corpus(tmp_wiki):
     search = await _vector_search(tmp_wiki)
     await search.sync_embeddings()

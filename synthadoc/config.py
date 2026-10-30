@@ -279,6 +279,11 @@ class Config:
     content_health: ContentHealthConfig = field(default_factory=ContentHealthConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
+    # The config.toml this Config was actually loaded from — project_config
+    # when given, else global_config, else None (defaults only, no file).
+    # Set by load_config(); exists so error messages (e.g. MissingApiKeyError)
+    # can point at the real file instead of a generic "config.toml" mention.
+    config_path: Optional[Path] = None
 
 
 # ---------------------------------------------------------------------------
@@ -665,6 +670,26 @@ def load_config(
                 "agents.default is required but missing from the configuration."
             )
 
+    # An [agents] section was written (by either file) but every "default ="
+    # line under it is commented out. Almost certainly the user forgot to
+    # activate a choice, not a "no agents needed" file — that case is
+    # "agents" not in raw at all (e.g. a project_config with only [wikis]),
+    # handled by the silent default just below. Silently falling back to
+    # gemini here would start the server on a provider the user never
+    # chose and never see why, so this must be a loud, specific error.
+    if "agents" in raw and "default" not in raw["agents"]:
+        from synthadoc.errors import ConfigError, CFG_NO_PROVIDER, _short_wiki_path
+        source = project_config if (project_config is not None and Path(project_config).exists()) \
+            else global_config
+        where = f" in {_short_wiki_path(source)}" if source else ""
+        raise ConfigError(
+            CFG_NO_PROVIDER,
+            f"No LLM provider is configured{where} — every 'default =' line "
+            f"under [agents] is commented out.",
+            "Uncomment exactly one 'default = { provider = ..., model = ... }' "
+            "line under [agents] and restart the server.",
+        )
+
     # If agents section is absent (e.g. project_config with only [wikis]),
     # inject built-in defaults so the rest of the build succeeds.
     if "agents" not in raw or "default" not in raw.get("agents", {}):
@@ -673,4 +698,13 @@ def load_config(
             "model": "gemini-2.5-flash-lite",
         }
 
-    return _raw_to_config(raw, source_has_agents=True)
+    cfg = _raw_to_config(raw, source_has_agents=True)
+    # project_config is the wiki-specific file (<wiki>/.synthadoc/config.toml
+    # at every call site in this codebase) and is where [agents] normally
+    # lives, so prefer it over global_config for error messages that point
+    # the user at "the config file" to go edit.
+    if project_config is not None and Path(project_config).exists():
+        cfg.config_path = Path(project_config)
+    elif global_config is not None and Path(global_config).exists():
+        cfg.config_path = Path(global_config)
+    return cfg
