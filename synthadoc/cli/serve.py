@@ -155,33 +155,31 @@ def _check_network(provider: str) -> None:
         )
 
 
-def _check_api_key(provider: str, config_path=None) -> None:
-    """Fail early with a clean message if the configured provider's API key is missing.
+def _check_api_key(cfg, agent_name: str = "ingest") -> None:
+    """Fail early with a clean message if the configured provider is unusable.
 
-    MissingApiKeyError's own message already carries the [ERR-CFG-001] code and
-    a fix (export VAR=... / where to get a key) — it's the whole reason this
-    check exists, so it must reach the user as plain text, not as an unhandled
-    exception with a Rich traceback box on top of it. config_path (normally
-    cfg.config_path, the wiki's own <wiki>/.synthadoc/config.toml) lets the
-    message point at the real file instead of a generic "config.toml" mention.
+    Delegates to make_provider itself (discarding the constructed provider)
+    rather than maintaining a parallel if/elif list of providers that need a
+    key. That list previously covered only anthropic/openai/gemini/groq and
+    silently missed minimax/deepseek/kimi/qwen — misconfiguring one of those
+    let the server start successfully, with the error only ever surfacing
+    later from a real query instead of at startup like every other provider.
+
+    Every provider's __init__ only constructs a local SDK client object (no
+    network calls) except the CLI-based ones (claude-code, opencode), which
+    check the binary is on PATH and raise EnvironmentError if not — also a
+    known, actionable, startup-time problem, so it's caught here too rather
+    than left to surface mid-query.
+
+    MissingApiKeyError/EnvironmentError's own messages already carry the
+    error code and a fix — it's the whole reason this check exists, so they
+    must reach the user as plain text, not as an unhandled exception with a
+    Rich traceback box on top of it.
     """
-    from synthadoc.providers import _require_env
+    from synthadoc.providers import make_provider
     try:
-        if provider in (Provider.CLAUDE_CODE, Provider.OPENCODE, Provider.OLLAMA):
-            pass  # CLI and local providers — no API key required
-        elif provider == Provider.ANTHROPIC:
-            _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/",
-                         config_path=config_path)
-        elif provider == Provider.OPENAI:
-            _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys",
-                         config_path=config_path)
-        elif provider == Provider.GEMINI:
-            _require_env("GEMINI_API_KEY", "Google Gemini",
-                         "https://aistudio.google.com/app/apikey", config_path=config_path)
-        elif provider == Provider.GROQ:
-            _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys",
-                         config_path=config_path)
-    except E.MissingApiKeyError as exc:
+        make_provider(agent_name, cfg)
+    except (E.MissingApiKeyError, EnvironmentError) as exc:
         typer.echo(f"\n{exc}\n", err=True)
         raise typer.Exit(1)
 
@@ -393,7 +391,7 @@ def serve_cmd(
     # Logging — must come after wiki root is validated so the logs dir can be created
     setup_logging(root, cfg=cfg.logs, verbose=verbose)
 
-    _check_api_key(provider, config_path=cfg.config_path)
+    _check_api_key(cfg)
 
     # Propagate web_search config to env so WebSearchSkill can read it
     os.environ.setdefault(
