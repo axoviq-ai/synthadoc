@@ -123,6 +123,82 @@ def test_project_config_overrides_global(tmp_path):
     assert cfg.agents.default.model == "gpt-4o"
 
 
+def test_config_path_prefers_project_over_global(tmp_path):
+    """config_path must record which file was actually loaded, preferring
+    project_config (the wiki's own <wiki>/.synthadoc/config.toml at every
+    real call site) over global_config — used by error messages that point
+    the user at the real file to edit."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    global_cfg.write_text('[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n')
+    project_cfg.write_text('[agents]\ndefault = { provider = "openai", model = "gpt-4o" }\n')
+    cfg = load_config(global_config=global_cfg, project_config=project_cfg)
+    assert cfg.config_path == project_cfg
+
+
+def test_config_path_falls_back_to_global_when_no_project_config(tmp_path):
+    global_cfg = tmp_path / "global.toml"
+    global_cfg.write_text('[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n')
+    cfg = load_config(global_config=global_cfg)
+    assert cfg.config_path == global_cfg
+
+
+def test_config_path_none_when_no_file_loaded():
+    cfg = load_config()
+    assert cfg.config_path is None
+
+
+def test_config_path_none_when_project_config_path_does_not_exist(tmp_path):
+    missing = tmp_path / "does-not-exist.toml"
+    cfg = load_config(project_config=missing)
+    assert cfg.config_path is None
+
+
+def test_all_providers_commented_out_raises_config_error(tmp_path):
+    """[agents] present but every 'default =' line commented out must raise,
+    not silently fall back to gemini — the user almost certainly forgot to
+    uncomment a choice, and starting on an unintended provider with no
+    warning is exactly the failure mode to avoid."""
+    from synthadoc.errors import ConfigError, CFG_NO_PROVIDER
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        "[agents]\n"
+        "# default = { provider = \"gemini\", model = \"gemini-2.5-flash-lite\" }\n"
+        "# default = { provider = \"anthropic\", model = \"claude-opus-4-6\" }\n"
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(project_config=cfg_file)
+    assert exc_info.value.code == CFG_NO_PROVIDER
+    assert "every 'default =' line" in str(exc_info.value)
+    assert "Uncomment exactly one" in exc_info.value.hint
+
+
+def test_all_providers_commented_out_message_names_short_path(tmp_path):
+    """The error must name the real file (shortened to the wiki-dir-relative
+    form, same privacy rule as MissingApiKeyError) so the user knows exactly
+    which config.toml to edit."""
+    from synthadoc.errors import ConfigError
+    wiki_dir = tmp_path / "history-of-computing"
+    cfg_file = wiki_dir / ".synthadoc" / "config.toml"
+    cfg_file.parent.mkdir(parents=True)
+    cfg_file.write_text("[agents]\n# default = { provider = \"gemini\", model = \"x\" }\n")
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(project_config=cfg_file)
+    assert "history-of-computing/.synthadoc/config.toml" in str(exc_info.value)
+    assert str(tmp_path) not in str(exc_info.value)
+
+
+def test_agents_section_entirely_absent_still_defaults_silently(tmp_path):
+    """A config.toml with NO [agents] section at all (e.g. a project_config
+    that only declares [wikis]) is a legitimately different case from
+    'present but commented out' — it never claimed to configure agents, so
+    the silent gemini default stays correct here."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[wikis]\nfoo = { path = "/tmp/foo" }\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.provider == "gemini"
+
+
 def test_missing_agents_default_raises(tmp_path):
     cfg_file = tmp_path / "config.toml"
     cfg_file.write_text('[cost]\nsoft_warn_usd = 0.10\n')

@@ -70,6 +70,13 @@
     --code-fg:        #a5f3fc;
     --code-inline-bg: rgba(11, 13, 24, 0.75);
 
+    /* Gap-callout suggestion chip (URL/search) — defaults to the same dark
+       "code block" look as --code-bg/--code-fg; overridden lighter in light
+       mode below, since a wide dark pill inside the warm --bg-warning
+       callout looks like a rendering glitch there, unlike a real code block. */
+    --gap-cmd-bg: var(--code-bg);
+    --gap-cmd-fg: var(--code-fg);
+
     /* Shadow */
     --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.5);
 
@@ -144,6 +151,11 @@
         --code-bg:        #1e1f2e;
         --code-inline-bg: #eaebf2;
 
+        /* Suggestion chip: the softer inline-code treatment, not the dark
+           block one — see base :root comment. */
+        --gap-cmd-bg: var(--code-inline-bg);
+        --gap-cmd-fg: var(--text-primary);
+
         --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.12);
 
         --hero-title-shadow: none;
@@ -208,6 +220,9 @@
 
     --code-bg:        #1e1f2e;
     --code-inline-bg: #eaebf2;
+
+    --gap-cmd-bg: var(--code-inline-bg);
+    --gap-cmd-fg: var(--text-primary);
 
     --shadow-lg: 0 -4px 20px rgba(0, 0, 0, 0.12);
 
@@ -836,7 +851,7 @@ body {
 .bubble-gap-callout .gap-suggestion-type { flex-shrink: 0; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 3px; padding: 0.1em 0.35em; }
 .bubble-gap-callout .gap-type-search { background: #1e3a5f; color: #93c5fd; }
 .bubble-gap-callout .gap-type-url { background: #1a3a2a; color: #6ee7b7; }
-.bubble-gap-callout .gap-suggestion-cmd { flex: 1; min-width: 0; background: var(--code-bg); border-radius: 4px; padding: 0.25em 0.5em; font-family: "Fira Code","Cascadia Code",monospace; font-size: 0.80rem; color: var(--code-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bubble-gap-callout .gap-suggestion-cmd { flex: 1; min-width: 0; background: var(--gap-cmd-bg); border-radius: 4px; padding: 0.25em 0.5em; font-family: "Fira Code","Cascadia Code",monospace; font-size: 0.80rem; color: var(--gap-cmd-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bubble-gap-callout .gap-enrich-btn { flex-shrink: 0; border: none; border-radius: 4px; padding: 0.2rem 0.55rem; font-size: 0.75rem; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .bubble-gap-callout .gap-enrich-idle { background: #854d0e; color: #fef9c3; }
 .bubble-gap-callout .gap-enrich-idle:hover { background: #a16207; }

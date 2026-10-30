@@ -7,29 +7,32 @@ from synthadoc.providers.base import LLMProvider
 from synthadoc import errors as E
 
 
-def _require_env(var: str, provider: str, url: str) -> str:
+def _require_env(var: str, provider: str, url: str, config_path=None) -> str:
     value = os.environ.get(var, "").strip()
     if not value:
-        raise E.MissingApiKeyError(var, provider, url)
+        raise E.MissingApiKeyError(var, provider, url, config_path=config_path)
     return value
 
 
 def make_provider(agent_name: str, config: Config) -> LLMProvider:
     agent_cfg = config.agents.resolve(agent_name)
     timeout = config.agents.llm_timeout_seconds
+    cfg_path = config.config_path
     name = agent_cfg.provider
     if name == Provider.ANTHROPIC:
         from synthadoc.providers.anthropic import AnthropicProvider
-        key = _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
+        key = _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/",
+                           config_path=cfg_path)
         return AnthropicProvider(api_key=key, config=agent_cfg, timeout=timeout)
     if name == Provider.OPENAI:
         from synthadoc.providers.openai import OpenAIProvider
-        key = _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")
+        key = _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys",
+                           config_path=cfg_path)
         return OpenAIProvider(api_key=key, config=agent_cfg, timeout=timeout)
     if name == Provider.GEMINI:
         from synthadoc.providers.openai import OpenAIProvider
         key = _require_env("GEMINI_API_KEY", "Google Gemini",
-                           "https://aistudio.google.com/app/apikey")
+                           "https://aistudio.google.com/app/apikey", config_path=cfg_path)
         cfg_with_url = AgentConfig(
             provider=Provider.GEMINI, model=agent_cfg.model,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -38,7 +41,8 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == Provider.GROQ:
         from synthadoc.providers.openai import OpenAIProvider
-        key = _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys")
+        key = _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys",
+                           config_path=cfg_path)
         cfg_with_url = AgentConfig(
             provider=Provider.GROQ, model=agent_cfg.model,
             base_url="https://api.groq.com/openai/v1",
@@ -47,7 +51,8 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == Provider.MINIMAX:
         from synthadoc.providers.openai import OpenAIProvider
-        key = _require_env("MINIMAX_API_KEY", "MiniMax", "https://platform.minimax.io/")
+        key = _require_env("MINIMAX_API_KEY", "MiniMax", "https://platform.minimax.io/",
+                           config_path=cfg_path)
         cfg_with_url = AgentConfig(
             provider=Provider.MINIMAX, model=agent_cfg.model,
             base_url="https://api.minimax.io/v1",
@@ -56,7 +61,8 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == Provider.DEEPSEEK:
         from synthadoc.providers.openai import OpenAIProvider
-        key = _require_env("DEEPSEEK_API_KEY", "DeepSeek", "https://platform.deepseek.com/api_keys")
+        key = _require_env("DEEPSEEK_API_KEY", "DeepSeek", "https://platform.deepseek.com/api_keys",
+                           config_path=cfg_path)
         cfg_with_url = AgentConfig(
             provider=Provider.DEEPSEEK, model=agent_cfg.model,
             base_url="https://api.deepseek.com/v1",
@@ -76,7 +82,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         if not key:
             raise E.MissingApiKeyError(
                 "KIMI_API_KEY (or QWEN_API_KEY)", "Kimi (DashScope)",
-                "https://bailian.console.aliyun.com/"
+                "https://bailian.console.aliyun.com/", config_path=cfg_path,
             )
         _default_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         base_url = os.environ.get("KIMI_BASE_URL", "").strip() or _default_url
@@ -116,7 +122,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         elif _is_dashscope and not key:
             raise E.MissingApiKeyError(
                 "QWEN_API_KEY (or DASHSCOPE_API_KEY)", "Qwen (DashScope)",
-                "https://bailian.console.aliyun.com/"
+                "https://bailian.console.aliyun.com/", config_path=cfg_path,
             )
         else:
             from synthadoc.providers.ollama import OllamaProvider

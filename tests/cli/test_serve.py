@@ -204,3 +204,150 @@ def test_any_iface_addrs_constant():
     assert "0.0.0.0" in _ANY_IFACE_ADDRS
     assert "::" in _ANY_IFACE_ADDRS
     assert "127.0.0.1" not in _ANY_IFACE_ADDRS
+
+
+# ── _check_api_key ────────────────────────────────────────────────────────────
+#
+# _check_api_key delegates to make_provider itself rather than maintaining a
+# parallel if/elif list of providers that need a key — the old list only
+# covered anthropic/openai/gemini/groq and silently missed
+# minimax/deepseek/kimi/qwen, so misconfiguring one of those let the server
+# start successfully with the error only surfacing later, from a real query.
+
+def test_check_api_key_missing_env_exits_cleanly_without_traceback(monkeypatch, capsys):
+    """A missing API key must produce a clean message + exit(1), not an
+    unhandled MissingApiKeyError propagating as a raw traceback."""
+    import click
+    import typer
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cfg = _make_cfg("anthropic")
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(cfg)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "ANTHROPIC_API_KEY is not set" in captured.err
+    assert "ERR-CFG-001" in captured.err
+
+
+def test_check_api_key_missing_env_names_the_real_config_path(monkeypatch, capsys):
+    """When cfg.config_path is known, the message must point at that real
+    file (shortened to the wiki-dir-relative form) rather than a generic
+    'config.toml' mention — and must NOT leak the full absolute path, which
+    would expose the user's home directory and OS username."""
+    import click
+    import typer
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cfg = _make_cfg("anthropic")
+    cfg.config_path = Path("/Users/paulchen/wikis/history-of-computing/.synthadoc/config.toml")
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)):
+        _check_api_key(cfg)
+
+    captured = capsys.readouterr()
+    assert "see history-of-computing/.synthadoc/config.toml's [agents] section" in captured.err
+    assert "/Users/paulchen" not in captured.err
+
+
+def test_check_api_key_present_env_does_not_raise(monkeypatch):
+    """A present API key must not raise anything."""
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+    _check_api_key(_make_cfg("anthropic"))  # must not raise
+
+
+def test_check_api_key_cli_provider_skips_check(monkeypatch):
+    """CLI/local providers (claude-code, opencode, ollama) need no API key."""
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _check_api_key(_make_cfg("ollama"))  # must not raise
+
+
+@pytest.mark.parametrize("provider,env_var", [
+    ("minimax", "MINIMAX_API_KEY"),
+    ("deepseek", "DEEPSEEK_API_KEY"),
+])
+def test_check_api_key_covers_minimax_and_deepseek(monkeypatch, capsys, provider, env_var):
+    """Regression test: these two providers were completely missing from the
+    old if/elif list, so a missing key silently passed startup and only
+    surfaced later from a real query — reported directly against minimax."""
+    import click
+    import typer
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv(env_var, raising=False)
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(_make_cfg(provider))
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert f"{env_var} is not set" in captured.err
+
+
+def test_check_api_key_covers_kimi(monkeypatch, capsys):
+    import click
+    import typer
+    from synthadoc.config import Config, AgentConfig, AgentsConfig
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv("KIMI_API_KEY", raising=False)
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(provider="kimi", model="kimi-k3")))
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(cfg)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "KIMI_API_KEY" in captured.err
+
+
+def test_check_api_key_covers_qwen_dashscope_model(monkeypatch, capsys):
+    """Qwen only needs a key for DashScope-pattern model names (e.g.
+    'qwen-plus'); a non-DashScope name routes to local Ollama instead, so
+    this specifically uses a DashScope-pattern model to exercise the key
+    check — a plain model name would silently skip it (correctly)."""
+    import click
+    import typer
+    from synthadoc.config import Config, AgentConfig, AgentsConfig
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(provider="qwen", model="qwen-plus")))
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(cfg)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "QWEN_API_KEY" in captured.err
+
+
+def test_check_api_key_missing_cli_binary_exits_cleanly(monkeypatch, capsys):
+    """claude-code/opencode check the binary is on PATH at construction time
+    (EnvironmentError, not MissingApiKeyError) — also a known, actionable,
+    startup-time problem, so it must exit cleanly too, not traceback."""
+    import click
+    import typer
+    from synthadoc.cli.serve import _check_api_key
+
+    monkeypatch.setattr("synthadoc.providers.coding_tool._find_binary", lambda name: None)
+    cfg = _make_cfg("claude-code")
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(cfg)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "ERR-PROV-003" in captured.err
+    assert "not found in PATH" in captured.err
