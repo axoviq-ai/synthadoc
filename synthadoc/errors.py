@@ -69,7 +69,8 @@ class MissingApiKeyError(RuntimeError):
         self.url = url
         super().__init__(
             f"[{CFG_MISSING_API_KEY}] {var} is not set. "
-            f"synthadoc uses {provider} as its LLM provider. "
+            f"synthadoc is configured to use {provider} as its LLM provider "
+            f"(see config.toml's [agents] section). "
             f"Set the env var before starting the server: "
             f"export {var}=<your-key>  (get one at {url})"
         )
