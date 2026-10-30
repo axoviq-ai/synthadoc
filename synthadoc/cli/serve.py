@@ -155,6 +155,32 @@ def _check_network(provider: str) -> None:
         )
 
 
+def _check_api_key(provider: str) -> None:
+    """Fail early with a clean message if the configured provider's API key is missing.
+
+    MissingApiKeyError's own message already carries the [ERR-CFG-001] code and
+    a fix (export VAR=... / where to get a key) — it's the whole reason this
+    check exists, so it must reach the user as plain text, not as an unhandled
+    exception with a Rich traceback box on top of it.
+    """
+    from synthadoc.providers import _require_env
+    try:
+        if provider in (Provider.CLAUDE_CODE, Provider.OPENCODE, Provider.OLLAMA):
+            pass  # CLI and local providers — no API key required
+        elif provider == Provider.ANTHROPIC:
+            _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
+        elif provider == Provider.OPENAI:
+            _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")
+        elif provider == Provider.GEMINI:
+            _require_env("GEMINI_API_KEY", "Google Gemini",
+                         "https://aistudio.google.com/app/apikey")
+        elif provider == Provider.GROQ:
+            _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys")
+    except E.MissingApiKeyError as exc:
+        typer.echo(f"\n{exc}\n", err=True)
+        raise typer.Exit(1)
+
+
 def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
                        banner_kwargs: dict | None = None) -> None:
     """Detach the server as a background process and return to the shell."""
@@ -362,18 +388,7 @@ def serve_cmd(
     # Logging — must come after wiki root is validated so the logs dir can be created
     setup_logging(root, cfg=cfg.logs, verbose=verbose)
 
-    from synthadoc.providers import _require_env
-    if provider in (Provider.CLAUDE_CODE, Provider.OPENCODE, Provider.OLLAMA):
-        pass  # CLI and local providers — no API key required
-    elif provider == Provider.ANTHROPIC:
-        _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
-    elif provider == Provider.OPENAI:
-        _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")
-    elif provider == Provider.GEMINI:
-        _require_env("GEMINI_API_KEY", "Google Gemini",
-                     "https://aistudio.google.com/app/apikey")
-    elif provider == Provider.GROQ:
-        _require_env("GROQ_API_KEY", "Groq", "https://console.groq.com/keys")
+    _check_api_key(provider)
 
     # Propagate web_search config to env so WebSearchSkill can read it
     os.environ.setdefault(

@@ -204,3 +204,44 @@ def test_any_iface_addrs_constant():
     assert "0.0.0.0" in _ANY_IFACE_ADDRS
     assert "::" in _ANY_IFACE_ADDRS
     assert "127.0.0.1" not in _ANY_IFACE_ADDRS
+
+
+# ── _check_api_key ────────────────────────────────────────────────────────────
+
+def test_check_api_key_missing_env_exits_cleanly_without_traceback(monkeypatch, capsys):
+    """A missing API key must produce a clean message + exit(1), not an
+    unhandled MissingApiKeyError propagating as a raw traceback."""
+    import click
+    import typer
+    from synthadoc.cli.serve import _check_api_key
+    from synthadoc.config import Provider
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
+        _check_api_key(Provider.ANTHROPIC)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "ANTHROPIC_API_KEY is not set" in captured.err
+    assert "ERR-CFG-001" in captured.err
+
+
+def test_check_api_key_present_env_does_not_raise(monkeypatch):
+    """A present API key must not raise anything."""
+    from synthadoc.cli.serve import _check_api_key
+    from synthadoc.config import Provider
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+    _check_api_key(Provider.ANTHROPIC)  # must not raise
+
+
+def test_check_api_key_cli_provider_skips_check(monkeypatch):
+    """CLI/local providers (claude-code, opencode, ollama) need no API key."""
+    from synthadoc.cli.serve import _check_api_key
+    from synthadoc.config import Provider
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _check_api_key(Provider.CLAUDE_CODE)  # must not raise
+    _check_api_key(Provider.OPENCODE)     # must not raise
+    _check_api_key(Provider.OLLAMA)       # must not raise
