@@ -345,6 +345,12 @@ class HybridSearch:
                 logger.info("Vector search: embedding %d page(s)…%s", len(todo),
                             f" ({skipped} mostly Chinese/Japanese/Korean page(s) left to keyword search)"
                             if skipped else "")
+            else:
+                # Without this, a sync that finds nothing to do is silent — the
+                # only thing a user ever sees is the "syncing in the background"
+                # message at schedule time, with no signal that it already
+                # finished (instantly) and found everything current.
+                logger.info("Vector search: embeddings already up to date")
             loop = asyncio.get_running_loop()
             for i in range(0, len(todo), _EMBED_BATCH * 4):
                 batch = todo[i:i + _EMBED_BATCH * 4]
