@@ -74,6 +74,27 @@ class ToolStatus(str, Enum):
 # ---------------------------------------------------------------------------
 
 
+def _find_raw_source_candidates(wiki_root: Path, slug: str) -> list[str]:
+    """Return raw_sources/ files that may be relevant to *slug*.
+
+    Files whose stem contains the slug (or vice-versa) sort first; the rest
+    follow alphabetically.  Returns paths relative to *wiki_root*.
+    """
+    raw_dir = wiki_root / "raw_sources"
+    if not raw_dir.is_dir():
+        return []
+    files = sorted(f for f in raw_dir.rglob("*") if f.is_file())
+    slug_norm = slug.replace("-", "").replace("_", "").lower()
+
+    def _rank(p: Path) -> tuple[int, str]:
+        stem = p.stem.replace("-", "").replace("_", "").lower()
+        match = slug_norm in stem or stem in slug_norm
+        return (0 if match else 1, str(p))
+
+    files.sort(key=_rank)
+    return [str(f.relative_to(wiki_root)) for f in files]
+
+
 def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
     """Resolve a source file path stored in page metadata to an absolute string.
 
@@ -136,6 +157,12 @@ async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
         return {"error": f"Page {slug!r} not found in this wiki"}
     raw_file = page.sources[0].file if page.sources else None
     if raw_file is None:
+        candidates = _find_raw_source_candidates(ctx.wiki_root, slug)
+        if candidates:
+            return {
+                "error": f"Page {slug!r} has no recorded source file",
+                "candidates": candidates,
+            }
         return {"error": f"Page {slug!r} has no local source file recorded"}
     source_path = _resolve_source_path(ctx.wiki_root, raw_file)
     await ctx.send_sse_event(

@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.4.3
+    Community Edition  v1.5.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,14 +31,16 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.4.3-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.0-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.4.3**
+**Document version: v1.5.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
+
+**Documentation, FAQ and articles:** https://axoviq.com/resources/synthadoc
 
 Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, videos, Word files, TXTs, and AI session transcripts (.jsonl) — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
 
@@ -102,7 +104,7 @@ Synthadoc scales from a single researcher to a company-wide knowledge platform:
 | **Small team (3–20)**  | Centralized internal knowledge base for startups and departments that aggregates diverse individual data sources into a unified, high-integrity wiki. The system automatically resolves contradictions and scales autonomously, ensuring organizational intelligence grows in tandem with your team |
 | **Medium / enterprise** | Compliance-sensitive knowledge bases that must stay local; per-department wikis on separate ports; audit trail for every ingest and cost event; hook system for CI/CD integration; OpenTelemetry for ops dashboards                                                                                 |
 
-**Built for large wikis.** Measured on wikis of thousands of pages: keyword search finds the pages for an answer in about 20 ms at 2,000 pages; [semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search), on by default for new wikis when installed, puts the right page in the top 5 for 68% of questions asked in your own words, up from 48%; and the [knowledge graph](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#large-wikis-cluster-overview) opens a 5,000-page wiki as a clickable overview of named topic clusters in about 6 seconds.
+**Built for large wikis.** Measured on wikis of thousands of pages: keyword search finds the pages for an answer in about 20 ms at 2,000 pages; [semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search), on by default for new wikis when installed, puts the right page in the top 5 for 70% of questions asked in your own words, up from 48%; and the [knowledge graph](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#large-wikis-cluster-overview) opens a 5,000-page wiki as a clickable overview of named topic clusters in about 6 seconds.
 
 ![Knowledge graph of a 5,000-page wiki: one bubble per topic cluster, named after its main pages, with a clickable list of clusters below](https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docs/png/synthadoc-graph-cluster-overview.png)
 *The web UI's Graph tab on a 5,000-page test wiki: 100,801 links summarised as 24 named clusters. Click a cluster to see its pages. [How it works](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#large-wikis-cluster-overview)*
@@ -212,7 +214,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Web search decomposition](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated                                     | **Yes**   | No          | No         | Partial   |
 | **[YouTube transcript ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported                                      | **Yes**   | No          | Yes        | No        |
 | **[Multilingual / CJK queries](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps                                                                                                               | **Yes**   | Limited     | No         | No        |
-| **[Multiple LLM providers + coding tools](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes**   | No          | No         | No        |
+| **[Multiple LLM providers + coding tools](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama, Kimi; Claude Code and Opencode (no API key needed) | **Yes**   | No          | No         | No        |
 
 ### Operations & Trust
 
@@ -272,8 +274,9 @@ Choose one way to run Synthadoc:
 **Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
 
 ```bash
-pip install synthadoc
-synthadoc --version   # confirm it works
+pip install "synthadoc[vectors]"   # recommended — includes semantic search
+pip install synthadoc              # lightweight install, no semantic search
+synthadoc --version                # confirm it works
 ```
 
 The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
@@ -482,7 +485,7 @@ To stop a background server:
 synthadoc stop -w history-of-computing
 ```
 
-**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
+**Upgrading:** after updating synthadoc (via `pip install --upgrade "synthadoc[vectors]"` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
 synthadoc plugin upgrade         # push updated Obsidian plugin binary to all registered wikis

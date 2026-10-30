@@ -23,6 +23,7 @@ SEMANTIC = "#2a78d6"     # fusion + keyword pin: what ships
 KEYWORD = "#eb6834"      # BM25
 RERANK = "#1baf7a"       # the former vector = true (BM25 top 20 re-sorted)
 FUSION = "#6250d6"       # fusion without the keyword pin
+PIN3 = "#eda100"         # fusion + pin of BM25's top 3 (the first release)
 SURFACE, TEXT, TEXT_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#c3c2b7"
 
 # Measured while designing semantic search (benchmarks/retrieval/README.md,
@@ -31,7 +32,8 @@ DESIGN_SETUPS = [
     ("Keyword search (BM25)", KEYWORD, {"lexical": 0.998, "identifier": 0.994, "paraphrase": 0.479, "all": 0.840}),
     ("Vector re-rank (old)", RERANK, {"lexical": 0.986, "identifier": 0.625, "paraphrase": 0.595, "all": 0.742}),
     ("Fusion, no keyword pin", FUSION, {"lexical": 0.994, "identifier": 0.936, "paraphrase": 0.694, "all": 0.883}),
-    ("Semantic search (fusion + pin)", SEMANTIC, {"lexical": 0.998, "identifier": 0.984, "paraphrase": 0.676, "all": 0.896}),
+    ("Fusion + top-3 pin (first release)", PIN3, {"lexical": 0.998, "identifier": 0.984, "paraphrase": 0.676, "all": 0.896}),
+    ("Semantic search (fusion + top-hit pin)", SEMANTIC, {"lexical": 0.998, "identifier": 0.978, "paraphrase": 0.699, "all": 0.901}),
 ]
 # P95 before the query embedding overlapped BM25 (the previous committed baseline).
 LATENCY_BEFORE = {"200": 65.9, "500": 63.9, "1000": 70.1, "1985": 165.7}
@@ -85,12 +87,12 @@ def chart_design(out_dir: Path) -> Path:
     plt = _plt()
     types = ["lexical", "identifier", "paraphrase", "all"]
     labels = ["Page's own words", "Exact name / ID", "Paraphrased", "All questions"]
-    fig, ax = plt.subplots(figsize=(10, 4.8))
+    fig, ax = plt.subplots(figsize=(11, 5.2))
     _grouped_bars(ax, labels, [(n, c, [v[t] for t in types]) for n, c, v in DESIGN_SETUPS], "{:.2f}")
     ax.set_ylim(0, 1.12)
     ax.set_ylabel("Right page in the top 5 (recall@5)")
-    ax.set_title("Only fusion with the keyword pin keeps exact names and lifts paraphrases",)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4, fontsize=9.5)
+    ax.set_title("Fusion with a keyword pin keeps exact names and lifts paraphrases")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=9.5)
     return _save(fig, "design-choices.png", out_dir)
 
 

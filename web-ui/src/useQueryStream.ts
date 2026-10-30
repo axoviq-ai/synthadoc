@@ -119,6 +119,12 @@ export function useQueryStream(
                 partialRef.current = partial;
                 scheduleFlush();
             },
+            onAnswer: (text: string) => {
+                if (controller.signal.aborted) return;
+                partial = text;                 // same answer, citation links resolved
+                partialRef.current = partial;
+                scheduleFlush();
+            },
             onCitations: (c: string[]) => { if (!controller.signal.aborted) citations = c; },
             onGap: (s: string[]) => { if (!controller.signal.aborted) gapSuggestions = s; },
             onDone: (nextHints: string[], prePrompt?: string) => {

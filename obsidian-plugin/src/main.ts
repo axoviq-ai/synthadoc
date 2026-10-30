@@ -3195,6 +3195,9 @@ class QueryModal extends Modal {
                         fullAnswer += text;
                         streamEl.textContent = (streamEl.textContent ?? "") + text;
                     },
+                    // Same answer with [[Title]] citations pointed at page files, so the
+                    // rendered links open pages instead of creating empty notes.
+                    onAnswer: (text) => { fullAnswer = text; },
                     onCitations: (c) => { citations = c; },
                     onGap: (s) => { knowledgeGap = true; suggestedSearches = s; },
                     onDone: async () => { await renderFinal(); },

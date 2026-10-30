@@ -17,6 +17,7 @@ from synthadoc.agents._query_utils import (
     history_block,
     build_synthesis_system,
     strip_answer_tags,
+    resolve_wikilinks,
     trim_history,
     decompose_question,
     STOPWORDS,
@@ -34,6 +35,7 @@ from synthadoc.storage.wiki import WikiStorage
 logger = logging.getLogger(__name__)
 
 _MIN_TERM_FREQ = 2
+_TOP_PAGES_ONE_MENTION = 3   # signal 5: one mention covers a term on a top page matching every specific term
 
 # Word endings stripped when the gap check asks whether some page covers a query
 # term in depth (signal 5), so "codebreaker" is covered by a page that says
@@ -860,7 +862,10 @@ class QueryAgent(BaseAgent):
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
                 f"Answer the question using the wiki pages below and your general knowledge. "
-                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n\n"
+                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it. "
+                f"If the wiki pages below do not answer the question, so your answer relies mainly on "
+                f"general knowledge, start your reply with [GAP] on its own line; if they do answer it, "
+                f"do not write [GAP].\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available:\n{context}"
             )
@@ -896,6 +901,15 @@ class QueryAgent(BaseAgent):
             f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
             f"Question: {question}\n\nPages:\n{context}"
         )
+
+    def _resolve_links(self, text: str, candidates: list[SearchResult]) -> str:
+        """*text* with [[Title]] citations pointed at the cited pages' slugs."""
+        pages, sources = {}, {}
+        for r in candidates:
+            if (page := self._store.read_page(r.slug)) is not None:
+                pages[r.slug] = (page.title or "", list(page.aliases or []))
+                sources[r.slug] = [s.file for s in page.sources or [] if getattr(s, "file", "")]
+        return resolve_wikilinks(text, pages, sources) if pages else text
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
@@ -1137,14 +1151,17 @@ class QueryAgent(BaseAgent):
         # could not find enough in the wiki pages despite pre-synthesis gap detection
         # saying no gap (Guard B false negative). Strip the marker before displaying.
         answer_text = strip_answer_tags(resp2.text)
-        if not _gap and answer_text.startswith("[GAP]"):
-            _gap = True
-            answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
-            _suggested = await SearchDecomposeAgent(self._provider).run(
-                question, domain_context=_purpose_ctx
-            ) or [question]
-
-        _gap = _guard_c_suppress(_gap, answer_text, "query")
+        if answer_text.startswith("[GAP]"):
+            # The LLM judged that the pages do not answer the question (asked for in
+            # gap mode, the Guard B sentinel otherwise): Guard C must not overrule it.
+            answer_text = answer_text[len("[GAP]"):].lstrip("\n")
+            if not _gap:
+                _gap = True
+                _suggested = await SearchDecomposeAgent(self._provider).run(
+                    question, domain_context=_purpose_ctx
+                ) or [question]
+        else:
+            _gap = _guard_c_suppress(_gap, answer_text, "query")
 
         # [MISSING: ...] sentinel — re-enable gap and chip generation even when
         # Guard C suppressed it for a well-cited answer.  Strip the marker from
@@ -1154,6 +1171,7 @@ class QueryAgent(BaseAgent):
         _missing_slugs, answer_text = _extract_missing_slugs(answer_text)
         if _missing_slugs:
             logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
+        answer_text = self._resolve_links(answer_text, candidates)
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -1246,18 +1264,25 @@ class QueryAgent(BaseAgent):
 
             _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
             _pages_with_overlap = 0
-            for _r in candidates:
+            for _rank, _r in enumerate(candidates):
                 _p = self._store.read_page(_r.slug)
                 if not _p:
                     continue
                 _content = _p.content.lower().replace("-", " ")
                 _page_on_topic = False
+                # One mention suffices on a top-ranked page that matches the whole
+                # question: an exact name or number ("OARnet", "1656") usually appears
+                # once, on exactly the right page. A passing mention on a page about
+                # something else ("quantum" with no "error correction") does not count.
+                _matches_all = _rank < _TOP_PAGES_ONE_MENTION and all(
+                    _gap_match_form(_t) in _content for _t in _specific)
+                _needed = 1 if _matches_all else _MIN_TERM_FREQ
                 for _t in _specific:
                     if _content.count(_t) >= _MIN_TERM_FREQ:
                         _page_on_topic = True
                     # A page covers the term in depth when its word family recurs:
                     # "codebreaker" is covered by a page saying "codebreaking".
-                    if _content.count(_gap_match_form(_t)) >= _MIN_TERM_FREQ:
+                    if _content.count(_gap_match_form(_t)) >= _needed:
                         _term_qualifying_pages[_t] += 1
                 if _page_on_topic:
                     _pages_with_overlap += 1
@@ -1332,15 +1357,18 @@ class QueryAgent(BaseAgent):
             _acronym_absent = False
             _prominent_term_absent = False
 
-        gap = self._gap_score_threshold > 0 and (
-            (len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold)
-            or (bool(_key_terms) and not used_tf_fallback and max_score < self._gap_score_threshold)  # skip when no content words or TF fallback
-            or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
-            or _any_term_missing
-            or _defining_term_absent
-            or _acronym_absent
-            or _prominent_term_absent
-        )
+        _signals = {
+            "1 few candidates": len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold,
+            "2 weak score": bool(_key_terms) and not used_tf_fallback and max_score < self._gap_score_threshold,  # skip when no content words or TF fallback
+            "3 little overlap": _pages_with_overlap < 2 and max_score < self._gap_score_threshold,  # one strong page is enough
+            "4 term missing": _any_term_missing,
+            "5 defining term absent": _defining_term_absent,
+            "6 acronym absent": _acronym_absent,
+            "7 prominent term absent": _prominent_term_absent,
+        }
+        gap = self._gap_score_threshold > 0 and any(_signals.values())
+        if gap:
+            logger.debug("gap signals fired: %s", [name for name, fired in _signals.items() if fired])
         logger.info(
             "query retrieval — pages=%d, max_score=%.2f, "
             "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
@@ -1454,6 +1482,7 @@ class QueryAgent(BaseAgent):
         # the line starts with "[" — the sole prefix for "[MISSING: ...]" sentinels.
         # Non-"[" fragments are flushed immediately so normal streaming is unaffected.
         _last_line_buf = ""
+        _streamed: list[str] = []      # token text sent to the client, to compare with the final text
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             system=_synthesis_system,
@@ -1470,10 +1499,17 @@ class QueryAgent(BaseAgent):
             combined = _last_line_buf + token
             if "\n" in combined:
                 parts = combined.split("\n")
-                yield {"event": "token", "data": {"text": "\n".join(parts[:-1]) + "\n"}}
+                # A [GAP] sentinel on the first line is a verdict, not text: never show it.
+                if not _streamed and parts[0].strip() == "[GAP]":
+                    parts = parts[1:]
+                if len(parts) > 1:
+                    text = "\n".join(parts[:-1]) + "\n"
+                    _streamed.append(text)
+                    yield {"event": "token", "data": {"text": text}}
                 _last_line_buf = parts[-1]
             elif not combined.startswith("["):
                 # Cannot be a [MISSING: ...] sentinel — yield immediately.
+                _streamed.append(combined)
                 yield {"event": "token", "data": {"text": combined}}
                 _last_line_buf = ""
             else:
@@ -1489,6 +1525,7 @@ class QueryAgent(BaseAgent):
         if not full_answer:
             logger.warning("run_stream: LLM returned empty response for question %r", question)
             fallback = "(No response was generated. Please try again.)"
+            _streamed.append(fallback)
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
             _last_line_buf = ""
@@ -1497,7 +1534,8 @@ class QueryAgent(BaseAgent):
         # If the sentinel is present, _last_line_buf holds it — don't emit that line.
         # If absent, flush _last_line_buf to the client now.
         _missing_slugs, full_answer = _extract_missing_slugs(full_answer)
-        if not _missing_slugs and _last_line_buf:
+        if not _missing_slugs and _last_line_buf and _last_line_buf.strip() != "[GAP]":
+            _streamed.append(_last_line_buf)
             yield {"event": "token", "data": {"text": _last_line_buf}}
 
         # Strip outer <answer>...</answer> wrapper that some providers (e.g. MiniMax) emit.
@@ -1506,17 +1544,27 @@ class QueryAgent(BaseAgent):
         # Guard B: post-synthesis gap detection — same logic as run().
         # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
         # still could not answer from the available pages.
-        if not _gap and full_answer.startswith("[GAP]"):
+        if full_answer.startswith("[GAP]"):
+            # The LLM judged that the pages do not answer the question: in gap mode
+            # Guard C must not overrule it; otherwise this is Guard B.
+            if not _gap:
+                logger.debug("run_stream: guard B fired — post-synthesis gap detected")
             _gap = True
             full_answer = full_answer[len("[GAP]"):].lstrip("\n")
-            logger.debug("run_stream: guard B fired — post-synthesis gap detected")
-
-        _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
+        else:
+            _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
         # Strip any stray [MISSING: ...] text the LLM may have written; do not
         # use it to re-enable gap — Guard C's assessment is final.
         if _missing_slugs:
             logger.debug("run_stream: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
+
+        # Point [[Title]] links at page slugs. If the final text differs from what
+        # was streamed (links, or a [GAP]/[MISSING]/<answer> marker), send it for
+        # clients to show in place of the streamed tokens.
+        full_answer = self._resolve_links(full_answer, candidates)
+        if full_answer != "".join(_streamed):
+            yield {"event": "answer", "data": {"text": full_answer}}
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
