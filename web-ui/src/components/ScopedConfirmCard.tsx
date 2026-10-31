@@ -42,9 +42,11 @@ export default function ScopedConfirmCard({
     const editorRef = useRef<HTMLDivElement>(null);
     const editorViewRef = useRef<unknown>(null);
 
+    // CodeMirror is initialised once on mount and kept alive for the lifetime of
+    // the card — the Page tab is always in the DOM (just hidden via CSS when the
+    // Blocks tab is active) so switching back to Page never re-creates the editor
+    // and never discards the user's in-progress edits.
     useEffect(() => {
-        if (activeTab !== "page") return;
-        // CodeMirror is initialized asynchronously to avoid issues in SSR/test environments.
         let cancelled = false;
         (async () => {
             try {
@@ -83,11 +85,11 @@ export default function ScopedConfirmCard({
         })();
         return () => {
             cancelled = true;
-            // The view reference may not be set yet if the async init didn't complete.
             (editorViewRef.current as { destroy?: () => void } | null)?.destroy?.();
             editorViewRef.current = null;
         };
-    }, [activeTab, accumulatedBody]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleApprove = () => {
         if (activeTab === "blocks") {
@@ -168,9 +170,8 @@ export default function ScopedConfirmCard({
                 </button>
             </div>
 
-            {/* Block view */}
-            {activeTab === "blocks" && (
-                <div>
+            {/* Block view — always mounted; hidden when Page tab is active */}
+            <div style={{ display: activeTab === "blocks" ? undefined : "none" }}>
                     {blocks.length === 0 && (
                         <p style={{ color: "var(--text-muted, #888)", fontSize: "0.85rem" }}>
                             No edit blocks to show.
@@ -245,12 +246,10 @@ export default function ScopedConfirmCard({
                             )}
                         </div>
                     ))}
-                </div>
-            )}
+            </div>
 
-            {/* Page view */}
-            {activeTab === "page" && (
-                <div>
+            {/* Page view — always mounted; hidden when Blocks tab is active */}
+            <div style={{ display: activeTab === "page" ? undefined : "none" }}>
                     <div style={{
                         fontSize: "0.78rem",
                         color: "var(--text-muted, #888)",
@@ -267,8 +266,7 @@ export default function ScopedConfirmCard({
                             overflow: "auto",
                         }}
                     />
-                </div>
-            )}
+            </div>
 
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>

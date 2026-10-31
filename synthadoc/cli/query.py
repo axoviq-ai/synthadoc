@@ -81,6 +81,8 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int | None)
                     typer.echo(f"  {msg}", err=True)
             elif event_name == "confirm_request":
                 _handle_confirm(wiki, data)
+            elif event_name == "scoped_edit_confirm":
+                _handle_scoped_confirm(wiki, data)
             elif event_name == "citations":
                 citations = data.get("citations", [])
             elif event_name == "gap":
@@ -193,6 +195,46 @@ def _handle_confirm(wiki: str, data: dict) -> None:
     if session_id:
         try:
             post(wiki, "/action/confirm", {"session_id": session_id, "confirmed": confirmed})
+        except Exception:
+            pass  # Confirm gate will time out on the server if the POST fails
+
+
+def _handle_scoped_confirm(wiki: str, data: dict) -> None:
+    """Print a scoped-edit block summary and POST the response to /action/confirm-scoped.
+
+    The ``scoped_edit_confirm`` SSE event carries applied/rejected blocks.
+    The CLI lists each applied block (old_text → new_text, truncated to 60
+    characters), prompts for approval, then POSTs to the confirm-scoped gate
+    using the same HTTP client as :func:`_handle_confirm`.
+    """
+    session_id = data.get("session_id", "")
+    header_message = data.get("header_message", "Edits ready")
+    blocks = data.get("blocks", [])
+    applied = [b for b in blocks if b.get("status") == "applied"]
+
+    typer.echo(f"\n{header_message}")
+    if applied:
+        typer.echo(f"  {len(applied)} edit(s) to apply:")
+        for b in applied:
+            old_raw = (b.get("old_text") or "").replace("\n", " ")
+            new_raw = (b.get("new_text") or "").replace("\n", " ")
+            old_snippet = old_raw[:60] + ("…" if len(old_raw) > 60 else "")
+            new_snippet = new_raw[:60] + ("…" if len(new_raw) > 60 else "")
+            typer.echo(f"    \"{old_snippet}\" → \"{new_snippet}\"")
+
+    n = len(applied)
+    response = typer.prompt(f"  Apply all {n} edit(s)? [y/N]", default="n", prompt_suffix=" > ")
+    confirmed = response.strip().lower() in ("y", "yes")
+
+    if session_id:
+        try:
+            post(wiki, "/action/confirm-scoped", {
+                "session_id": session_id,
+                "confirmed": confirmed,
+                "mode": "blocks",
+                "included_block_ids": [b["id"] for b in applied] if confirmed else [],
+                "page_body": None,
+            })
         except Exception:
             pass  # Confirm gate will time out on the server if the POST fails
 
