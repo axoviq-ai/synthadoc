@@ -239,6 +239,7 @@ export function ChatWindow({
                         blocks={pendingScopedConfirm.blocks}
                         defaultTab={pendingScopedConfirm.default_tab}
                         headerMessage={pendingScopedConfirm.header_message}
+                        rationale={pendingScopedConfirm.rationale}
                         timeoutSeconds={pendingScopedConfirm.timeout_seconds}
                         onDecide={(result) => {
                             const captured = pendingScopedConfirm;
