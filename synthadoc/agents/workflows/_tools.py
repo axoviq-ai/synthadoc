@@ -862,6 +862,7 @@ async def tool_scoped_confirm(
     slug: str,
     apply_result: "ApplyResult",  # type: ignore[name-defined]
     current_body: str,
+    rationale: str | None = None,
 ) -> dict:
     """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
 
@@ -921,6 +922,8 @@ async def tool_scoped_confirm(
             "header_message": header_message,
             "timeout_seconds": int(_CONFIRM_TIMEOUT),
         }
+        if rationale is not None:
+            payload["rationale"] = rationale
         try:
             await ctx.send_sse_event("scoped_edit_confirm", payload)
         except Exception:  # noqa: BLE001
@@ -1349,6 +1352,7 @@ async def tool_propose_and_apply_blocks(
 
     scoped_result = await tool_scoped_confirm(
         ctx, slug=slug, apply_result=result, current_body=current_body,
+        rationale=strategy_name,
     )
     confirmed = scoped_result.get("confirmed", False)
     if not confirmed:

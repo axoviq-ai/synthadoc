@@ -115,7 +115,7 @@ async def test_every_write_asks_the_user_with_the_real_diff(tmp_path, monkeypatc
 
     captured_args: list[dict] = []
 
-    async def fake_scoped_confirm(ctx, slug, apply_result, current_body):
+    async def fake_scoped_confirm(ctx, slug, apply_result, current_body, **_kw):
         captured_args.append({"slug": slug, "apply_result": apply_result,
                                "current_body": current_body})
         return {"confirmed": True, "final_body": apply_result.accumulated_body}
@@ -156,7 +156,7 @@ async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeyp
 
     captured: list = []
 
-    async def fake_scoped_confirm(ctx, slug, apply_result, current_body):
+    async def fake_scoped_confirm(ctx, slug, apply_result, current_body, **_kw):
         captured.append(apply_result)
         return {"confirmed": False, "final_body": None}
 
@@ -594,7 +594,7 @@ async def test_write_fix_via_blocks_applies_accumulated_body():
         applied_body = content
         return {"status": "success", "slug": slug, "snapshot_index": 1, "remaining_issues": 0}
 
-    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body):
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body, **_kw):
         return {"confirmed": True, "final_body": apply_result.accumulated_body}
 
     from unittest.mock import patch
