@@ -34,6 +34,47 @@ def normalize_whitespace(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# _build_norm_to_raw_map
+# ---------------------------------------------------------------------------
+
+def _build_norm_to_raw_map(raw: str) -> list[int]:
+    """Build a forward map from normalized-body positions to raw-body positions.
+
+    Returns a list of length ``len(normalize_whitespace(raw)) + 1`` where
+    ``result[i]`` is the index in *raw* that produced normalized character *i*.
+    The sentinel entry ``result[len(norm)]`` equals ``len(raw)``.
+
+    Used by :func:`apply_blocks` to recover the raw span corresponding to a
+    matched position in the normalized body, so that the returned
+    ``accumulated_body`` is never normalized.
+    """
+    mapping: list[int] = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        c = raw[i]
+        if c == '\r':
+            # \r\n → single \n (consume both); bare \r → \n (consume one)
+            mapping.append(i)
+            if i + 1 < n and raw[i + 1] == '\n':
+                i += 2
+            else:
+                i += 1
+        elif c in ' \t':
+            # Scan the full run of spaces/tabs; the run collapses to one space
+            j = i
+            while j < n and raw[j] in ' \t':
+                j += 1
+            mapping.append(i)  # the entire run maps to one normalized char
+            i = j
+        else:
+            mapping.append(i)
+            i += 1
+    mapping.append(n)  # sentinel: maps len(norm) → len(raw)
+    return mapping
+
+
+# ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
@@ -106,15 +147,19 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
     """Apply *raw_blocks* (list of ``{"old_text": …, "new_text": …}`` dicts)
     to *page_body* using the following pipeline:
 
-    1. Normalise both sides; find each *old_text* as the **leftmost** substring
-       in the *current* body; mark duplicates as ``no_match``.
-    2. Sort matched blocks by their byte position.
-    3. Scan adjacent pairs for overlapping spans → mark both ``conflict``.
+    1. For each block, try an exact substring match in the raw body first; fall
+       back to a normalized match (via :func:`normalize_whitespace`) and map the
+       normalized position back to a raw span using
+       :func:`_build_norm_to_raw_map`.  Empty or whitespace-only *old_text*
+       values and blocks that find no match are marked ``no_match``.
+    2. Sort matched blocks by their raw byte-start position.
+    3. Scan adjacent pairs for overlapping raw spans → mark both ``conflict``.
     4. For each non-rejected block: heading-mutation guard, then
        sentence-loss guard.
-    5. Apply remaining (non-rejected) blocks in document order by simple
-       string replacement on a running copy of the body.
-    6. Snapshot before step 5; restore on unexpected exception.
+    5. Apply remaining (non-rejected) blocks by splicing the **raw body** in
+       *reverse position order* (rightmost first) so earlier offsets are not
+       shifted.  ``normalize_whitespace`` is **never** applied to the returned
+       ``accumulated_body`` — only matching uses normalization.
     """
     result = ApplyResult(accumulated_body=page_body)
 
@@ -122,73 +167,92 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
         return result
 
     norm_body = normalize_whitespace(page_body)
+    norm_map: list[int] | None = None  # built lazily only if needed
 
     # ------------------------------------------------------------------
     # Step 1 — find positions (leftmost match), mark duplicates no_match
     # ------------------------------------------------------------------
-    # pending: list of (index, norm_old, norm_new, raw_old, raw_new, pos | None, rejected_reason | None)
+    # pending: list of per-block dicts tracking match position and reason
     pending: list[dict] = []
-    seen_positions: set[int] = set()
+    seen_raw_starts: set[int] = set()
 
     for idx, blk in enumerate(raw_blocks):
         raw_old = blk.get("old_text", "")
         raw_new = blk.get("new_text", "")
-        norm_old = normalize_whitespace(raw_old)
-        norm_new = normalize_whitespace(raw_new)
 
-        pos = norm_body.find(norm_old)
-
-        if pos == -1 or pos in seen_positions:
-            # Either genuinely absent OR already consumed by a prior block
+        # Guard: empty or whitespace-only old_text can never match meaningfully
+        if not raw_old.strip():
             pending.append({
                 "index": idx,
-                "norm_old": norm_old,
-                "norm_new": norm_new,
                 "raw_old": raw_old,
                 "raw_new": raw_new,
-                "pos": None,
+                "raw_start": None,
+                "raw_end": None,
+                "rejected_reason": "no_match",
+            })
+            continue
+
+        # Try exact match in the raw body first (avoids any whitespace damage)
+        raw_start = page_body.find(raw_old)
+        if raw_start != -1:
+            raw_end = raw_start + len(raw_old)
+        else:
+            # Fall back: try normalized match and map position back to raw span
+            norm_old = normalize_whitespace(raw_old)
+            norm_pos = norm_body.find(norm_old)
+            if norm_pos != -1:
+                if norm_map is None:
+                    norm_map = _build_norm_to_raw_map(page_body)
+                raw_start = norm_map[norm_pos]
+                raw_end   = norm_map[norm_pos + len(norm_old)]
+            else:
+                raw_start = -1
+                raw_end   = -1
+
+        if raw_start == -1 or raw_start in seen_raw_starts:
+            pending.append({
+                "index": idx,
+                "raw_old": raw_old,
+                "raw_new": raw_new,
+                "raw_start": None,
+                "raw_end": None,
                 "rejected_reason": "no_match",
             })
         else:
-            seen_positions.add(pos)
+            seen_raw_starts.add(raw_start)
             pending.append({
                 "index": idx,
-                "norm_old": norm_old,
-                "norm_new": norm_new,
                 "raw_old": raw_old,
                 "raw_new": raw_new,
-                "pos": pos,
+                "raw_start": raw_start,
+                "raw_end": raw_end,
                 "rejected_reason": None,
             })
 
     # ------------------------------------------------------------------
-    # Step 2 — sort matched blocks by position
+    # Step 2 — sort matched blocks by raw position
     # ------------------------------------------------------------------
-    matched = [p for p in pending if p["pos"] is not None]
-    unmatched = [p for p in pending if p["pos"] is None]
+    matched = [p for p in pending if p["raw_start"] is not None]
+    unmatched = [p for p in pending if p["raw_start"] is None]
 
-    matched.sort(key=lambda p: p["pos"])  # type: ignore[arg-type]
+    matched.sort(key=lambda p: p["raw_start"])  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------
-    # Step 3 — detect overlapping spans → conflict
+    # Step 3 — detect overlapping raw spans → conflict
     # ------------------------------------------------------------------
     for i in range(len(matched)):
         if matched[i]["rejected_reason"] is not None:
             continue
-        span_end_i = matched[i]["pos"] + len(matched[i]["norm_old"])  # type: ignore[operator]
+        span_end_i = matched[i]["raw_end"]
         for j in range(i + 1, len(matched)):
             if matched[j]["rejected_reason"] is not None:
                 continue
-            pos_j = matched[j]["pos"]
+            pos_j = matched[j]["raw_start"]
             if pos_j < span_end_i:  # type: ignore[operator]
                 # Overlap — mark both conflict
                 matched[i]["rejected_reason"] = "conflict"
                 matched[j]["rejected_reason"] = "conflict"
-                # Update span_end_i to include j for further checks
-                span_end_i = max(
-                    span_end_i,
-                    pos_j + len(matched[j]["norm_old"]),  # type: ignore[operator]
-                )
+                span_end_i = max(span_end_i, matched[j]["raw_end"])
 
     # ------------------------------------------------------------------
     # Step 4 — heading-mutation and sentence-loss guards
@@ -196,25 +260,24 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
     for blk in matched:
         if blk["rejected_reason"] is not None:
             continue
-        if _check_heading_mutation(blk["norm_old"], blk["norm_new"]):
+        if _check_heading_mutation(blk["raw_old"], blk["raw_new"]):
             blk["rejected_reason"] = "heading_mutation"
             continue
-        if _check_sentence_loss(blk["norm_old"], blk["norm_new"]):
+        if _check_sentence_loss(blk["raw_old"], blk["raw_new"]):
             blk["rejected_reason"] = "sentence_loss"
 
     # ------------------------------------------------------------------
-    # Step 5 — apply non-rejected blocks in document order
+    # Step 5 — apply non-rejected blocks by splicing the raw body in
+    # reverse position order (rightmost first so earlier offsets stay stable)
     # ------------------------------------------------------------------
-    snapshot = norm_body
-    running_body = norm_body
-
+    body = page_body
     try:
-        for blk in matched:
+        for blk in reversed(matched):
             if blk["rejected_reason"] is not None:
                 continue
-            running_body = running_body.replace(blk["norm_old"], blk["norm_new"], 1)
+            body = body[: blk["raw_start"]] + blk["raw_new"] + body[blk["raw_end"] :]
     except Exception:  # pragma: no cover — safety net
-        running_body = snapshot
+        body = page_body
 
     # ------------------------------------------------------------------
     # Build BlockResult list (preserve original input order via index)
@@ -249,7 +312,7 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
     rejected = [b for b in block_results if b.status == "rejected"]
 
     result.blocks = block_results
-    result.accumulated_body = running_body
+    result.accumulated_body = body
     result.applied_count = len(applied)
     result.rejected_count = len(rejected)
     return result

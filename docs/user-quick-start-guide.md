@@ -3451,6 +3451,8 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
 
+**Scoped edit confirmation (contradiction resolver and content health resolver):** when running `synthadoc workflow` or using the web UI for contradiction or content-health checks, the approval dialog now shows individual edits as per-block include/skip toggles rather than a single full-page diff. You can approve all edits, skip individual ones, or switch to the **Page** tab to make free-form edits in a CodeMirror editor before approving. No write happens until you click **Approve**, and every approved write is preceded by a snapshot that can be rolled back with "roll back `<slug>`".
+
 → **CLI and API provider differences by workflow:** [Provider Compatibility](design.md#provider-compatibility) — all seven workflows work with both provider types; the table shows confirm-gate pattern and execution model for each.
 
 → Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)

@@ -218,3 +218,44 @@ test("Approve calls onDecide with blocks mode", () => {
         confirmed: true, mode: "blocks",
     }));
 });
+
+test("Reject button calls onDecide with confirmed=false and correct payload shape", () => {
+    const onDecide = vi.fn();
+    render(
+        <ScopedConfirmCard
+            sessionId="s1" pageSlug="pg"
+            currentBody="old0" accumulatedBody="new0"
+            blocks={BLOCKS} defaultTab="blocks"
+            headerMessage="1 edit ready · 1 rejected"
+            onDecide={onDecide}
+        />
+    );
+    fireEvent.click(screen.getByText("Reject"));
+    expect(onDecide).toHaveBeenCalledOnce();
+    const payload = onDecide.mock.calls[0][0];
+    expect(payload.confirmed).toBe(false);
+    expect(payload.mode).toBe("blocks");
+    expect(Array.isArray(payload.includedBlockIds)).toBe(true);
+    expect(payload.pageBody).toBeNull();
+});
+
+test("page-mode Approve calls onDecide with mode='page'", () => {
+    // Open on the page tab by default (simulates zero-blocks case)
+    const onDecide = vi.fn();
+    render(
+        <ScopedConfirmCard
+            sessionId="s2" pageSlug="pg2"
+            currentBody="original" accumulatedBody="original"
+            blocks={[]} defaultTab="page"
+            headerMessage="No safe edits found — you can edit the page manually below."
+            onDecide={onDecide}
+        />
+    );
+    fireEvent.click(screen.getByText("Approve"));
+    expect(onDecide).toHaveBeenCalledOnce();
+    const payload = onDecide.mock.calls[0][0];
+    expect(payload.confirmed).toBe(true);
+    expect(payload.mode).toBe("page");
+    // pageBody should be a string (the editor content)
+    expect(typeof payload.pageBody).toBe("string");
+});

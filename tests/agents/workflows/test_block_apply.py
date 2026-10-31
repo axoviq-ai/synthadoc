@@ -83,3 +83,68 @@ def test_partial_apply_bad_block_discarded():
     assert result.rejected_count == 1
     assert "Fixed." in result.accumulated_body
     assert "Keep me." in result.accumulated_body
+
+
+# ---------------------------------------------------------------------------
+# New tests for Finding A (raw-body splicing) and Finding G (thin tests)
+# ---------------------------------------------------------------------------
+
+def test_empty_old_text_rejected():
+    """Empty old_text must be rejected with no_match before any matching."""
+    body = "Some content here."
+    result = apply_blocks(body, [{"old_text": "", "new_text": "replacement"}])
+    assert result.blocks[0].status == "rejected"
+    assert result.blocks[0].rejection_reason == "no_match"
+    assert result.accumulated_body == body
+
+
+def test_whitespace_only_old_text_rejected():
+    """Whitespace-only old_text must be rejected with no_match."""
+    body = "Some content here."
+    result = apply_blocks(body, [{"old_text": "   \t  ", "new_text": "replacement"}])
+    assert result.blocks[0].status == "rejected"
+    assert result.blocks[0].rejection_reason == "no_match"
+    assert result.accumulated_body == body
+
+
+def test_no_cross_contamination_from_earlier_block_new_text():
+    """Earlier block's new_text may introduce a substring that matches a later
+    block's old_text.  Reverse-order splicing must apply each block against the
+    *original* raw body position, not against text produced by a prior splice.
+    """
+    # body = "aaa bbb."
+    # Block 0 replaces "aaa" with "aaa bbb" (introduces an extra "bbb" prefix)
+    # Block 1 replaces "bbb." with "ccc."
+    # Correct result: "aaa bbb ccc." (block 1 replaced the ORIGINAL "bbb.", not the one introduced by block 0)
+    body = "aaa bbb."
+    result = apply_blocks(body, [
+        {"old_text": "aaa",  "new_text": "aaa bbb"},  # new_text contains "bbb"
+        {"old_text": "bbb.", "new_text": "ccc."},      # must match original position
+    ])
+    assert result.applied_count == 2
+    assert result.accumulated_body == "aaa bbb ccc."
+
+
+def test_raw_body_preserved_no_whitespace_damage():
+    """apply_blocks must return the raw body (with original whitespace preserved),
+    not a normalized version, for the parts not touched by any block.
+    """
+    # The body has list indentation and a fenced code block that normalize_whitespace
+    # would damage (collapsing the leading spaces).
+    body = "Intro.\n\n- item one\n  - nested item\n\n```python\nx  =  1\n```\n\nEnd."
+    # Replace only "Intro." — everything else must be byte-for-byte identical.
+    result = apply_blocks(body, [{"old_text": "Intro.", "new_text": "Introduction."}])
+    assert result.applied_count == 1
+    expected = "Introduction.\n\n- item one\n  - nested item\n\n```python\nx  =  1\n```\n\nEnd."
+    assert result.accumulated_body == expected
+
+
+def test_normalized_fallback_match():
+    """old_text with extra internal spaces should still find a match via the
+    normalized fallback path and splice the correct raw span.
+    """
+    # raw body has a single space; old_text has two spaces (normalized: same)
+    body = "Hello world. Goodbye."
+    result = apply_blocks(body, [{"old_text": "Hello  world.", "new_text": "Hi world."}])
+    assert result.applied_count == 1
+    assert result.accumulated_body == "Hi world. Goodbye."

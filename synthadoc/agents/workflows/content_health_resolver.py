@@ -583,7 +583,15 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                     "slug": slug,
                     "message": f"Fix for '{slug}' skipped by the user.",
                 }
-            final_body = scoped_result["final_body"]
+            final_body = scoped_result.get("final_body")
+            # Skip-all: if the confirmed body is identical to the current
+            # content, do not write and do not create a snapshot.
+            if final_body is None or final_body.strip() == current_body.strip():
+                return {
+                    "status": "skipped",
+                    "slug": slug,
+                    "message": "No changes — body identical to current content.",
+                }
             return await tool_write_content_health_fix(
                 ctx, slug=slug, content=final_body, issues_fixed=issues_fixed,
             )
