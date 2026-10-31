@@ -51,6 +51,7 @@
 40. [Content Health Resolver Workflow (v1.4.2)](#40-content-health-resolver-workflow)
 41. [Cross-Wiki Queries (v1.4.0)](#41-cross-wiki-queries-v140)
 42. [Docker Deployment (v1.4.2)](#42-docker-deployment)
+43. [Scoped Edit Confirm](#43-scoped-edit-confirm)
 
 **Appendices**
 
@@ -4554,6 +4555,18 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 Synthadoc ships an OCI image, `chenp/synthadoc`, for server deployments, shared team wikis, CI/CD pipelines, and isolated personal use. The same image runs on Docker Engine and Docker Desktop, on the Apple `container` tool (macOS 26+, Apple Silicon), and on WSL Containers (`wslc`, Windows 11). It is published for `linux/amd64` and `linux/arm64`.
 
 → Operator guide: [Docker Deployment Guide](docker-deploy.md)
+
+---
+
+## 43. Scoped Edit Confirm
+
+The **scoped edit confirm** mechanism replaces full-page diff approval for contradiction-resolver Strategy 1 and content-health fixes. Instead of a single unified diff, the server sends a `scoped_edit_confirm` SSE event carrying a list of individual `{old_text, new_text}` block pairs plus the pre-applied accumulated body. The web UI renders a `ScopedConfirmCard` with two tabs — **Blocks** (per-block include/skip toggles) and **Page** (full CodeMirror editor initialized from the accumulated body) — and a CodeMirror 6 dependency was added to the web-ui bundle.
+
+**`scoped_edit_confirm` SSE event fields:** `session_id`, `page_slug`, `current_body`, `accumulated_body`, `blocks` (array of `{id, old_text, new_text, status, rejection_reason}`), `default_tab` (`"blocks"` or `"page"`), `header_message`, `timeout_seconds`.
+
+**`POST /action/confirm-scoped` request fields:** `session_id`, `confirmed` (bool), `mode` (`"blocks"` or `"page"`, default `"blocks"`), `included_block_ids` (array of block ids to apply in blocks mode), `page_body` (string or null, used in page mode). When `mode` is omitted by the client, the default `"blocks"` is used. In page mode, the server validates the submitted body against the current page using the heading-mutation and text-loss guards before writing.
+
+**Workflow changes:** contradiction-resolver Strategy 1 and content-health `write_content_health_fix` now output `{old_text, new_text}` block lists via the `block_apply` engine rather than full-page rewrites. The `block_apply` engine matches each block against the raw page body (exact match first, normalized fallback) and applies approved blocks by splicing in reverse position order, so the returned body is never normalized. A no-change guard prevents writes when the confirmed body is identical to the current content.
 
 ### Runtime model
 

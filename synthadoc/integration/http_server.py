@@ -353,7 +353,7 @@ class ActionConfirmRequest(BaseModel):
 class ScopedConfirmRequest(BaseModel):
     session_id: str
     confirmed: bool
-    mode: str                          # "blocks" or "page"
+    mode: str = "blocks"               # "blocks" or "page"; default "blocks" is safe
     included_block_ids: list[str] = []
     page_body: str | None = None
 

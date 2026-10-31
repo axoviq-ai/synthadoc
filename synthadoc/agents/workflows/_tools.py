@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.content_health_fixes import heading_mismatch_error
+from synthadoc.agents.content_health_fixes import heading_mismatch_error, text_loss_error
 from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
@@ -929,23 +929,32 @@ async def tool_scoped_confirm(
                 ctx.session_id,
                 exc_info=True,
             )
-            return {"confirmed": False, "final_body": None}
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 6. Wait for gate
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
         except asyncio.TimeoutError:
-            return {"confirmed": False, "final_body": None}
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 7. Read result
         res = ctx.confirm_result_registry.get(ctx.session_id, {})
 
+        # Guard: a plain bool (from tool_confirm) must not be read as a scoped dict
+        if not isinstance(res, dict):
+            _log.error(
+                "tool_scoped_confirm: unexpected non-dict result in registry for "
+                "session=%s (type=%s) — treating as declined",
+                ctx.session_id, type(res).__name__,
+            )
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
+
         # 8. If not confirmed
         if not res.get("confirmed"):
-            return {"confirmed": False, "final_body": None}
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 9 / 10. Compute final_body
-        mode = res.get("mode", "page")
+        mode = res.get("mode", "blocks")
         if mode == "page":
             final_body = res.get("page_body")
         else:
@@ -959,8 +968,8 @@ async def tool_scoped_confirm(
             re_result = apply_blocks(current_body, included_raw)
             final_body = re_result.accumulated_body
 
-        # 11. Return
-        return {"confirmed": True, "final_body": final_body}
+        # 11. Return — include mode so callers can apply mode-specific validation
+        return {"confirmed": True, "final_body": final_body, "mode": mode}
 
     finally:
         # 12. Cleanup
@@ -1032,7 +1041,10 @@ async def tool_confirm(
             return {"confirmed": False}
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
-            confirmed = ctx.confirm_result_registry.get(ctx.session_id, False)
+            raw_result = ctx.confirm_result_registry.get(ctx.session_id, False)
+            # Explicit bool check: a scoped-confirm dict is truthy but must not
+            # be mistaken for a plain confirmed=True from tool_confirm.
+            confirmed = raw_result is True
             return {"confirmed": confirmed}
         except asyncio.TimeoutError:
             return {"confirmed": False}
@@ -1342,7 +1354,46 @@ async def tool_propose_and_apply_blocks(
     if not confirmed:
         return {"applied": False, "diff_preview": ""}
 
-    final_body = scoped_result["final_body"]
+    final_body = scoped_result.get("final_body")
+    mode = scoped_result.get("mode", "blocks")
+
+    # Guard: page_body: null with mode="page" must not reach the write path
+    if final_body is None:
+        _log.error(
+            "tool_propose_and_apply_blocks: page_body missing in scoped confirm "
+            "result for slug=%s (mode=%s) — declining write",
+            slug, mode,
+        )
+        return {"applied": False, "diff_preview": "", "error": "page_body missing"}
+
+    # Page-mode: run the same structural validators as content-health apply to
+    # guard against a manually edited body that damages headings or drops prose.
+    if mode == "page":
+        hm = heading_mismatch_error(slug, page.content or "", final_body)
+        if hm:
+            return {
+                "applied": False,
+                "diff_preview": "",
+                "error": (
+                    f"Rejected — page-mode body changes "
+                    f"{hm.get('heading_changes', 'one or more')} heading(s); "
+                    "headings must be preserved exactly. Review manually."
+                ),
+            }
+        tl = text_loss_error(slug, page.content or "", final_body)
+        if tl:
+            return {
+                "applied": False,
+                "diff_preview": "",
+                "error": (
+                    "Rejected — page-mode body drops too many sentences from "
+                    "current content. Review manually."
+                ),
+            }
+
+    # Skip-all: if final body is identical to current content, do not write
+    if final_body.strip() == (page.content or "").strip():
+        return {"applied": False, "diff_preview": ""}
 
     # Same snapshot / fix_record logic as tool_propose_and_apply — chain onto the
     # first attempt's record when one already exists (multi-strategy retry path).
