@@ -104,23 +104,33 @@ def _wiki_with_stray_h1(tmp_path, slugs):
 
 @pytest.mark.asyncio
 async def test_every_write_asks_the_user_with_the_real_diff(tmp_path, monkeypatch):
-    """Each page's write shows a diff computed from the actual content, then writes.
+    """Phase 2: _write_fix calls tool_scoped_confirm for user approval.
 
-    Uses a prose-level block edit (extending a sentence) that passes both the
-    apply_blocks engine guards and tool_apply_content_health_fix's sentence-preservation
-    check: the original sentence text is still present as a substring in the proposed
-    content, so dropped_sentences returns [].
+    Uses a prose-level block edit (extending a sentence) that passes apply_blocks'
+    guards: the original sentence text is still present in the proposed content so
+    sentence_loss is not triggered.  After the user approves via the scoped card,
+    tool_write_content_health_fix is called with the accumulated body.
     """
-    from synthadoc.agents.workflows.tools import content_health_tools as tools_mod
-    confirm = AsyncMock(return_value={"confirmed": True})
-    monkeypatch.setattr(tools_mod, "tool_confirm", confirm)
-    ctx = _wiki_with_stray_h1(tmp_path, ["page-a", "page-b"])
+    from synthadoc.agents.workflows import content_health_resolver as mod
 
+    captured_args: list[dict] = []
+
+    async def fake_scoped_confirm(ctx, slug, apply_result, current_body):
+        captured_args.append({"slug": slug, "apply_result": apply_result,
+                               "current_body": current_body})
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
+
+    write_fix = AsyncMock(return_value={
+        "status": "success", "slug": "...", "snapshot_index": 1, "remaining_issues": 0,
+    })
+    monkeypatch.setattr(mod, "tool_scoped_confirm", fake_scoped_confirm)
+    monkeypatch.setattr(mod, "tool_write_content_health_fix", write_fix)
+
+    ctx = _wiki_with_stray_h1(tmp_path, ["page-a", "page-b"])
     wf = ContentHealthResolverWorkflow()
     wf._prediscovered_slugs = ["page-a", "page-b"]
     tools = wf.build_guarded_tool_fns(ctx)
-    # Block appends " See also." to the existing sentence — no heading change,
-    # no sentence loss (the original sentence text is a substring of the new text).
+    # Block appends " See also." — no heading change, no sentence loss.
     fix_blocks = [{"old_text": "has one sentence.", "new_text": "has one sentence. See also."}]
     for slug in ("page-a", "page-b"):
         await tools["get_page_content"](slug=slug)
@@ -128,26 +138,30 @@ async def test_every_write_asks_the_user_with_the_real_diff(tmp_path, monkeypatc
             slug=slug, blocks=fix_blocks, issues_fixed=["orphaned_heading x1"])
         assert result["status"] == "success"
 
-    assert confirm.await_count == 2
-    diff = confirm.call_args.kwargs["diff"]
-    assert "-The page body has one sentence." in diff
-    assert "+The page body has one sentence. See also." in diff
+    assert len(captured_args) == 2
+    last = captured_args[-1]
+    assert "has one sentence. See also." in last["apply_result"].accumulated_body
 
 
 @pytest.mark.asyncio
 async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeypatch):
-    """Blocks that would drop a sentence are rejected by the block engine before
-    the sentence-removing change ever reaches the confirmation dialog.
+    """Phase 2: apply_blocks drops sentence-losing blocks; tool_scoped_confirm is
+    still called with the degenerate result (0 applied, 1 rejected).
 
-    apply_blocks silently drops the offending block; accumulated_body equals the
-    unchanged original. The confirmation card shows an empty diff — the user
-    is never asked to approve the destructive version.
+    The user declines via the scoped card → _write_fix returns cancelled.
+    There is no "dropped_sentences" key in the result because apply_blocks
+    suppresses the block silently and tool_scoped_confirm handles the UI.
     """
-    from synthadoc.agents.workflows.tools import content_health_tools as tools_mod
-    confirm = AsyncMock(return_value={"confirmed": False})
-    monkeypatch.setattr(tools_mod, "tool_confirm", confirm)
-    ctx = _wiki_with_stray_h1(tmp_path, ["page-a"])
+    from synthadoc.agents.workflows import content_health_resolver as mod
 
+    captured: list = []
+
+    async def fake_scoped_confirm(ctx, slug, apply_result, current_body):
+        captured.append(apply_result)
+        return {"confirmed": False, "final_body": None}
+
+    monkeypatch.setattr(mod, "tool_scoped_confirm", fake_scoped_confirm)
+    ctx = _wiki_with_stray_h1(tmp_path, ["page-a"])
     wf = ContentHealthResolverWorkflow()
     wf._prediscovered_slugs = ["page-a"]
     tools = wf.build_guarded_tool_fns(ctx)
@@ -160,8 +174,11 @@ async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeyp
 
     # apply_blocks rejected the sentence-losing block — no "dropped_sentences" error
     assert "dropped_sentences" not in result
-    # The user is asked to confirm (for the unchanged/no-change diff) but declines
-    confirm.assert_awaited_once()
+    # tool_scoped_confirm was called once with the degenerate result (0 applied)
+    assert len(captured) == 1
+    assert captured[0].applied_count == 0
+    # User declined → cancelled
+    assert result["status"] == "cancelled"
 
 
 @pytest.mark.asyncio
@@ -554,9 +571,9 @@ class TestRollbackWithFallback:
 
 @pytest.mark.asyncio
 async def test_write_fix_via_blocks_applies_accumulated_body():
-    """_write_fix accepts blocks, calls apply_blocks, passes accumulated_body to apply tool."""
+    """Phase 2: _write_fix accepts blocks, calls apply_blocks + tool_scoped_confirm,
+    then passes the confirmed body to tool_write_content_health_fix."""
     from synthadoc.agents.workflows.content_health_resolver import ContentHealthResolverWorkflow
-    from synthadoc.agents.workflows.block_apply import ApplyResult, BlockResult
 
     wf = ContentHealthResolverWorkflow()
     ctx = MagicMock()
@@ -572,19 +589,19 @@ async def test_write_fix_via_blocks_applies_accumulated_body():
 
     applied_body = None
 
-    async def fake_apply_fix(ctx_, slug, content, issues_fixed):
+    async def fake_write_fix(ctx_, slug, content, issues_fixed, **kw):
         nonlocal applied_body
         applied_body = content
         return {"status": "success", "slug": slug, "snapshot_index": 1, "remaining_issues": 0}
 
-    from unittest.mock import patch
-    with patch("synthadoc.agents.workflows.content_health_resolver.tool_apply_content_health_fix",
-               side_effect=fake_apply_fix):
-        fns = wf.get_tool_fns(ctx)
-        # Pre-seed found_slugs and read_slugs so guards pass
-        fns["find_content_health_issues"]  # touch to initialise
-        write_fn = fns["write_content_health_fix"]
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body):
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
 
+    from unittest.mock import patch
+    with patch("synthadoc.agents.workflows.content_health_resolver.tool_write_content_health_fix",
+               side_effect=fake_write_fix), \
+         patch("synthadoc.agents.workflows.content_health_resolver.tool_scoped_confirm",
+               side_effect=fake_scoped_confirm):
         # Manually seed the guard sets — normally done via _find_issues + _get_content
         wf._prediscovered_slugs = ["alan-turing"]
         fns2 = wf.get_tool_fns(ctx)

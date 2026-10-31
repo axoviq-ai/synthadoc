@@ -2,7 +2,7 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { streamQuery, streamCrossWikiQuery, type ConfirmRequestData, type CrossWikiCallbacks } from "./api";
+import { streamQuery, streamCrossWikiQuery, type ConfirmRequestData, type ScopedEditConfirmData, type CrossWikiCallbacks } from "./api";
 
 export interface CrossWikiMetaCallbacks {
     onWikisQuerying?: (wikis: string[]) => void;
@@ -33,6 +33,7 @@ export function useQueryStream(
     const [error, setError] = useState<string | null>(null);
     const [progressLines, setProgressLines] = useState<string[]>([]);
     const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequestData | null>(null);
+    const [pendingScopedConfirm, setPendingScopedConfirm] = useState<ScopedEditConfirmData | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const streamingRef = useRef(false);
     // RAF handle and accumulated text ref — kept outside send() so they survive re-renders
@@ -198,6 +199,10 @@ export function useQueryStream(
                 if (controller.signal.aborted) return;
                 setPendingConfirm(data);
             },
+            onScopedEditConfirm: (data: ScopedEditConfirmData) => {
+                if (controller.signal.aborted) return;
+                setPendingScopedConfirm(data);
+            },
         };
 
         try {
@@ -232,5 +237,5 @@ export function useQueryStream(
         }
     }, [sessionId, onHints]);
 
-    return { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm };
+    return { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm, pendingScopedConfirm, setPendingScopedConfirm };
 }

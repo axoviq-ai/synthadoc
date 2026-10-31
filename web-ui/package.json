@@ -11,6 +11,9 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "d3": "^7.9.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

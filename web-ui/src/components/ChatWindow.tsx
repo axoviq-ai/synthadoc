@@ -10,6 +10,7 @@ import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
 import ToolProgressBlock from "./ToolProgressBlock";
 import ConfirmCard from "./ConfirmCard";
+import ScopedConfirmCard from "./ScopedConfirmCard";
 import { CrossWikiToggle } from "./CrossWikiToggle";
 import { CrossWikiBar } from "./CrossWikiBar";
 
@@ -31,6 +32,13 @@ interface Props {
     pendingPrompt?: string | null;
     onPendingPromptConsumed?: () => void;
     onConfirmDecision?: (sessionId: string, confirmed: boolean) => void;
+    onScopedEditConfirmDecision?: (decision: {
+        sessionId: string;
+        confirmed: boolean;
+        mode: "blocks" | "page";
+        includedBlockIds: string[];
+        pageBody: string | null;
+    }) => void;
     resolvedDark: boolean;
 }
 
@@ -39,6 +47,7 @@ export function ChatWindow({
     injectedQuery, onInjected, onQuerySent, onOwnQuestion, showTip,
     initialMessages = [],
     pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
+    onScopedEditConfirmDecision,
     resolvedDark,
 }: Props) {
     // Cross-wiki state — must be declared before useQueryStream so setters are available
@@ -54,7 +63,7 @@ export function ChatWindow({
     const chipText = useRef<string | null>(null);
     const [crossWikiOffline, setCrossWikiOffline] = useState<string[]>([]);
 
-    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(
+    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm, pendingScopedConfirm, setPendingScopedConfirm } = useQueryStream(
         sessionId, onHints, initialMessages, onQuerySent,
         {
             onWikisQuerying: (wikis) => { setCrossWikiBarState("searching"); setCrossWikiWikis(wikis); },
@@ -218,6 +227,29 @@ export function ChatWindow({
                         onDecline={() => {
                             setPendingConfirm(null);
                             onConfirmDecision?.(pendingConfirm.session_id, false);
+                        }}
+                    />
+                )}
+                {pendingScopedConfirm && (
+                    <ScopedConfirmCard
+                        sessionId={pendingScopedConfirm.session_id}
+                        pageSlug={pendingScopedConfirm.page_slug}
+                        currentBody={pendingScopedConfirm.current_body}
+                        accumulatedBody={pendingScopedConfirm.accumulated_body}
+                        blocks={pendingScopedConfirm.blocks}
+                        defaultTab={pendingScopedConfirm.default_tab}
+                        headerMessage={pendingScopedConfirm.header_message}
+                        timeoutSeconds={pendingScopedConfirm.timeout_seconds}
+                        onDecide={(result) => {
+                            const captured = pendingScopedConfirm;
+                            setPendingScopedConfirm(null);
+                            onScopedEditConfirmDecision?.({
+                                sessionId: captured.session_id,
+                                confirmed: result.confirmed,
+                                mode: result.mode,
+                                includedBlockIds: result.includedBlockIds,
+                                pageBody: result.pageBody,
+                            });
                         }}
                     />
                 )}
