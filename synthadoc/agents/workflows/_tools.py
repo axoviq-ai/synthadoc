@@ -857,6 +857,117 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     }
 
 
+async def tool_scoped_confirm(
+    ctx: "WorkflowContext",
+    slug: str,
+    apply_result: "ApplyResult",  # type: ignore[name-defined]
+    current_body: str,
+) -> dict:
+    """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
+
+    Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` (same
+    registry as :func:`tool_confirm`) keyed by ``ctx.session_id``.  The HTTP
+    handler resolves the gate via ``POST /action/confirm-scoped``.
+
+    Returns ``{"confirmed": bool, "final_body": str | None}``.  Times out with
+    ``{"confirmed": False, "final_body": None}`` after 300 seconds.
+
+    *apply_result* is the :class:`~synthadoc.agents.workflows.block_apply.ApplyResult`
+    from the block-apply run.  On approval with ``mode="blocks"``, the function
+    re-applies only the user-selected blocks to *current_body* and returns the
+    resulting body.  On ``mode="page"``, the body the user typed is returned as-is.
+    """
+    from synthadoc.agents.workflows.block_apply import ApplyResult, apply_blocks  # noqa: F401
+
+    _CONFIRM_TIMEOUT = 300.0
+
+    # 1. Build blocks payload
+    blocks_payload = [
+        {
+            "id": f"b{br.index}",
+            "old_text": br.old_text,
+            "new_text": br.new_text,
+            "status": br.status,
+            "rejection_reason": br.rejection_reason,
+        }
+        for br in apply_result.blocks
+    ]
+
+    # 2. Compute default_tab
+    default_tab = "page" if apply_result.applied_count == 0 else "blocks"
+
+    # 3. Compute header_message
+    if apply_result.applied_count == 0:
+        header_message = "No safe edits found — you can edit the page manually below."
+    else:
+        header_message = (
+            f"{apply_result.applied_count} edit(s) ready · {apply_result.rejected_count} rejected"
+        )
+
+    # 4. Register gate
+    gate = asyncio.Event()
+    ctx.confirm_registry[ctx.session_id] = gate
+    ctx.confirm_result_registry[ctx.session_id] = {}
+
+    try:
+        # 5. Send SSE
+        payload: dict = {
+            "session_id": ctx.session_id,
+            "page_slug": slug,
+            "current_body": current_body,
+            "accumulated_body": apply_result.accumulated_body,
+            "blocks": blocks_payload,
+            "default_tab": default_tab,
+            "header_message": header_message,
+            "timeout_seconds": int(_CONFIRM_TIMEOUT),
+        }
+        try:
+            await ctx.send_sse_event("scoped_edit_confirm", payload)
+        except Exception:  # noqa: BLE001
+            _log.warning(
+                "tool_scoped_confirm: failed to send SSE (session=%s)",
+                ctx.session_id,
+                exc_info=True,
+            )
+            return {"confirmed": False, "final_body": None}
+
+        # 6. Wait for gate
+        try:
+            await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
+        except asyncio.TimeoutError:
+            return {"confirmed": False, "final_body": None}
+
+        # 7. Read result
+        res = ctx.confirm_result_registry.get(ctx.session_id, {})
+
+        # 8. If not confirmed
+        if not res.get("confirmed"):
+            return {"confirmed": False, "final_body": None}
+
+        # 9 / 10. Compute final_body
+        mode = res.get("mode", "page")
+        if mode == "page":
+            final_body = res.get("page_body")
+        else:
+            # mode == "blocks": re-apply only the included block ids
+            included_ids: set[str] = set(res.get("included_block_ids") or [])
+            included_raw = [
+                {"old_text": br.old_text, "new_text": br.new_text}
+                for br in apply_result.blocks
+                if f"b{br.index}" in included_ids
+            ]
+            re_result = apply_blocks(current_body, included_raw)
+            final_body = re_result.accumulated_body
+
+        # 11. Return
+        return {"confirmed": True, "final_body": final_body}
+
+    finally:
+        # 12. Cleanup
+        ctx.confirm_registry.pop(ctx.session_id, None)
+        ctx.confirm_result_registry.pop(ctx.session_id, None)
+
+
 def unified_diff_preview(slug: str, old: str, new: str, max_lines: int = 80) -> str:
     """Unified diff of a page's current vs proposed content, for a confirm card.
 

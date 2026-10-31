@@ -33,6 +33,25 @@ export interface ConfirmRequestData {
     timeout_seconds?: number;
 }
 
+export interface ScopedEditBlock {
+    id: string;
+    old_text: string;
+    new_text: string;
+    status: "applied" | "rejected";
+    rejection_reason: string | null;
+}
+
+export interface ScopedEditConfirmData {
+    session_id: string;
+    page_slug: string;
+    current_body: string;
+    accumulated_body: string;
+    blocks: ScopedEditBlock[];
+    default_tab: "blocks" | "page";
+    header_message: string;
+    timeout_seconds?: number;
+}
+
 export interface StreamCallbacks {
     onToken: (text: string) => void;
     /** The final answer text (citation links resolved); replaces the streamed tokens. */
@@ -45,6 +64,7 @@ export interface StreamCallbacks {
     onNotice?: (text: string) => void;
     onToolProgress?: (data: ToolProgressData) => void;
     onConfirmRequest?: (data: ConfirmRequestData) => void;
+    onScopedEditConfirm?: (data: ScopedEditConfirmData) => void;
 }
 
 export interface SessionSummary {
@@ -235,6 +255,12 @@ export function dispatch(event: string, data: Record<string, unknown>, cb: Strea
             if (cb.onNotice) {
                 const text = typeof data.text === "string" ? data.text : "";
                 cb.onNotice(text);
+            }
+            break;
+        }
+        case "scoped_edit_confirm": {
+            if (cb.onScopedEditConfirm) {
+                cb.onScopedEditConfirm(data as ScopedEditConfirmData);
             }
             break;
         }
