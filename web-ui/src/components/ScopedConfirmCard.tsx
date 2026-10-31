@@ -172,6 +172,9 @@ export default function ScopedConfirmCard({
 
             {/* Block view — always mounted; hidden when Page tab is active */}
             <div style={{ display: activeTab === "blocks" ? undefined : "none" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 8 }}>
+                        Check to include an edit · uncheck to skip it · switch to <strong>Page</strong> tab to edit the full text manually
+                    </div>
                     {blocks.length === 0 && (
                         <p style={{ color: "var(--text-muted, #888)", fontSize: "0.85rem" }}>
                             No edit blocks to show.
@@ -199,7 +202,7 @@ export default function ScopedConfirmCard({
                                     <div style={{ flex: 1 }}>
                                         <div style={{
                                             textDecoration: "line-through",
-                                            color: "#ff7b72",
+                                            color: "var(--diff-del, #ff7b72)",
                                             fontFamily: "var(--font-mono, monospace)",
                                             fontSize: "0.82rem",
                                             whiteSpace: "pre-wrap",
@@ -208,7 +211,7 @@ export default function ScopedConfirmCard({
                                             {block.old_text}
                                         </div>
                                         <div style={{
-                                            color: "#7ee787",
+                                            color: "var(--diff-add, #7ee787)",
                                             fontFamily: "var(--font-mono, monospace)",
                                             fontSize: "0.82rem",
                                             whiteSpace: "pre-wrap",
