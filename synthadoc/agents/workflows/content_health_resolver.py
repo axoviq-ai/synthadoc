@@ -15,6 +15,7 @@ from typing import Awaitable, Callable
 from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
+from synthadoc.agents.workflows.block_apply import apply_blocks
 from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
 from synthadoc.agents.workflows.tools.content_health_tools import (
     SEVERITY_ORDER,
@@ -67,15 +68,15 @@ get_page_content
            "issues": [{"type": str, "severity": str, "location": str, "description": str}]}
 
 write_content_health_fix
-  Propose a content-health fix. The tool shows the user the real diff between the
-  current page and your content, waits for approval, then snapshots and writes.
+  Propose a content-health fix. The tool applies your edit blocks to the current
+  page, shows the user the real diff, waits for approval, then snapshots and writes.
   You do not write the approval card yourself.
   MANDATORY SEQUENCE (enforced): get_page_content(slug) → write_content_health_fix(slug)
   • You MUST have called get_page_content for this EXACT slug first.
-  • The content argument MUST be the get_page_content response with ONLY structural
-    fixes applied — never invented or recalled from training.
+  • The blocks argument MUST target only the exact lines to fix, taken verbatim from
+    the get_page_content response — never invented or recalled from training.
   • The slug MUST be one returned by find_content_health_issues in this session.
-  Input:  {"slug": str, "content": str, "issues_fixed": [str]}
+  Input:  {"slug": str, "blocks": [{"old_text": str, "new_text": str}], "issues_fixed": [str]}
   Output: {"status": "success"|"cancelled"|"error", "slug": str, "snapshot_index": int,
            "remaining_issues": int, "fix_record": dict}
   status="cancelled": the user skipped this page — move on to the next slug.
@@ -153,19 +154,13 @@ STEP 3 — Per-page loop.
       → Do NOT invent or generate any content for it.
       → Move on to the next slug in the discovery list.
 
-  3c. DEEP ANALYSIS:
-      Read the full content (from the get_page_content result) and all reported
-      issues carefully. Compose a rewrite that ONLY fixes structural issues:
-        - empty_section: remove the heading (it has no text and no sub-sections)
-        - orphaned_heading: turn the stray H1 into an H2 (or a plain line)
-        - unclosed_code_block: close the code fence
-        - broken_list_nesting: fix the list indentation
-      Never add, remove or reword sentences — write_content_health_fix rejects
-      any rewrite that loses a sentence. Base the rewrite ENTIRELY on the
-      get_page_content result.
+  3c. Compose a list of edit blocks. For EACH issue:
+      - "old_text": copy the exact sentence/heading/line to fix (verbatim, short — one element).
+      - "new_text": the corrected replacement.
+      Rules: old_text verbatim (exact punctuation and markdown). Never output the whole page.
 
   3d. Call write_content_health_fix using the SAME slug from the pages[] entry,
-        content=<rewritten content based on get_page_content result>,
+        blocks=[{"old_text": ..., "new_text": ...}],
         issues_fixed=[<list of "type xN" strings>]
       The user sees the real diff and approves or skips it.
       If status="cancelled" → page skipped, continue to the next slug.
@@ -211,9 +206,9 @@ STEP 4 — Final summary (plain text only):
    Skipping get_page_content means you are writing content you invented, not the real page.
 4. NEVER call write_content_health_fix with a slug that was not returned by
    find_content_health_issues. Only process pages from the discovery list.
-5. NEVER invent or guess page content. The content you pass to write_content_health_fix
-   MUST come from the get_page_content response for that exact slug — with ONLY the
-   structural issues corrected, nothing else changed.
+5. NEVER invent or guess page content. The old_text in each block you pass to
+   write_content_health_fix MUST come verbatim from the get_page_content response
+   for that exact slug — ONLY the structural issue corrected, nothing else changed.
 6. ONLY use slugs from the pages[] array in the find_content_health_issues result.
    This means: iterate over result["pages"], take result["pages"][i]["slug"], and use
    THAT STRING — character for character — as the slug argument in every subsequent
@@ -542,7 +537,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 )
             return result
 
-        async def _write_fix(slug: str, content: str, issues_fixed: list) -> dict:
+        async def _write_fix(slug: str, blocks: list, issues_fixed: list) -> dict:
             if slug not in read_slugs:
                 return {
                     "status": "error",
@@ -560,8 +555,27 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                         "discovery list."
                     ),
                 }
-            return await tool_apply_content_health_fix(ctx, slug=slug, content=content,
-                                                       issues_fixed=issues_fixed)
+            if ctx.store is None:
+                return {"status": "error", "error": "No store available"}
+            page = ctx.store.read_page(slug)
+            if page is None:
+                return {"status": "error", "error": f"Page '{slug}' not found"}
+            apply_result = apply_blocks(page.content, blocks)
+            try:
+                await tool_notify(
+                    ctx,
+                    level="info",
+                    message=(
+                        f"{slug}: {apply_result.applied_count} block(s) applied, "
+                        f"{apply_result.rejected_count} rejected"
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                pass  # notification failure must not abort the fix
+            return await tool_apply_content_health_fix(
+                ctx, slug=slug, content=apply_result.accumulated_body,
+                issues_fixed=issues_fixed,
+            )
 
         async def _rollback(slug: str) -> dict:
             # A rollback the user asked for ("roll back X") runs directly. During a
