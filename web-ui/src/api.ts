@@ -50,6 +50,7 @@ export interface ScopedEditConfirmData {
     default_tab: "blocks" | "page";
     header_message: string;
     timeout_seconds?: number;
+    rationale?: string;
 }
 
 export interface StreamCallbacks {

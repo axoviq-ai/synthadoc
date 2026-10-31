@@ -323,7 +323,7 @@ async def test_propose_and_apply_blocks_passes_accumulated_body():
     ctx.wiki_root = None
 
     # Simulate user approving via the scoped confirm card
-    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body):
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body, **_kw):
         assert hasattr(ctx_, "confirm_registry")  # verify attribute exists
         return {"confirmed": True, "final_body": apply_result.accumulated_body}
 
