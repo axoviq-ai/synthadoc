@@ -26,6 +26,7 @@ from synthadoc.agents.workflows._tools import (
     tool_rollback_last_fix,
     tool_run_scoped_lint,
     tool_propose_and_apply,
+    tool_propose_and_apply_blocks,
     tool_transition_lifecycle_state,
     tool_get_wiki_status,
 )
@@ -49,7 +50,10 @@ _STRATEGY_1_RULES = (
     "  - For gate-demoted: removes or hedges the specific claims in lint_warnings\n"
     "  - For conflict: reconciles the source contradiction_note with explicit sourcing hedge\n"
     "  - For both: addresses both\n"
-    "  Preserve all headings, structure, and non-disputed content."
+    "  Preserve all headings, structure, and non-disputed content.\n"
+    "  Express changes as a blocks list: [{\"old_text\": \"<verbatim sentence/heading>\",\n"
+    "  \"new_text\": \"<replacement>\"}].\n"
+    "  Call tool_propose_and_apply_blocks (NOT tool_propose_and_apply) for Strategy 1."
 )
 
 # _SYSTEM_PROMPT cannot be an f-string because it contains literal `{}` in the
@@ -80,6 +84,10 @@ tool_read_page_content(slug)           → current content + lint_warnings + con
 tool_read_source_content(slug)         → source text (layered fallback: raw → extracted → note)
 tool_propose_and_apply(slug, new_content, strategy_name, rationale)
                                        → shows diff to user, applies if approved
+tool_propose_and_apply_blocks(slug, blocks, strategy_name, rationale)
+                                       → Strategy 1 only: propose changes as
+                                         [{old_text, new_text}, ...] blocks instead
+                                         of a full page body
 tool_run_scoped_lint(slug)             → re-lint one page; returns {pass, warnings_count, ...}
 tool_transition_lifecycle_state(slug, to_state, reason)
                                        → transition page to to_state + lifecycle event
@@ -143,7 +151,9 @@ STEP 4 — Per-page resolution loop
     4c. Select Strategy 1 (content rewrite) as the first attempt.
         $$STRATEGY_1$$
 
-    4d. Call tool_propose_and_apply(slug, new_content, strategy_name, rationale).
+    4d. For Strategy 1: call tool_propose_and_apply_blocks(slug, blocks, strategy_name, rationale)
+        where blocks is a list of {"old_text": ..., "new_text": ...} dicts.
+        For all other strategies: call tool_propose_and_apply(slug, new_content, strategy_name, rationale).
         strategy_name should be one of:
           "Strategy 1 — Content rewrite"
           "Strategy 2 — Web ingest for better grounding"
@@ -251,6 +261,8 @@ STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+• For Strategy 1, always call tool_propose_and_apply_blocks (blocks format).
+  For all other strategies, call tool_propose_and_apply (full body format).
 • Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5),
   or when cancelling (steps 2 and 3).
 • ALWAYS call tool_get_wiki_status() before outputting the step 5 summary —
@@ -407,6 +419,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_read_page_content":          p(tool_read_page_content, ctx),
             "tool_run_scoped_lint":            p(tool_run_scoped_lint, ctx),
             "tool_propose_and_apply":          p(tool_propose_and_apply, ctx),
+            "tool_propose_and_apply_blocks":   p(tool_propose_and_apply_blocks, ctx),
             "tool_transition_lifecycle_state": p(tool_transition_lifecycle_state, ctx),
             "tool_get_wiki_status":            p(tool_get_wiki_status, ctx),
             # Shared tools (from _tools.py — also used by other workflows)

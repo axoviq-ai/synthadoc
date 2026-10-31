@@ -1177,6 +1177,105 @@ async def tool_propose_and_apply(
     return {"applied": confirmed, "diff_preview": diff_preview}
 
 
+async def tool_propose_and_apply_blocks(
+    ctx: "WorkflowContext",
+    slug: str,
+    blocks: list[dict],
+    strategy_name: str,
+    rationale: str,
+) -> dict:
+    """Apply a list of scoped edit blocks to a page, showing a diff for approval.
+
+    Each entry in *blocks* is ``{"old_text": "<verbatim text>", "new_text": "<replacement>"}``.
+    Uses the block_apply engine (Task 1) to locate and replace each block in
+    document order with safety guards (heading-mutation, sentence-loss, overlap).
+
+    Intended for Strategy 1 (content rewrite) in contradiction_resolver where
+    scoped edits are preferable to a full page body replacement.
+
+    Returns the same shape as ``tool_propose_and_apply``::
+
+        {"applied": bool, "diff_preview": str}
+        {"applied": False, "diff_preview": "", "error": str}
+    """
+    from synthadoc.agents.workflows.block_apply import apply_blocks
+
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"applied": False, "diff_preview": "", "error": f"Page not found: {slug!r}"}
+
+    result = apply_blocks(page.content or "", blocks)
+
+    rejection = heading_mismatch_error(slug, page.content or "", result.accumulated_body)
+    if rejection:
+        return {
+            "applied": False,
+            "diff_preview": "",
+            "error": (
+                f"Rejected — nothing was written. This rewrite changes "
+                f"{rejection.get('heading_changes', 'one or more')} heading(s) "
+                f"unexpectedly; headings must be preserved exactly. Review manually."
+            ),
+        }
+
+    diff_preview = unified_diff_preview(slug, page.content or "", result.accumulated_body)
+
+    confirm_message = (
+        f"**Strategy:** {strategy_name}\n\n"
+        f"**Rationale:** {rationale}\n\n"
+        f"Apply changes to `{slug}`?"
+    )
+    confirm_result = await tool_confirm(
+        ctx, message=confirm_message, yes_label="Apply", no_label="Skip",
+        diff=diff_preview,
+    )
+    confirmed = confirm_result.get("confirmed", False)
+    if not confirmed:
+        return {"applied": False, "diff_preview": diff_preview}
+
+    # Same snapshot / fix_record logic as tool_propose_and_apply — chain onto the
+    # first attempt's record when one already exists (multi-strategy retry path).
+    existing_record = page.last_fix_record
+    if existing_record:
+        snapshot_id = existing_record.get("snapshot_id")
+        pre_fix_status = existing_record.get("pre_fix_status")
+        pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
+        pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
+    else:
+        await ctx.audit_db.snapshot_if_changed(
+            slug, page.content, triggered_by=strategy_name, reason=rationale,
+        )
+        snapshots = await ctx.audit_db.list_page_snapshots(slug)
+        snapshot_id = snapshots[0]["id"] if snapshots else None
+        pre_fix_status = page.status
+        pre_fix_contradiction_note = page.contradiction_note
+        pre_fix_lint_warnings = page.lint_warnings
+
+    page.content = result.accumulated_body
+    page.contradiction_note = None
+    page.last_fix_record = {
+        "slug": slug,
+        "snapshot_id": snapshot_id,
+        "snapshot_index_before": 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "strategy_name": strategy_name,
+        "pre_fix_status": pre_fix_status,
+        "pre_fix_lint_warnings": pre_fix_lint_warnings,
+        "pre_fix_contradiction_note": pre_fix_contradiction_note,
+    }
+    _rescan_content_health(page, slug)
+    with ctx.store.page_lock(slug):
+        ctx.store.write_page(slug, page)
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "propose_and_apply_blocks",
+         "message": f"OK Applied {strategy_name} to {slug} "
+                    f"({result.applied_count} block(s) applied, "
+                    f"{result.rejected_count} rejected)"},
+    )
+    return {"applied": True, "diff_preview": diff_preview}
+
+
 async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
     """Roll back a page to before its last tool_propose_and_apply write.
 
