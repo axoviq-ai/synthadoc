@@ -90,6 +90,10 @@
     --copy-btn-border:   rgba(255, 255, 255, 0.12);
     --copy-btn-bg-hover: rgba(255, 255, 255, 0.15);
     --copy-btn-bg-act:   rgba(255, 255, 255, 0.2);
+
+    /* Diff colours — dark mode */
+    --diff-add: #7ee787;
+    --diff-del: #ff7b72;
 }
 
 /* ─── Light — system follows OS ──────────────────── */
@@ -161,6 +165,10 @@
         --hero-title-shadow: none;
         --main-panel-bg: radial-gradient(circle, rgba(124,58,237,0.07) 1px, transparent 1px);
         --main-panel-bg-size: 28px 28px;
+
+        /* Diff colours — light mode */
+        --diff-add: #1a7f37;
+        --diff-del: #b91c1c;
     }
 }
 
@@ -229,6 +237,10 @@
     --hero-title-shadow: none;
     --main-panel-bg: radial-gradient(circle, rgba(124,58,237,0.07) 1px, transparent 1px);
     --main-panel-bg-size: 28px 28px;
+
+    /* Diff colours — light mode */
+    --diff-add: #1a7f37;
+    --diff-del: #b91c1c;
 }
 
 /* ─── Smooth theme transitions ────────────────────── */
