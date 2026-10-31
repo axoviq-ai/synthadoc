@@ -301,7 +301,7 @@ async def test_explicit_rollback_request_runs_without_extra_confirm():
 
 @pytest.mark.asyncio
 async def test_propose_and_apply_blocks_passes_accumulated_body():
-    """tool_propose_and_apply_blocks applies blocks and shows the diff to the user."""
+    """Phase 2: tool_propose_and_apply_blocks applies blocks via tool_scoped_confirm."""
     from synthadoc.agents.workflows._tools import tool_propose_and_apply_blocks
 
     page = MagicMock()
@@ -322,12 +322,13 @@ async def test_propose_and_apply_blocks_passes_accumulated_body():
     ctx.bump_epoch = None
     ctx.wiki_root = None
 
-    # Simulate user approving
-    async def fake_confirm(ctx_, message, yes_label, no_label, *, diff=None):
-        assert hasattr(ctx_, "confirm_registry")  # touch — verify attribute exists
-        return {"confirmed": True}
+    # Simulate user approving via the scoped confirm card
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body):
+        assert hasattr(ctx_, "confirm_registry")  # verify attribute exists
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
 
-    with patch("synthadoc.agents.workflows._tools.tool_confirm", side_effect=fake_confirm):
+    with patch("synthadoc.agents.workflows._tools.tool_scoped_confirm",
+               side_effect=fake_scoped_confirm):
         result = await tool_propose_and_apply_blocks(
             ctx,
             slug="some-page",

@@ -260,7 +260,7 @@ export function dispatch(event: string, data: Record<string, unknown>, cb: Strea
         }
         case "scoped_edit_confirm": {
             if (cb.onScopedEditConfirm) {
-                cb.onScopedEditConfirm(data as ScopedEditConfirmData);
+                cb.onScopedEditConfirm(data as unknown as ScopedEditConfirmData);
             }
             break;
         }

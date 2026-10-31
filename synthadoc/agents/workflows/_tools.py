@@ -1295,11 +1295,13 @@ async def tool_propose_and_apply_blocks(
     strategy_name: str,
     rationale: str,
 ) -> dict:
-    """Apply a list of scoped edit blocks to a page, showing a diff for approval.
+    """Apply a list of scoped edit blocks to a page, showing the ScopedConfirmCard.
 
     Each entry in *blocks* is ``{"old_text": "<verbatim text>", "new_text": "<replacement>"}``.
-    Uses the block_apply engine (Task 1) to locate and replace each block in
-    document order with safety guards (heading-mutation, sentence-loss, overlap).
+    Uses the block_apply engine to locate and replace each block in document order
+    with safety guards (heading-mutation, sentence-loss, overlap).  Presents the
+    result as a ``scoped_edit_confirm`` SSE card so the user can approve individual
+    blocks or edit the full page body before committing.
 
     Intended for Strategy 1 (content rewrite) in contradiction_resolver where
     scoped edits are preferable to a full page body replacement.
@@ -1315,9 +1317,13 @@ async def tool_propose_and_apply_blocks(
     if page is None:
         return {"applied": False, "diff_preview": "", "error": f"Page not found: {slug!r}"}
 
-    result = apply_blocks(page.content or "", blocks)
+    current_body = page.content or ""
+    result = apply_blocks(current_body, blocks)
 
-    rejection = heading_mismatch_error(slug, page.content or "", result.accumulated_body)
+    # Safety check on the accumulated body — heading mutations are always rejected
+    # before showing the confirm card so the user is never asked to approve a
+    # structurally invalid rewrite.
+    rejection = heading_mismatch_error(slug, current_body, result.accumulated_body)
     if rejection:
         return {
             "applied": False,
@@ -1329,20 +1335,14 @@ async def tool_propose_and_apply_blocks(
             ),
         }
 
-    diff_preview = unified_diff_preview(slug, page.content or "", result.accumulated_body)
-
-    confirm_message = (
-        f"**Strategy:** {strategy_name}\n\n"
-        f"**Rationale:** {rationale}\n\n"
-        f"Apply changes to `{slug}`?"
+    scoped_result = await tool_scoped_confirm(
+        ctx, slug=slug, apply_result=result, current_body=current_body,
     )
-    confirm_result = await tool_confirm(
-        ctx, message=confirm_message, yes_label="Apply", no_label="Skip",
-        diff=diff_preview,
-    )
-    confirmed = confirm_result.get("confirmed", False)
+    confirmed = scoped_result.get("confirmed", False)
     if not confirmed:
-        return {"applied": False, "diff_preview": diff_preview}
+        return {"applied": False, "diff_preview": ""}
+
+    final_body = scoped_result["final_body"]
 
     # Same snapshot / fix_record logic as tool_propose_and_apply — chain onto the
     # first attempt's record when one already exists (multi-strategy retry path).
@@ -1362,7 +1362,9 @@ async def tool_propose_and_apply_blocks(
         pre_fix_contradiction_note = page.contradiction_note
         pre_fix_lint_warnings = page.lint_warnings
 
-    page.content = result.accumulated_body
+    diff_preview = unified_diff_preview(slug, current_body, final_body)
+
+    page.content = final_body
     page.contradiction_note = None
     page.last_fix_record = {
         "slug": slug,

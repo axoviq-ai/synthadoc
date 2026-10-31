@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
-from synthadoc.agents.workflows._tools import tool_confirm, tool_notify
+from synthadoc.agents.workflows._tools import tool_confirm, tool_notify, tool_scoped_confirm
 from synthadoc.agents.workflows.block_apply import apply_blocks
 from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
 from synthadoc.agents.workflows.tools.content_health_tools import (
@@ -26,6 +26,7 @@ from synthadoc.agents.workflows.tools.content_health_tools import (
     tool_list_content_health_fixes,
     tool_merge_duplicate_sections,
     tool_rollback_content_health_fix,
+    tool_write_content_health_fix,
 )
 from synthadoc.storage.wiki import LifecycleState, SYSTEM_PAGE_SLUGS
 
@@ -560,7 +561,8 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             page = ctx.store.read_page(slug)
             if page is None:
                 return {"status": "error", "error": f"Page '{slug}' not found"}
-            apply_result = apply_blocks(page.content, blocks)
+            current_body = page.content or ""
+            apply_result = apply_blocks(current_body, blocks)
             try:
                 await tool_notify(
                     ctx,
@@ -572,9 +574,18 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 )
             except Exception:  # noqa: BLE001
                 pass  # notification failure must not abort the fix
-            return await tool_apply_content_health_fix(
-                ctx, slug=slug, content=apply_result.accumulated_body,
-                issues_fixed=issues_fixed,
+            scoped_result = await tool_scoped_confirm(
+                ctx, slug=slug, apply_result=apply_result, current_body=current_body,
+            )
+            if not scoped_result.get("confirmed"):
+                return {
+                    "status": "cancelled",
+                    "slug": slug,
+                    "message": f"Fix for '{slug}' skipped by the user.",
+                }
+            final_body = scoped_result["final_body"]
+            return await tool_write_content_health_fix(
+                ctx, slug=slug, content=final_body, issues_fixed=issues_fixed,
             )
 
         async def _rollback(slug: str) -> dict:
