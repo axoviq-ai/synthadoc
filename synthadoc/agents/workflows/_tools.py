@@ -1160,6 +1160,41 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
             "contradiction_note": contradiction_note}
 
 
+async def _resolve_fix_episode(
+    page,
+    slug: str,
+    strategy_name: str,
+    rationale: str,
+    ctx: "WorkflowContext",
+) -> tuple:
+    """Return (snapshot_id, pre_fix_status, pre_fix_contradiction_note, pre_fix_lint_warnings).
+
+    Chains onto the existing last_fix_record only when we are inside the SAME
+    resolution episode (multi-strategy retry: strategy 1 wrote but failed lint →
+    strategy 2 retries, both must roll back to the same pre-episode baseline).
+    Any other existing record belongs to a prior episode and is ignored so that
+    rollback always restores the content that was current when THIS episode started.
+    """
+    existing_record = page.last_fix_record
+    same_episode = existing_record is not None and (
+        page.contradiction_note is None
+        or page.contradiction_note == existing_record.get("pre_fix_contradiction_note")
+    )
+    if same_episode:
+        return (
+            existing_record.get("snapshot_id"),
+            existing_record.get("pre_fix_status"),
+            existing_record.get("pre_fix_contradiction_note"),
+            existing_record.get("pre_fix_lint_warnings"),
+        )
+    await ctx.audit_db.snapshot_if_changed(
+        slug, page.content, triggered_by=strategy_name, reason=rationale,
+    )
+    snapshots = await ctx.audit_db.list_page_snapshots(slug)
+    snapshot_id = snapshots[0]["id"] if snapshots else None
+    return snapshot_id, page.status, page.contradiction_note, page.lint_warnings
+
+
 async def tool_propose_and_apply(
     ctx: "WorkflowContext",
     slug: str,
@@ -1234,36 +1269,10 @@ async def tool_propose_and_apply(
     )
     confirmed = result.get("confirmed", False)
     if confirmed:
-        existing_record = page.last_fix_record
-        if existing_record:
-            # A retry within the same resolution episode (contradiction_resolver's
-            # step 4h calls tool_propose_and_apply again with a new strategy when
-            # scoped lint fails after an applied attempt). Chain onto the FIRST
-            # attempt's snapshot/status/note instead of re-snapshotting the
-            # already-rewritten content — otherwise rollback would only undo the
-            # most recent attempt, landing on a still-wrong intermediate rewrite
-            # rather than the true pre-episode original.
-            snapshot_id = existing_record.get("snapshot_id")
-            pre_fix_status = existing_record.get("pre_fix_status")
-            pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
-            pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
-        else:
-            await ctx.audit_db.snapshot_if_changed(
-                slug, page.content, triggered_by=strategy_name, reason=rationale,
-            )
-            snapshots = await ctx.audit_db.list_page_snapshots(slug)
-            snapshot_id = snapshots[0]["id"] if snapshots else None
-
-            # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
-            # and by the caller's later tool_transition_lifecycle_state) so
-            # tool_rollback_last_fix can restore them along with the content.
-            # lint_warnings in particular must be captured here, before step 4f's
-            # tool_run_scoped_lint call overwrites it with the fresh (now-passing)
-            # result — that happens entirely outside this function, so this is the
-            # last point where the pre-fix value is still visible.
-            pre_fix_status = page.status
-            pre_fix_contradiction_note = page.contradiction_note
-            pre_fix_lint_warnings = page.lint_warnings
+        (
+            snapshot_id, pre_fix_status,
+            pre_fix_contradiction_note, pre_fix_lint_warnings,
+        ) = await _resolve_fix_episode(page, slug, strategy_name, rationale, ctx)
 
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
@@ -1399,23 +1408,10 @@ async def tool_propose_and_apply_blocks(
     if final_body.strip() == (page.content or "").strip():
         return {"applied": False, "diff_preview": ""}
 
-    # Same snapshot / fix_record logic as tool_propose_and_apply — chain onto the
-    # first attempt's record when one already exists (multi-strategy retry path).
-    existing_record = page.last_fix_record
-    if existing_record:
-        snapshot_id = existing_record.get("snapshot_id")
-        pre_fix_status = existing_record.get("pre_fix_status")
-        pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
-        pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
-    else:
-        await ctx.audit_db.snapshot_if_changed(
-            slug, page.content, triggered_by=strategy_name, reason=rationale,
-        )
-        snapshots = await ctx.audit_db.list_page_snapshots(slug)
-        snapshot_id = snapshots[0]["id"] if snapshots else None
-        pre_fix_status = page.status
-        pre_fix_contradiction_note = page.contradiction_note
-        pre_fix_lint_warnings = page.lint_warnings
+    (
+        snapshot_id, pre_fix_status,
+        pre_fix_contradiction_note, pre_fix_lint_warnings,
+    ) = await _resolve_fix_episode(page, slug, strategy_name, rationale, ctx)
 
     diff_preview = unified_diff_preview(slug, current_body, final_body)
 
