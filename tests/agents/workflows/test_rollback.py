@@ -16,6 +16,7 @@ def _make_ctx(store):
     ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"index": 1, "id": 42}])
     ctx.audit_db.get_snapshot_by_index = AsyncMock(return_value=None)
     ctx.bump_epoch = MagicMock()
+    ctx.invalidate_search = MagicMock()
     return ctx
 
 
@@ -86,6 +87,32 @@ class TestRestorePageSnapshot:
         result = await restore_page_snapshot(ctx, "turing", 42, fallback_index=1)
         assert result["status"] == "success"
         assert store.read_page("turing").content == original_content
+
+    @pytest.mark.asyncio
+    async def test_invalidates_search_index_on_success(self, tmp_path):
+        """A rollback changes page content — search must be told to reindex,
+        not just the query cache (bump_epoch alone doesn't touch BM25/vector
+        indexes, so a page restored by rollback would stay unsearchable under
+        its restored text until something unrelated happened to reindex)."""
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("turing", _make_page("turing", content="# Turing\n\nChanged body.\n"))
+        ctx = _make_ctx(store)
+        ctx.audit_db.get_snapshot_by_index = AsyncMock(return_value={
+            "index": 1, "id": 42, "content_snapshot": "# Turing\n\nOriginal body.\n",
+        })
+        result = await restore_page_snapshot(ctx, "turing", 42, fallback_index=1)
+        assert result["status"] == "success"
+        ctx.invalidate_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_does_not_invalidate_search_on_error(self, tmp_path):
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("turing", _make_page("turing"))
+        ctx = _make_ctx(store)
+        ctx.audit_db.get_snapshot_by_index = AsyncMock(return_value=None)
+        result = await restore_page_snapshot(ctx, "turing", 42, fallback_index=1)
+        assert result["status"] == "error"
+        ctx.invalidate_search.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_resolves_snapshot_id_robust_to_later_snapshots(self, tmp_path):
