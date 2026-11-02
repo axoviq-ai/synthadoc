@@ -84,7 +84,7 @@ class BlockResult:
     old_text: str
     new_text: str
     status: Literal["applied", "rejected"]
-    rejection_reason: str | None = None
+    rejection_reason: Literal["no_match", "conflict", "heading_mutation", "sentence_loss"] | None = None
 
 
 @dataclass
