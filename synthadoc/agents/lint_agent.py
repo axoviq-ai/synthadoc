@@ -736,14 +736,19 @@ class LintAgent(BaseAgent):
             "1. Quote the exact claim (one sentence or phrase)\n"
             "2. Explain the specific concern concisely\n\n"
             "If you find no issues, return ONLY: []\n\n"
-            "Return ONLY a JSON array, no markdown fences:\n"
+            "Return ONLY a JSON array, no markdown fences, no reasoning, no explanation:\n"
             '[{"claim": "...", "concern": "..."}, ...]\n\n'
+            "Do NOT write any reasoning, thinking, or explanation before or after the array. "
+            "Your entire response must be the JSON array and nothing else.\n\n"
             f"--- PAGE CONTENT ---\n{content[:3000]}"
         )
+        _agents_cfg = getattr(self._cfg, "agents", None) if self._cfg else None
+        _adv_max_tokens = int(getattr(_agents_cfg, "query_max_tokens", 8192) or 8192)
         try:
             resp = await self._adversarial_provider.complete(
                 messages=[Message(role="user", content=prompt)],
                 temperature=0.0,
+                max_tokens=_adv_max_tokens,
             )
             warnings = _parse_adversarial_response(resp.text)
             # Truncate: the LLM may return more items than asked (ignoring "up to N").
