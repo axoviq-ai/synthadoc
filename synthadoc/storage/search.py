@@ -162,6 +162,7 @@ def _download_embed_model(folder: Path) -> None:
 def load_embed_model():
     """Load the embedding model, downloading it into embed_model_dir() the first
     time. The Docker build calls this to bake the model in."""
+    import os
     from fastembed import TextEmbedding
     folder = embed_model_dir()
     # Lock prevents two threads from downloading simultaneously (Windows raises
@@ -172,6 +173,10 @@ def load_embed_model():
                 folder = cached
             else:
                 _download_embed_model(folder)
+    # Tell huggingface_hub not to make any network calls when constructing the
+    # TextEmbedding — it verifies/updates the model registry even when
+    # specific_model_path is set, which hangs silently on restricted networks.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
     return TextEmbedding(_EMBED_MODEL_NAME, specific_model_path=str(folder))
 
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
@@ -360,6 +365,8 @@ class HybridSearch:
             if removed := set(stored) - embeddable:
                 await self._vector_store.delete_pages(removed)
             await self._load_matrix()
+            if todo:
+                logger.info("Vector search: embedding sync complete (%d page(s))", len(todo))
             return len(todo)
 
     async def _load_matrix(self) -> None:
