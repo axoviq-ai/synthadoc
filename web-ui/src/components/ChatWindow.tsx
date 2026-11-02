@@ -119,11 +119,15 @@ export function ChatWindow({
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
 
-    // Scroll to bottom when the confirm card appears so it's always visible
+    // Scroll to bottom when either confirm card appears so it's always visible
     useLayoutEffect(() => {
         const el = messagesRef.current;
         if (el && pendingConfirm) el.scrollTop = el.scrollHeight;
     }, [pendingConfirm]);
+    useLayoutEffect(() => {
+        const el = messagesRef.current;
+        if (el && pendingScopedConfirm) el.scrollTop = el.scrollHeight;
+    }, [pendingScopedConfirm]);
 
     // Scroll to bottom as workflow tool_progress lines arrive
     useLayoutEffect(() => {
