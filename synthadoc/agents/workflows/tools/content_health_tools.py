@@ -192,6 +192,8 @@ async def tool_write_content_health_fix(
     ctx.store.write_page(slug, page)
     if ctx.bump_epoch:
         ctx.bump_epoch()
+    if ctx.invalidate_search:
+        ctx.invalidate_search()
 
     return {
         "status": _STATUS_OK,
@@ -291,6 +293,8 @@ async def tool_dismiss_content_health_issues(
     ctx.store.write_page(slug, page)
     if ctx.bump_epoch:
         ctx.bump_epoch()
+    if ctx.invalidate_search:
+        ctx.invalidate_search()
 
     return {
         "status": _STATUS_OK,
@@ -368,6 +372,8 @@ async def tool_rollback_content_health_fix(ctx: "WorkflowContext", slug: str) ->
         ctx.store.write_page(slug, page)
         if ctx.bump_epoch:
             ctx.bump_epoch()
+        if ctx.invalidate_search:
+            ctx.invalidate_search()
         restored = len(page.content_health_issues)
         return {
             "status": _STATUS_OK,

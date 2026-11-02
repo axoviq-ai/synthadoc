@@ -10,6 +10,7 @@ import pytest
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows.tools.content_health_tools import (
     tool_apply_content_health_fix,
+    tool_dismiss_content_health_issues,
     tool_get_page_content,
     tool_list_content_health_fixes,
     tool_rollback_content_health_fix,
@@ -27,6 +28,7 @@ def _make_ctx(store):
     # list_page_snapshots returns a list with one entry whose id is 42
     ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"index": 1, "id": 42}])
     ctx.bump_epoch = MagicMock()
+    ctx.invalidate_search = MagicMock()
     return ctx
 
 
@@ -76,6 +78,7 @@ async def test_write_fix_stores_fix_record(tmp_path):
     assert loaded.content_health_fix_record is not None
     assert loaded.content_health_fix_record["slug"] == "turing"
     assert loaded.content_health_fix_record["snapshot_id"] == 42
+    ctx.invalidate_search.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -99,6 +102,21 @@ async def test_write_fix_clears_issues_when_clean(tmp_path):
     assert result["remaining_issues"] == 0
     loaded = store.read_page("turing")
     assert loaded.content_health_issues == []
+
+
+@pytest.mark.asyncio
+async def test_dismiss_issues_invalidates_search(tmp_path):
+    """Dismissal changes page.content_health_issues (frontmatter), which
+    affects what the lint report and hint chips surface for this page —
+    callers that cache or filter on that must see it on the next query."""
+    store = WikiStorage(tmp_path / "wiki")
+    issues = [{"type": "thin_section", "severity": "low",
+               "location": "## Intro", "description": "short"}]
+    store.write_page("turing", _make_page("turing", content_health_issues=issues))
+    ctx = _make_ctx(store)
+    result = await tool_dismiss_content_health_issues(ctx, slug="turing", reason="needs facts")
+    assert result["status"] == "success"
+    ctx.invalidate_search.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -201,6 +219,7 @@ async def test_rollback_dismissal_restores_issues_without_touching_content(tmp_p
     assert loaded.content.strip() == thin.strip()
     assert loaded.content_health_fix_record is None
     assert result["restored_issues"] == len(loaded.content_health_issues) == 2
+    ctx.invalidate_search.assert_called_once()
 
 
 def test_format_fix_list_shows_dismissals_as_dismissals():
