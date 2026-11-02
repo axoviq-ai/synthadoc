@@ -195,6 +195,36 @@ def _run_workflow_http(
 
                                 threading.Thread(target=_respond, daemon=True).start()
 
+                            if current_type == "scoped_edit_confirm":
+                                session_id = data.get("session_id", "")
+                                blks = data.get("blocks", [])
+                                applied_ids = [
+                                    b["id"] for b in blks
+                                    if b.get("status") == "applied"
+                                ]
+
+                                def _respond_scoped(
+                                    sid: str = session_id,
+                                    ids: list = applied_ids,
+                                ) -> None:
+                                    time.sleep(0.3)
+                                    with httpx.Client(timeout=10) as c:
+                                        try:
+                                            c.post(
+                                                f"{BASE}/action/confirm-scoped",
+                                                json={
+                                                    "session_id": sid,
+                                                    "confirmed": confirm_response,
+                                                    "mode": "blocks",
+                                                    "included_block_ids": ids if confirm_response else [],
+                                                    "page_body": None,
+                                                },
+                                            )
+                                        except Exception:
+                                            pass
+
+                                threading.Thread(target=_respond_scoped, daemon=True).start()
+
                             if current_type == "done":
                                 return events
 
