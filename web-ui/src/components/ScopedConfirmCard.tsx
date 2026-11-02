@@ -190,6 +190,14 @@ export default function ScopedConfirmCard({
                                     fontFamily: "var(--font-mono, monospace)",
                                     fontSize: "0.88rem",
                                 },
+                                // Match gutter (lint marker column) to editor background
+                                // so it doesn't show as a white strip in dark mode.
+                                ".cm-gutters": {
+                                    background: "var(--bg-secondary)",
+                                    borderRight: "1px solid var(--border, #444)",
+                                    color: "var(--text-muted, #888)",
+                                },
+                                ".cm-activeLineGutter": { background: "transparent" },
                             }),
                         ],
                     }),
