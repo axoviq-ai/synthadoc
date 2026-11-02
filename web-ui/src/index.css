@@ -94,6 +94,9 @@
     /* Diff colours — dark mode */
     --diff-add: #7ee787;
     --diff-del: #ff7b72;
+
+    /* Active/selected tab/button highlight */
+    --bg-active: #2a2f3e;
 }
 
 /* ─── Light — system follows OS ──────────────────── */
@@ -169,6 +172,9 @@
         /* Diff colours — light mode */
         --diff-add: #1a7f37;
         --diff-del: #b91c1c;
+
+        /* Active/selected tab/button highlight */
+        --bg-active: rgba(0, 0, 0, 0.08);
     }
 }
 
@@ -241,6 +247,9 @@
     /* Diff colours — light mode */
     --diff-add: #1a7f37;
     --diff-del: #b91c1c;
+
+    /* Active/selected tab/button highlight */
+    --bg-active: rgba(0, 0, 0, 0.08);
 }
 
 /* ─── Smooth theme transitions ────────────────────── */
