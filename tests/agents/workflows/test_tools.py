@@ -39,7 +39,7 @@ from synthadoc.core.queue import JobStatus
 # Fixture helper
 # ---------------------------------------------------------------------------
 
-def _make_ctx(audit_db=None, store=None, queue=None):
+def _make_ctx(audit_db=None, store=None, queue=None, bump_epoch=None, invalidate_search=None):
     events = []
 
     async def _send(e, d):
@@ -54,6 +54,8 @@ def _make_ctx(audit_db=None, store=None, queue=None):
         send_sse_event=_send,
         confirm_registry={},
         confirm_result_registry={},
+        bump_epoch=bump_epoch,
+        invalidate_search=invalidate_search,
     ), events
 
 
@@ -1668,6 +1670,50 @@ class TestProposeAndApplyChecks:
         assert page.content == new
         store.write_page.assert_called_once()
 
+    async def test_applied_write_invalidates_cache_and_search(self):
+        """tool_propose_and_apply must bust both the query cache and the
+        search index on its own — callers like orphan_resolver never call
+        tool_transition_lifecycle_state afterward (no status change needed),
+        so if this function doesn't invalidate search itself, a newly
+        inserted wikilink stays unsearchable until an unrelated reindex."""
+        store, page = _confirming_store(
+            "# Title\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
+        )
+        bump_epoch = MagicMock()
+        invalidate_search = MagicMock()
+        ctx, _events = _make_ctx(
+            store=store,
+            audit_db=MagicMock(
+                snapshot_if_changed=AsyncMock(return_value=True),
+                list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+            ),
+            bump_epoch=bump_epoch,
+            invalidate_search=invalidate_search,
+        )
+        asyncio.create_task(_auto_confirm(ctx))
+        new = "# Title\n\n## History\n\nThe telephone was invented by Bell in 1876.\n"
+        result = await tool_propose_and_apply(
+            ctx, slug="s", new_content=new,
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert result["applied"] is True
+        bump_epoch.assert_called_once()
+        invalidate_search.assert_called_once()
+
+    async def test_rejected_write_does_not_invalidate_search(self):
+        store, page = _confirming_store(
+            "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
+        )
+        invalidate_search = MagicMock()
+        ctx, _events = _make_ctx(store=store, invalidate_search=invalidate_search)
+        result = await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Changed\n\nreal body text with enough words here.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        assert result["applied"] is False
+        invalidate_search.assert_not_called()
+
     async def test_applies_inline_wikilink_insertion(self):
         """Orphan-resolver rewrites a sentence to carry a wikilink — must apply."""
         store, page = _confirming_store(
@@ -1790,6 +1836,33 @@ class TestRollbackLastFix:
         assert result["status"] == "success"
         assert page.content == current
         assert page.last_fix_record is None
+
+    async def test_invalidates_search_even_when_status_is_not_restored(self):
+        """Content-health and orphan-resolver rollbacks never change page.status
+        (contradiction_resolver's is the only one that does) — this must still
+        invalidate search, since restore_page_snapshot changed page.content
+        regardless of whether status changed too. The status-restored branch
+        is NOT the thing that should gate search invalidation."""
+        current = "# Title\n\n## Keep\n\noriginal body text with enough words here.\n"
+        store, page = _confirming_store(current)
+        invalidate_search = MagicMock()
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 42}]),
+            get_snapshot_by_index=AsyncMock(return_value={
+                "index": 1, "id": 42, "content_snapshot": current,
+            }),
+        ), invalidate_search=invalidate_search)
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## Keep\n\noriginal body text with enough words here. More.\n",
+            strategy_name="Strategy 1", rationale="test",
+        )
+        invalidate_search.reset_mock()  # only interested in the rollback's own call
+        result = await tool_rollback_last_fix(ctx, "s")
+        assert result["status"] == "success"
+        invalidate_search.assert_called_once()
 
     async def test_errors_cleanly_with_no_prior_fix(self):
         store, page = _confirming_store("# Title\n\nbody.\n")
