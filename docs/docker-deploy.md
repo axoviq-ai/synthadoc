@@ -619,21 +619,21 @@ curl http://localhost:7070/health
 `latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
 
 ```bash
-docker pull chenp/synthadoc:1.5.0
+docker pull chenp/synthadoc:1.5.1
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file ~/wikis/.env \
-  chenp/synthadoc:1.5.0
+  chenp/synthadoc:1.5.1
 ```
 
 <details>
 <summary>Windows (Command Prompt)</summary>
 
 ```bat
-docker pull chenp/synthadoc:1.5.0
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.0
+docker pull chenp/synthadoc:1.5.1
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.1
 ```
 
 </details>
