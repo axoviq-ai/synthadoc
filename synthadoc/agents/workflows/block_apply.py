@@ -143,7 +143,12 @@ def _check_sentence_loss(old_text: str, new_text: str, threshold: float = 0.8) -
 # apply_blocks
 # ---------------------------------------------------------------------------
 
-def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
+def apply_blocks(
+    page_body: str,
+    raw_blocks: list[dict],
+    *,
+    allow_heading_mutation: bool = False,
+) -> ApplyResult:
     """Apply *raw_blocks* (list of ``{"old_text": …, "new_text": …}`` dicts)
     to *page_body* using the following pipeline:
 
@@ -154,12 +159,17 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
        values and blocks that find no match are marked ``no_match``.
     2. Sort matched blocks by their raw byte-start position.
     3. Scan adjacent pairs for overlapping raw spans → mark both ``conflict``.
-    4. For each non-rejected block: heading-mutation guard, then
-       sentence-loss guard.
+    4. For each non-rejected block: heading-mutation guard (skipped when
+       *allow_heading_mutation* is True), then sentence-loss guard.
     5. Apply remaining (non-rejected) blocks by splicing the **raw body** in
        *reverse position order* (rightmost first) so earlier offsets are not
        shifted.  ``normalize_whitespace`` is **never** applied to the returned
        ``accumulated_body`` — only matching uses normalization.
+
+    *allow_heading_mutation* — set True for content-health fixes where heading
+    removal/restructure is intentional (e.g. orphaned_heading, empty_section).
+    Contradiction-resolver callers leave it False so the LLM cannot silently
+    delete headings.
     """
     result = ApplyResult(accumulated_body=page_body)
 
@@ -260,7 +270,7 @@ def apply_blocks(page_body: str, raw_blocks: list[dict]) -> ApplyResult:
     for blk in matched:
         if blk["rejected_reason"] is not None:
             continue
-        if _check_heading_mutation(blk["raw_old"], blk["raw_new"]):
+        if not allow_heading_mutation and _check_heading_mutation(blk["raw_old"], blk["raw_new"]):
             blk["rejected_reason"] = "heading_mutation"
             continue
         if _check_sentence_loss(blk["raw_old"], blk["raw_new"]):
