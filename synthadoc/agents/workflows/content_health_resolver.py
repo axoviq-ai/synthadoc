@@ -562,7 +562,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             if page is None:
                 return {"status": "error", "error": f"Page '{slug}' not found"}
             current_body = page.content or ""
-            apply_result = apply_blocks(current_body, blocks)
+            apply_result = apply_blocks(current_body, blocks, allow_heading_mutation=True)
             try:
                 await tool_notify(
                     ctx,
