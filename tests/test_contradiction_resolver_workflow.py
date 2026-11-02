@@ -297,3 +297,57 @@ async def test_explicit_rollback_request_runs_without_extra_confirm():
     confirm.assert_not_awaited()
     rollback.assert_awaited_once_with(ctx, slug="alan-turing")
     assert result["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_propose_and_apply_blocks_passes_accumulated_body():
+    """Phase 2: tool_propose_and_apply_blocks applies blocks via tool_scoped_confirm."""
+    from synthadoc.agents.workflows._tools import tool_propose_and_apply_blocks
+
+    page = MagicMock()
+    page.content = "The claim is wrong. Other content."
+    page.last_fix_record = None
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.store.read_page.return_value = page
+    ctx.store.write_page = MagicMock()
+    ctx.session_id = "s1"
+    ctx.confirm_registry = {}
+    ctx.confirm_result_registry = {}
+    ctx.send_sse_event = AsyncMock()
+    ctx.audit_db = AsyncMock()
+    ctx.audit_db.snapshot_if_changed = AsyncMock()
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"id": "snap1"}])
+    ctx.bump_epoch = None
+    ctx.wiki_root = None
+
+    # Simulate user approving via the scoped confirm card
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body, **_kw):
+        assert hasattr(ctx_, "confirm_registry")  # verify attribute exists
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
+
+    with patch("synthadoc.agents.workflows._tools.tool_scoped_confirm",
+               side_effect=fake_scoped_confirm):
+        result = await tool_propose_and_apply_blocks(
+            ctx,
+            slug="some-page",
+            blocks=[{"old_text": "The claim is wrong.", "new_text": "The claim is hedged."}],
+            strategy_name="Strategy 1 — Content rewrite",
+            rationale="Hedge the unsupported claim.",
+        )
+
+    assert result["applied"] is True
+    written_page = ctx.store.write_page.call_args[0][1]
+    assert "The claim is hedged." in written_page.content
+    assert "Other content." in written_page.content
+
+
+@pytest.mark.asyncio
+async def test_contradiction_resolver_prompt_uses_block_tool():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "tool_propose_and_apply_blocks" in prompt, (
+        "Strategy 1 instructions must reference tool_propose_and_apply_blocks"
+    )

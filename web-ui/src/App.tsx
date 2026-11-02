@@ -146,6 +146,30 @@ export default function App() {
         }
     }, []);
 
+    const handleScopedConfirmDecision = useCallback(async (decision: {
+        sessionId: string;
+        confirmed: boolean;
+        mode: "blocks" | "page";
+        includedBlockIds: string[];
+        pageBody: string | null;
+    }) => {
+        try {
+            await fetch(`/action/confirm-scoped`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    session_id: decision.sessionId,
+                    confirmed: decision.confirmed,
+                    mode: decision.mode,
+                    included_block_ids: decision.includedBlockIds,
+                    page_body: decision.pageBody,
+                }),
+            });
+        } catch {
+            // fire-and-forget; backend times out gracefully
+        }
+    }, []);
+
     return (
         <div className="app-layout">
             <Sidebar
@@ -195,6 +219,7 @@ export default function App() {
                         pendingPrompt={pendingPrompt}
                         onPendingPromptConsumed={() => setPendingPrompt(null)}
                         onConfirmDecision={handleConfirmDecision}
+                        onScopedEditConfirmDecision={handleScopedConfirmDecision}
                         resolvedDark={resolvedDark}
                     />
                 )}

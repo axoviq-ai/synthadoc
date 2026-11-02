@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.content_health_fixes import heading_mismatch_error
+from synthadoc.agents.content_health_fixes import heading_mismatch_error, text_loss_error
 from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
@@ -857,6 +857,133 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     }
 
 
+async def tool_scoped_confirm(
+    ctx: "WorkflowContext",
+    slug: str,
+    apply_result: "ApplyResult",  # type: ignore[name-defined]
+    current_body: str,
+    rationale: str | None = None,
+    allow_heading_mutation: bool = False,
+) -> dict:
+    """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
+
+    Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` (same
+    registry as :func:`tool_confirm`) keyed by ``ctx.session_id``.  The HTTP
+    handler resolves the gate via ``POST /action/confirm-scoped``.
+
+    Returns ``{"confirmed": bool, "final_body": str | None}``.  Times out with
+    ``{"confirmed": False, "final_body": None}`` after 300 seconds.
+
+    *apply_result* is the :class:`~synthadoc.agents.workflows.block_apply.ApplyResult`
+    from the block-apply run.  On approval with ``mode="blocks"``, the function
+    re-applies only the user-selected blocks to *current_body* and returns the
+    resulting body.  On ``mode="page"``, the body the user typed is returned as-is.
+    """
+    from synthadoc.agents.workflows.block_apply import ApplyResult, apply_blocks  # noqa: F401
+
+    _CONFIRM_TIMEOUT = 300.0
+
+    # 1. Build blocks payload
+    blocks_payload = [
+        {
+            "id": f"b{br.index}",
+            "old_text": br.old_text,
+            "new_text": br.new_text,
+            "status": br.status,
+            "rejection_reason": br.rejection_reason,
+        }
+        for br in apply_result.blocks
+    ]
+
+    # 2. Compute default_tab
+    default_tab = "page" if apply_result.applied_count == 0 else "blocks"
+
+    # 3. Compute header_message
+    if apply_result.applied_count == 0:
+        header_message = "No safe edits found — you can edit the page manually below."
+    else:
+        header_message = (
+            f"{apply_result.applied_count} edit(s) ready · {apply_result.rejected_count} rejected"
+        )
+
+    # 4. Register gate
+    gate = asyncio.Event()
+    ctx.confirm_registry[ctx.session_id] = gate
+    ctx.confirm_result_registry[ctx.session_id] = {}
+
+    try:
+        # 5. Send SSE
+        payload: dict = {
+            "session_id": ctx.session_id,
+            "page_slug": slug,
+            "current_body": current_body,
+            "accumulated_body": apply_result.accumulated_body,
+            "blocks": blocks_payload,
+            "default_tab": default_tab,
+            "header_message": header_message,
+            "timeout_seconds": int(_CONFIRM_TIMEOUT),
+        }
+        if rationale is not None:
+            payload["rationale"] = rationale
+        try:
+            await ctx.send_sse_event("scoped_edit_confirm", payload)
+        except Exception:  # noqa: BLE001
+            _log.warning(
+                "tool_scoped_confirm: failed to send SSE (session=%s)",
+                ctx.session_id,
+                exc_info=True,
+            )
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
+
+        # 6. Wait for gate
+        try:
+            await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
+        except asyncio.TimeoutError:
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
+
+        # 7. Read result
+        res = ctx.confirm_result_registry.get(ctx.session_id, {})
+
+        # Guard: a plain bool (from tool_confirm) must not be read as a scoped dict
+        if not isinstance(res, dict):
+            _log.error(
+                "tool_scoped_confirm: unexpected non-dict result in registry for "
+                "session=%s (type=%s) — treating as declined",
+                ctx.session_id, type(res).__name__,
+            )
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
+
+        # 8. If not confirmed
+        if not res.get("confirmed"):
+            return {"confirmed": False, "final_body": None, "mode": "blocks"}
+
+        # 9 / 10. Compute final_body
+        mode = res.get("mode", "blocks")
+        if mode == "page":
+            final_body = res.get("page_body")
+        else:
+            # mode == "blocks": re-apply only the included block ids
+            included_ids: set[str] = set(res.get("included_block_ids") or [])
+            included_raw = [
+                {"old_text": br.old_text, "new_text": br.new_text}
+                for br in apply_result.blocks
+                if f"b{br.index}" in included_ids
+            ]
+            re_result = apply_blocks(
+                current_body, included_raw,
+                allow_heading_mutation=allow_heading_mutation,
+            )
+            final_body = re_result.accumulated_body
+
+        # 11. Return — include mode so callers can apply mode-specific validation
+        return {"confirmed": True, "final_body": final_body, "mode": mode}
+
+    finally:
+        # 12. Cleanup
+        ctx.confirm_registry.pop(ctx.session_id, None)
+        ctx.confirm_result_registry.pop(ctx.session_id, None)
+
+
 def unified_diff_preview(slug: str, old: str, new: str, max_lines: int = 80) -> str:
     """Unified diff of a page's current vs proposed content, for a confirm card.
 
@@ -921,7 +1048,10 @@ async def tool_confirm(
             return {"confirmed": False}
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
-            confirmed = ctx.confirm_result_registry.get(ctx.session_id, False)
+            raw_result = ctx.confirm_result_registry.get(ctx.session_id, False)
+            # Explicit bool check: a scoped-confirm dict is truthy but must not
+            # be mistaken for a plain confirmed=True from tool_confirm.
+            confirmed = raw_result is True
             return {"confirmed": confirmed}
         except asyncio.TimeoutError:
             return {"confirmed": False}
@@ -1034,6 +1164,41 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
             "contradiction_note": contradiction_note}
 
 
+async def _resolve_fix_episode(
+    page,
+    slug: str,
+    strategy_name: str,
+    rationale: str,
+    ctx: "WorkflowContext",
+) -> tuple:
+    """Return (snapshot_id, pre_fix_status, pre_fix_contradiction_note, pre_fix_lint_warnings).
+
+    Chains onto the existing last_fix_record only when we are inside the SAME
+    resolution episode (multi-strategy retry: strategy 1 wrote but failed lint →
+    strategy 2 retries, both must roll back to the same pre-episode baseline).
+    Any other existing record belongs to a prior episode and is ignored so that
+    rollback always restores the content that was current when THIS episode started.
+    """
+    existing_record = page.last_fix_record
+    same_episode = existing_record is not None and (
+        page.contradiction_note is None
+        or page.contradiction_note == existing_record.get("pre_fix_contradiction_note")
+    )
+    if same_episode:
+        return (
+            existing_record.get("snapshot_id"),
+            existing_record.get("pre_fix_status"),
+            existing_record.get("pre_fix_contradiction_note"),
+            existing_record.get("pre_fix_lint_warnings"),
+        )
+    await ctx.audit_db.snapshot_if_changed(
+        slug, page.content, triggered_by=strategy_name, reason=rationale,
+    )
+    snapshots = await ctx.audit_db.list_page_snapshots(slug)
+    snapshot_id = snapshots[0]["id"] if snapshots else None
+    return snapshot_id, page.status, page.contradiction_note, page.lint_warnings
+
+
 async def tool_propose_and_apply(
     ctx: "WorkflowContext",
     slug: str,
@@ -1108,36 +1273,10 @@ async def tool_propose_and_apply(
     )
     confirmed = result.get("confirmed", False)
     if confirmed:
-        existing_record = page.last_fix_record
-        if existing_record:
-            # A retry within the same resolution episode (contradiction_resolver's
-            # step 4h calls tool_propose_and_apply again with a new strategy when
-            # scoped lint fails after an applied attempt). Chain onto the FIRST
-            # attempt's snapshot/status/note instead of re-snapshotting the
-            # already-rewritten content — otherwise rollback would only undo the
-            # most recent attempt, landing on a still-wrong intermediate rewrite
-            # rather than the true pre-episode original.
-            snapshot_id = existing_record.get("snapshot_id")
-            pre_fix_status = existing_record.get("pre_fix_status")
-            pre_fix_contradiction_note = existing_record.get("pre_fix_contradiction_note")
-            pre_fix_lint_warnings = existing_record.get("pre_fix_lint_warnings")
-        else:
-            await ctx.audit_db.snapshot_if_changed(
-                slug, page.content, triggered_by=strategy_name, reason=rationale,
-            )
-            snapshots = await ctx.audit_db.list_page_snapshots(slug)
-            snapshot_id = snapshots[0]["id"] if snapshots else None
-
-            # Capture the pre-fix lifecycle flags BEFORE they are overwritten (here,
-            # and by the caller's later tool_transition_lifecycle_state) so
-            # tool_rollback_last_fix can restore them along with the content.
-            # lint_warnings in particular must be captured here, before step 4f's
-            # tool_run_scoped_lint call overwrites it with the fresh (now-passing)
-            # result — that happens entirely outside this function, so this is the
-            # last point where the pre-fix value is still visible.
-            pre_fix_status = page.status
-            pre_fix_contradiction_note = page.contradiction_note
-            pre_fix_lint_warnings = page.lint_warnings
+        (
+            snapshot_id, pre_fix_status,
+            pre_fix_contradiction_note, pre_fix_lint_warnings,
+        ) = await _resolve_fix_episode(page, slug, strategy_name, rationale, ctx)
 
         page.content = new_content
         # Clear the contradiction note so scoped lint can pass for source-conflict
@@ -1175,6 +1314,134 @@ async def tool_propose_and_apply(
             {"tool": "propose_and_apply", "message": f"OK Applied {strategy_name} to {slug}"},
         )
     return {"applied": confirmed, "diff_preview": diff_preview}
+
+
+async def tool_propose_and_apply_blocks(
+    ctx: "WorkflowContext",
+    slug: str,
+    blocks: list[dict],
+    strategy_name: str,
+    rationale: str,
+) -> dict:
+    """Apply a list of scoped edit blocks to a page, showing the ScopedConfirmCard.
+
+    Each entry in *blocks* is ``{"old_text": "<verbatim text>", "new_text": "<replacement>"}``.
+    Uses the block_apply engine to locate and replace each block in document order
+    with safety guards (heading-mutation, sentence-loss, overlap).  Presents the
+    result as a ``scoped_edit_confirm`` SSE card so the user can approve individual
+    blocks or edit the full page body before committing.
+
+    Intended for Strategy 1 (content rewrite) in contradiction_resolver where
+    scoped edits are preferable to a full page body replacement.
+
+    Returns the same shape as ``tool_propose_and_apply``::
+
+        {"applied": bool, "diff_preview": str}
+        {"applied": False, "diff_preview": "", "error": str}
+    """
+    from synthadoc.agents.workflows.block_apply import apply_blocks
+
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"applied": False, "diff_preview": "", "error": f"Page not found: {slug!r}"}
+
+    current_body = page.content or ""
+    result = apply_blocks(current_body, blocks)
+
+    # Safety check on the accumulated body — heading mutations are always rejected
+    # before showing the confirm card so the user is never asked to approve a
+    # structurally invalid rewrite.
+    rejection = heading_mismatch_error(slug, current_body, result.accumulated_body)
+    if rejection:
+        return {
+            "applied": False,
+            "diff_preview": "",
+            "error": (
+                f"Rejected — nothing was written. This rewrite changes "
+                f"{rejection.get('heading_changes', 'one or more')} heading(s) "
+                f"unexpectedly; headings must be preserved exactly. Review manually."
+            ),
+        }
+
+    scoped_result = await tool_scoped_confirm(
+        ctx, slug=slug, apply_result=result, current_body=current_body,
+        rationale=strategy_name,
+    )
+    confirmed = scoped_result.get("confirmed", False)
+    if not confirmed:
+        return {"applied": False, "diff_preview": ""}
+
+    final_body = scoped_result.get("final_body")
+    mode = scoped_result.get("mode", "blocks")
+
+    # Guard: page_body: null with mode="page" must not reach the write path
+    if final_body is None:
+        _log.error(
+            "tool_propose_and_apply_blocks: page_body missing in scoped confirm "
+            "result for slug=%s (mode=%s) — declining write",
+            slug, mode,
+        )
+        return {"applied": False, "diff_preview": "", "error": "page_body missing"}
+
+    # Page-mode: run the same structural validators as content-health apply to
+    # guard against a manually edited body that damages headings or drops prose.
+    if mode == "page":
+        hm = heading_mismatch_error(slug, page.content or "", final_body)
+        if hm:
+            return {
+                "applied": False,
+                "diff_preview": "",
+                "error": (
+                    f"Rejected — page-mode body changes "
+                    f"{hm.get('heading_changes', 'one or more')} heading(s); "
+                    "headings must be preserved exactly. Review manually."
+                ),
+            }
+        tl = text_loss_error(slug, page.content or "", final_body)
+        if tl:
+            return {
+                "applied": False,
+                "diff_preview": "",
+                "error": (
+                    "Rejected — page-mode body drops too many sentences from "
+                    "current content. Review manually."
+                ),
+            }
+
+    # Skip-all: if final body is identical to current content, do not write
+    if final_body.strip() == (page.content or "").strip():
+        return {"applied": False, "diff_preview": ""}
+
+    (
+        snapshot_id, pre_fix_status,
+        pre_fix_contradiction_note, pre_fix_lint_warnings,
+    ) = await _resolve_fix_episode(page, slug, strategy_name, rationale, ctx)
+
+    diff_preview = unified_diff_preview(slug, current_body, final_body)
+
+    page.content = final_body
+    page.contradiction_note = None
+    page.last_fix_record = {
+        "slug": slug,
+        "snapshot_id": snapshot_id,
+        "snapshot_index_before": 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "strategy_name": strategy_name,
+        "pre_fix_status": pre_fix_status,
+        "pre_fix_lint_warnings": pre_fix_lint_warnings,
+        "pre_fix_contradiction_note": pre_fix_contradiction_note,
+    }
+    _rescan_content_health(page, slug)
+    with ctx.store.page_lock(slug):
+        ctx.store.write_page(slug, page)
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "propose_and_apply_blocks",
+         "message": f"OK Applied {strategy_name} to {slug} "
+                    f"({result.applied_count} block(s) applied, "
+                    f"{result.rejected_count} rejected)"},
+    )
+    return {"applied": True, "diff_preview": diff_preview}
 
 
 async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:

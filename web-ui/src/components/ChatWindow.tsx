@@ -10,6 +10,7 @@ import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
 import ToolProgressBlock from "./ToolProgressBlock";
 import ConfirmCard from "./ConfirmCard";
+import ScopedConfirmCard from "./ScopedConfirmCard";
 import { CrossWikiToggle } from "./CrossWikiToggle";
 import { CrossWikiBar } from "./CrossWikiBar";
 
@@ -31,6 +32,13 @@ interface Props {
     pendingPrompt?: string | null;
     onPendingPromptConsumed?: () => void;
     onConfirmDecision?: (sessionId: string, confirmed: boolean) => void;
+    onScopedEditConfirmDecision?: (decision: {
+        sessionId: string;
+        confirmed: boolean;
+        mode: "blocks" | "page";
+        includedBlockIds: string[];
+        pageBody: string | null;
+    }) => void;
     resolvedDark: boolean;
 }
 
@@ -39,6 +47,7 @@ export function ChatWindow({
     injectedQuery, onInjected, onQuerySent, onOwnQuestion, showTip,
     initialMessages = [],
     pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
+    onScopedEditConfirmDecision,
     resolvedDark,
 }: Props) {
     // Cross-wiki state — must be declared before useQueryStream so setters are available
@@ -54,7 +63,7 @@ export function ChatWindow({
     const chipText = useRef<string | null>(null);
     const [crossWikiOffline, setCrossWikiOffline] = useState<string[]>([]);
 
-    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(
+    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm, pendingScopedConfirm, setPendingScopedConfirm } = useQueryStream(
         sessionId, onHints, initialMessages, onQuerySent,
         {
             onWikisQuerying: (wikis) => { setCrossWikiBarState("searching"); setCrossWikiWikis(wikis); },
@@ -110,11 +119,15 @@ export function ChatWindow({
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
 
-    // Scroll to bottom when the confirm card appears so it's always visible
+    // Scroll to bottom when either confirm card appears so it's always visible
     useLayoutEffect(() => {
         const el = messagesRef.current;
         if (el && pendingConfirm) el.scrollTop = el.scrollHeight;
     }, [pendingConfirm]);
+    useLayoutEffect(() => {
+        const el = messagesRef.current;
+        if (el && pendingScopedConfirm) el.scrollTop = el.scrollHeight;
+    }, [pendingScopedConfirm]);
 
     // Scroll to bottom as workflow tool_progress lines arrive
     useLayoutEffect(() => {
@@ -218,6 +231,30 @@ export function ChatWindow({
                         onDecline={() => {
                             setPendingConfirm(null);
                             onConfirmDecision?.(pendingConfirm.session_id, false);
+                        }}
+                    />
+                )}
+                {pendingScopedConfirm && (
+                    <ScopedConfirmCard
+                        sessionId={pendingScopedConfirm.session_id}
+                        pageSlug={pendingScopedConfirm.page_slug}
+                        currentBody={pendingScopedConfirm.current_body}
+                        accumulatedBody={pendingScopedConfirm.accumulated_body}
+                        blocks={pendingScopedConfirm.blocks}
+                        defaultTab={pendingScopedConfirm.default_tab}
+                        headerMessage={pendingScopedConfirm.header_message}
+                        rationale={pendingScopedConfirm.rationale}
+                        timeoutSeconds={pendingScopedConfirm.timeout_seconds}
+                        onDecide={(result) => {
+                            const captured = pendingScopedConfirm;
+                            setPendingScopedConfirm(null);
+                            onScopedEditConfirmDecision?.({
+                                sessionId: captured.session_id,
+                                confirmed: result.confirmed,
+                                mode: result.mode,
+                                includedBlockIds: result.includedBlockIds,
+                                pageBody: result.pageBody,
+                            });
                         }}
                     />
                 )}
