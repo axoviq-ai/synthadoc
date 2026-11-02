@@ -120,7 +120,9 @@ _OVERVIEW_PROMPT = (
     "excerpts below.\n"
     "First paragraph: what topics this wiki covers.\n"
     "Second paragraph: key themes and concepts found.\n"
-    "Keep it under 200 words. Plain text only — no markdown headings.\n\n"
+    "Keep it under 200 words. Plain text only — no markdown headings.\n"
+    "Return ONLY the two paragraphs. Do NOT write any reasoning, thinking, or "
+    "explanation before or after them.\n\n"
     "Pages:\n{pages}"
 )
 
@@ -148,7 +150,7 @@ async def _regenerate_overview(wiki_dir: Path, provider: "LLMProvider") -> None:
         messages=[Message(role="user",
                           content=_OVERVIEW_PROMPT.format(pages="\n".join(page_ctx)))],
         temperature=0.3,
-        max_tokens=512,
+        max_tokens=1024,
     )
     _today = date.today().isoformat()
     content = (
