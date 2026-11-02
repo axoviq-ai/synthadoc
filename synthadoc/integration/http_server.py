@@ -350,6 +350,14 @@ class ActionConfirmRequest(BaseModel):
     confirmed: bool
 
 
+class ScopedConfirmRequest(BaseModel):
+    session_id: str
+    confirmed: bool
+    mode: str = "blocks"               # "blocks" or "page"; default "blocks" is safe
+    included_block_ids: list[str] = []
+    page_body: str | None = None
+
+
 class ScaffoldRequest(BaseModel):
     domain: str
 
@@ -1863,6 +1871,20 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if gate.is_set():
             raise HTTPException(status_code=409, detail="Confirmation already processed")
         app.state.confirm_result_registry[req.session_id] = req.confirmed
+        gate.set()
+        return {"ok": True}
+
+    @app.post("/action/confirm-scoped")
+    async def action_confirm_scoped(req: ScopedConfirmRequest):
+        gate = app.state.confirm_registry.get(req.session_id)
+        if gate is None or gate.is_set():
+            raise HTTPException(status_code=404, detail="No pending scoped confirmation")
+        app.state.confirm_result_registry[req.session_id] = {
+            "confirmed": req.confirmed,
+            "mode": req.mode,
+            "included_block_ids": req.included_block_ids,
+            "page_body": req.page_body,
+        }
         gate.set()
         return {"ok": True}
 
