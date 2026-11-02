@@ -1158,6 +1158,18 @@ async def tool_propose_and_apply(
         _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
             ctx.store.write_page(slug, page)
+        # Invalidate the query cache and search index so the next query
+        # reflects the new content.  Callers of this function (orphan_resolver
+        # in particular) don't always follow up with
+        # tool_transition_lifecycle_state, which is the only other place that
+        # does this — without it here, a resolved orphan's new wikilink stays
+        # invisible to search until an unrelated event triggers a reindex.
+        # Both hooks are None in tests and CLI contexts that don't wire up
+        # the orchestrator.
+        if ctx.bump_epoch:
+            ctx.bump_epoch()
+        if ctx.invalidate_search:
+            ctx.invalidate_search()
         await ctx.send_sse_event(
             "tool_progress",
             {"tool": "propose_and_apply", "message": f"OK Applied {strategy_name} to {slug}"},
@@ -1213,8 +1225,9 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
     if status_restored:
         # Keep page_states (GET /lifecycle/pages) in step with the frontmatter,
         # as tool_transition_lifecycle_state does.  Best-effort, like there.
-        if ctx.invalidate_search:
-            ctx.invalidate_search()
+        # (Search was already invalidated inside restore_page_snapshot above —
+        # this status-only change doesn't touch page.content, so it doesn't
+        # need its own reindex.)
         try:
             await ctx.audit_db.set_page_state(slug, page.status, "workflow")
         except Exception:  # noqa: BLE001
