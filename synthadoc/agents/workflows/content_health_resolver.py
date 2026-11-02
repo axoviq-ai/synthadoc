@@ -577,6 +577,7 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             scoped_result = await tool_scoped_confirm(
                 ctx, slug=slug, apply_result=apply_result, current_body=current_body,
                 rationale=", ".join(issues_fixed) if issues_fixed else None,
+                allow_heading_mutation=True,
             )
             if not scoped_result.get("confirmed"):
                 return {

@@ -863,6 +863,7 @@ async def tool_scoped_confirm(
     apply_result: "ApplyResult",  # type: ignore[name-defined]
     current_body: str,
     rationale: str | None = None,
+    allow_heading_mutation: bool = False,
 ) -> dict:
     """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
 
@@ -968,7 +969,10 @@ async def tool_scoped_confirm(
                 for br in apply_result.blocks
                 if f"b{br.index}" in included_ids
             ]
-            re_result = apply_blocks(current_body, included_raw)
+            re_result = apply_blocks(
+                current_body, included_raw,
+                allow_heading_mutation=allow_heading_mutation,
+            )
             final_body = re_result.accumulated_body
 
         # 11. Return — include mode so callers can apply mode-specific validation
