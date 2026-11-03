@@ -238,7 +238,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "anthropic", model = "claude-haiku-5-5" }}         # paid, fastest and cheapest Claude (from $0.10/$0.50)
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, previous generation ($3/$15)
 # default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, previous generation ($5/$25)
-# default = {{ provider = "deepseek",  model = "deepseek-flash" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
+# default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "disabled" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
 # default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }}      # thinking/reasoning mode
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
 # NOTE: all Qwen DashScope models have thinking ON by default; always use thinking="disabled"
