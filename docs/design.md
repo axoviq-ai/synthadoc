@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.5.0
+**Version:** 1.5.1
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4644,6 +4644,37 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.1
+
+**Main feature**
+
+- **Scoped edit confirm — block-level search/replace edits with per-block UX** — contradiction-resolver Strategy 1 and content-health resolver no longer send a single full-page rewrite. Instead they output a list of `{old_text, new_text}` block pairs via the `block_apply` engine, which matches each block against the raw page body (exact match first, normalised whitespace fallback) and splices approved blocks in reverse position order so the returned body is never normalised. The web UI renders a `ScopedConfirmCard` in a single-view layout: block mode (default) lists each edit with a per-block include/skip checkbox and a rejection badge; "Edit full page manually" switches to a CodeMirror 6 editor with Edit/Preview toggle and an inline markdown linter. The optional `rationale` SSE field is displayed as muted context above the header. Fix-episode detection (`_resolve_fix_episode`) prevents rollback from restoring a stale snapshot when the same page is touched by two different workflows in sequence. See [§43 — Scoped Edit Confirm](#43-scoped-edit-confirm).
+
+**Benchmark update**
+
+- **Pin only BM25's top hit** — `perf(search)`: rather than pinning the top-3 BM25 hits to the start of the fused candidate list, only the single best BM25 hit is pinned. Top-5 paraphrase recall on the 1,985-page Wikipedia corpus rises from 68% to **70%**; overall top-5 recall across all query types remains 90%. BM25 latency 9.6 ms (p50), hybrid 31.7 ms (p50). Results updated in `benchmarks/retrieval/data/baseline.json`.
+
+**Fixes**
+
+- False knowledge-gap alarms on exact-name questions suppressed; gaps explicitly declared by the LLM are preserved in the answer.
+- Query citation links named after a page's source file now resolve to the page; `[[Page Title]]` wikilinks in citations resolve correctly.
+- Page text is never discarded when a source is force-re-ingested; the log message is demoted to INFO.
+- Every provider's API key is now checked at `synthadoc serve` startup (was only 4 of 8).
+- `synthadoc serve` shows the missing-API-key error as a clean one-liner instead of a full traceback.
+- `MissingApiKeyError` message points to the real `config.toml` path; home-directory paths are not leaked.
+- Error messages clarify that a provider was configured, not hardcoded.
+- Config error is raised when every provider section is commented out.
+- Search-index cache is invalidated on every rollback and resolver write (was only some paths).
+- Embedding sync reports when no pages need re-embedding.
+- Web UI: light-mode Knowledge Gap suggestion chips render correctly; pinned graph questions are released when the user sends a typed query; CodeMirror editor gutter no longer shows a white strip in dark mode; Edit button dark-box in light mode fixed.
+- Web UI scroll-to-bottom fires when `ScopedConfirmCard` appears.
+
+**Refactoring**
+
+- `BlockResult.rejection_reason` typed as `Literal["no_match", "conflict", "heading_mutation", "sentence_loss"] | None` instead of bare `str | None`.
+
+---
 
 ### v1.5.0
 
