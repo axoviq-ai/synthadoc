@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.5.0
+    Community Edition  v1.5.1
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.0-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.1-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.5.0**
+**Document version: v1.5.1**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -949,11 +949,11 @@ synthadoc workflow run --name content-health list -w my-wiki
 synthadoc workflow run --name content-health roll back alan-turing -w my-wiki
 ```
 
-The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Every change is shown as a real diff and written only after you approve, and any rewrite that would drop a sentence — or add, remove, or rename a heading — is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
+The content health resolver works on pages already flagged by a fast heuristic scanner (no LLM) that runs after every ingest, after every workflow write, and on every full lint pass. It detects duplicate sections, empty or thin sections, unclosed code blocks, orphaned headings, and broken list nesting. Duplicate sections are merged in Python with no LLM, keeping every sentence; the other structural issues get one LLM rewrite per page. Each fix is presented as individual per-block edits with per-block include/skip toggles — or switch to a full-page CodeMirror editor via "Edit full page manually" — and written only after you approve. Any rewrite that would drop a sentence is rejected. Thin sections need new facts, so the resolver leaves them to you and the lint report lists them. A snapshot is saved before every write, so any fix can be rolled back later.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Demo: content health resolver](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#demo--content-health-resolver)
 
-The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Any rewrite that mutates a heading is rejected before you are asked, and every write is snapshotted — say "roll back `<slug>`" to undo a fix.
+The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, presents the changes as individual per-block edits with per-block include/skip toggles, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts. Any rewrite that mutates a heading is rejected before you are asked, and every write is snapshotted — say "roll back `<slug>`" to undo a fix.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
 

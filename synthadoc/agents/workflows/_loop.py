@@ -493,6 +493,21 @@ async def run_tool_call_loop(
                         f"and re-run the workflow:\n\n"
                         f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
                     )
+                elif '{"tool_call"' in text:
+                    # Text starts with our wire format but JSON is malformed — almost
+                    # always caused by a previous truncation retry where the second
+                    # response still exceeded the token budget and produced broken JSON.
+                    err = (
+                        "⚠ The workflow could not continue because the model produced a "
+                        "malformed tool-call response that could not be parsed.\n\n"
+                        "**Likely cause:** the response contains a large tool call "
+                        "(e.g. full page content in block edits) and the model may have "
+                        f"hit its output token limit ({max_tokens} tokens).\n\n"
+                        f"**Fix:** increase `workflow_max_tokens` in `[agents]` of your "
+                        f"`config.toml` from **{max_tokens}** to **{recommended}** (or higher) "
+                        f"and re-run the workflow:\n\n"
+                        f"```toml\n[agents]\nworkflow_max_tokens = {recommended}\n```"
+                    )
                 else:
                     err = (
                         "⚠ The workflow could not continue because the model produced a "

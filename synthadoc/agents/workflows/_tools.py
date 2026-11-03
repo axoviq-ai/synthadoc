@@ -1363,6 +1363,27 @@ async def tool_propose_and_apply_blocks(
             ),
         }
 
+    # Auto-skip: when every proposed block was rejected, the full-page editor
+    # that tool_scoped_confirm would show is confusing and unhelpful — tell the
+    # LLM so it can move directly to Strategy 2 instead.
+    if result.applied_count == 0 and blocks:
+        reasons = "; ".join(
+            f"block {i + 1}: {br.rejection_reason or 'no_match'}"
+            for i, br in enumerate(result.block_results)
+            if not br.applied
+        ) or "no reasons available"
+        return {
+            "status": "no_applicable_blocks",
+            "applied": False,
+            "diff_preview": "",
+            "message": (
+                f"None of the {len(blocks)} proposed block(s) matched the current "
+                f"page content — Strategy 1 cannot apply block-level edits for "
+                f"'{slug}'. Rejection reasons: {reasons}. "
+                f"Please proceed to Strategy 2 (full-page rewrite)."
+            ),
+        }
+
     scoped_result = await tool_scoped_confirm(
         ctx, slug=slug, apply_result=result, current_body=current_body,
         rationale=strategy_name,

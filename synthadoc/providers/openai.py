@@ -391,7 +391,8 @@ class OpenAIProvider(LLMProvider):
             logger.warning(
                 "complete: response truncated by token limit "
                 "(finish_reason=length, max_tokens=%d, model=%s). "
-                "Increase scaffold_max_tokens (ingest) or query_max_tokens (queries) "
+                "Increase workflow_max_tokens (agentic workflows), "
+                "scaffold_max_tokens (ingest), or query_max_tokens (queries) "
                 "in [agents] of config.toml.",
                 max_tokens, self._config.model,
             )
