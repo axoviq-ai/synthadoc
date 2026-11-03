@@ -408,6 +408,15 @@ def serve_cmd(
     if not mcp_only:
         _check_port(effective_port, host=cfg.server.host)
 
+    # Docker port-mismatch hint — visible in `docker logs` before anything else.
+    # /.dockerenv is created by the Docker runtime in every container.
+    if Path("/.dockerenv").exists():
+        typer.echo(
+            f"Docker: server will listen on port {effective_port} — "
+            f"make sure your container was started with -p {effective_port}:{effective_port}",
+            err=True,
+        )
+
     _check_network(provider)
 
     _print_banner = not os.environ.get(_NO_BANNER_ENV) and not mcp_only
