@@ -16,7 +16,7 @@ export interface Message {
     text: string;
     citations?: string[];
     gapSuggestions?: string[];
-    type?: "clarify" | "notice";
+    type?: "clarify" | "notice" | "blocked";
     candidates?: string[];
     action?: string;
 }
@@ -143,7 +143,12 @@ export function useQueryStream(
                         if (crossWikiSkipReason !== null) {
                             text += `\n\n*Cross-wiki search skipped: ${crossWikiSkipReason}*`;
                         }
-                        next[next.length - 1] = { ...last, text, citations, gapSuggestions };
+                        next[next.length - 1] = {
+                            ...last, text, citations, gapSuggestions,
+                            // Render as an action-required box, not a plain answer,
+                            // when the user needs to disable cross-wiki to continue.
+                            type: crossWikiSkipReason !== null ? "blocked" : last.type,
+                        };
                     }
                     return next;
                 });

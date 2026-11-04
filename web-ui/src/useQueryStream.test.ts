@@ -35,6 +35,10 @@ describe("useQueryStream — cross-wiki operation-blocked response", () => {
         // prePrompt falls back to the original question so the user can just
         // disable cross-wiki and hit Ask again without retyping it.
         expect(onHints).toHaveBeenCalledWith(undefined, "Run lint and report");
+        // The message itself renders as an action-required box, not a plain
+        // answer bubble, so it's easy to spot that something needs doing.
+        const last = result.current.messages[result.current.messages.length - 1];
+        expect(last.type).toBe("blocked");
     });
 
     it("still updates hints and prePrompt normally for an ordinary cross-wiki answer", async () => {
