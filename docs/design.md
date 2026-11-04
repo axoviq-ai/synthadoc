@@ -811,11 +811,11 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 
 ## 7. HTTP API
 
-**Base URL:** `http://127.0.0.1:<port>` (default port: 7070)
+**Base URL:** `http://localhost:<port>` (default port: 7070)
 
 ### Middleware
 
-- **CORS:** Allows `app://obsidian.md`, `http://localhost:*`, `http://127.0.0.1:*`
+- **CORS:** Allows `app://obsidian.md`, `http://localhost:*`, `http://localhost:*`
 - **ContentSizeLimitMiddleware:** Rejects bodies > 10 MB with HTTP 413
 - **Asyncio semaphore:** Max 20 concurrent requests
 - **Timeout:** 60 seconds per request
@@ -959,7 +959,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 **Location:** `obsidian-plugin/` in the repo
 **Version:** 1.1.0
 
-Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
+Each vault configures its server URL in plugin settings (default `http://localhost:7070`).
 
 **Installation:** Build with `npm run build` in `obsidian-plugin/`, then copy `main.js` and
 `manifest.json` to `<vault>/.obsidian/plugins/synthadoc/`. Enable in Settings → Community Plugins.
@@ -1000,7 +1000,7 @@ If the icon is not visible, make sure the plugin is enabled under **Settings →
 
 | Setting            | Default                 | Description                            |
 | ------------------ | ----------------------- | -------------------------------------- |
-| Server URL         | `http://127.0.0.1:7070` | HTTP server for this vault             |
+| Server URL         | `http://localhost:7070` | HTTP server for this vault             |
 | Raw sources folder | `raw_sources`           | Folder scanned by "Ingest all sources" |
 
 ### Background vault monitoring _(v1.2.0)_
@@ -2927,7 +2927,7 @@ The streaming endpoint inverts this: if a cache hit exists, the cached answer is
 
 The web chat UI is a React single-page application served at `GET /app` by the Synthadoc HTTP server. It communicates with the existing REST API — no additional server process or port is required.
 
-**Serving:** The bundled static assets (`index.html`, `main.js`, `main.css`) are packaged with the `synthadoc` Python distribution under `synthadoc/web_ui/dist/`. The HTTP server mounts them at `/app` via a static file handler. The SPA's API calls target the same origin (`http://127.0.0.1:<port>`), so no CORS configuration is needed beyond what is already in place for the Obsidian plugin.
+**Serving:** The bundled static assets (`index.html`, `main.js`, `main.css`) are packaged with the `synthadoc` Python distribution under `synthadoc/web_ui/dist/`. The HTTP server mounts them at `/app` via a static file handler. The SPA's API calls target the same origin (`http://localhost:<port>`), so no CORS configuration is needed beyond what is already in place for the Obsidian plugin.
 
 ### Session Management
 
