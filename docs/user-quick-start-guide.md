@@ -88,7 +88,7 @@ Jobs total:   0
 Or probe the health endpoint directly:
 
 ```bash
-curl http://127.0.0.1:7070/health
+curl http://localhost:7070/health
 # → {"status":"ok"}
 ```
 
@@ -175,7 +175,7 @@ Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — 
 Go to **Settings → Community Plugins** to confirm both show a blue enabled toggle. While there:
 
 1. Click the gear icon next to **Synthadoc**
-2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically from `config.toml` — if the port ever changes, re-run `synthadoc plugin install` to update it)
+2. Confirm **Server URL** is `http://localhost:7070` (set automatically from `config.toml` — if the port ever changes, re-run `synthadoc plugin install` to update it)
 3. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
@@ -4146,8 +4146,8 @@ synthadoc serve -w "C:\wikis\ai-research"
 ```json
 {
   "mcpServers": {
-    "synthadoc-history-of-computing": { "url": "http://127.0.0.1:7070/mcp/sse" },
-    "synthadoc-ai-research":          { "url": "http://127.0.0.1:7071/mcp/sse" }
+    "synthadoc-history-of-computing": { "url": "http://localhost:7070/mcp/sse" },
+    "synthadoc-ai-research":          { "url": "http://localhost:7071/mcp/sse" }
   }
 }
 ```
@@ -4204,7 +4204,7 @@ synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
 **Step 2 — Register the MCP server**
 
 ```bat
-claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
+claude mcp add --transport sse synthadoc-history-of-computing http://localhost:7070/mcp/sse
 ```
 
 > Use `--transport sse`, not `--transport http` — FastMCP uses the SSE protocol, not Streamable HTTP.
@@ -4240,13 +4240,13 @@ claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe"
 The same endpoint works for any MCP-compatible client:
 
 ```
-MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
+MCP SSE endpoint: http://localhost:7070/mcp/sse
 ```
 
 No API key required. Verify it is live:
 
 ```
-curl -i http://127.0.0.1:7070/mcp/sse
+curl -i http://localhost:7070/mcp/sse
 ```
 
 You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (correct — SSE streams stay open).
@@ -4388,7 +4388,7 @@ For architecture details and the brain/memory use case framing, see [docs/design
 **SSE endpoint returns 404**
 
 - The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
-- Verify the server is running with `curl -i http://127.0.0.1:7070/`
+- Verify the server is running with `curl -i http://localhost:7070/`
 
 ---
 
