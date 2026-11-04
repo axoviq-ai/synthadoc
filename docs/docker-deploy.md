@@ -510,7 +510,7 @@ http://192.168.1.50:7070/mcp        # MCP client
 
 Open the wiki folder (`~/wikis/history-of-computing`) as an Obsidian vault — the volume mount means the wiki files exist on both the host and inside the container, so Obsidian reads them directly with no Docker-specific configuration.
 
-The Synthadoc plugin connects to `http://127.0.0.1:7070` — the same address it uses for a native `synthadoc serve` session. No URL change is needed. Click the **bookmark icon** in the left navigator to verify the connection.
+The Synthadoc plugin connects to `http://localhost:7070` — the same address it uses for a native `synthadoc serve` session. No URL change is needed. Click the **bookmark icon** in the left navigator to verify the connection.
 
 ### MCP Client
 
