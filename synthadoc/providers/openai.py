@@ -211,7 +211,13 @@ class OpenAIProvider(LLMProvider):
 
         Kimi models on DashScope return empty content for non-streaming calls.
         This method uses streaming internally and returns an object with the same
-        attributes as a non-streaming completions response so complete() works unchanged.
+        attributes as a non-streaming completions response so complete() works
+        unchanged.
+
+        Errors are NOT caught here — the caller (_call_with_retry) drives this
+        the same way it drives the plain non-streaming call, so Kimi gets the
+        same rate-limit/5xx retry and daily-quota detection as every other
+        OpenAI-compatible provider instead of propagating 429s/5xx raw.
         """
         import types
         content_parts: list[str] = []
@@ -219,46 +225,27 @@ class OpenAIProvider(LLMProvider):
         usage_obj = None
         finish_reason = None
 
-        try:
-            async for chunk in await self._client.chat.completions.create(
-                model=self._config.model, messages=msgs,
-                **_sampling_kwargs(self._config.provider, self._config.model,
-                                   temperature, max_tokens),
-                timeout=self._timeout, stream=True,
-                stream_options={"include_usage": True},
-                **({"extra_body": self._extra_body} if self._extra_body else {}),
-            ):
-                if chunk.usage is not None:
-                    usage_obj = chunk.usage
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if chunk.choices[0].finish_reason:
-                    finish_reason = chunk.choices[0].finish_reason
-                if delta.content:
-                    content_parts.append(delta.content)
-                extra = getattr(delta, "model_extra", None) or {}
-                rc = extra.get("reasoning_content") or ""
-                if rc:
-                    reasoning_parts.append(rc)
-        except _openai.APITimeoutError:
-            logger.error(
-                "LLM call to %s timed out after %d s. "
-                "Increase [agents] llm_timeout_seconds in .synthadoc/config.toml "
-                "or switch to a faster model.",
-                self._config.provider, self._timeout,
-            )
-            raise
-        except _openai.PermissionDeniedError as exc:
-            body = exc.body if isinstance(exc.body, dict) else {}
-            err_type = (body.get("error", {}).get("type") or "").lower()
-            err_code = (body.get("error", {}).get("code") or "").lower()
-            if "allocationquota" in err_type or "allocationquota" in err_code or "quota" in str(exc).lower():
-                err_msg = body.get("error", {}).get("message") or str(exc)
-                logger.error("Quota exhausted for %s (403) — %s", self._config.provider, err_msg)
-                from synthadoc.errors import DailyQuotaExhaustedException
-                raise DailyQuotaExhaustedException(self._config.provider) from exc
-            raise
+        async for chunk in await self._client.chat.completions.create(
+            model=self._config.model, messages=msgs,
+            **_sampling_kwargs(self._config.provider, self._config.model,
+                               temperature, max_tokens),
+            timeout=self._timeout, stream=True,
+            stream_options={"include_usage": True},
+            **({"extra_body": self._extra_body} if self._extra_body else {}),
+        ):
+            if chunk.usage is not None:
+                usage_obj = chunk.usage
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if chunk.choices[0].finish_reason:
+                finish_reason = chunk.choices[0].finish_reason
+            if delta.content:
+                content_parts.append(delta.content)
+            extra = getattr(delta, "model_extra", None) or {}
+            rc = extra.get("reasoning_content") or ""
+            if rc:
+                reasoning_parts.append(rc)
 
         content = "".join(content_parts)
         reasoning = "".join(reasoning_parts)
@@ -283,16 +270,21 @@ class OpenAIProvider(LLMProvider):
           Daily quota exhaustion raises immediately — no retry possible.
         - 5xx InternalServerError: retried up to 3 times with short backoff
           (5 s / 15 s / 30 s) for transient load spikes (e.g. Gemini 503).
+
+        Kimi models on DashScope only return content via streaming
+        (_collect_stream_response) — that call is made from inside this same
+        loop so Kimi gets identical retry/quota handling to every other
+        provider, rather than a separate path with no error handling of its own.
         """
-        # Kimi models on DashScope only return content via streaming.
-        if self._config.provider == Provider.KIMI:
-            return await self._collect_stream_response(msgs, temperature, max_tokens)
+        is_kimi = self._config.provider == Provider.KIMI
         rl_delays = list(_RATE_LIMIT_RETRY_DELAYS_S)
         se_delays = list(_SERVER_ERROR_RETRY_DELAYS_S)
         rl_idx = se_idx = 0
 
         while True:
             try:
+                if is_kimi:
+                    return await self._collect_stream_response(msgs, temperature, max_tokens)
                 return await self._client.chat.completions.create(
                     model=self._config.model, messages=msgs,
                     **_sampling_kwargs(self._config.provider, self._config.model,
