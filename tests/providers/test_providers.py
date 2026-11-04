@@ -1575,6 +1575,132 @@ async def test_kimi_provider_uses_streaming_collect():
     assert result.output_tokens == 5
 
 
+@pytest.mark.asyncio
+async def test_kimi_provider_daily_quota_raises_immediately_without_retry():
+    """Kimi (DashScope) uses the streaming-collect path for complete(), but it must
+    still go through the same daily-quota detection as every other OpenAI-compatible
+    provider — a RateLimitError whose body matches a per-day quota pattern must raise
+    DailyQuotaExhaustedException immediately, not propagate raw. See #525."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.errors import DailyQuotaExhaustedException
+    cfg = AgentConfig(provider="kimi", model="kimi-k3",
+                      base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      thinking="disabled")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    daily_body = {"error": {"details": [{"violations": [{"quotaId": "RequestsPerDay"}]}]}}
+    daily_exc = openai.RateLimitError(
+        message="daily quota", response=MagicMock(status_code=429), body=daily_body)
+
+    call_count = 0
+    sleep_mock = AsyncMock()
+
+    async def flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise daily_exc
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
+        with patch("synthadoc.providers.openai._sleep", new=sleep_mock):
+            with pytest.raises(DailyQuotaExhaustedException):
+                await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert call_count == 1, "daily quota must not be retried"
+    sleep_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_kimi_provider_retries_once_on_rate_limit_then_succeeds():
+    """A per-minute (non-daily) 429 from Kimi must be retried with backoff, same as
+    every other OpenAI-compatible provider — not propagate raw to the orchestrator's
+    generic 429 handler, which would requeue it forever. See #525."""
+    import types
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="kimi", model="kimi-k3",
+                      base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      thinking="disabled")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    def _chunk(content=None, finish_reason=None, usage=None):
+        delta = types.SimpleNamespace(content=content, model_extra={})
+        choice = types.SimpleNamespace(delta=delta, finish_reason=finish_reason)
+        return types.SimpleNamespace(
+            choices=[choice] if (content is not None or finish_reason) else [],
+            usage=usage,
+        )
+
+    usage_ns = types.SimpleNamespace(prompt_tokens=10, completion_tokens=5)
+    chunks = [_chunk(content="hello"), _chunk(finish_reason="stop"), _chunk(usage=usage_ns)]
+
+    rate_limit_exc = openai.RateLimitError(
+        message="rate limit", response=MagicMock(status_code=429), body={})
+    call_count = 0
+
+    async def flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise rate_limit_exc
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
+        with patch("synthadoc.providers.openai._sleep", new=AsyncMock()):
+            result = await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert result.text == "hello"
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_kimi_provider_retries_on_503_then_succeeds():
+    """A transient 503 from Kimi must be retried with backoff, same as every other
+    OpenAI-compatible provider. See #525."""
+    import types
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="kimi", model="kimi-k3",
+                      base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      thinking="disabled")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    def _chunk(content=None, finish_reason=None, usage=None):
+        delta = types.SimpleNamespace(content=content, model_extra={})
+        choice = types.SimpleNamespace(delta=delta, finish_reason=finish_reason)
+        return types.SimpleNamespace(
+            choices=[choice] if (content is not None or finish_reason) else [],
+            usage=usage,
+        )
+
+    usage_ns = types.SimpleNamespace(prompt_tokens=10, completion_tokens=5)
+    chunks = [_chunk(content="answer"), _chunk(finish_reason="stop"), _chunk(usage=usage_ns)]
+
+    server_err = openai.InternalServerError(
+        message="503", response=MagicMock(status_code=503), body={})
+    call_count = 0
+
+    async def flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise server_err
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
+        with patch("synthadoc.providers.openai._sleep", new=AsyncMock()):
+            result = await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert result.text == "answer"
+    assert call_count == 2
+
+
 def test_sampling_kwargs_kimi_omits_temperature():
     """kimi provider must never include temperature — DashScope rejects it with HTTP 400."""
     from synthadoc.providers.openai import _sampling_kwargs
