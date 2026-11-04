@@ -13,6 +13,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
+    # macOS runners are scarce on forked repos and queue indefinitely.
+    # Skip macOS on forks — Ubuntu and Windows already cover the full matrix.
+    if: matrix.os != 'macos-latest' || github.repository == 'axoviq-ai/synthadoc'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
