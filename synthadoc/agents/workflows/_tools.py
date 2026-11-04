@@ -1369,8 +1369,8 @@ async def tool_propose_and_apply_blocks(
     if result.applied_count == 0 and blocks:
         reasons = "; ".join(
             f"block {i + 1}: {br.rejection_reason or 'no_match'}"
-            for i, br in enumerate(result.block_results)
-            if not br.applied
+            for i, br in enumerate(result.blocks)
+            if br.status == "rejected"
         ) or "no reasons available"
         return {
             "status": "no_applicable_blocks",
