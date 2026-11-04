@@ -1348,7 +1348,7 @@ async def tool_propose_and_apply_blocks(
         {"applied": bool, "diff_preview": str}
         {"applied": False, "diff_preview": "", "error": str}
     """
-    from synthadoc.agents.workflows.block_apply import apply_blocks
+    from synthadoc.agents.workflows.block_apply import apply_blocks, describe_all_blocks_rejected
 
     page = ctx.store.read_page(slug)
     if page is None:
@@ -1375,12 +1375,8 @@ async def tool_propose_and_apply_blocks(
     # Auto-skip: when every proposed block was rejected, the full-page editor
     # that tool_scoped_confirm would show is confusing and unhelpful — tell the
     # LLM so it can move directly to Strategy 2 instead.
-    if result.applied_count == 0 and blocks:
-        reasons = "; ".join(
-            f"block {i + 1}: {br.rejection_reason or 'no_match'}"
-            for i, br in enumerate(result.blocks)
-            if br.status == "rejected"
-        ) or "no reasons available"
+    reasons = describe_all_blocks_rejected(result, blocks)
+    if reasons is not None:
         return {
             "status": "no_applicable_blocks",
             "applied": False,

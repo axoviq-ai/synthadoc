@@ -15,7 +15,7 @@ from typing import Awaitable, Callable
 from synthadoc.agents.content_health_scanner import resolvable_issues
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import tool_confirm, tool_notify, tool_scoped_confirm
-from synthadoc.agents.workflows.block_apply import apply_blocks
+from synthadoc.agents.workflows.block_apply import apply_blocks, describe_all_blocks_rejected
 from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_rollback_orphan_fix
 from synthadoc.agents.workflows.tools.content_health_tools import (
     SEVERITY_ORDER,
@@ -598,6 +598,26 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 )
             except Exception:  # noqa: BLE001
                 pass  # notification failure must not abort the fix
+            # Auto-skip: when every proposed block was rejected, the full-page
+            # editor tool_scoped_confirm would show is confusing and unhelpful
+            # for an edit that changes nothing — tell the model to leave these
+            # issues for STEP 3e (dismissal) instead, the same way
+            # tool_propose_and_apply_blocks auto-skips to Strategy 2.
+            rejected_reasons = describe_all_blocks_rejected(apply_result, blocks)
+            if rejected_reasons is not None:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"None of the {len(blocks)} proposed block(s) matched "
+                        f"the current page content for '{slug}'. Rejection "
+                        f"reasons: {rejected_reasons}."
+                    ),
+                    "action": (
+                        "Do not retry the same content. Leave these issues for "
+                        "STEP 3e: call notify, then dismiss_content_health_issues "
+                        "for them."
+                    ),
+                }
             scoped_result = await tool_scoped_confirm(
                 ctx, slug=slug, apply_result=apply_result, current_body=current_body,
                 rationale=", ".join(issues_fixed) if issues_fixed else None,
