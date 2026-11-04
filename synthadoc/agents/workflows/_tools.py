@@ -107,7 +107,16 @@ def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
     if raw_file.startswith(("http://", "https://")):
         return raw_file
     if os.path.isabs(raw_file):
-        return raw_file
+        # Absolute path from original ingest — may no longer exist after a
+        # backup/restore to a different location.  Fall back to the file's
+        # basename under wiki_root/raw_sources/ so Strategy 3 re-ingest can
+        # still find the source when the wiki root changed.
+        if Path(raw_file).exists():
+            return raw_file
+        fallback = wiki_root / "raw_sources" / Path(raw_file).name
+        if fallback.exists():
+            return str(fallback)
+        return raw_file  # return original; tool_ingest_source will report not-found
     candidate = wiki_root / raw_file
     if not candidate.exists():
         candidate = wiki_root / "raw_sources" / raw_file
