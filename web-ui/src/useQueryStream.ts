@@ -23,7 +23,10 @@ export interface Message {
 
 export function useQueryStream(
     sessionId: string | null,
-    onHints: (hints: string[], prePrompt?: string) => void,
+    // hints === undefined means "leave the currently displayed hint chips as they
+    // are" (used when a cross-wiki operation was blocked and the backend has no
+    // next_hints of its own to offer — clearing them would be a regression).
+    onHints: (hints: string[] | undefined, prePrompt?: string) => void,
     initialMessages: Message[] = [],
     onComplete?: () => void,
     crossWikiMeta?: CrossWikiMetaCallbacks,
@@ -145,7 +148,15 @@ export function useQueryStream(
                     return next;
                 });
                 setProgressLines([]);
-                onHints(nextHints, prePrompt);
+                if (crossWikiSkipReason !== null) {
+                    // The backend never sends next_hints/pre_prompt for a blocked
+                    // operation — leave existing hints alone and pre-fill the box
+                    // with the question just asked, so disabling cross-wiki and
+                    // hitting Ask again just works.
+                    onHints(undefined, prePrompt ?? question);
+                } else {
+                    onHints(nextHints, prePrompt);
+                }
                 setStreaming(false);
                 streamingRef.current = false;
                 onComplete?.();

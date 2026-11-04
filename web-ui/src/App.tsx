@@ -78,13 +78,18 @@ export default function App() {
         });
     }, [session?.session_id]);
 
-    // Called from ChatWindow after each streamed response
-    const handleChatHints = useCallback((newHints: string[], prePrompt?: string) => {
-        setHintLockLeft(prev => {
-            const next = Math.max(0, prev - 1);
-            if (next === 0) updateHints(newHints);
-            return next;
-        });
+    // Called from ChatWindow after each streamed response.
+    // newHints === undefined means "leave the hint chips as they are" (a
+    // cross-wiki operation was blocked and the backend has no next_hints of
+    // its own — see useQueryStream).
+    const handleChatHints = useCallback((newHints: string[] | undefined, prePrompt?: string) => {
+        if (newHints !== undefined) {
+            setHintLockLeft(prev => {
+                const next = Math.max(0, prev - 1);
+                if (next === 0) updateHints(newHints);
+                return next;
+            });
+        }
         if (prePrompt) {
             setPendingPrompt(prePrompt);
             setInjectedQuery(null);  // mutually exclusive
