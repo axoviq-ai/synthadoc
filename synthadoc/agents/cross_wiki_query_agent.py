@@ -28,17 +28,18 @@ _MAX_CONTEXT_CHARS = 80_000
 _HTTP_TIMEOUT = 15.0
 _HISTORY_BUDGET = 4000
 
-# ActionAgent.run()'s own "orchestrate" message tells the user to switch to a
-# streaming interface — true, but misleading here, since the web UI's cross-wiki
-# query IS already streaming. What's actually blocking the workflow is cross-wiki
-# mode itself: it calls ActionAgent.run() (blocking) instead of run_gen()
-# (streaming), so agentic workflows can never launch from this path. See #524.
-_ORCHESTRATE_UNDER_CROSS_WIKI_MESSAGE = (
-    "**Maintenance and agentic workflows** (contradiction/orphan resolution, "
-    "re-ingestion, etc.) need the full chat session on a single wiki and can't "
-    "start while cross-wiki search is enabled.\n\n"
+# Any detected operation (lint, ingest, lifecycle changes, agentic workflows,
+# etc.) must not actually run while cross-wiki search is enabled: dispatching it
+# via ActionAgent.run() here would silently fire the action's real side effects
+# (e.g. a lint job genuinely starts) when the user asked expecting a wiki-chat
+# answer, with no indication that their request was redirected. Tell the user
+# cross-wiki mode itself is what's in the way instead of running anything. #524
+_OPERATION_BLOCKED_UNDER_CROSS_WIKI_MESSAGE = (
+    "**Actions and agentic workflows** (lint, re-ingestion, contradiction/orphan "
+    "resolution, lifecycle changes, etc.) need the full chat session on a single "
+    "wiki and can't run while cross-wiki search is enabled.\n\n"
     "Turn off cross-wiki search (deselect the \U0001F310 icon) and ask again to "
-    "run this workflow."
+    "run this."
 )
 
 
@@ -129,22 +130,21 @@ class CrossWikiQueryAgent(BaseAgent):
             Path(self._registry.get(self._own_wiki_name, {}).get("path", ".")),
         )
         if _action.detect(question, history=None):
-            _result = await _action.run(question)
-            if _result is not None:
-                if on_wikis_selected is not None:
-                    on_wikis_selected([])
-                answer = _result.message
-                if getattr(_result, "action_type", None) == "orchestrate":
-                    answer = _ORCHESTRATE_UNDER_CROSS_WIKI_MESSAGE
-                return QueryResult(
-                    question=question,
-                    answer=answer,
-                    citations=[],
-                    knowledge_gap=not _result.success,
-                    cacheable=False,
-                    cross_wiki_skipped=True,
-                    cross_wiki_skip_reason="operation detected",
-                )
+            # Never dispatch the action itself here — ActionAgent.run() has real
+            # side effects (e.g. it actually starts a lint job), and firing those
+            # while the user asked expecting a wiki-chat answer under cross-wiki
+            # mode is the bug, not just the wrong message. See #524.
+            if on_wikis_selected is not None:
+                on_wikis_selected([])
+            return QueryResult(
+                question=question,
+                answer=_OPERATION_BLOCKED_UNDER_CROSS_WIKI_MESSAGE,
+                citations=[],
+                knowledge_gap=False,
+                cacheable=False,
+                cross_wiki_skipped=True,
+                cross_wiki_skip_reason="operation detected",
+            )
 
         # Translate CJK queries to English so BM25 on peer wikis can match
         # English page content.  The original question is preserved for synthesis
