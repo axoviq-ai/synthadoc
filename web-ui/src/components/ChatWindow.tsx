@@ -20,7 +20,7 @@ interface Props {
     sessionId: string | null;
     mode: string;
     hints: string[];
-    onHints: (hints: string[], prePrompt?: string) => void;
+    onHints: (hints: string[] | undefined, prePrompt?: string) => void;
     wikiName: string;
     injectedQuery: string | null;
     onInjected: () => void;
