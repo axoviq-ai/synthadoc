@@ -28,6 +28,19 @@ _MAX_CONTEXT_CHARS = 80_000
 _HTTP_TIMEOUT = 15.0
 _HISTORY_BUDGET = 4000
 
+# ActionAgent.run()'s own "orchestrate" message tells the user to switch to a
+# streaming interface — true, but misleading here, since the web UI's cross-wiki
+# query IS already streaming. What's actually blocking the workflow is cross-wiki
+# mode itself: it calls ActionAgent.run() (blocking) instead of run_gen()
+# (streaming), so agentic workflows can never launch from this path. See #524.
+_ORCHESTRATE_UNDER_CROSS_WIKI_MESSAGE = (
+    "**Maintenance and agentic workflows** (contradiction/orphan resolution, "
+    "re-ingestion, etc.) need the full chat session on a single wiki and can't "
+    "start while cross-wiki search is enabled.\n\n"
+    "Turn off cross-wiki search (deselect the \U0001F310 icon) and ask again to "
+    "run this workflow."
+)
+
 
 @dataclass
 class _RetrieveResponse:
@@ -120,9 +133,12 @@ class CrossWikiQueryAgent(BaseAgent):
             if _result is not None:
                 if on_wikis_selected is not None:
                     on_wikis_selected([])
+                answer = _result.message
+                if getattr(_result, "action_type", None) == "orchestrate":
+                    answer = _ORCHESTRATE_UNDER_CROSS_WIKI_MESSAGE
                 return QueryResult(
                     question=question,
-                    answer=_result.message,
+                    answer=answer,
                     citations=[],
                     knowledge_gap=not _result.success,
                     cacheable=False,
