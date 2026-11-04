@@ -556,6 +556,30 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                         "discovery list."
                     ),
                 }
+            if any(str(i).lower().startswith("duplicate_section") for i in (issues_fixed or [])):
+                # A duplicate-heading merge can never be expressed as a single
+                # old_text/new_text block, so apply_blocks always rejects it
+                # (0 applied) — which used to fall through to the full-page
+                # manual-edit prompt. merge_duplicate_sections is the only tool
+                # that handles this issue type (STEP 3a); some providers call
+                # write_content_health_fix for it anyway even right after
+                # merge_duplicate_sections already ran, so reject here instead
+                # of relying on the prompt alone.
+                return {
+                    "status": "error",
+                    "error": (
+                        "Workflow violation: duplicate_section issues must be fixed "
+                        "by calling merge_duplicate_sections(slug), never "
+                        "write_content_health_fix — it already handles every "
+                        "duplicate_section issue on this page in one call."
+                    ),
+                    "action": (
+                        f"If you have not already, call "
+                        f"merge_duplicate_sections(slug=\"{slug}\"). If it already "
+                        "ran, treat duplicate_section as resolved and move on to "
+                        "this page's other issues (if any) or the next slug."
+                    ),
+                }
             if ctx.store is None:
                 return {"status": "error", "error": "No store available"}
             page = ctx.store.read_page(slug)
