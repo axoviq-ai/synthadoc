@@ -83,6 +83,35 @@ async def test_cross_wiki_skipped_for_action():
     assert result.cross_wiki_skipped is True
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("question,action_type", [
+    ("re-ingest stale pages", "orchestrate"),
+    ("Run lint and report", "lint"),
+])
+async def test_detected_operation_under_cross_wiki_tells_user_to_disable_it(question, action_type):
+    """No detected operation — not just agentic workflows (orchestrate), but
+    also plain actions like lint — may actually run while cross-wiki search is
+    enabled. Running it would silently fire real side effects (a lint job
+    genuinely starts) when the user asked expecting a wiki-chat answer, with no
+    indication their request was redirected. Tell the user cross-wiki mode
+    itself is what's in the way, and never dispatch the action. Issue #524."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
+        action_inst = MagicMock()
+        action_inst.detect.return_value = True
+        action_inst.run = AsyncMock(return_value=MagicMock(
+            message="Lint job started (synthadoc lint run).\n\nJob ID: abc123",
+            success=True,
+            action_type=action_type,
+        ))
+        MockAction.return_value = action_inst
+        result = await agent.run(question)
+    assert result.cross_wiki_skipped is True
+    assert "cross-wiki" in result.answer.lower()
+    assert "turn off" in result.answer.lower() or "disable" in result.answer.lower()
+    action_inst.run.assert_not_called()  # the action's real side effects must never fire
+
+@pytest.mark.asyncio
 async def test_wiki_pick_lm_parses_json():
     provider = _make_provider()
     resp = MagicMock()

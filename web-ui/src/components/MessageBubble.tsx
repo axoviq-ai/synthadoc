@@ -361,6 +361,15 @@ function NoticeBubble({ content }: { content: string }) {
     return <div className="notice-bubble">{content}</div>;
 }
 
+function BlockedBubble({ content }: { content: string }) {
+    return (
+        <div className="blocked-bubble">
+            <span className="blocked-bubble-icon" aria-hidden="true">⚠</span>
+            <span className="blocked-bubble-text">{content}</span>
+        </div>
+    );
+}
+
 const CLARIFY_ACTION_VERB: Record<string, string> = {
     lifecycle_activate: "Activate",
     lifecycle_archive:  "Archive",
@@ -378,6 +387,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
     }
     if (msg.type === "notice") {
         return <NoticeBubble content={msg.text} />;
+    }
+    if (msg.type === "blocked") {
+        return <BlockedBubble content={msg.text} />;
     }
 
     return (
