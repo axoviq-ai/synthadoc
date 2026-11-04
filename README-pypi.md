@@ -32,6 +32,8 @@
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.1-brightgreen.svg" alt="Version"/></a>
+<a href="https://hub.docker.com/r/chenp/synthadoc"><img src="https://img.shields.io/docker/pulls/chenp/synthadoc?label=Docker+pulls" alt="Docker pulls"/></a>
+<a href="https://pypi.org/project/synthadoc/"><img src="https://img.shields.io/pypi/dm/synthadoc?label=PyPI+downloads" alt="PyPI downloads"/></a>
 </p>
 
 **Document version: v1.5.1**
