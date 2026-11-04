@@ -83,6 +83,32 @@ async def test_cross_wiki_skipped_for_action():
     assert result.cross_wiki_skipped is True
 
 @pytest.mark.asyncio
+async def test_orchestrate_action_under_cross_wiki_tells_user_to_disable_it():
+    """An orchestrate-type action (the real agentic maintenance workflow — e.g.
+    contradiction/orphan resolution, re-ingestion) can only run on the streaming
+    endpoint, which cross-wiki mode bypasses here. The generic "requires the
+    streaming interface" message doesn't tell the user that disabling cross-wiki
+    search on the active wiki is the fix — issue #524."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
+        action_inst = MagicMock()
+        action_inst.detect.return_value = True
+        action_inst.run = AsyncMock(return_value=MagicMock(
+            message=(
+                "**Re-ingest and agentic maintenance workflows** require the "
+                "streaming chat interface and cannot run in `--no-stream` mode."
+            ),
+            success=False,
+            action_type="orchestrate",
+        ))
+        MockAction.return_value = action_inst
+        result = await agent.run("re-ingest stale pages")
+    assert result.cross_wiki_skipped is True
+    assert "cross-wiki" in result.answer.lower()
+    assert "turn off" in result.answer.lower() or "disable" in result.answer.lower()
+
+@pytest.mark.asyncio
 async def test_wiki_pick_lm_parses_json():
     provider = _make_provider()
     resp = MagicMock()
