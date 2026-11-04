@@ -144,23 +144,20 @@ async def test_every_write_asks_the_user_with_the_real_diff(tmp_path, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeypatch):
-    """Phase 2: apply_blocks drops sentence-losing blocks; tool_scoped_confirm is
-    still called with the degenerate result (0 applied, 1 rejected).
+async def test_write_that_loses_text_skips_full_page_and_errors(tmp_path, monkeypatch):
+    """Phase 2: apply_blocks drops sentence-losing blocks, leaving 0 applied.
 
-    The user declines via the scoped card → _write_fix returns cancelled.
-    There is no "dropped_sentences" key in the result because apply_blocks
-    suppresses the block silently and tool_scoped_confirm handles the UI.
+    write_content_health_fix must skip tool_scoped_confirm's full-page card
+    entirely in this degenerate case — a confusing empty diff to review — and
+    return status="error" instead, so STEP 3d's existing "error → leave for
+    3e" instruction routes the model straight to dismissal. This mirrors
+    contradiction_resolver's tool_propose_and_apply_blocks auto-skip to
+    Strategy 2 (both share describe_all_blocks_rejected).
     """
     from synthadoc.agents.workflows import content_health_resolver as mod
 
-    captured: list = []
-
-    async def fake_scoped_confirm(ctx, slug, apply_result, current_body, **_kw):
-        captured.append(apply_result)
-        return {"confirmed": False, "final_body": None}
-
-    monkeypatch.setattr(mod, "tool_scoped_confirm", fake_scoped_confirm)
+    scoped_confirm = AsyncMock()
+    monkeypatch.setattr(mod, "tool_scoped_confirm", scoped_confirm)
     ctx = _wiki_with_stray_h1(tmp_path, ["page-a"])
     wf = ContentHealthResolverWorkflow()
     wf._prediscovered_slugs = ["page-a"]
@@ -174,11 +171,10 @@ async def test_write_that_loses_text_is_rejected_before_asking(tmp_path, monkeyp
 
     # apply_blocks rejected the sentence-losing block — no "dropped_sentences" error
     assert "dropped_sentences" not in result
-    # tool_scoped_confirm was called once with the degenerate result (0 applied)
-    assert len(captured) == 1
-    assert captured[0].applied_count == 0
-    # User declined → cancelled
-    assert result["status"] == "cancelled"
+    # Full-page card never shown for an all-rejected result
+    scoped_confirm.assert_not_called()
+    assert result["status"] == "error"
+    assert "STEP 3e" in result["action"] or "dismiss" in result["action"].lower()
 
 
 @pytest.mark.asyncio
