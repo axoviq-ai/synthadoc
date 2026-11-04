@@ -985,6 +985,24 @@ body {
     max-width: 100%;
 }
 
+/* ─── Blocked bubble (action required to continue) ─── */
+.blocked-bubble {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: var(--bg-warning);
+    border-left: 3px solid #f59e0b;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin: 4px 0;
+    align-self: flex-start;
+    max-width: 100%;
+    color: var(--text-primary);
+}
+
+.blocked-bubble-icon { color: #f59e0b; line-height: 1.4; }
+.blocked-bubble-text { white-space: pre-wrap; }
+
 /* ─── Graph tab nav ────────────────────────────────── */
 .tab-nav {
     display: flex;
