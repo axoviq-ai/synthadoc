@@ -287,6 +287,49 @@ async def test_write_allowed_after_proper_sequence():
 
 
 @pytest.mark.asyncio
+async def test_write_rejects_duplicate_section_fix_attempt(monkeypatch):
+    """write_content_health_fix must refuse a duplicate_section issue — STEP 3a
+    makes merge_duplicate_sections its exclusive handler, and a duplicate-heading
+    merge can never be expressed as a simple old_text/new_text block, so
+    apply_blocks always rejects it (0 applied). Before this guard, that fell
+    through to tool_scoped_confirm's full-page manual-edit prompt instead of
+    staying on the documented sequence — some providers (e.g. Kimi) call
+    write_content_health_fix for duplicate_section anyway even right after
+    merge_duplicate_sections already ran, so the prompt alone isn't enough."""
+    from synthadoc.agents.workflows import content_health_resolver as mod
+
+    scoped_confirm = AsyncMock()
+    monkeypatch.setattr(mod, "tool_scoped_confirm", scoped_confirm)
+
+    ctx = MagicMock()
+    ctx.store.list_pages.return_value = ["real-page"]
+    wf = ContentHealthResolverWorkflow()
+    tools = wf.get_tool_fns(ctx)
+
+    discover_page = MagicMock(
+        status="active",
+        content_health_issues=[{"severity": "high", "type": "duplicate_section"}],
+        content="old body", title="Real Page",
+    )
+    ctx.store.read_page.return_value = discover_page
+    await tools["find_content_health_issues"](slug="")
+
+    read_page = MagicMock(
+        status="active", title="Real Page", content="old body", content_health_issues=[]
+    )
+    ctx.store.read_page.return_value = read_page
+    await tools["get_page_content"](slug="real-page")
+
+    result = await tools["write_content_health_fix"](
+        slug="real-page", blocks=[{"old_text": "x", "new_text": "y"}],
+        issues_fixed=["duplicate_section x1"],
+    )
+    assert result["status"] == "error"
+    assert "merge_duplicate_sections" in result["error"]
+    scoped_confirm.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_find_issues_excludes_unreadable_slugs():
     """find_content_health_issues must drop any slug that cannot be re-read from the store."""
     ctx = MagicMock()
