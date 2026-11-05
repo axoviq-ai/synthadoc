@@ -1954,7 +1954,7 @@ async def test_orphan_resolver_cli_path_resolves_orphan(tmp_path):
         }),
     ), _patch(
         "synthadoc.agents.workflows.orphan_resolver.tool_propose_and_apply",
-        new=_AsyncMock(return_value={"applied": True, "diff_preview": "..."}),
+        new=(propose_and_apply := _AsyncMock(return_value={"applied": True, "diff_preview": "..."})),
     ):
         events = []
         async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", fake_provider):
@@ -1965,6 +1965,8 @@ async def test_orphan_resolver_cli_path_resolves_orphan(tmp_path):
     assert "Resolved" in token_text
     assert "candidate-page" in token_text
     assert "final_text" in [e["event"] for e in events]
+    # target_slug must name the orphan, not the host page — #521
+    assert propose_and_apply.call_args.kwargs["target_slug"] == "orphan-page"
 
 
 @pytest.mark.asyncio
