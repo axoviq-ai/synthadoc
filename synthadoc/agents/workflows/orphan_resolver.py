@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from synthadoc.agents.workflows._base import AgenticWorkflow
 from synthadoc.agents.workflows._rollback import parse_rollback_intent
 from synthadoc.agents.workflows._tools import (
+    format_recent_fix_line,
     tool_confirm,
     tool_notify,
     tool_read_page_content,
@@ -74,10 +75,13 @@ tool_read_page_content(slug)
     → {"slug": str, "title": str, "content": str, "status": str, ...}
     → {"error": str} — page not found
 
-tool_propose_and_apply(slug, new_content, strategy_name, rationale)
+tool_propose_and_apply(slug, new_content, strategy_name, rationale, target_slug)
     → {"applied": bool, "diff_preview": str}
     Shows a unified diff to the user; writes only if approved.
     Call at most ONCE per candidate per attempt.
+    target_slug: ALWAYS pass the orphan's own slug (orphan_slug) here — slug
+    is the HOST page being edited, never the orphan itself, and target_slug
+    is how "list recent fixes" later shows which orphan this fix resolved.
 
 tool_verify_orphan_resolved(orphan_slug)
     → {"resolved": bool, "linked_by": [slugs]}
@@ -158,7 +162,8 @@ STEP 4 — Per-orphan resolution loop
               slug=candidate_slug,
               new_content=<revised content with [[orphan_slug]] inserted>,
               strategy_name=f"Strategy {attempt} — {strategy}",
-              rationale=<one sentence explaining why this location is natural>
+              rationale=<one sentence explaining why this location is natural>,
+              target_slug=orphan_slug
             ).
             • applied=false (user skipped): try the next candidate in this attempt.
               If no more candidates in this attempt, advance to next strategy —
@@ -443,7 +448,7 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             if not fixes:
                 text = "No recent fixes to roll back."
             else:
-                lines = [f"- {f['slug']}: {f['strategy_name']} ({f['fixed_at']})" for f in fixes]
+                lines = [format_recent_fix_line(f) for f in fixes]
                 text = "Recent fixes:\n" + "\n".join(lines) + \
                        "\nSay 'roll back <slug>' to restore one of these pages."
             yield {"event": "final_text", "data": {"text": text}}
@@ -705,6 +710,7 @@ class OrphanResolverWorkflow(AgenticWorkflow):
                         f"{strategy}; LLM inserted [[{orphan_slug}]] at the most "
                         f"natural location."
                     ),
+                    target_slug=orphan_slug,
                 )
 
                 if not apply_result.get("applied"):

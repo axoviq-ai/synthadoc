@@ -1219,6 +1219,7 @@ async def tool_propose_and_apply(
     new_content: str,
     strategy_name: str,
     rationale: str,
+    target_slug: str | None = None,
 ) -> dict:
     """Show a unified diff to the user and write the page only if they approve.
 
@@ -1248,6 +1249,15 @@ async def tool_propose_and_apply(
     content-health-only tools (``dismiss_content_health_issues``) or forbid
     retrying, since contradiction_resolver's own multi-strategy retry may
     legitimately try a different rewrite.
+
+    *target_slug* — optional. orphan_resolver passes the orphan's own slug
+    here when *slug* is a different HOST page being edited to carry a new
+    [[wikilink]] to it (orphan resolution never writes to the orphan page
+    itself). Stored as ``resolves_slug`` in ``last_fix_record`` so
+    ``tool_list_recent_fixes`` can say which orphan a host-page edit
+    actually resolved, instead of showing an unexplained host-page slug.
+    Leave unset for contradiction_resolver and any other caller that edits
+    a page to fix itself.
 
     Returns::
 
@@ -1307,6 +1317,7 @@ async def tool_propose_and_apply(
             "pre_fix_status": pre_fix_status,
             "pre_fix_lint_warnings": pre_fix_lint_warnings,
             "pre_fix_contradiction_note": pre_fix_contradiction_note,
+            "resolves_slug": target_slug,
         }
         _rescan_content_health(page, slug)
         with ctx.store.page_lock(slug):
@@ -1547,6 +1558,11 @@ async def tool_list_recent_fixes(ctx: "WorkflowContext") -> dict:
     Shared by contradiction_resolver and orphan_resolver — any page whose last
     change went through tool_propose_and_apply shows up here if it hasn't been
     rolled back since.
+
+    resolves_slug is non-None only for an orphan-resolver fix: slug is the
+    HOST page that was edited (e.g. computing-history-timeline), never the
+    orphan itself (e.g. microprocessor) — orphan resolution never writes to
+    the orphan page. See tool_propose_and_apply's target_slug. #521
     """
     if ctx.store is None:
         return {"status": ToolStatus.ERROR, "fixes": []}
@@ -1562,9 +1578,24 @@ async def tool_list_recent_fixes(ctx: "WorkflowContext") -> dict:
                 "fixed_at": record.get("timestamp", ""),
                 "snapshot_id": record.get("snapshot_id"),
                 "snapshot_index_before": record.get("snapshot_index_before"),
+                "resolves_slug": record.get("resolves_slug"),
             })
     fixes.sort(key=lambda r: r["fixed_at"], reverse=True)
     return {"fixes": fixes}
+
+
+def format_recent_fix_line(fix: dict) -> str:
+    """Render one tool_list_recent_fixes() entry as a CLI-path display line.
+
+    Names the orphan a fix resolved (resolves_slug) alongside the host page
+    that was actually edited — on its own, the host slug (e.g.
+    computing-history-timeline) gives no hint it was an orphan-resolver fix
+    or which orphan it resolved. Shared by orphan_resolver and
+    contradiction_resolver's "list recent fixes" CLI-path text. #521
+    """
+    resolves = fix.get("resolves_slug")
+    slug_part = f"{fix['slug']} (resolves orphan '{resolves}')" if resolves else fix["slug"]
+    return f"- {slug_part}: {fix['strategy_name']} ({fix['fixed_at']})"
 
 
 _VALID_STATES: frozenset[str] = frozenset(
