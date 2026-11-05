@@ -344,6 +344,37 @@ async def test_propose_and_apply_blocks_passes_accumulated_body():
 
 
 @pytest.mark.asyncio
+async def test_propose_and_apply_blocks_auto_skips_full_page_when_all_rejected():
+    """When every proposed block fails to match, tool_propose_and_apply_blocks
+    must skip tool_scoped_confirm's full-page card entirely and tell the LLM to
+    move to Strategy 2 instead — not show a confusing empty diff."""
+    from synthadoc.agents.workflows._tools import tool_propose_and_apply_blocks
+
+    page = MagicMock()
+    page.content = "The claim is wrong. Other content."
+    page.last_fix_record = None
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.store.read_page.return_value = page
+
+    scoped_confirm = AsyncMock()
+    with patch("synthadoc.agents.workflows._tools.tool_scoped_confirm", new=scoped_confirm):
+        result = await tool_propose_and_apply_blocks(
+            ctx,
+            slug="some-page",
+            blocks=[{"old_text": "text not present in the page", "new_text": "x"}],
+            strategy_name="Strategy 1 — Content rewrite",
+            rationale="Hedge the unsupported claim.",
+        )
+
+    assert result["status"] == "no_applicable_blocks"
+    assert result["applied"] is False
+    assert "Strategy 2" in result["message"]
+    scoped_confirm.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_contradiction_resolver_prompt_uses_block_tool():
     from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
     wf = ContradictionResolverWorkflow()
