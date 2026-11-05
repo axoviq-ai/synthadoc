@@ -3449,6 +3449,61 @@ def test_signal7_still_fires_on_absent_term_in_original_question():
     assert gap is True
 
 
+def test_signal7_does_not_fire_on_expansion_terms_when_original_q_has_no_extractable_words():
+    """Signal 7 must not fire on LLM-expansion terms when original_q yields no content words.
+
+    For short follow-ups like "And so?" all words are filtered out of
+    _original_terms.  Under the old code the fallback to _key_terms let
+    expansion terms (e.g. "technologie") re-enter and trigger Signal 7.
+    With original_q supplied but _original_terms empty, Signal 7 must stay
+    silent: it has no safe original-question term to test.
+
+    Page setup mirrors test_signal7_does_not_fire_on_subquestion_expansion_terms
+    so that Signals 3-5 stay inactive (3 of 5 pages on-topic) while the
+    Signal 7 coverage gate remains open (3/5 = 60% < 65%).
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "tcp-ip": (
+            "TCP/IP governs computer network communication. "
+            "Every computer on the internet uses TCP/IP network protocols. "
+            "TCP/IP replaced earlier computer networking protocols."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Transistors replaced vacuum tubes in computing hardware.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=8.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # gap_q contains "technologie" (LLM expansion term absent from all pages).
+    # original_q is a short follow-up whose words are all too short / stopwords
+    # to extract — so _original_terms is empty and _signal7_terms must be too.
+    gap, term, _, _ = agent._detect_gap(
+        question="how did computers network technologie reseau",
+        candidates=candidates,
+        max_score=8.0,
+        original_q="And so?",
+    )
+    assert gap is False, (
+        f"Signal 7 fired on expansion term '{term}' — expected no gap "
+        "because original_q yielded no extractable terms"
+    )
+
+
 def test_signal7_does_not_fire_on_past_tense_verb_in_original_question():
     """Signal 7 must not fire when the absent term is a past-tense verb.
 
