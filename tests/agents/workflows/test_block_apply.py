@@ -1,5 +1,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
-from synthadoc.agents.workflows.block_apply import apply_blocks, normalize_whitespace
+from synthadoc.agents.workflows.block_apply import (
+    apply_blocks, normalize_whitespace, describe_all_blocks_rejected,
+)
 
 
 def test_normalize_collapses_spaces():
@@ -148,3 +150,46 @@ def test_normalized_fallback_match():
     result = apply_blocks(body, [{"old_text": "Hello  world.", "new_text": "Hi world."}])
     assert result.applied_count == 1
     assert result.accumulated_body == "Hi world. Goodbye."
+
+
+# ---------------------------------------------------------------------------
+# describe_all_blocks_rejected — shared "every block rejected" detection,
+# used by both tool_propose_and_apply_blocks (contradiction_resolver's
+# Strategy 1) and content_health_resolver's write_content_health_fix to skip
+# the confusing full-page ScopedConfirmCard when nothing could be applied.
+# ---------------------------------------------------------------------------
+
+def test_describe_all_blocks_rejected_returns_none_when_something_applied():
+    body = "Hello world. Goodbye."
+    result = apply_blocks(body, [{"old_text": "Hello world.", "new_text": "Hi world."}])
+    assert describe_all_blocks_rejected(result, [{"old_text": "Hello world.", "new_text": "Hi world."}]) is None
+
+
+def test_describe_all_blocks_rejected_returns_none_for_no_blocks_proposed():
+    """blocks=[] means nothing was proposed at all — a different case from
+    'everything proposed was rejected', so it must not trigger the skip."""
+    body = "Hello world."
+    result = apply_blocks(body, [])
+    assert describe_all_blocks_rejected(result, []) is None
+
+
+def test_describe_all_blocks_rejected_returns_reasons_when_every_block_rejected():
+    body = "Hello world."
+    blocks = [{"old_text": "text that is not in the body", "new_text": "x"}]
+    result = apply_blocks(body, blocks)
+    assert result.applied_count == 0
+    reasons = describe_all_blocks_rejected(result, blocks)
+    assert reasons is not None
+    assert "block 1" in reasons
+    assert "no_match" in reasons
+
+
+def test_describe_all_blocks_rejected_lists_every_rejected_block():
+    body = "Hello world."
+    blocks = [
+        {"old_text": "not present one", "new_text": "x"},
+        {"old_text": "not present two", "new_text": "y"},
+    ]
+    result = apply_blocks(body, blocks)
+    reasons = describe_all_blocks_rejected(result, blocks)
+    assert "block 1" in reasons and "block 2" in reasons
