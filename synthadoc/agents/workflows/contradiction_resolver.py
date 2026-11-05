@@ -17,6 +17,7 @@ from synthadoc.agents.workflows._rollback import parse_rollback_intent
 from synthadoc.storage.wiki import LifecycleState
 # Shared framework tools (usable by any workflow)
 from synthadoc.agents.workflows._tools import (
+    format_recent_fix_line,
     tool_confirm,
     tool_ingest_source,
     tool_list_recent_fixes,
@@ -466,7 +467,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             if not fixes:
                 text = "No recent fixes to roll back."
             else:
-                lines = [f"- {f['slug']}: {f['strategy_name']} ({f['fixed_at']})" for f in fixes]
+                lines = [format_recent_fix_line(f) for f in fixes]
                 text = "Recent fixes:\n" + "\n".join(lines) + \
                        "\nSay 'roll back <slug>' to restore one of these pages."
             yield {"event": "final_text", "data": {"text": text}}

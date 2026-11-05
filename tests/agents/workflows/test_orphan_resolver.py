@@ -446,6 +446,17 @@ async def test_build_system_prompt_contains_tool_inventory():
         assert tool in prompt, f"System prompt missing tool: {tool}"
 
 
+async def test_build_system_prompt_requires_target_slug_on_propose_and_apply():
+    """The prompt must tell the model to pass target_slug=orphan_slug so
+    tool_list_recent_fixes can later name which orphan a host-page edit
+    resolved, instead of just showing the unrelated-looking host slug. #521"""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "target_slug" in prompt
+    assert "target_slug=orphan_slug" in prompt
+
+
 async def test_build_system_prompt_contains_strategies():
     """System prompt mentions all 4 strategy names."""
     from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
