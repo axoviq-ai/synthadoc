@@ -1354,14 +1354,26 @@ class QueryAgent(BaseAgent):
             # expand with terms not typed by the user (e.g. "technologie"). Firing on
             # those expansion terms produces false positives: the wiki has relevant
             # pages but gap fires on a word the user never wrote.
+            #
+            # Additionally, past-tense / participial verb forms (lowercase words ending
+            # in -ed) are excluded.  Predicates like "invented", "created",
+            # "demonstrated" are not topic nouns: the wiki may cover the same event
+            # using synonyms ("built", "showed") and Signal 7 must not fire on that
+            # word-form difference.  Proper nouns / acronyms (first char uppercase or
+            # entire word all-caps) are kept regardless.
             _original_terms: set[str] = set()
             if original_q and not _contains_cjk:
                 for _ow in original_q.split():
                     _ob = _ow.lower().rstrip("s'?!.,").replace("-", " ")
-                    if ((len(_ow) >= 4 or (len(_ow) >= 2 and _ow.upper() == _ow))
+                    if not ((len(_ow) >= 4 or (len(_ow) >= 2 and _ow.upper() == _ow))
                             and _ob not in STOPWORDS
                             and _ow.lower() not in STOPWORDS):
-                        _original_terms.add(_ob)
+                        continue
+                    # Skip past-tense / participial verb forms.
+                    _is_proper = _ow[0].isupper() or _ow.upper() == _ow
+                    if not _is_proper and _ob.endswith("ed"):
+                        continue
+                    _original_terms.add(_ob)
             _signal7_terms = (_key_terms & _original_terms) if _original_terms else _key_terms
             _prominent_term_absent = (
                 _pages_with_overlap < _n_cands * 0.65
