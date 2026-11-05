@@ -1001,7 +1001,10 @@ body {
 }
 
 .blocked-bubble-icon { color: #f59e0b; line-height: 1.4; }
-.blocked-bubble-text { white-space: pre-wrap; }
+.blocked-bubble-text { word-break: break-word; }
+.blocked-bubble-text p { margin: 0.4rem 0; }
+.blocked-bubble-text p:first-child { margin-top: 0; }
+.blocked-bubble-text p:last-child { margin-bottom: 0; }
 
 /* ─── Graph tab nav ────────────────────────────────── */
 .tab-nav {

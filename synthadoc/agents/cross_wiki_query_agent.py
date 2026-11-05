@@ -130,21 +130,26 @@ class CrossWikiQueryAgent(BaseAgent):
             Path(self._registry.get(self._own_wiki_name, {}).get("path", ".")),
         )
         if _action.detect(question, history=None):
-            # Never dispatch the action itself here — ActionAgent.run() has real
-            # side effects (e.g. it actually starts a lint job), and firing those
-            # while the user asked expecting a wiki-chat answer under cross-wiki
-            # mode is the bug, not just the wrong message. See #524.
-            if on_wikis_selected is not None:
-                on_wikis_selected([])
-            return QueryResult(
-                question=question,
-                answer=_OPERATION_BLOCKED_UNDER_CROSS_WIKI_MESSAGE,
-                citations=[],
-                knowledge_gap=False,
-                cacheable=False,
-                cross_wiki_skipped=True,
-                cross_wiki_skip_reason="operation detected",
-            )
+            # classify() runs the same LLM extraction _run() would, but never
+            # calls _dispatch() — a genuine action's side effects (e.g. a lint
+            # job actually starting) must never fire here. It also resolves
+            # detect()'s own false positives: "how do I roll back a Kubernetes
+            # deployment?" matches the fast regex pre-check's literal "roll
+            # back" substring but isn't a synthadoc action, and must fall
+            # through to normal cross-wiki search rather than being blocked.
+            action_type = await _action.classify(question)
+            if action_type is not None:
+                if on_wikis_selected is not None:
+                    on_wikis_selected([])
+                return QueryResult(
+                    question=question,
+                    answer=_OPERATION_BLOCKED_UNDER_CROSS_WIKI_MESSAGE,
+                    citations=[],
+                    knowledge_gap=False,
+                    cacheable=False,
+                    cross_wiki_skipped=True,
+                    cross_wiki_skip_reason="operation detected",
+                )
 
         # Translate CJK queries to English so BM25 on peer wikis can match
         # English page content.  The original question is preserved for synthesis

@@ -69,18 +69,19 @@ async def test_all_wikis_offline_knowledge_gap():
 
 @pytest.mark.asyncio
 async def test_cross_wiki_skipped_for_action():
-    """ActionAgent.detect() → cross_wiki_skipped, routed to local."""
-    from synthadoc.agents.query_agent import QueryResult as QR
-    local_result = QR(question="run lint", answer="Starting lint...", citations=[])
+    """ActionAgent.detect() → classify() confirms a genuine action →
+    cross_wiki_skipped, routed to local."""
     provider = _make_provider()
     agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
     with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
         action_inst = MagicMock()
         action_inst.detect.return_value = True
-        action_inst.run = AsyncMock(return_value=MagicMock(message="Lint started", success=True))
+        action_inst.classify = AsyncMock(return_value="lint")
+        action_inst.run = AsyncMock()
         MockAction.return_value = action_inst
         result = await agent.run("run lint")
     assert result.cross_wiki_skipped is True
+    action_inst.run.assert_not_called()  # the action's real side effects must never fire
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("question,action_type", [
@@ -99,17 +100,42 @@ async def test_detected_operation_under_cross_wiki_tells_user_to_disable_it(ques
     with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
         action_inst = MagicMock()
         action_inst.detect.return_value = True
-        action_inst.run = AsyncMock(return_value=MagicMock(
-            message="Lint job started (synthadoc lint run).\n\nJob ID: abc123",
-            success=True,
-            action_type=action_type,
-        ))
+        action_inst.classify = AsyncMock(return_value=action_type)
+        action_inst.run = AsyncMock()
         MockAction.return_value = action_inst
         result = await agent.run(question)
     assert result.cross_wiki_skipped is True
     assert "cross-wiki" in result.answer.lower()
     assert "turn off" in result.answer.lower() or "disable" in result.answer.lower()
     action_inst.run.assert_not_called()  # the action's real side effects must never fire
+
+@pytest.mark.asyncio
+async def test_detect_false_positive_falls_through_to_normal_cross_wiki_search():
+    """detect()'s fast regex pre-check has known false positives — e.g. "how do
+    I roll back a Kubernetes deployment?" matches the literal "roll back"
+    substring even though it isn't a synthadoc action. classify()'s LLM
+    extraction must correctly return None for it, and the query must fall
+    through to normal cross-wiki search instead of being blocked."""
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "k8s-rollback", "title": "Kubernetes Rollback",
+                   "score": 3.0, "content": "kubectl rollout undo deployment/foo"}],
+        "purpose_summary": "DevOps domain",
+        "routing_warning": "",
+    }
+    provider = _make_provider(answer="Use kubectl rollout undo.")
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction, \
+         patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        action_inst = MagicMock()
+        action_inst.detect.return_value = True
+        action_inst.classify = AsyncMock(return_value=None)
+        action_inst.run = AsyncMock()
+        MockAction.return_value = action_inst
+        result = await agent.run("How do I roll back a Kubernetes deployment?")
+    assert result.cross_wiki_skipped is False
+    assert result.answer == "Use kubectl rollout undo."
+    action_inst.run.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_wiki_pick_lm_parses_json():
@@ -430,7 +456,7 @@ async def test_on_wikis_selected_called_empty_on_action_detected():
     with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
         action_inst = MagicMock()
         action_inst.detect.return_value = True
-        action_inst.run = AsyncMock(return_value=MagicMock(message="Lint started", success=True))
+        action_inst.classify = AsyncMock(return_value="lint")
         MockAction.return_value = action_inst
         await agent.run("run lint", on_wikis_selected=received.append)
 

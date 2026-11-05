@@ -335,8 +335,17 @@ class ActionAgent(BaseAgent):
                         break
         return False
 
-    async def _run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
-        """Extract action + params from question and execute. Returns None if not an action."""
+    async def _extract_action(
+        self, question: str, history: list[dict] | None,
+    ) -> Optional[tuple[str, dict]]:
+        """Resolve repeat-intent phrasing and run LLM extraction.
+
+        Returns (action, params) when the question is a genuine action, or
+        None when it isn't — including when detect()'s fast regex pre-check
+        false-positived (e.g. "how do I roll back a Kubernetes deployment?"
+        matches the literal "roll back" substring that routes rollback
+        requests, but isn't actually one).
+        """
         # For repeat intents ("run it again", "repeat", etc.) resolve the previous action
         # from history before calling the LLM, which cannot reliably infer it from vague phrasing.
         effective_question = question
@@ -349,9 +358,28 @@ class ActionAgent(BaseAgent):
         if not extraction:
             return None
         action = extraction.get("action", "none")
-        params = extraction.get("params", {})
         if action == "none":
             return None
+        return action, extraction.get("params", {})
+
+    async def classify(self, question: str, history: list[dict] | None = None) -> Optional[str]:
+        """Like run(), but only classifies — never dispatches, so it has no
+        side effects (no job starts, no lifecycle change, nothing written).
+
+        For callers that only need to know *whether* a question is a genuine
+        action request (e.g. cross-wiki's pre-flight check, which must not
+        fire a real action's side effects while still correctly letting a
+        detect() false positive fall through to normal query handling).
+        """
+        resolved = await self._extract_action(question, history)
+        return resolved[0] if resolved else None
+
+    async def _run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
+        """Extract action + params from question and execute. Returns None if not an action."""
+        resolved = await self._extract_action(question, history)
+        if resolved is None:
+            return None
+        action, params = resolved
         try:
             return await self._dispatch(action, params)
         except Exception as exc:

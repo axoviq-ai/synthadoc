@@ -233,6 +233,30 @@ async def test_none_action_returns_none(tmp_path):
     assert result is None
 
 
+# ── classify (extract without dispatching) ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_classify_returns_none_for_non_action(tmp_path):
+    """classify() must agree with run()'s own action="none" result — it's the
+    same LLM extraction, just without the dispatch step."""
+    agent, _ = _make_agent(tmp_path, '{"action": "none", "params": {}}')
+    result = await agent.classify("How do I roll back a Kubernetes deployment?")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_classify_returns_action_name_without_dispatching(tmp_path):
+    """classify() must report the genuine action type but never call the
+    orchestrator — callers that only need to know *whether* a question is an
+    action (e.g. cross-wiki's pre-flight check) must not trigger side effects
+    like a lint job actually starting."""
+    extraction = '{"action": "lint", "params": {"scope": "all", "auto_resolve": false}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    result = await agent.classify("Run a full lint check")
+    assert result == "lint"
+    agent._orch.lint.assert_not_awaited()
+
+
 # ── schedule_history dispatch ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
