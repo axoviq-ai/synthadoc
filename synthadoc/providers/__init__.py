@@ -94,12 +94,14 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == Provider.QWEN:
         import re as _re
-        # DashScope model names: qwen-plus, qwen3.8-flash, qwq-32b …
+        # DashScope model names: qwen-plus, qwen3.8-flash, qwq-32b,
+        #                        qwen2.5-72b-instruct, qwen-72b-chat …
         # Ollama model names:    qwen3.5, qwen3:8b, qwen2.5:72b …
-        # Rule: DashScope names always have a letter-named suffix after a hyphen;
+        # Rule: DashScope names always have a hyphen-separated suffix (letter-
+        # or digit-led — size suffixes like "72b" start with a digit);
         # Ollama names use a colon (qwen3:8b) or no hyphen (qwen3.5).
         # kimi-* models use provider = "kimi" — they are not routed here.
-        _is_dashscope = bool(_re.match(r'^(qwen[\d.]*-[a-z]|qwq-)', agent_cfg.model or ""))
+        _is_dashscope = bool(_re.match(r'^(qwen[\d.]*-[a-z0-9]|qwq-)', agent_cfg.model or ""))
         # Accept DASHSCOPE_API_KEY as an alias so workspace-specific Bailian
         # endpoints (which use that name in their sample code) work without renaming.
         key = (
