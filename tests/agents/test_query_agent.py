@@ -3556,28 +3556,24 @@ def test_signal7_does_not_fire_on_past_tense_verb_in_original_question():
     )
 
 
-def test_signal7_fires_for_cjk_question_on_absent_topic():
-    """Signal 7 must fire for CJK questions when the topic is genuinely absent.
+def test_signal7_stays_silent_for_cjk_question():
+    """Signal 7 must NOT fire for CJK questions.
 
-    When original_q is Chinese/Japanese/Korean we cannot tokenise it with
-    ASCII splitting, so we skip the _original_terms intersection and fall
-    back to _key_terms (the English-translated _gap_q terms that the wiki
-    was actually searched against).  Signal 7 must still fire when one of
-    those English terms is absent from all retrieved pages.
+    For Chinese/Japanese/Korean queries the call sites pass the original CJK
+    text as _gap_q so _contains_cjk is True, _key_terms is never built, and
+    the entire key-term block is skipped.  Signal 7 therefore stays silent
+    rather than risk a false gap on content the tokeniser cannot parse.
+    Signals 1-6 still run for CJK.
     """
     from synthadoc.storage.search import SearchResult
 
-    # Pages cover "transistor" but NOT "bluetooth".
+    # Deliberately thin coverage so Signal 7 *would* fire for a non-CJK
+    # question with the same term frequencies.
     pages = {
         "transistor-history": (
-            "The transistor was built at Bell Labs in 1947. "
+            "The transistor was built at Bell Labs. "
             "Transistor technology replaced vacuum tubes. "
-            "The transistor device enabled miniaturisation."
-        ),
-        "computing-timeline": (
-            "1947: transistor created at Bell Labs. "
-            "Transistor circuits changed electronics. "
-            "The transistor invention was pivotal."
+            "The transistor device changed electronics."
         ),
         "filler-a": "Unix was written at Bell Labs in 1969.",
         "filler-b": "Ethernet is a networking standard.",
@@ -3586,20 +3582,20 @@ def test_signal7_fires_for_cjk_question_on_absent_topic():
     }
     agent = _gap_agent(pages)
     candidates = [
-        SearchResult(slug=s, score=6.0 - i, title=s, snippet="")
+        SearchResult(slug=s, score=5.0 - i, title=s, snippet="")
         for i, s in enumerate(pages)
     ]
 
-    # gap_q is the English translation of a Chinese question about bluetooth.
-    # original_q is the original Chinese text — CJK, so _original_terms is
-    # skipped and Signal 7 uses _key_terms (English) directly.
+    # Pass a Chinese question directly as `question` (= _gap_q), which is what
+    # the real run() path does for CJK.  _contains_cjk becomes True, _key_terms
+    # stays empty, and the entire key-term gap block is skipped.
     gap, _, _, _ = agent._detect_gap(
-        question="bluetooth wireless technology short range",
+        question="蓝牙无线技术是什么？",
         candidates=candidates,
-        max_score=6.0,
+        max_score=5.0,
         original_q="蓝牙无线技术是什么？",
     )
-    assert gap is True, "Signal 7 should fire: 'bluetooth' is absent from all pages"
+    assert gap is False, "Signal 7 must not fire for CJK questions"
 
 
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
