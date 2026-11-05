@@ -392,6 +392,43 @@ def test_windowed_outdated_in_question_fires_stale_hints():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_answer_body_fires_recent_fixes_hints():
+    # Question neutral (no other pattern's question-keywords present); answer
+    # reveals a just-completed fix ("snapshot saved") — answer-body match
+    # should surface "List recent fixes" as a next step.
+    hints, _ = HintEngine.after_response_windowed(
+        "computing-history-timeline now links to microprocessor. "
+        "Snapshot saved — say 'roll back' to undo.",
+        "POWER_USER", 0,
+        question="Tell me about the latest wiki activity",
+    )
+    assert "List recent fixes" in hints
+
+
+def test_windowed_question_intent_fires_recent_fixes_hints():
+    # "list recent fixes" in the QUESTION (user intent) must trigger the
+    # fix-history hints even when the answer body doesn't mention a fix.
+    hints, _ = HintEngine.after_response_windowed(
+        "No recent fixes recorded yet.",
+        "POWER_USER", 0,
+        question="list recent fixes",
+    )
+    assert "List recent fixes" in hints
+
+
+def test_windowed_lint_in_answer_wins_over_recent_fixes_when_both_match():
+    # An answer that mentions both "lint" and a fix-completion phrase must
+    # resolve to the lint pattern's hints, not the fix-history pattern's —
+    # lint/report is the higher-priority action when both could apply.
+    hints, _ = HintEngine.after_response_windowed(
+        "Lint found no new issues. A snapshot was saved before this change.",
+        "POWER_USER", 0,
+        question="Tell me about the latest wiki activity",
+    )
+    assert "Run lint and report" in hints
+    assert "List recent fixes" not in hints
+
+
 def test_windowed_question_intent_takes_priority_over_answer_body():
     # Question matches lifecycle; answer matches ingest — question wins
     hints, _ = HintEngine.after_response_windowed(

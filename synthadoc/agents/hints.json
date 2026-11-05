@@ -216,6 +216,25 @@
     },
     {
       "keywords": [
+        "recent fix",
+        "recent fixes",
+        "list fixes",
+        "fix history",
+        "rollback history"
+      ],
+      "answer_keywords": [
+        "snapshot saved",
+        "resolved orphan",
+        "rolled back"
+      ],
+      "hints": [
+        "List recent fixes",
+        "Roll back a page",
+        "Run lint and report"
+      ]
+    },
+    {
+      "keywords": [
         "truncated",
         "truncation",
         "max_source_chars",
