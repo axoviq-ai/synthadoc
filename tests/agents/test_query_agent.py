@@ -2403,9 +2403,9 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
 @pytest.mark.asyncio
 async def test_no_gap_for_recent_fixes_query(tmp_wiki):
     """'list recent fixes' asks about synthadoc's own maintenance/rollback
-    history (answered from conversation history, via last_fix_record), not
-    wiki content — it must never trigger a knowledge gap or suggest
-    ingesting unrelated content like "famous computing bugs"."""
+    history, not wiki content — it must never trigger a knowledge gap or
+    suggest ingesting unrelated content like "famous computing bugs",
+    even when no page has a last_fix_record (nothing to report yet)."""
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("neural-networks", WikiPage(
         title="Neural Networks", tags=["ai"],
@@ -2417,7 +2417,7 @@ async def test_no_gap_for_recent_fixes_query(tmp_wiki):
     provider.complete.side_effect = [
         CompletionResponse(text='["list recent fixes"]', input_tokens=5, output_tokens=5),
         CompletionResponse(
-            text="Recent fixes, in order:\n\nOrphan resolver: 2 pages resolved.",
+            text="No recent fixes recorded yet.",
             input_tokens=50, output_tokens=10,
         ),
     ]
@@ -2427,6 +2427,48 @@ async def test_no_gap_for_recent_fixes_query(tmp_wiki):
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
     assert provider.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_recent_fixes_live_data_injected_into_synthesis(tmp_wiki):
+    """'list recent fixes' must pull real last_fix_record data straight from
+    the wiki store (the same data tool_list_recent_fixes uses inside the
+    resolver workflows), not fall through to wiki-content retrieval — which
+    previously produced a wrong "wiki pages don't contain fix info" answer
+    padded with an unrelated wall of citations."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("computing-history-timeline", WikiPage(
+        title="Timeline", tags=[], content="x", status="active", confidence="high",
+        sources=[], last_fix_record={
+            "slug": "computing-history-timeline",
+            "strategy_name": "Strategy 1 — title_bm25",
+            "timestamp": "2026-11-05T01:00:00+00:00",
+            "resolves_slug": "microprocessor",
+        },
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["list recent fixes"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(
+            text="computing-history-timeline resolved the microprocessor orphan.",
+            input_tokens=50, output_tokens=10,
+        ),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.run("list recent fixes")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "computing-history-timeline" in synthesis_prompt
+    assert "microprocessor" in synthesis_prompt
+    assert result.knowledge_gap is False
+    assert result.citations == []
 
 
 @pytest.mark.asyncio
