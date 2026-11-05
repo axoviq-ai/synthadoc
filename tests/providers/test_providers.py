@@ -1465,6 +1465,24 @@ def test_make_provider_qwen_dashscope_model_no_key_errors(monkeypatch):
     assert "QWEN_API_KEY" in str(exc_info.value)
 
 
+@pytest.mark.parametrize("model", [
+    "qwen2.5-72b-instruct",
+    "qwen-72b-chat",
+])
+def test_make_provider_qwen_dashscope_digit_after_hyphen(monkeypatch, model):
+    """Real DashScope model names have a digit right after the hyphen (size,
+    e.g. '72b'), not just a letter ('plus', 'flash'). The routing regex must
+    not require a letter there — a model name like qwen2.5-72b-instruct must
+    still route to DashScope, not silently fall through to OllamaProvider
+    (which defaults to localhost and fails the call outright). Issue #522."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("QWEN_API_KEY", "test-qwen-key")
+    provider = make_provider("ingest", _make_cfg("qwen", model))
+    assert isinstance(provider, OpenAIProvider)
+    assert "dashscope" in str(provider._client.base_url)
+
+
 # ── kimi provider tests ───────────────────────────────────────────────────────
 
 def test_make_provider_missing_kimi_key_exits(monkeypatch):
