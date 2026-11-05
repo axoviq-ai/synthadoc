@@ -2401,6 +2401,35 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_no_gap_for_recent_fixes_query(tmp_wiki):
+    """'list recent fixes' asks about synthadoc's own maintenance/rollback
+    history (answered from conversation history, via last_fix_record), not
+    wiki content — it must never trigger a knowledge gap or suggest
+    ingesting unrelated content like "famous computing bugs"."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("neural-networks", WikiPage(
+        title="Neural Networks", tags=["ai"],
+        content="Neural networks are computational models inspired by the brain.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["list recent fixes"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(
+            text="Recent fixes, in order:\n\nOrphan resolver: 2 pages resolved.",
+            input_tokens=50, output_tokens=10,
+        ),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.run("list recent fixes")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert provider.complete.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_no_gap_for_key_topics_phrasing(tmp_wiki):
     """'What are the key topics in this wiki?' must not trigger a gap.
 
