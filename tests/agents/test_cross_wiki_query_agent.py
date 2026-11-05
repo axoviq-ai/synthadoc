@@ -461,3 +461,47 @@ async def test_on_wikis_selected_called_empty_on_action_detected():
         await agent.run("run lint", on_wikis_selected=received.append)
 
     assert received == [[]]
+
+
+@pytest.mark.asyncio
+async def test_classify_error_falls_through_to_search():
+    """If classify() raises, the question falls through to normal cross-wiki search (no 500)."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    retrieve_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "k8s", "title": "Kubernetes", "score": 3.0, "content": "rollback info"}],
+        "purpose_summary": "",
+        "routing_warning": "",
+    }
+    with patch("synthadoc.agents.cross_wiki_query_agent.ActionAgent") as MockAction:
+        action_inst = MagicMock()
+        action_inst.detect.return_value = True
+        action_inst.classify = AsyncMock(side_effect=RuntimeError("provider timeout"))
+        MockAction.return_value = action_inst
+        with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+            result = await agent.run("how do I roll back a Kubernetes deployment?")
+
+    assert result.knowledge_gap is False
+    assert result.cross_wiki_skipped is False
+
+
+@pytest.mark.asyncio
+async def test_synthesis_error_returns_graceful_result():
+    """If synthesis LLM call raises, returns a graceful 200 result (no 500)."""
+    provider = _make_provider()
+    provider.complete = AsyncMock(side_effect=RuntimeError("synthesis timeout"))
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    retrieve_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "k8s", "title": "Kubernetes", "score": 3.0, "content": "rollback info"}],
+        "purpose_summary": "",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("how do I roll back a Kubernetes deployment?")
+
+    assert result.knowledge_gap is True
+    assert "provider error" in result.answer.lower() or "synthesis" in result.answer.lower()

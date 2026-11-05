@@ -137,7 +137,13 @@ class CrossWikiQueryAgent(BaseAgent):
             # deployment?" matches the fast regex pre-check's literal "roll
             # back" substring but isn't a synthadoc action, and must fall
             # through to normal cross-wiki search rather than being blocked.
-            action_type = await _action.classify(question)
+            # Guard the LLM call: if classify() throws (provider error, timeout)
+            # fall through to normal search rather than returning a 500.
+            try:
+                action_type = await _action.classify(question)
+            except Exception as exc:
+                logger.warning("cross-wiki classify() failed (%s) — falling through to search", exc)
+                action_type = None
             if action_type is not None:
                 if on_wikis_selected is not None:
                     on_wikis_selected([])
@@ -210,12 +216,28 @@ class CrossWikiQueryAgent(BaseAgent):
         )
         synthesis_system = build_synthesis_system(question)
 
-        resp = await self._provider.complete(
-            messages=[Message(role="user", content=synthesis_prompt)],
-            system=synthesis_system,
-            temperature=0.0,
-            max_tokens=self._max_tokens,
-        )
+        try:
+            resp = await self._provider.complete(
+                messages=[Message(role="user", content=synthesis_prompt)],
+                system=synthesis_system,
+                temperature=0.0,
+                max_tokens=self._max_tokens,
+            )
+        except Exception as exc:
+            logger.error("cross-wiki synthesis LLM call failed: %s", exc)
+            return QueryResult(
+                question=question,
+                answer=(
+                    "The synthesis step could not be completed due to a provider error. "
+                    "Pages were retrieved but could not be synthesised into an answer."
+                ),
+                citations=[],
+                knowledge_gap=True,
+                cacheable=False,
+                routing_warning=str(exc),
+                cross_wiki_offline=offline_wikis,
+                cross_wiki_searched=[n for n, _ in target_wikis],
+            )
 
         cited_slugs = [
             f"{p['wiki_name']}::{p['slug']}"
