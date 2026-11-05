@@ -3347,6 +3347,108 @@ def test_detect_gap_accepts_a_single_mention_on_a_top_page_matching_the_whole_qu
     assert gap is False
 
 
+def test_signal7_does_not_fire_on_subquestion_expansion_terms():
+    """Signal 7 must not fire on terms the LLM added during decomposition.
+
+    Regression: "How did the first computers start talking to each other?"
+    was decomposed to sub-questions containing "technologie". That term
+    is absent from all pages, triggering Signal 7, even though the wiki
+    has 7 relevant pages on the topic. With original_q set to the user's
+    actual question, Signal 7 is restricted to terms the user typed.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Pages repeat "computer" and "network" multiple times to clear the
+    # _MIN_TERM_FREQ=2 on-topic gate and push _pages_with_overlap high enough
+    # to close the coverage gate for the original-question terms.
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "tcp-ip": (
+            "TCP/IP governs computer network communication. "
+            "Every computer on the internet uses TCP/IP network protocols. "
+            "TCP/IP replaced earlier computer networking protocols."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Transistors replaced vacuum tubes in computing hardware.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=8.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # Simulate what happens when LLM-generated sub-questions contain "technologie"
+    # and "reseau" (French terms added by the LLM) — these are absent from all pages.
+    gap_q_with_expansion = "how did computers network technologie reseau"
+    original_question = "How did computers network?"
+
+    # With original_q: Signal 7 is restricted to terms in the original question
+    # ("computer", "network") — both are well-covered. "technologie" and "reseau"
+    # are filtered out. Signal 7 must NOT fire.
+    gap, term, _, _ = agent._detect_gap(
+        question=gap_q_with_expansion,
+        candidates=candidates,
+        max_score=8.0,
+        original_q=original_question,
+    )
+    assert gap is False, (
+        f"Signal 7 fired on expansion term '{term}' not present in original question"
+    )
+
+
+def test_signal7_still_fires_on_absent_term_in_original_question():
+    """Signal 7 must still fire when a term from the ORIGINAL question is absent.
+
+    Verifies that the original_q filter does not suppress Signal 7 entirely —
+    it only removes false positives from LLM-expanded sub-question terms.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Pages cover "computer" but NOT "bluetooth". Four fillers ensure the
+    # coverage gate (_pages_with_overlap < _n_cands * 0.65) stays open so
+    # Signal 7 can fire on "bluetooth".
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Transistors replaced vacuum tubes in hardware.",
+        "filler-c": "Magnetic tape was used for early data storage.",
+        "filler-d": "The IBM System 360 was introduced in 1964.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=5.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # "bluetooth" is in both sub-questions and the original question, and absent
+    # from all pages — Signal 7 should fire because it's a genuine missing topic.
+    gap, _, _, _ = agent._detect_gap(
+        question="how does bluetooth connect computers over short range",
+        candidates=candidates,
+        max_score=5.0,
+        original_q="how does bluetooth connect computers",
+    )
+    assert gap is True
+
+
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
     from synthadoc.agents._query_utils import resolve_wikilinks
     pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),
