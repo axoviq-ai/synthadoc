@@ -1211,12 +1211,7 @@ class QueryAgent(BaseAgent):
         _pages_with_overlap = len(candidates)
         _min_specific_qualifying = len(candidates)
 
-        _contains_cjk = any(
-            '぀' <= c <= 'ヿ'
-            or '一' <= c <= '鿿'
-            or '가' <= c <= '힯'
-            for c in question
-        )
+        _contains_cjk = has_cjk(question)
         _key_terms: set[str] = set()
         # How many times each key term appears in the question / joined sub-questions.
         # Used by Signal 7 to detect prominent absent entities.
@@ -1366,21 +1361,15 @@ class QueryAgent(BaseAgent):
             # extractable terms after filtering).  An empty intersection means Signal 7
             # has no safe original-question term to test, so it stays silent.  Only
             # when original_q was not given at all does Signal 7 fall back to _key_terms.
+            #
+            # For CJK questions _contains_cjk is True (the call sites pass the original
+            # CJK text as `question` / _gap_q so the CJK guard suppresses key-term
+            # signals on non-English content).  That means _key_terms is empty and the
+            # outer `if _key_terms and candidates:` block is never entered, so Signal 7
+            # is simply off for CJK — Signals 1-6 still run, but Signal 7 cannot give a
+            # false gap for a question the tokeniser cannot parse.
             _original_terms: set[str] = set()
-            # _original_q_given: original_q was supplied AND its words can be
-            # tokenised by ASCII splitting (i.e. it is not CJK text).
-            # For CJK original questions we cannot extract topic terms by
-            # space-splitting, so _original_q_given is False and Signal 7 falls
-            # back to _key_terms — the English-translated _gap_q terms, which
-            # are what the wiki was actually searched against, so they are the
-            # correct basis for gap detection in a cross-lingual session.
-            # (Note: _contains_cjk is computed from `question` = _gap_q, which
-            # is the English translation; we must check original_q separately.)
-            _original_q_cjk = bool(original_q) and any(
-                '぀' <= c <= 'ヿ' or '一' <= c <= '鿿' or '가' <= c <= '힯'
-                for c in original_q
-            )
-            _original_q_given = bool(original_q) and not _original_q_cjk
+            _original_q_given = bool(original_q) and not _contains_cjk
             if _original_q_given:
                 for _ow in original_q.split():
                     _ob = _ow.lower().rstrip("s'?!.,").replace("-", " ")
