@@ -221,6 +221,19 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "purpose of my wiki",
     "purpose of your wiki",
     "summarize wiki",
+    # Maintenance/rollback-history meta-queries: "list recent fixes" asks about
+    # synthadoc's own action history (last_fix_record, answered from
+    # conversation history or the resolver tools), not wiki content — BM25
+    # finds nothing because "fixes" isn't a wiki topic, so without this the
+    # LLM's correct answer still got a false "famous computing bugs" gap
+    # suggestion.
+    "recent fix",
+    "list fixes",
+    "fix history",
+    "fixes applied",
+    "content health fixes",
+    "recent rollback",
+    "rollback history",
 })
 
 # ── Hints used in _fetch_live_wiki_data for lifecycle state display ────────────
@@ -252,8 +265,9 @@ def _select_live_data_question(question: str, retrieval_question: str) -> str:
 
 
 def _is_introspective(question: str) -> bool:
-    """Return True when a question asks about the wiki's own content or scope,
-    or is a Synthadoc CLI invocation — both should suppress gap detection."""
+    """Return True when a question asks about the wiki's own content or
+    scope, its maintenance/rollback history, or is a Synthadoc CLI
+    invocation — all three should suppress gap detection."""
     q = question.lower()
     return any(t in q for t in _WIKI_INTROSPECTIVE_TRIGGERS) or any(
         q.startswith(c) for c in _SYNTHADOC_CLI_SUBCOMMANDS
