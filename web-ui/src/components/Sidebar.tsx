@@ -126,7 +126,7 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
             <div className="sidebar-footer">
                 <a
                     className="sidebar-github"
-                    href="https://github.com/axoviq/synthadoc"
+                    href="https://github.com/axoviq-ai/synthadoc"
                     target="_blank"
                     rel="noreferrer"
                 >
