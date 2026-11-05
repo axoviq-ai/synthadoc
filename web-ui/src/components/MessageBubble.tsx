@@ -365,7 +365,9 @@ function BlockedBubble({ content }: { content: string }) {
     return (
         <div className="blocked-bubble">
             <span className="blocked-bubble-icon" aria-hidden="true">⚠</span>
-            <span className="blocked-bubble-text">{content}</span>
+            <div className="blocked-bubble-text">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </div>
         </div>
     );
 }
