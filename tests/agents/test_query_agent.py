@@ -3449,6 +3449,58 @@ def test_signal7_still_fires_on_absent_term_in_original_question():
     assert gap is True
 
 
+def test_signal7_does_not_fire_on_past_tense_verb_in_original_question():
+    """Signal 7 must not fire when the absent term is a past-tense verb.
+
+    Regression: "Who invented the transistor?" caused Signal 7 to fire on
+    "invented" because the wiki pages say "built" and "demonstrated" instead.
+    Words ending in -ed (lowercase) are predicates, not topic nouns; they are
+    excluded from _original_terms so Signal 7 ignores their absence.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Three pages cover "transistor" ≥ 2× each — clearly on-topic.
+    # Four fillers keep the coverage gate open: 3/7 = 43% < 65%.
+    pages = {
+        "transistor-history": (
+            "The transistor was built at Bell Labs in 1947. "
+            "Bardeen and Brattain demonstrated the transistor. "
+            "The transistor replaced vacuum tubes. "
+            "Transistor technology transformed electronics."
+        ),
+        "bell-labs": (
+            "Bell Labs developed the transistor in 1947. "
+            "The transistor invention at Bell Labs changed computing. "
+            "Bell Labs produced many transistor-based devices."
+        ),
+        "computing-timeline": (
+            "1947: transistor created at Bell Labs. "
+            "The transistor device enabled miniaturisation. "
+            "Transistor circuits replaced vacuum tubes."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Ethernet is a networking standard.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was used for early data storage.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # gap_q simulates LLM-expanded sub-questions; original_q is what the user typed.
+    gap, term, _, _ = agent._detect_gap(
+        question="who invented transistor vacuum tubes semiconductor 1947",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="Who invented the transistor?",
+    )
+    assert gap is False, (
+        f"Signal 7 fired on past-tense verb '{term}' — expected no gap"
+    )
+
+
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
     from synthadoc.agents._query_utils import resolve_wikilinks
     pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),
