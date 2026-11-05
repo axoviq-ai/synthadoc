@@ -20,4 +20,17 @@ describe("MessageBubble — blocked (action-required) messages", () => {
         expect(container.querySelector(".blocked-bubble")).not.toBeNull();
         expect(container.querySelector(".bubble-assistant")).toBeNull();
     });
+
+    it("renders markdown (bold/italic) instead of showing literal ** and * characters", () => {
+        const msg: Message = {
+            id: "2",
+            role: "assistant",
+            text: "**Actions and agentic workflows** need the full chat session.\n\n*Cross-wiki search skipped: operation detected*",
+            type: "blocked",
+        };
+        const { container } = render(<MessageBubble msg={msg} />);
+        expect(container.querySelector("strong")?.textContent).toBe("Actions and agentic workflows");
+        expect(container.querySelector("em")?.textContent).toBe("Cross-wiki search skipped: operation detected");
+        expect(container.textContent).not.toContain("**");
+    });
 });
