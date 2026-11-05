@@ -558,7 +558,8 @@ class LintAgent(BaseAgent):
                  adversarial_concurrency: int = 8,
                  wiki_root: "Path | str | None" = None,
                  cfg: "Config | None" = None,
-                 progress_cb: "Optional[object]" = None) -> None:
+                 progress_cb: "Optional[object]" = None,
+                 search: "Optional[object]" = None) -> None:
         super().__init__(provider, cfg)
         self._store = store
         self._log = log_writer
@@ -569,6 +570,7 @@ class LintAgent(BaseAgent):
         self._adversarial_concurrency = adversarial_concurrency
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
         self._progress_cb = progress_cb
+        self._search = search
 
     async def _emit_progress(self, data: dict) -> None:
         if self._progress_cb is not None:
@@ -959,6 +961,8 @@ class LintAgent(BaseAgent):
             page.last_fix_record = None
         page.status = to_state
         self._store.write_page(slug, page)
+        if self._search is not None:
+            self._search.invalidate_index()
 
     async def _is_url_unavailable(self, url: str) -> bool:
         """Return True only if URL is definitively gone (404/410 or YouTube VideoUnavailable).
