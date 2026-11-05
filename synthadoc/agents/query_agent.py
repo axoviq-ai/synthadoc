@@ -148,6 +148,8 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "pending jobs", "failed job", "dead job",
     "wiki status", "page status", "show status",
     "lint", "lint report", "lint run", "lint results", "lint check",
+    "recent fix", "list fixes", "fix history", "fixes applied",
+    "content health fixes", "recent rollback", "rollback history",
 })
 
 _LINT_TRIGGERS: frozenset[str] = frozenset({
@@ -173,6 +175,17 @@ _TRUNCATION_TRIGGERS: frozenset[str] = frozenset({
 _JOB_TRIGGERS: frozenset[str] = frozenset({
     "job", "jobs", "job id", "job status", "ingest job", "queue",
     "pending jobs", "failed job", "dead job",
+})
+
+# "list recent fixes" asks about synthadoc's own maintenance/rollback action
+# history (last_fix_record — the same data tool_list_recent_fixes uses inside
+# the resolver workflows), not wiki content. Without a dedicated live-data
+# section for this, the question fell through to wiki-content retrieval,
+# which found nothing relevant and produced a wrong "wiki pages don't
+# contain fix info" answer.
+_FIX_HISTORY_TRIGGERS: frozenset[str] = frozenset({
+    "recent fix", "list fixes", "fix history", "fixes applied",
+    "content health fixes", "recent rollback", "rollback history",
 })
 
 # Phrase fragments that identify meta/introspective questions about the wiki's own
@@ -221,7 +234,10 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "purpose of my wiki",
     "purpose of your wiki",
     "summarize wiki",
-})
+}) | _FIX_HISTORY_TRIGGERS
+# ^ fix/rollback-history meta-queries belong here too — defensive fallback for
+# when _fetch_live_wiki_data can't run (e.g. audit.db missing on a fresh
+# install), so gap detection still gets suppressed even without real data.
 
 # ── Hints used in _fetch_live_wiki_data for lifecycle state display ────────────
 _HINTS: dict[str, str] = {
@@ -252,8 +268,9 @@ def _select_live_data_question(question: str, retrieval_question: str) -> str:
 
 
 def _is_introspective(question: str) -> bool:
-    """Return True when a question asks about the wiki's own content or scope,
-    or is a Synthadoc CLI invocation — both should suppress gap detection."""
+    """Return True when a question asks about the wiki's own content or
+    scope, its maintenance/rollback history, or is a Synthadoc CLI
+    invocation — all three should suppress gap detection."""
     q = question.lower()
     return any(t in q for t in _WIKI_INTROSPECTIVE_TRIGGERS) or any(
         q.startswith(c) for c in _SYNTHADOC_CLI_SUBCOMMANDS
@@ -836,6 +853,32 @@ class QueryAgent(BaseAgent):
                             lines.append(f"  - [{_j.id}] {_j.operation}  {_j.status.value}  {_ts}{_err}")
                     else:
                         lines.append("\n### Jobs\n  (no jobs found)")
+
+            # Recent fixes — contradiction/orphan-resolver last_fix_record,
+            # scanned straight from the wiki store (the same data
+            # tool_list_recent_fixes uses inside the resolver workflows) so
+            # the answer is accurate across sessions, not dependent on this
+            # conversation's own history.
+            if any(kw in q_lower for kw in _FIX_HISTORY_TRIGGERS):
+                from synthadoc.agents.workflows._tools import format_recent_fix_line
+                _fix_entries = []
+                for _fix_slug in self._store.list_pages():
+                    _fix_page = self._store.read_page(_fix_slug)
+                    if _fix_page is not None and _fix_page.last_fix_record:
+                        _record = _fix_page.last_fix_record
+                        _fix_entries.append({
+                            "slug": _fix_slug,
+                            "strategy_name": _record.get("strategy_name", ""),
+                            "fixed_at": _record.get("timestamp", ""),
+                            "resolves_slug": _record.get("resolves_slug"),
+                        })
+                _fix_entries.sort(key=lambda r: r["fixed_at"], reverse=True)
+                if _fix_entries:
+                    lines.append("\n### Recent fixes")
+                    for _entry in _fix_entries[:10]:
+                        lines.append(f"  {format_recent_fix_line(_entry)}")
+                else:
+                    lines.append("\n### Recent fixes\n  (none recorded yet)")
 
             return "\n".join(lines) if lines else ""
         except Exception as exc:
