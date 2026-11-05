@@ -18,6 +18,7 @@ from synthadoc.agents.workflows._tools import (
     _resolve_stale_pages,
     tool_apply_link_fixes,
     tool_confirm,
+    format_recent_fix_line,
     tool_find_broken_wikilinks,
     tool_find_page_source,
     tool_find_stale_pages,
@@ -1700,6 +1701,46 @@ class TestProposeAndApplyChecks:
         bump_epoch.assert_called_once()
         invalidate_search.assert_called_once()
 
+    async def test_target_slug_stored_as_resolves_slug(self):
+        """orphan_resolver passes target_slug=<orphan_slug> so last_fix_record
+        can say which orphan this host-page edit actually resolved — the host
+        page's own slug (e.g. computing-history-timeline) is never the orphan
+        (e.g. microprocessor). Issue #521."""
+        store, page = _confirming_store(
+            "# Title\n\n## Body\n\nAlan Turing studied computable numbers deeply.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        result = await tool_propose_and_apply(
+            ctx, slug="computing-history-timeline",
+            new_content="# Title\n\n## Body\n\n[[microprocessor]] studied computable numbers deeply.\n",
+            strategy_name="Insert wikilink", rationale="link orphan",
+            target_slug="microprocessor",
+        )
+        assert result["applied"] is True
+        assert page.last_fix_record["resolves_slug"] == "microprocessor"
+
+    async def test_target_slug_defaults_to_none(self):
+        """contradiction_resolver never passes target_slug — its fixes must
+        not claim to resolve an orphan."""
+        store, page = _confirming_store(
+            "# Title\n\n## History\n\nThe telephone was invented by Edison in 1901.\n"
+        )
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="s",
+            new_content="# Title\n\n## History\n\nThe telephone was invented by Bell in 1876.\n",
+            strategy_name="Strategy 1", rationale="correct the claim",
+        )
+        assert page.last_fix_record["resolves_slug"] is None
+
     async def test_rejected_write_does_not_invalidate_search(self):
         store, page = _confirming_store(
             "# Title\n\n## Keep\n\nreal body text with enough words here.\n"
@@ -1911,6 +1952,7 @@ class TestListRecentFixes:
         assert "s" in slugs
         entry = next(f for f in result["fixes"] if f["slug"] == "s")
         assert entry["strategy_name"] == "Strategy 1 — Content rewrite"
+        assert entry["resolves_slug"] is None
 
     async def test_excludes_pages_without_a_fix_record(self):
         store, page = _confirming_store("# Title\n\nbody.\n")
@@ -1918,6 +1960,46 @@ class TestListRecentFixes:
         ctx, _events = _make_ctx(store=store)
         result = await tool_list_recent_fixes(ctx)
         assert result["fixes"] == []
+
+    async def test_includes_resolves_slug_for_orphan_fixes(self):
+        """An orphan-resolver fix's entry must name the orphan it resolved,
+        not just the host page's own slug. Issue #521."""
+        store, page = _confirming_store(
+            "# Title\n\n## Body\n\nAlan Turing studied computable numbers deeply.\n"
+        )
+        store.list_pages = MagicMock(return_value=["computing-history-timeline"])
+        ctx, _events = _make_ctx(store=store, audit_db=MagicMock(
+            snapshot_if_changed=AsyncMock(return_value=True),
+            list_page_snapshots=AsyncMock(return_value=[{"index": 1, "id": 7}]),
+        ))
+        asyncio.create_task(_auto_confirm(ctx))
+        await tool_propose_and_apply(
+            ctx, slug="computing-history-timeline",
+            new_content="# Title\n\n## Body\n\n[[microprocessor]] studied computable numbers deeply.\n",
+            strategy_name="Insert wikilink", rationale="link orphan",
+            target_slug="microprocessor",
+        )
+        result = await tool_list_recent_fixes(ctx)
+        entry = next(f for f in result["fixes"] if f["slug"] == "computing-history-timeline")
+        assert entry["resolves_slug"] == "microprocessor"
+
+
+class TestFormatRecentFixLine:
+    """format_recent_fix_line — shared CLI-path display line, used by both
+    orphan_resolver and contradiction_resolver's "list recent fixes" text. #521"""
+
+    def test_plain_fix_shows_just_the_slug(self):
+        fix = {"slug": "phone", "strategy_name": "Strategy 1", "fixed_at": "t1",
+               "resolves_slug": None}
+        assert format_recent_fix_line(fix) == "- phone: Strategy 1 (t1)"
+
+    def test_orphan_fix_names_the_resolved_orphan(self):
+        fix = {"slug": "computing-history-timeline", "strategy_name": "Strategy 1 — title_bm25",
+               "fixed_at": "t1", "resolves_slug": "microprocessor"}
+        assert format_recent_fix_line(fix) == (
+            "- computing-history-timeline (resolves orphan 'microprocessor'): "
+            "Strategy 1 — title_bm25 (t1)"
+        )
 
 
 class TestRollbackRestoresLifecycleFlags:
