@@ -1095,7 +1095,8 @@ class QueryAgent(BaseAgent):
         )
         _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
+            self._detect_gap(_gap_q, candidates, _max_score,
+                             used_tf_fallback=_used_tf_fallback, original_q=question)
         _system_ctx = self._get_relevant_system_pages(question)
         _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx or _live_data:
@@ -1178,7 +1179,7 @@ class QueryAgent(BaseAgent):
         return QueryResult(
             question=question,
             answer=answer_text,
-            citations=[] if _gap else citations,
+            citations=citations,
             tokens_used=resp2.total_tokens,
             input_tokens=resp2.input_tokens,
             output_tokens=resp2.output_tokens,
@@ -1194,6 +1195,7 @@ class QueryAgent(BaseAgent):
     def _detect_gap(
         self, question: str, candidates: list[SearchResult], max_score: float,
         used_tf_fallback: bool = False,
+        original_q: str = "",
     ) -> tuple[bool, str, int, int]:
         """Full 7-signal knowledge gap detection.
 
@@ -1346,11 +1348,27 @@ class QueryAgent(BaseAgent):
             # deliberately lower than the 80 % used by Signal 4 — this catches the
             # iPhone-style case where ~45–60 % of pages have generic term overlap (from
             # "mobile", "computing" etc.) but the specific entity is absent.
+            #
+            # Restrict to terms that also appear in the original user question.
+            # `question` here is _gap_q (joined sub-questions), which the LLM may
+            # expand with terms not typed by the user (e.g. "technologie"). Firing on
+            # those expansion terms produces false positives: the wiki has relevant
+            # pages but gap fires on a word the user never wrote.
+            _original_terms: set[str] = set()
+            if original_q and not _contains_cjk:
+                for _ow in original_q.split():
+                    _ob = _ow.lower().rstrip("s'?!.,").replace("-", " ")
+                    if ((len(_ow) >= 4 or (len(_ow) >= 2 and _ow.upper() == _ow))
+                            and _ob not in STOPWORDS
+                            and _ow.lower() not in STOPWORDS):
+                        _original_terms.add(_ob)
+            _signal7_terms = (_key_terms & _original_terms) if _original_terms else _key_terms
             _prominent_term_absent = (
                 _pages_with_overlap < _n_cands * 0.65
+                and bool(_signal7_terms)
                 and any(
                     _q_term_freq.get(t, 0) >= 1 and _term_doc_freq.get(t, 0) == 0
-                    for t in _key_terms
+                    for t in _signal7_terms
                 )
             )
         else:
@@ -1454,7 +1472,8 @@ class QueryAgent(BaseAgent):
         )
         _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
+            self._detect_gap(_gap_q, candidates, _max_score,
+                             used_tf_fallback=_used_tf_fallback, original_q=question)
 
         if _system_ctx or _live_data:
             _gap = False
@@ -1566,7 +1585,7 @@ class QueryAgent(BaseAgent):
         if full_answer != "".join(_streamed):
             yield {"event": "answer", "data": {"text": full_answer}}
 
-        yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
+        yield {"event": "citations", "data": {"citations": citations}}
 
         if _gap:
             # Use the standalone retrieval_question so gap suggestions are meaningful
