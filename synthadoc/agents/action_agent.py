@@ -1134,6 +1134,7 @@ class ActionAgent(BaseAgent):
             )
         page.status = to_state
         self._orch._store.write_page(slug, page)
+        self._orch._search.invalidate_index()
         audit = AuditDB(self._wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         await audit.set_page_state(slug, to_state, "user")
