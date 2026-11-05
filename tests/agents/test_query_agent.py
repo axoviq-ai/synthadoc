@@ -3556,6 +3556,52 @@ def test_signal7_does_not_fire_on_past_tense_verb_in_original_question():
     )
 
 
+def test_signal7_fires_for_cjk_question_on_absent_topic():
+    """Signal 7 must fire for CJK questions when the topic is genuinely absent.
+
+    When original_q is Chinese/Japanese/Korean we cannot tokenise it with
+    ASCII splitting, so we skip the _original_terms intersection and fall
+    back to _key_terms (the English-translated _gap_q terms that the wiki
+    was actually searched against).  Signal 7 must still fire when one of
+    those English terms is absent from all retrieved pages.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Pages cover "transistor" but NOT "bluetooth".
+    pages = {
+        "transistor-history": (
+            "The transistor was built at Bell Labs in 1947. "
+            "Transistor technology replaced vacuum tubes. "
+            "The transistor device enabled miniaturisation."
+        ),
+        "computing-timeline": (
+            "1947: transistor created at Bell Labs. "
+            "Transistor circuits changed electronics. "
+            "The transistor invention was pivotal."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Ethernet is a networking standard.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was used for early data storage.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=6.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # gap_q is the English translation of a Chinese question about bluetooth.
+    # original_q is the original Chinese text — CJK, so _original_terms is
+    # skipped and Signal 7 uses _key_terms (English) directly.
+    gap, _, _, _ = agent._detect_gap(
+        question="bluetooth wireless technology short range",
+        candidates=candidates,
+        max_score=6.0,
+        original_q="蓝牙无线技术是什么？",
+    )
+    assert gap is True, "Signal 7 should fire: 'bluetooth' is absent from all pages"
+
+
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
     from synthadoc.agents._query_utils import resolve_wikilinks
     pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),
