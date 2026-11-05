@@ -326,3 +326,29 @@ def apply_blocks(
     result.applied_count = len(applied)
     result.rejected_count = len(rejected)
     return result
+
+
+# ---------------------------------------------------------------------------
+# describe_all_blocks_rejected
+# ---------------------------------------------------------------------------
+
+def describe_all_blocks_rejected(result: ApplyResult, blocks: list[dict]) -> str | None:
+    """Return a "block N: reason" summary when *blocks* was non-empty but every
+    block was rejected, or None otherwise.
+
+    Shared by tool_propose_and_apply_blocks (contradiction_resolver's
+    Strategy 1) and content_health_resolver's write_content_health_fix: both
+    call apply_blocks and, when nothing could be safely applied, skip the
+    full-page ScopedConfirmCard — which would otherwise show a confusing
+    empty diff — in favor of telling the LLM to move on (to Strategy 2, or
+    to dismissal) instead. An empty *blocks* list means nothing was proposed
+    at all, a different case from "everything proposed was rejected", so it
+    returns None too.
+    """
+    if not (result.applied_count == 0 and blocks):
+        return None
+    return "; ".join(
+        f"block {i + 1}: {br.rejection_reason or 'no_match'}"
+        for i, br in enumerate(result.blocks)
+        if br.status == "rejected"
+    ) or "no reasons available"
