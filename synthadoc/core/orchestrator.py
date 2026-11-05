@@ -732,6 +732,7 @@ class Orchestrator:
                 wiki_root=self._root,
                 cfg=self._cfg,
                 progress_cb=_progress,
+                search=self._search,
             ).run(scope=scope, slug=slug, auto_resolve=auto_resolve,
                   adversarial=adversarial, lifecycle=lifecycle,
                   check_url_availability=check_url_availability, job_id=job_id)

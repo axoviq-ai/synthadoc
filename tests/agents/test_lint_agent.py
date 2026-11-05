@@ -2050,3 +2050,23 @@ async def test_adversarial_single_no_false_positive_warning_on_empty_array_with_
             assert "unparseable" not in str(call_args), (
                 "False-positive 'unparseable response' warning fired for a valid []+prose response"
             )
+
+
+@pytest.mark.asyncio
+async def test_lint_transition_invalidates_search_index(tmp_wiki):
+    """LintAgent._transition() must call search.invalidate_index() when a search object is provided."""
+    from unittest.mock import MagicMock
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("test-page", WikiPage(
+        title="Test Page", tags=[], content="Some content.",
+        status="active", confidence="high", sources=[],
+    ))
+    page = store.read_page("test-page")
+
+    mock_search = MagicMock()
+    agent = LintAgent(provider=AsyncMock(), store=store, search=mock_search)
+
+    await agent._transition("test-page", page, "active", "contradicted", "test demotion")
+
+    mock_search.invalidate_index.assert_called_once()
+    assert store.read_page("test-page").status == "contradicted"

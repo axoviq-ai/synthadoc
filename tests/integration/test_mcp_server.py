@@ -654,6 +654,51 @@ async def test_mcp_lifecycle_blocked_transition_returns_error(mock_orch):
     mock_write.assert_not_called()  # page must not be written on blocked transition
 
 
+@pytest.mark.asyncio
+async def test_mcp_write_page_invalidates_search_index(mock_orch):
+    """synthadoc_write_page must invalidate the search index after writing."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Test Page", tags=[], content="old content",
+        status="active", confidence="high", sources=[],
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch.object(mock_orch._audit, "snapshot_if_changed", new=AsyncMock(return_value=False)), \
+         patch.object(mock_orch._search, "invalidate_index") as mock_invalidate:
+        await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "test-page", "content": "new content"},
+            convert_result=False,
+        )
+    mock_invalidate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mcp_lifecycle_invalidates_search_index(mock_orch):
+    """synthadoc_lifecycle must invalidate the search index after a state transition."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Test Page", tags=[], content="content",
+        status="contradicted", confidence="high", sources=[],
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch("synthadoc.storage.log.AuditDB.set_page_state", new=AsyncMock()), \
+         patch("synthadoc.storage.log.AuditDB.record_lifecycle_event", new=AsyncMock()), \
+         patch.object(mock_orch._search, "invalidate_index") as mock_invalidate:
+        await mcp._tool_manager.call_tool(
+            "synthadoc_lifecycle",
+            {"slug": "test-page", "to_state": "active", "reason": "fixed"},
+            convert_result=False,
+        )
+    mock_invalidate.assert_called_once()
+
+
 # ── New tool: synthadoc_jobs ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio
