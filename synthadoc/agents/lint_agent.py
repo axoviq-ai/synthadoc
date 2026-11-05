@@ -1291,6 +1291,8 @@ class LintAgent(BaseAgent):
                         page.status = LifecycleState.ACTIVE
                         page.contradiction_note = None
                         self._store.write_page(slug, page)
+                        if self._search is not None:
+                            self._search.invalidate_index()
                         report.contradictions_resolved += 1
                         if self._audit:
                             await self._audit.set_page_state(
@@ -1348,6 +1350,8 @@ class LintAgent(BaseAgent):
                             else:
                                 page.content += f"\n\n**Auto-resolved:** {decision.get('reason', '')}"
                             self._store.write_page(slug, page)
+                            if self._search is not None:
+                                self._search.invalidate_index()
                             report.contradictions_resolved += 1
                             if self._audit:
                                 resolve_reason = decision.get("reason", "contradiction auto-resolved by lint")
