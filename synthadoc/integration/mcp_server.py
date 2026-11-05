@@ -179,13 +179,31 @@ def create_mcp_server(orchestrator):
         """Search the wiki (BM25 keyword search, plus semantic search when enabled).
         Returns page titles, slugs, and snippets, best match first.
 
+        Each result includes three scores:
+          rank_score        — the ordering key; higher = better match.
+                              When semantic search is enabled this is a reciprocal
+                              rank fusion of BM25 and embedding ranks, so a page
+                              with a lower bm25_score can legitimately rank above
+                              one with a higher bm25_score.
+          bm25_score        — raw BM25 keyword score; 0.0 when the page was found
+                              only by embedding search.
+          semantic_similarity — embedding cosine similarity [0.0–1.0]; null when
+                              semantic search is not enabled for this wiki.
+
         Use this to find relevant pages, then synthadoc_read_page to get full content.
         Synthesize the answer yourself — no LLM is called on the Synthadoc side.
         """
         results = await orchestrator._search.hybrid_search(terms.split(), top_n=10)
         return {
             "results": [
-                {"slug": r.slug, "score": r.score, "title": r.title, "snippet": r.snippet}
+                {
+                    "slug": r.slug,
+                    "rank_score": r.rank_score,
+                    "bm25_score": r.score,
+                    "semantic_similarity": r.similarity,
+                    "title": r.title,
+                    "snippet": r.snippet,
+                }
                 for r in results
             ]
         }
@@ -283,6 +301,7 @@ def create_mcp_server(orchestrator):
         page.updated = date.today().isoformat()
         orchestrator._store.write_page(slug, page)
         orchestrator._search.invalidate_index()
+        await orchestrator._search.sync_embeddings()
         orchestrator._bump_epoch()
         snapped = False
         if slug not in LINT_SKIP_SLUGS:
@@ -335,6 +354,7 @@ def create_mcp_server(orchestrator):
         page.status = to_state
         orchestrator._store.write_page(slug, page)
         orchestrator._search.invalidate_index()
+        await orchestrator._search.sync_embeddings()
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
             slug, from_state, to_state, reason, TriggerSource.MCP,
