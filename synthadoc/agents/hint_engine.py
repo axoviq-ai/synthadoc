@@ -115,6 +115,22 @@ _AUX_VERBS = frozenset({
     "does", "do", "did",
     "will", "would", "can", "could", "should", "may", "might", "must",
 })
+# Main-predicate verb forms that signal the start of a verb phrase when they
+# appear AFTER the opening noun phrase (position ≥ 1 in the words list).
+# Truncating here prevents clumsy chip text like
+# "How does first computers start talking connect to …?" — the predicate is
+# dropped and only the noun phrase remains as the subject of the chip.
+_PREDICATE_STARTERS = frozenset({
+    # simple-present main verbs following a subject noun phrase
+    "start", "stop", "come", "go", "get", "make", "happen", "occur",
+    "create", "form", "change", "become", "result", "appear", "move",
+    # simple-past forms
+    "came", "went", "got", "made", "began", "started", "stopped", "ended",
+    "created", "formed", "changed", "became", "resulted", "appeared", "moved",
+    # gerunds used as sentence-level predicates
+    "talking", "coming", "going", "getting", "making",
+    "starting", "stopping", "creating", "forming", "changing", "becoming",
+})
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
 
@@ -158,6 +174,13 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
     # "Which X has/is Y?" questions (e.g. "portfolio company has the highest").
     for i, w in enumerate(words):
         if w.lower() in _AUX_VERBS:
+            words = words[:i]
+            break
+    # Second truncation pass: drop predicate-verb phrases that follow the noun
+    # phrase (e.g. "first computers start talking" → "first computers").
+    # Only applies from position 1 onward so the first word is never stripped.
+    for i in range(1, len(words)):
+        if words[i].lower() in _PREDICATE_STARTERS:
             words = words[:i]
             break
     while words and words[-1].lower() in _TRAILING_STOP_WORDS:

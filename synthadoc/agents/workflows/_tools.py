@@ -783,7 +783,10 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
     domain = ctx.domain or "General"
 
     routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
-    files = [str(p) for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)]
+    files = [
+        str(p.relative_to(ctx.wiki_root))
+        for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
+    ]
 
     await ctx.send_sse_event(
         "tool_progress",
@@ -813,7 +816,9 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     files = scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
     # Use markdown list syntax so the confirm panel renders each file on its
     # own line (bare "• item\n" collapses to a single paragraph in markdown).
-    file_items = "\n".join(f"- {p}" for p in files)
+    # Show paths relative to wiki_root so the dialog shows readable short paths
+    # (e.g. "wiki/index.md") instead of absolute filesystem paths.
+    file_items = "\n".join(f"- {p.relative_to(ctx.wiki_root)}" for p in files)
     confirm_message = (
         f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
         f"{file_items}\n\n"
