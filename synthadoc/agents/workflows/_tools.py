@@ -92,7 +92,7 @@ def _find_raw_source_candidates(wiki_root: Path, slug: str) -> list[str]:
         return (0 if match else 1, str(p))
 
     files.sort(key=_rank)
-    return [str(f.relative_to(wiki_root)) for f in files]
+    return [f.relative_to(wiki_root).as_posix() for f in files]
 
 
 def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
@@ -143,14 +143,14 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
         source_path: str | None = None
         if abs_path is not None:
             try:
-                source_path = str(Path(abs_path).relative_to(ctx.wiki_root))
+                source_path = Path(abs_path).relative_to(ctx.wiki_root).as_posix()
             except ValueError:
                 source_path = Path(abs_path).name
         result.append(
             {
                 "slug": p["slug"],
                 "source_path": source_path,
-                "stale_since": p.get("updated_at") or "unknown",
+                "stale_since": (p.get("updated_at") or "unknown")[:10],
             }
         )
     return result
@@ -184,7 +184,7 @@ async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
     abs_path = _resolve_source_path(ctx.wiki_root, raw_file)
     # Return wiki-relative path; tool_ingest_source resolves it back.
     try:
-        source_path = str(Path(abs_path).relative_to(ctx.wiki_root))
+        source_path = Path(abs_path).relative_to(ctx.wiki_root).as_posix()
     except ValueError:
         source_path = Path(abs_path).name
     await ctx.send_sse_event(
@@ -798,7 +798,7 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
 
     routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
     files = [
-        str(p.relative_to(ctx.wiki_root))
+        p.relative_to(ctx.wiki_root).as_posix()
         for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
     ]
 
@@ -832,7 +832,7 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     # own line (bare "• item\n" collapses to a single paragraph in markdown).
     # Show paths relative to wiki_root so the dialog shows readable short paths
     # (e.g. "wiki/index.md") instead of absolute filesystem paths.
-    file_items = "\n".join(f"- {p.relative_to(ctx.wiki_root)}" for p in files)
+    file_items = "\n".join(f"- {p.relative_to(ctx.wiki_root).as_posix()}" for p in files)
     confirm_message = (
         f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
         f"{file_items}\n\n"
