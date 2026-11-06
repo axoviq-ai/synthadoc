@@ -18,6 +18,14 @@ The lint command checks your wiki for quality issues across six categories.
 | **Adversarial review** | LLM pass that flags overstated claims or factual contradictions |
 | **Lifecycle checks** | Detects stale pages, promotes drafts, archives unavailable sources |
 
+## Obsidian Plugin and Web UI
+
+**Obsidian (run lint):** Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Lint: run…**. A panel opens where you can toggle individual checks (contradictions, orphans, dangling links, adversarial review, lifecycle) and click **Run**. Progress streams into the panel as checks complete.
+
+**Obsidian (view report):** Open the Command Palette → **Synthadoc: Lint: report**. The modal shows the current issues with action buttons — resolve contradictions, link orphans, or repair citations without leaving Obsidian.
+
+**Web UI:** In the web chat, type: `"run lint and show me the report"`. Synthadoc runs all checks and returns a summary with per-category counts and affected page slugs.
+
 ## Running Lint
 
 ```bash

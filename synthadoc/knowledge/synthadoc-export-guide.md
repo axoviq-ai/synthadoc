@@ -17,6 +17,14 @@ Synthadoc can export your wiki in several formats for use with AI tools, graph a
 | **JSON** | `--format json` | Full dump: pages, citations, lifecycle history, cost data, routing. |
 | **OKF** | `--format okf` | [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page, consumable by any OKF-aware agent without code changes. Requires `--output <directory>`. |
 
+## Obsidian Plugin
+
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Export Wiki**.
+
+The modal shows a format dropdown, an output path field (pre-filled with today's date and the correct extension), and a status filter. Click **Export**. For all formats except `okf`, the file is saved inside the vault and opened automatically. For `okf`, the output path defaults to `~/exports/{vault-name}-okf-{date}/` outside the vault.
+
+When **GraphML** is selected, a **View Graph** button appears for an inline preview before saving.
+
 ## Basic Export Commands
 
 ```bash
