@@ -807,7 +807,7 @@ class ActionAgent(BaseAgent):
                 )
             lines = [f"**Stale pages ({len(stale)})** — source changed, re-ingest to refresh:\n"]
             for p in stale:
-                since = p.get("updated_at") or "unknown"
+                since = (p.get("updated_at") or "unknown")[:10]
                 lines.append(f"- `{p['slug']}` (stale since {since})")
             return ActionResult(
                 action_type="lint_report", success=True,
@@ -933,7 +933,7 @@ class ActionAgent(BaseAgent):
                 lines.append("")
                 lines.append(f"**Stale pages ({len(stale_pages)}):**")
                 for p in stale_pages:
-                    since = p.get("updated_at") or "unknown"
+                    since = (p.get("updated_at") or "unknown")[:10]
                     lines.append(f"- `{p['slug']}` (stale since {since})")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
