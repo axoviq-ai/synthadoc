@@ -6,7 +6,8 @@ import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+import uuid as _uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
@@ -234,6 +235,9 @@ class WorkflowContext:
     # Used by cost-estimate tools to substitute "Covered by coding tool subscription"
     # for the dollar figure — CLI providers bill via their own subscription, not per-token.
     is_cli_provider: bool = False
+    # Unique ID for this workflow run — used as the confirm registry key so
+    # two concurrent runs on the same session_id don't clobber each other's gates.
+    run_id: str = field(default_factory=lambda: str(_uuid.uuid4()))
 
     def cost_label(self, usd: float) -> str:
         """Human-readable cost string for a workflow estimate.

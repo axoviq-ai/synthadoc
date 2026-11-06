@@ -95,18 +95,23 @@ def count_hooks() -> int:
 
 
 def count_maintenance_workflows() -> int:
-    """Count agentic maintenance workflow classes in synthadoc/agents/workflows/.
+    """Count user-facing agentic maintenance workflow entry points.
 
-    Each workflow is a concrete subclass of AgenticWorkflow — identified by
-    'class <Name>Workflow(AgenticWorkflow)' declarations in the workflows package.
+    Counts concrete AgenticWorkflow subclasses, then adds 1 for
+    IngestLintWorkflow which exposes two distinct user-facing modes:
+    bulk stale-page re-ingest and per-slug re-ingest.  That gives the
+    user-facing count (9) that matches the table in
+    docs/user-quick-start-guide.md § Step 26.
     """
     import re
     workflows_dir = ROOT / "synthadoc" / "agents" / "workflows"
     pattern = re.compile(r"^class \w+Workflow\(AgenticWorkflow\)", re.MULTILINE)
-    return sum(
+    class_count = sum(
         len(pattern.findall(p.read_text(encoding="utf-8")))
         for p in workflows_dir.glob("*.py")
     )
+    # IngestLintWorkflow covers two user-facing entry points (bulk + per-slug).
+    return class_count + 1
 
 
 def read_coverage(coverage_json: Path) -> int:

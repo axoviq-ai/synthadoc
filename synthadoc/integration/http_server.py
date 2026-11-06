@@ -347,11 +347,13 @@ class AgentIngestRequest(BaseModel):
 
 class ActionConfirmRequest(BaseModel):
     session_id: str
+    run_id: str
     confirmed: bool
 
 
 class ScopedConfirmRequest(BaseModel):
     session_id: str
+    run_id: str
     confirmed: bool
     mode: str = "blocks"               # "blocks" or "page"; default "blocks" is safe
     included_block_ids: list[str] = []
@@ -1538,7 +1540,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         # budget.  Only reschedule when the payload carries an
                         # explicit timeout_seconds — avoids hardcoding a fallback
                         # that would drift from the value in tool_confirm.
-                        if evt["event"] == "confirm_request" and _outer_to.when() is not None:
+                        if evt["event"] in ("confirm_request", "scoped_edit_confirm") and _outer_to.when() is not None:
                             _gate_secs = evt["data"].get("timeout_seconds")
                             if _gate_secs is not None:
                                 _new_deadline = _loop.time() + int(_gate_secs) + 10  # +10 s buffer
@@ -1865,21 +1867,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/action/confirm")
     async def action_confirm(req: ActionConfirmRequest):
-        gate = app.state.confirm_registry.get(req.session_id)
+        gate = app.state.confirm_registry.get(req.run_id)
         if gate is None:
-            raise HTTPException(status_code=404, detail="No pending confirmation for this session")
+            raise HTTPException(status_code=404, detail="No pending confirmation for this run")
         if gate.is_set():
             raise HTTPException(status_code=409, detail="Confirmation already processed")
-        app.state.confirm_result_registry[req.session_id] = req.confirmed
+        app.state.confirm_result_registry[req.run_id] = req.confirmed
         gate.set()
         return {"ok": True}
 
     @app.post("/action/confirm-scoped")
     async def action_confirm_scoped(req: ScopedConfirmRequest):
-        gate = app.state.confirm_registry.get(req.session_id)
+        gate = app.state.confirm_registry.get(req.run_id)
         if gate is None or gate.is_set():
             raise HTTPException(status_code=404, detail="No pending scoped confirmation")
-        app.state.confirm_result_registry[req.session_id] = {
+        app.state.confirm_result_registry[req.run_id] = {
             "confirmed": req.confirmed,
             "mode": req.mode,
             "included_block_ids": req.included_block_ids,

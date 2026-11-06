@@ -508,9 +508,9 @@ async def test_rollback_requested_by_user_runs_without_extra_confirm(monkeypatch
 
 async def _auto_confirm_ch(ctx, confirmed=True):
     await asyncio.sleep(0.05)
-    gate = ctx.confirm_registry.get(ctx.session_id)
+    gate = ctx.confirm_registry.get(ctx.run_id)
     if gate:
-        ctx.confirm_result_registry[ctx.session_id] = confirmed
+        ctx.confirm_result_registry[ctx.run_id] = confirmed
         gate.set()
 
 

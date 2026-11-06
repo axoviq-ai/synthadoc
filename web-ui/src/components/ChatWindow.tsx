@@ -31,9 +31,10 @@ interface Props {
     initialMessages?: Message[];
     pendingPrompt?: string | null;
     onPendingPromptConsumed?: () => void;
-    onConfirmDecision?: (sessionId: string, confirmed: boolean) => void;
+    onConfirmDecision?: (sessionId: string, runId: string, confirmed: boolean) => void;
     onScopedEditConfirmDecision?: (decision: {
         sessionId: string;
+        runId: string;
         confirmed: boolean;
         mode: "blocks" | "page";
         includedBlockIds: string[];
@@ -226,11 +227,11 @@ export function ChatWindow({
                         timeoutSeconds={pendingConfirm.timeout_seconds}
                         onConfirm={() => {
                             setPendingConfirm(null);
-                            onConfirmDecision?.(pendingConfirm.session_id, true);
+                            onConfirmDecision?.(pendingConfirm.session_id, pendingConfirm.run_id, true);
                         }}
                         onDecline={() => {
                             setPendingConfirm(null);
-                            onConfirmDecision?.(pendingConfirm.session_id, false);
+                            onConfirmDecision?.(pendingConfirm.session_id, pendingConfirm.run_id, false);
                         }}
                     />
                 )}
@@ -250,6 +251,7 @@ export function ChatWindow({
                             setPendingScopedConfirm(null);
                             onScopedEditConfirmDecision?.({
                                 sessionId: captured.session_id,
+                                runId: captured.run_id,
                                 confirmed: result.confirmed,
                                 mode: result.mode,
                                 includedBlockIds: result.includedBlockIds,

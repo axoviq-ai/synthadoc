@@ -26,6 +26,10 @@ Every wiki page moves through a five-state lifecycle. Transitions are logged in 
 
 ## Manually Transitioning Pages
 
+### Via the Obsidian plugin
+
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**, or find the page in the Obsidian file explorer → right-click → **Manage Page Lifecycle**. The modal shows the current state, available transitions, a reason field, and a **Content Snapshots** tab for browsing and comparing prior versions. All transitions require `synthadoc serve` to be running.
+
 ### Via the web UI chat
 
 Ask naturally — no page name required. Synthadoc will present matching pages as clickable chips:

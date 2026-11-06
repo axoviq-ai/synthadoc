@@ -532,6 +532,7 @@ class ActionAgent(BaseAgent):
 
         import uuid as _uuid
         _session_id = session_id or str(_uuid.uuid4())
+        _run_id = str(_uuid.uuid4())
         _cfg = getattr(self._orch, "_cfg", None)
         _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
         from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
@@ -551,7 +552,16 @@ class ActionAgent(BaseAgent):
             ),
             search=getattr(self._orch, "_search", None),
             is_cli_provider=isinstance(self._provider, CodingToolCLIProvider),
+            run_id=_run_id,
         )
+
+        # Cancel any previous workflow still running on this session so its
+        # orphaned confirm gates can't interfere with the new run.
+        if not hasattr(self._orch, "_workflow_tasks"):
+            self._orch._workflow_tasks = {}
+        _prev = self._orch._workflow_tasks.get(_session_id)
+        if _prev is not None and not _prev.done():
+            _prev.cancel()
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
 
@@ -635,6 +645,9 @@ class ActionAgent(BaseAgent):
 
             task = _asyncio.create_task(_run_loop())
 
+        # Register so the NEXT run on this session can cancel this one promptly.
+        self._orch._workflow_tasks[_session_id] = task
+
         # ── Drain the sse_queue (shared for CLI and normal paths) ─────────────
         try:
             while True:
@@ -695,6 +708,9 @@ class ActionAgent(BaseAgent):
                     await task
                 except _asyncio.CancelledError:
                     pass
+            # Deregister so a future run doesn't try to cancel an already-done task.
+            if self._orch._workflow_tasks.get(_session_id) is task:
+                self._orch._workflow_tasks.pop(_session_id, None)
 
     # ── private ───────────────────────────────────────────────────────────────
 
@@ -791,7 +807,7 @@ class ActionAgent(BaseAgent):
                 )
             lines = [f"**Stale pages ({len(stale)})** — source changed, re-ingest to refresh:\n"]
             for p in stale:
-                since = p.get("updated") or p.get("created") or "unknown"
+                since = (p.get("updated_at") or "unknown")[:10]
                 lines.append(f"- `{p['slug']}` (stale since {since})")
             return ActionResult(
                 action_type="lint_report", success=True,
@@ -917,7 +933,7 @@ class ActionAgent(BaseAgent):
                 lines.append("")
                 lines.append(f"**Stale pages ({len(stale_pages)}):**")
                 for p in stale_pages:
-                    since = p.get("updated") or p.get("created") or "unknown"
+                    since = (p.get("updated_at") or "unknown")[:10]
                     lines.append(f"- `{p['slug']}` (stale since {since})")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
@@ -1155,6 +1171,11 @@ class ActionAgent(BaseAgent):
     async def _fetch_jobs(self):
         return await self._orch.queue.list_jobs()
 
+    @staticmethod
+    def _fmt_job_status(status) -> str:
+        val = status.value if hasattr(status, "value") else str(status)
+        return {"in_progress": "running"}.get(val, val)
+
     async def _do_job_list(self, params: dict | None = None) -> ActionResult:
         from synthadoc.core.queue import JobStatus
         raw_filter = (params or {}).get("status_filter")
@@ -1174,14 +1195,14 @@ class ActionAgent(BaseAgent):
             for j in jobs:
                 err = (j.error or "").replace("|", "\\|")
                 lines.append(
-                    f"| `{j.id}` | {j.operation} | {j.status}"
+                    f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)}"
                     f" | {fmt_ts(str(j.created_at))} | {err} |"
                 )
         else:
             lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
             for j in jobs:
                 lines.append(
-                    f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
+                    f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)} | {fmt_ts(str(j.created_at))} |"
                 )
         return ActionResult(action_type="job_list", success=True,
                             message="\n".join(lines))
@@ -1201,7 +1222,7 @@ class ActionAgent(BaseAgent):
             lines = [
                 f"**Job `{job.id}`**\n",
                 f"- **Operation:** {job.operation}",
-                f"- **Status:** {job.status}",
+                f"- **Status:** {self._fmt_job_status(job.status)}",
                 f"- **Started:** {fmt_ts(str(job.created_at))}",
             ]
             if job.error:
@@ -1223,7 +1244,7 @@ class ActionAgent(BaseAgent):
         candidates: list[str] = []
         for j in jobs:
             table_lines.append(
-                f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
+                f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)} | {fmt_ts(str(j.created_at))} |"
             )
             candidates.append(j.id)
         prompt = "Which job would you like to see the status for?"

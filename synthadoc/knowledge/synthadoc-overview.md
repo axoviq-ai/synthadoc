@@ -52,15 +52,31 @@ Unlike traditional retrieval-augmented generation (RAG) tools that synthesize at
 
 **Web chat UI** — `synthadoc web` opens a multi-turn browser chat with streaming answers, citation links, knowledge-gap callouts, and adaptive hint chips.
 
-**Obsidian plugin** — query modal, ingest modal, jobs list, lifecycle management, lint report, candidates review, routing management, export wiki, and claim provenance viewer, all in the Command Palette.
+**Obsidian plugin** — query modal, ingest modal, jobs list, lifecycle management, lint report, candidates review, routing management, export wiki, claim provenance viewer, and an interactive **knowledge graph panel** (Canvas force-graph with type filter, hover tooltips, and click-to-open), all in the Command Palette.
 
-**Export formats** — `llms.txt` (compact index for AI consumption), `llms-full.txt` (full content), `graphml` (wikilink graph for yEd / Gephi), `json` (full dump with claims, lifecycle history, per-page cost).
+**Export formats** — `llms.txt` (compact index for AI consumption), `llms-full.txt` (full content), `graphml` (wikilink graph for yEd / Gephi), `json` (full dump with claims, lifecycle history, per-page cost), `okf` ([OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — consumable by any OKF-aware agent without code changes).
 
 **Scheduling** — register cron-based recurring jobs (nightly ingest, weekly lint, weekly scaffold) via `synthadoc schedule add`.
 
 **Candidates staging** — new pages can land in a staging area for review before influencing queries and lint.
 
 **Context packs** — a goal decomposes into sub-questions, retrieves the highest-scoring pages, and assembles a token-bounded cited Markdown bundle for feeding to external LLMs.
+
+**Domain templates** — 30 starter templates across 9 categories (finance, healthcare, legal, technology, etc.). Install with `synthadoc install <name> --template <category/domain>`; browse with `synthadoc templates list`.
+
+**Agentic maintenance workflows** — interactive tool-call loops for contradiction resolution, content health fixes, orphan page linking, broken wikilink repair, and broken citation repair. Each workflow presents a confirm card before writing any change.
+
+**Citation faithfulness audit** — opt-in LLM pass that verifies every compiled claim against its cited source lines and flags hallucinations or drifts. Run with `synthadoc audit citations --faithfulness`.
+
+**Cross-wiki federation** — `synthadoc query --cross-wiki` fans a single question out across all registered running wikis simultaneously. The LLM auto-routes to relevant wikis, citations use `[[wiki-name::PageTitle]]` pills, and answers degrade gracefully when a target wiki is offline. Manage the optional routing override with `synthadoc cross-wiki routing init/show/edit`.
+
+**MCP server** — exposes wiki tools (query, ingest, export, lifecycle) to any MCP-compatible client (Claude Desktop, Cursor, Zed, etc.) for live brain/memory access.
+
+**Backup and restore** — `synthadoc backup` creates a portable ZIP (wiki pages, raw sources, audit DB); `synthadoc restore` re-registers the wiki from a backup ZIP.
+
+**Page content snapshots and rollback** — the audit DB stores a content snapshot at every lifecycle transition. Roll back any page to a prior snapshot via `synthadoc lifecycle rollback <slug>`, the Obsidian plugin snapshot viewer, or the MCP `rollback_page` tool.
+
+**Docker deployment** — official `synthadoc` Docker image (amd64 + arm64); one container per wiki exposing the HTTP API, Web UI, and MCP server on a single port. See `docs/docker-deploy.md` for Compose recipes including multi-wiki cross-wiki setups and an Ollama sidecar.
 
 ---
 
@@ -75,6 +91,8 @@ Unlike traditional retrieval-augmented generation (RAG) tools that synthesize at
 | DeepSeek | Paid — very low text rates | |
 | Anthropic | Paid | |
 | OpenAI | Paid | |
+| Qwen (DashScope) | Yes — 1M free tokens (90-day trial) | `QWEN_API_KEY`; always set `thinking = "disabled"` |
+| Kimi (DashScope) | No — pay-per-token | `KIMI_API_KEY`; `kimi-k3` has 1M-token context; always set `thinking = "disabled"` |
 | Claude Code | No separate key needed | Uses your existing subscription |
 | Opencode | No separate key needed | Uses your existing subscription |
 

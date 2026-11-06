@@ -87,7 +87,8 @@ async def test_resolve_stale_pages_returns_slugs_and_paths(tmp_path):
 
     assert len(result) == 1
     assert result[0]["slug"] == "page-a"
-    assert result[0]["source_path"] == source_file
+    # source is outside wiki_root (/wiki) → falls back to filename only
+    assert result[0]["source_path"] == "a.md"
     assert "stale_since" in result[0]
 
 
@@ -130,8 +131,8 @@ async def test_resolve_stale_pages_resolves_relative_path(tmp_path):
     result = await _resolve_stale_pages(ctx)
 
     assert len(result) == 1
-    expected = str(tmp_path / "raw" / "a.md")
-    assert result[0]["source_path"] == expected
+    # _resolve_stale_pages returns posix paths (forward slashes on all platforms)
+    assert result[0]["source_path"] == "raw/a.md"
 
 
 async def test_resolve_stale_pages_resolves_raw_sources_fallback(tmp_path):
@@ -170,8 +171,8 @@ async def test_resolve_stale_pages_resolves_raw_sources_fallback(tmp_path):
     result = await _resolve_stale_pages(ctx)
 
     assert len(result) == 1
-    expected = str(tmp_path / "raw_sources" / "public-domain" / "a.txt")
-    assert result[0]["source_path"] == expected
+    # _resolve_stale_pages returns posix paths (forward slashes on all platforms)
+    assert result[0]["source_path"] == "raw_sources/public-domain/a.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -271,9 +272,9 @@ async def test_confirm_tool_blocks_until_response():
 
     async def _resolve():
         await asyncio.sleep(0.05)
-        gate = ctx.confirm_registry.get("s1")
+        gate = ctx.confirm_registry.get(ctx.run_id)
         if gate:
-            ctx.confirm_result_registry["s1"] = True
+            ctx.confirm_result_registry[ctx.run_id] = True
             gate.set()
 
     asyncio.create_task(_resolve())
@@ -288,9 +289,9 @@ async def test_confirm_tool_includes_diff_in_payload():
 
     async def _resolve():
         await asyncio.sleep(0.05)
-        gate = ctx.confirm_registry.get("s1")
+        gate = ctx.confirm_registry.get(ctx.run_id)
         if gate:
-            ctx.confirm_result_registry["s1"] = True
+            ctx.confirm_result_registry[ctx.run_id] = True
             gate.set()
 
     asyncio.create_task(_resolve())
@@ -696,12 +697,12 @@ async def test_poll_job_handles_none_job():
     assert len(sleep_calls) == 1
 
 
-async def test_ingest_source_rejects_relative_path():
-    """Relative path → error with 'absolute' in message."""
+async def test_ingest_source_rejects_nonexistent_relative_path():
+    """Relative path that doesn't exist under wiki_root → 'File not found' error."""
     ctx, _ = _make_ctx()
     result = await tool_ingest_source(ctx, "relative/path/file.md")
     assert "error" in result
-    assert "absolute" in result["error"]
+    assert "not found" in result["error"].lower()
 
 
 async def test_poll_job_returns_failed_on_queue_error():
@@ -791,7 +792,8 @@ async def test_find_page_source_happy_path(tmp_path):
     ctx, events = _make_ctx(store=store)
     result = await tool_find_page_source(ctx, "my-slug")
 
-    assert result == {"slug": "my-slug", "source_path": str(src)}
+    # source is outside wiki_root (/wiki) → falls back to filename only
+    assert result == {"slug": "my-slug", "source_path": "doc.md"}
     assert any(e["event"] == "tool_progress" for e in events)
 
 
@@ -1644,9 +1646,9 @@ def _confirming_store(content: str):
 
 async def _auto_confirm(ctx, confirmed=True):
     await asyncio.sleep(0.05)
-    gate = ctx.confirm_registry.get("s1")
+    gate = ctx.confirm_registry.get(ctx.run_id)
     if gate:
-        ctx.confirm_result_registry["s1"] = confirmed
+        ctx.confirm_result_registry[ctx.run_id] = confirmed
         gate.set()
 
 

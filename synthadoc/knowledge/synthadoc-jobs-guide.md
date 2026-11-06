@@ -41,6 +41,10 @@ Failed jobs are retried automatically up to 3 times with exponential backoff. De
 
 Jobs cannot be cancelled mid-run. Completed and failed jobs remain in the queue log for audit purposes. The queue is stored in `.synthadoc/queue.db`.
 
+## Viewing Jobs in the Obsidian Plugin
+
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Jobs…**. The modal shows all jobs sorted newest-first with status-filter checkboxes (pending, running, completed, failed, dead). Click the **Status**, **Operation**, or **Created** column headers to re-sort. The list auto-refreshes while jobs are running.
+
 ## Viewing Jobs in the Web UI
 
 When running `synthadoc web`, the current job queue is visible by asking: *"What are the current jobs?"* or *"List all jobs"* — Synthadoc will query the live queue and show the results inline.

@@ -238,6 +238,13 @@ def refresh_wiki_health_issues(
         if page is None or page.status != LifecycleState.ACTIVE:
             continue
         new_issues = [asdict(i) for i in scan_page(slug, page.content or "", thin_section_min_words)]
+        # Respect previous dismissals: filter out issue types the user dismissed via
+        # the content-health resolver so lint doesn't silently undo that decision.
+        fix_record = page.content_health_fix_record or {}
+        if fix_record.get("dismissed_at"):
+            dismissed_types: set[str] = set(fix_record.get("dismissed_types") or [])
+            if dismissed_types:
+                new_issues = [i for i in new_issues if i.get("type") not in dismissed_types]
         if new_issues != (page.content_health_issues or []):
             page.content_health_issues = new_issues
             store.write_page(slug, page)

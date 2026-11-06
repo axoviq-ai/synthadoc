@@ -92,7 +92,7 @@ def _find_raw_source_candidates(wiki_root: Path, slug: str) -> list[str]:
         return (0 if match else 1, str(p))
 
     files.sort(key=_rank)
-    return [str(f.relative_to(wiki_root)) for f in files]
+    return [f.relative_to(wiki_root).as_posix() for f in files]
 
 
 def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
@@ -135,14 +135,22 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     for p in stale:
         page = ctx.store.read_page(p["slug"])
         raw_file = page.sources[0].file if page and page.sources else None
-        source_path: str | None = (
+        abs_path: str | None = (
             _resolve_source_path(ctx.wiki_root, raw_file) if raw_file is not None else None
         )
+        # Return wiki-relative path so LLM-written confirm cards show readable names.
+        # tool_ingest_source resolves relative paths back to absolute.
+        source_path: str | None = None
+        if abs_path is not None:
+            try:
+                source_path = Path(abs_path).relative_to(ctx.wiki_root).as_posix()
+            except ValueError:
+                source_path = Path(abs_path).name
         result.append(
             {
                 "slug": p["slug"],
                 "source_path": source_path,
-                "stale_since": p.get("updated") or p.get("created") or "unknown",
+                "stale_since": (p.get("updated_at") or "unknown")[:10],
             }
         )
     return result
@@ -173,7 +181,12 @@ async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
                 "candidates": candidates,
             }
         return {"error": f"Page {slug!r} has no local source file recorded"}
-    source_path = _resolve_source_path(ctx.wiki_root, raw_file)
+    abs_path = _resolve_source_path(ctx.wiki_root, raw_file)
+    # Return wiki-relative path; tool_ingest_source resolves it back.
+    try:
+        source_path = Path(abs_path).relative_to(ctx.wiki_root).as_posix()
+    except ValueError:
+        source_path = Path(abs_path).name
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "find_page_source", "message": f"Found source for {slug}"},
@@ -211,9 +224,10 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     if is_url:
         label = source_path
     else:
-        # Must be an absolute path — relative paths are ambiguous on the server.
+        # Resolve relative paths (returned by find_stale_pages / find_page_source)
+        # against wiki_root so the LLM can pass them through without modification.
         if not os.path.isabs(source_path):
-            return {"error": f"source_path must be an absolute path, got: {source_path!r}"}
+            source_path = str(ctx.wiki_root / source_path)
         path = Path(source_path)
         if not path.exists():
             return {"error": f"File not found: {source_path!r}"}
@@ -783,7 +797,10 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
     domain = ctx.domain or "General"
 
     routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
-    files = [str(p) for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)]
+    files = [
+        p.relative_to(ctx.wiki_root).as_posix()
+        for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
+    ]
 
     await ctx.send_sse_event(
         "tool_progress",
@@ -813,7 +830,9 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     files = scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
     # Use markdown list syntax so the confirm panel renders each file on its
     # own line (bare "• item\n" collapses to a single paragraph in markdown).
-    file_items = "\n".join(f"- {p}" for p in files)
+    # Show paths relative to wiki_root so the dialog shows readable short paths
+    # (e.g. "wiki/index.md") instead of absolute filesystem paths.
+    file_items = "\n".join(f"- {p.relative_to(ctx.wiki_root).as_posix()}" for p in files)
     confirm_message = (
         f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
         f"{file_items}\n\n"
@@ -877,7 +896,7 @@ async def tool_scoped_confirm(
     """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
 
     Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` (same
-    registry as :func:`tool_confirm`) keyed by ``ctx.session_id``.  The HTTP
+    registry as :func:`tool_confirm`) keyed by ``ctx.run_id``.  The HTTP
     handler resolves the gate via ``POST /action/confirm-scoped``.
 
     Returns ``{"confirmed": bool, "final_body": str | None}``.  Times out with
@@ -917,13 +936,14 @@ async def tool_scoped_confirm(
 
     # 4. Register gate
     gate = asyncio.Event()
-    ctx.confirm_registry[ctx.session_id] = gate
-    ctx.confirm_result_registry[ctx.session_id] = {}
+    ctx.confirm_registry[ctx.run_id] = gate
+    ctx.confirm_result_registry[ctx.run_id] = {}
 
     try:
         # 5. Send SSE
         payload: dict = {
             "session_id": ctx.session_id,
+            "run_id": ctx.run_id,
             "page_slug": slug,
             "current_body": current_body,
             "accumulated_body": apply_result.accumulated_body,
@@ -938,32 +958,35 @@ async def tool_scoped_confirm(
             await ctx.send_sse_event("scoped_edit_confirm", payload)
         except Exception:  # noqa: BLE001
             _log.warning(
-                "tool_scoped_confirm: failed to send SSE (session=%s)",
-                ctx.session_id,
+                "tool_scoped_confirm: failed to send SSE (session=%s run=%s)",
+                ctx.session_id, ctx.run_id,
                 exc_info=True,
             )
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
+        _log.info("tool_scoped_confirm: sent slug=%s (session=%s run=%s)", slug, ctx.session_id, ctx.run_id)
 
         # 6. Wait for gate
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
         except asyncio.TimeoutError:
+            _log.info("tool_scoped_confirm: expired after %.0fs slug=%s (session=%s run=%s)", _CONFIRM_TIMEOUT, slug, ctx.session_id, ctx.run_id)
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 7. Read result
-        res = ctx.confirm_result_registry.get(ctx.session_id, {})
+        res = ctx.confirm_result_registry.get(ctx.run_id, {})
 
         # Guard: a plain bool (from tool_confirm) must not be read as a scoped dict
         if not isinstance(res, dict):
             _log.error(
                 "tool_scoped_confirm: unexpected non-dict result in registry for "
-                "session=%s (type=%s) — treating as declined",
-                ctx.session_id, type(res).__name__,
+                "session=%s run=%s (type=%s) — treating as declined",
+                ctx.session_id, ctx.run_id, type(res).__name__,
             )
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 8. If not confirmed
         if not res.get("confirmed"):
+            _log.info("tool_scoped_confirm: declined slug=%s (session=%s run=%s)", slug, ctx.session_id, ctx.run_id)
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 9 / 10. Compute final_body
@@ -985,12 +1008,13 @@ async def tool_scoped_confirm(
             final_body = re_result.accumulated_body
 
         # 11. Return — include mode so callers can apply mode-specific validation
+        _log.info("tool_scoped_confirm: approved mode=%s slug=%s (session=%s run=%s)", mode, slug, ctx.session_id, ctx.run_id)
         return {"confirmed": True, "final_body": final_body, "mode": mode}
 
     finally:
         # 12. Cleanup
-        ctx.confirm_registry.pop(ctx.session_id, None)
-        ctx.confirm_result_registry.pop(ctx.session_id, None)
+        ctx.confirm_registry.pop(ctx.run_id, None)
+        ctx.confirm_result_registry.pop(ctx.run_id, None)
 
 
 def unified_diff_preview(slug: str, old: str, new: str, max_lines: int = 80) -> str:
@@ -1021,7 +1045,7 @@ async def tool_confirm(
     """Send a confirmation request to the client and wait for the response.
 
     Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` keyed
-    by ``ctx.session_id``.  The HTTP handler resolves the gate when the user
+    by ``ctx.run_id``.  The HTTP handler resolves the gate when the user
     responds.
 
     When *diff* is provided (a unified-diff string), it is included in the SSE
@@ -1038,11 +1062,12 @@ async def tool_confirm(
     """
     _CONFIRM_TIMEOUT = 300.0
     gate = asyncio.Event()
-    ctx.confirm_registry[ctx.session_id] = gate
-    ctx.confirm_result_registry[ctx.session_id] = False
+    ctx.confirm_registry[ctx.run_id] = gate
+    ctx.confirm_result_registry[ctx.run_id] = False
     try:
         payload: dict = {
             "session_id": ctx.session_id,
+            "run_id": ctx.run_id,
             "message": message,
             "yes_label": yes_label,
             "no_label": no_label,
@@ -1053,20 +1078,23 @@ async def tool_confirm(
         try:
             await ctx.send_sse_event("confirm_request", payload)
         except Exception:  # noqa: BLE001
-            _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s); treating as declined", ctx.session_id, exc_info=True)
+            _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s run=%s); treating as declined", ctx.session_id, ctx.run_id, exc_info=True)
             return {"confirmed": False}
+        _log.info("tool_confirm: sent (session=%s run=%s)", ctx.session_id, ctx.run_id)
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
-            raw_result = ctx.confirm_result_registry.get(ctx.session_id, False)
+            raw_result = ctx.confirm_result_registry.get(ctx.run_id, False)
             # Explicit bool check: a scoped-confirm dict is truthy but must not
             # be mistaken for a plain confirmed=True from tool_confirm.
             confirmed = raw_result is True
+            _log.info("tool_confirm: answered confirmed=%s (session=%s run=%s)", confirmed, ctx.session_id, ctx.run_id)
             return {"confirmed": confirmed}
         except asyncio.TimeoutError:
+            _log.info("tool_confirm: expired after %.0fs (session=%s run=%s)", _CONFIRM_TIMEOUT, ctx.session_id, ctx.run_id)
             return {"confirmed": False}
     finally:
-        ctx.confirm_registry.pop(ctx.session_id, None)
-        ctx.confirm_result_registry.pop(ctx.session_id, None)
+        ctx.confirm_registry.pop(ctx.run_id, None)
+        ctx.confirm_result_registry.pop(ctx.run_id, None)
 
 
 # ---------------------------------------------------------------------------
