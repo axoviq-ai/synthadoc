@@ -5,7 +5,7 @@ keywords: [schedule, scheduled, recurring, cron, scheduler, unschedule, automate
 
 # Synthadoc Schedule Guide
 
-The `synthadoc schedule` commands register recurring operations with the OS scheduler (crontab on macOS/Linux, Task Scheduler on Windows). No background daemon is required — the OS fires the job, which runs `synthadoc serve` internally.
+The `synthadoc schedule` commands register recurring operations with Synthadoc's internal scheduler. The scheduler runs inside `synthadoc serve` and fires jobs at the configured cron times without requiring any OS-level crontab or Task Scheduler entry.
 
 ---
 
