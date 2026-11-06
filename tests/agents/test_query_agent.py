@@ -174,7 +174,7 @@ async def test_query_deduplicates_pages_across_sub_questions(tmp_wiki):
             text='["Moore\'s Law transistors", "Moore\'s Law hardware impact"]',
             input_tokens=10, output_tokens=10,
         ),
-        CompletionResponse(text="Moore's Law answer.", input_tokens=100, output_tokens=20),
+        CompletionResponse(text="Moore's Law answer. [[moores-law]]", input_tokens=100, output_tokens=20),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
@@ -296,7 +296,7 @@ async def test_query_citations_match_search_results(tmp_wiki):
     provider = AsyncMock()
     provider.complete.side_effect = [
         CompletionResponse(text='["chlorine pool algae"]', input_tokens=10, output_tokens=5),
-        CompletionResponse(text="Use chlorine shock.", input_tokens=100, output_tokens=20),
+        CompletionResponse(text="Use chlorine shock. [[pool-chemicals]]", input_tokens=100, output_tokens=20),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
@@ -319,7 +319,7 @@ async def test_query_multiple_pages_all_cited(tmp_wiki):
     provider.complete.side_effect = [
         CompletionResponse(text='["pool ph chlorine alkalinity"]',
                            input_tokens=10, output_tokens=5),
-        CompletionResponse(text="Balance pH, chlorine, and alkalinity.",
+        CompletionResponse(text="Balance [[pool-ph]], [[pool-chlorine]], and [[pool-alkalinity]].",
                            input_tokens=200, output_tokens=30),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
@@ -356,7 +356,7 @@ async def test_compound_query_retrieves_both_parts(tmp_wiki):
             input_tokens=20, output_tokens=15,
         ),
         CompletionResponse(
-            text="FORTRAN was by Backus. Bombe was by Turing.",
+            text="[[fortran-history|FORTRAN]] was by Backus. [[bombe-machine|Bombe]] was by Turing.",
             input_tokens=200, output_tokens=30,
         ),
     ]
@@ -1885,7 +1885,7 @@ async def test_query_cjk_pages_answered_without_gap(tmp_wiki):
     provider.complete.side_effect = [
         CompletionResponse(text="What is a Turing machine?", input_tokens=20, output_tokens=5),  # translate
         CompletionResponse(text='["What is a Turing machine?"]', input_tokens=5, output_tokens=5),  # decompose
-        CompletionResponse(text="图灵机是一种理论计算模型。", input_tokens=80, output_tokens=20),  # synthesis
+        CompletionResponse(text="图灵机是一种理论计算模型。[[图灵机-0]]", input_tokens=80, output_tokens=20),  # synthesis
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)
@@ -1894,7 +1894,7 @@ async def test_query_cjk_pages_answered_without_gap(tmp_wiki):
         result = await agent.run("图灵机是什么？")
 
     assert result.knowledge_gap is False
-    assert result.answer == "图灵机是一种理论计算模型。"
+    assert "图灵机是一种理论计算模型" in result.answer
     assert any("图灵机" in c for c in result.citations)
     # Verify CJK page content reached the synthesis prompt (3rd call: translate, decompose, synthesis)
     synthesis_call = provider.complete.call_args_list[2]
@@ -3736,6 +3736,57 @@ def test_signal5_does_not_fire_on_expansion_term_from_followup():
     )
     assert gap is False, (
         f"Gap fired on expansion term '{term}' — signal5 filter not suppressing it"
+    )
+
+
+def test_signal5_does_not_fire_on_typed_name_present_once_on_page():
+    """Signal 5 must not declare a name absent when it appears once on a top page.
+
+    "Walter Brattain" appears once in transistor-history.  The page is rank 0,
+    so the top-page exception (_TOP_PAGES_ONE_MENTION) sets _needed=1, which
+    means qualifying_pages["walter"]=1 (≥ _needed).  Signal 5 should stay silent
+    because qualifying_pages > 0 for a top-ranked page that covers the topic.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "transistor-history": (
+            "Walter Brattain and John Bardeen invented the transistor at Bell Labs. "
+            "The transistor device changed semiconductor electronics significantly. "
+            "Bell Labs produced the transistor in 1947."
+        ),
+        "bell-labs": (
+            "Bell Labs is an industrial research laboratory known for the transistor. "
+            "Many important transistor inventions came from Bell Labs research. "
+            "Bell Labs employed thousands of scientists on the transistor project."
+        ),
+        "semiconductor": (
+            "Semiconductor transistor devices include diodes and other components. "
+            "Silicon is the most common transistor semiconductor material used today. "
+            "Semiconductor transistor devices include many varieties."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Ethernet is a networking standard from Xerox PARC.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was an early data storage medium.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # "Walter" is in original_q AND appears once in the top-ranked page.
+    # The top-page exception means qualifying_pages["walter"]=1, so Signal 5
+    # should not include "walter" in its triggers at all.
+    gap, term, _, _ = agent._detect_gap(
+        question="what did walter brattain invent transistor bell labs",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="What did Walter Brattain invent?",
+    )
+    assert gap is False, (
+        f"Signal 5 fired on '{term}' even though it appears on the top-ranked page"
     )
 
 

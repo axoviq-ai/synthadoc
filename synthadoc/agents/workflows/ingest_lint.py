@@ -279,7 +279,7 @@ class IngestLintWorkflow(AgenticWorkflow):
                         from pathlib import Path as _Path
                         raw_src = str(_Path(raw_src).relative_to(_wiki_root))
                     except (ValueError, TypeError):
-                        pass
+                        raw_src = _Path(raw_src).name
                 src = raw_src or "(no source path — will be skipped)"
                 stale_since = p.get("stale_since", "")
                 since_label = f"  stale since {stale_since}" if stale_since and stale_since != "unknown" else ""

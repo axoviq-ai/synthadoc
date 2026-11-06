@@ -1217,9 +1217,16 @@ class QueryAgent(BaseAgent):
             logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
         answer_text = self._resolve_links(answer_text, candidates)
 
-        # Gap answers come from general knowledge — no wiki pages were cited inline.
-        if _gap:
-            citations = []
+        # Keep only citations the LLM actually used inline as [[slug]].
+        # This handles gap answers (no inline links → empty sources) and also
+        # partial-coverage answers that mix wiki knowledge with general knowledge —
+        # only the pages that appear in the text are shown.  It also preserves
+        # real citations if a gap signal ever misfires.
+        _cited_slugs = {
+            m.group(1).strip()
+            for m in re.finditer(r'\[\[([^\]|#:]+?)(?:[|#:][^\]]+)?\]\]', answer_text)
+        }
+        citations = [c for c in citations if c in _cited_slugs]
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
         return QueryResult(
@@ -1646,9 +1653,12 @@ class QueryAgent(BaseAgent):
         if full_answer != "".join(_streamed):
             yield {"event": "answer", "data": {"text": full_answer}}
 
-        # Gap answers come from general knowledge — no wiki pages were cited inline.
-        if _gap:
-            citations = []
+        # Keep only citations the LLM actually used inline as [[slug]].
+        _cited_slugs = {
+            m.group(1).strip()
+            for m in re.finditer(r'\[\[([^\]|#:]+?)(?:[|#:][^\]]+)?\]\]', full_answer)
+        }
+        citations = [c for c in citations if c in _cited_slugs]
         yield {"event": "citations", "data": {"citations": citations}}
 
         if _gap:
