@@ -24,6 +24,7 @@ export interface ToolProgressData {
 
 export interface ConfirmRequestData {
     session_id: string;
+    run_id: string;
     message: string;
     yes_label: string;
     no_label: string;
@@ -43,6 +44,7 @@ export interface ScopedEditBlock {
 
 export interface ScopedEditConfirmData {
     session_id: string;
+    run_id: string;
     page_slug: string;
     current_body: string;
     accumulated_body: string;
@@ -228,6 +230,7 @@ export function dispatch(event: string, data: Record<string, unknown>, cb: Strea
             if (cb.onConfirmRequest) {
                 cb.onConfirmRequest({
                     session_id: typeof data.session_id === "string" ? data.session_id : "",
+                    run_id: typeof data.run_id === "string" ? data.run_id : "",
                     message: typeof data.message === "string" ? data.message : "",
                     yes_label: typeof data.yes_label === "string" ? data.yes_label : "Yes",
                     no_label: typeof data.no_label === "string" ? data.no_label : "No",
