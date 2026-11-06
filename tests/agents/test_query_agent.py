@@ -3669,6 +3669,76 @@ def test_signal7_stays_silent_for_cjk_question():
     assert gap is False, "Signal 7 must not fire for CJK questions"
 
 
+def test_signal5_does_not_fire_on_expansion_term_from_followup():
+    """Signal 5 must not fire on terms the LLM added when rewriting a follow-up.
+
+    Scenario: "Who invented the transistor?" is a follow-up in a session about
+    Bell Labs.  The LLM rewrites it to a standalone question that appends person
+    names like "walter" and "brattain".  "walter" appears once in
+    transistor-history (< _MIN_TERM_FREQ=2), so _term_qualifying_pages["walter"]
+    == 0 — the exact Signal 5 trigger pattern.
+
+    Before the fix Signal 5 would fire (gap=True).  After the fix,
+    _signal5_triggers is filtered to terms the user actually typed.  "transistor"
+    (the only user content term) is well-covered, so the filtered trigger list is
+    empty and Signal 5 stays silent.
+
+    The design avoids Signal 7 by ensuring the user's content term ("transistor")
+    appears in multiple pages (doc_freq > 0), so it cannot trigger Signal 7.
+    Signal 4 is kept inactive by giving transistor enough on-topic pages
+    (pages_with_overlap = 3 ≥ 7 // 2 = 3 is False, so Signal 4 is off).
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # "transistor" appears ≥ _MIN_TERM_FREQ=2 times in the first three pages so
+    # those pages count as on-topic (pages_with_overlap=3).
+    # "walter" appears only once in transistor-history → qualifying_pages=0 →
+    # Signal 5 trigger (before the fix) or filtered away (after the fix).
+    pages = {
+        "transistor-history": (
+            "Walter Brattain and John Bardeen invented the transistor at Bell Labs. "
+            "The transistor device changed semiconductor electronics significantly. "
+            "Bell Labs produced the transistor in 1947."
+        ),
+        "bell-labs": (
+            "Bell Labs is an industrial research laboratory known for the transistor. "
+            "Many important transistor inventions came from Bell Labs research. "
+            "Bell Labs employed thousands of scientists on the transistor project."
+        ),
+        "semiconductor": (
+            "Semiconductor transistor devices include diodes and other components. "
+            "Silicon is the most common transistor semiconductor material used today. "
+            "Semiconductor transistor devices include many varieties."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Ethernet is a networking standard from Xerox PARC.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was an early data storage medium.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # LLM rewrites "Who invented the transistor?" → standalone expansion appends
+    # "walter brattain bell labs 1947".  "walter" has doc_freq=1 (appears once in
+    # transistor-history) and qualifying_pages=0 — exactly Signal 5's pattern.
+    # With the fix, Signal 5 is filtered to original_q terms: only "transistor"
+    # (the -ed verb "invented" is stripped by the past-tense filter).
+    # "transistor" is well-covered (qualifying_pages=3), so the filtered list is
+    # empty and Signal 5 stays silent.
+    gap, term, _, _ = agent._detect_gap(
+        question="who invented transistor walter brattain bell labs 1947",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="Who invented the transistor?",
+    )
+    assert gap is False, (
+        f"Gap fired on expansion term '{term}' — signal5 filter not suppressing it"
+    )
+
+
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():
     from synthadoc.agents._query_utils import resolve_wikilinks
     pages = {"konrad-zuse": ("Konrad Zuse Z3 Computer", ["Zuse"]),

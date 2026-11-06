@@ -271,10 +271,18 @@ class IngestLintWorkflow(AgenticWorkflow):
             # but a blank line (\n\n) before the list is required so ReactMarkdown
             # doesn't fuse the header and the first item into one paragraph.
             confirm_items: list[str] = []
+            _wiki_root = getattr(ctx, "wiki_root", None)
             for p in pages:
-                src = p.get("source_path") or "(no source path — will be skipped)"
+                raw_src = p.get("source_path")
+                if raw_src and _wiki_root and not raw_src.startswith(("http://", "https://")):
+                    try:
+                        from pathlib import Path as _Path
+                        raw_src = str(_Path(raw_src).relative_to(_wiki_root))
+                    except (ValueError, TypeError):
+                        pass
+                src = raw_src or "(no source path — will be skipped)"
                 stale_since = p.get("stale_since", "")
-                since_label = f"  stale since {stale_since}" if stale_since else ""
+                since_label = f"  stale since {stale_since}" if stale_since and stale_since != "unknown" else ""
                 confirm_items.append(f"- **{p['slug']}**: {src}{since_label}")
 
             confirm_msg = (

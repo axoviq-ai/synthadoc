@@ -1217,6 +1217,9 @@ class QueryAgent(BaseAgent):
             logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
         answer_text = self._resolve_links(answer_text, candidates)
 
+        # Gap answers come from general knowledge — no wiki pages were cited inline.
+        if _gap:
+            citations = []
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
         return QueryResult(
@@ -1360,57 +1363,27 @@ class QueryAgent(BaseAgent):
             if _signal5_triggers:
                 logger.debug("signal5 candidates: %r (cap=%d, title_covered=%r)",
                              _signal5_triggers, _signal5_doc_freq_cap, sorted(_title_covered))
-            # Signal 5 coverage gate: only fire when fewer than 75% of candidates are
-            # on-topic.  When the wiki broadly covers the query (≥ 75% on-topic pages
-            # and strong retrieval score), a term with qualifying_pages=0 is almost
-            # always a query-framing word, not a content gap — Guard B (post-synthesis)
-            # handles residual gaps in that regime.  The 75% threshold is higher than
-            # Signal 4's 50% gate so Signal 5 can still fire at moderate coverage
-            # (e.g., 4/8 on-topic pages) where the wiki has genuinely thin depth.
-            _signal5_active = _pages_with_overlap < _n_cands * 3 // 4
-            _defining_term_absent = _signal5_active and bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers)
-            # Signal 6: a specific acronym or proper-name abbreviation typed
-            # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
-            # across all retrieved pages — the wiki simply does not cover this
-            # entity regardless of how well the general topic is represented.
-            _acronym_absent = bool(_acronym_key_terms) and any(
-                _term_doc_freq.get(t, 0) == 0
-                for t in _acronym_key_terms
-            )
-            # Signal 7: a key term appears in the query but has zero occurrences in
-            # every retrieved page, AND overall coverage is genuinely thin (< 65 % of
-            # candidates are on-topic).  The coverage gate distinguishes genuine gaps
-            # from word-form misses: if the wiki covers the topic but uses a different
-            # form (e.g. "Canadian" vs "Canada", "garden" vs "backyard"), most pages
-            # are still on-topic (≥ 65 %) and the gate stays closed.  65 % is
-            # deliberately lower than the 80 % used by Signal 4 — this catches the
-            # iPhone-style case where ~45–60 % of pages have generic term overlap (from
-            # "mobile", "computing" etc.) but the specific entity is absent.
+            # Build _original_terms / _original_q_given once — used by both Signal 5
+            # and Signal 7 to restrict firing to terms the user actually typed.
+            # LLM-rewritten sub-questions may expand with person names, common nouns,
+            # or verb forms (e.g. "walter", "company") not in the original question;
+            # firing on those produces false positives when the wiki covers the real
+            # topic under different wording.
             #
-            # Restrict Signal 7 to terms that appear in the original user question.
-            # `question` here is _gap_q (joined sub-questions), which the LLM may
-            # expand with terms not typed by the user (e.g. "technologie"). Firing on
-            # those expansion terms produces false positives: the wiki has relevant
-            # pages but gap fires on a word the user never wrote.
-            #
-            # Past-tense / participial verb forms (lowercase words ending in -ed) are
-            # also excluded: predicates like "invented", "created", "demonstrated" are
-            # not topic nouns; the wiki may describe the same event with synonyms
+            # Past-tense / participial verb forms (lowercase -ed endings) are excluded
+            # from both signals: predicates like "invented", "created", "demonstrated"
+            # are not topic nouns; the wiki may describe the same event with synonyms
             # ("built", "showed") and that word-form difference is not a gap.  Proper
-            # nouns / acronyms (first char uppercase or entire word all-caps) are kept.
+            # nouns / acronyms (first char uppercase or all-caps) are kept.
             #
-            # Crucially: when original_q was supplied, the intersection is ALWAYS used,
-            # even when it comes out empty (short follow-ups like "And so?" yield no
-            # extractable terms after filtering).  An empty intersection means Signal 7
-            # has no safe original-question term to test, so it stays silent.  Only
-            # when original_q was not given at all does Signal 7 fall back to _key_terms.
+            # When original_q was supplied the intersection is ALWAYS used, even when
+            # empty (short follow-ups like "And so?" yield no extractable terms).  An
+            # empty intersection keeps both signals silent.  Only when original_q is
+            # absent do they fall back to _key_terms.
             #
-            # For CJK questions _contains_cjk is True (the call sites pass the original
-            # CJK text as `question` / _gap_q so the CJK guard suppresses key-term
-            # signals on non-English content).  That means _key_terms is empty and the
-            # outer `if _key_terms and candidates:` block is never entered, so Signal 7
-            # is simply off for CJK — Signals 1-6 still run, but Signal 7 cannot give a
-            # false gap for a question the tokeniser cannot parse.
+            # For CJK questions _contains_cjk is True (call sites pass the original
+            # CJK text as _gap_q so _key_terms is empty and this whole block is never
+            # entered).  Signals 5 and 7 are off for CJK; Signals 1-4 and 6 still run.
             _original_terms: set[str] = set()
             _original_q_given = bool(original_q) and not _contains_cjk
             if _original_q_given:
@@ -1425,6 +1398,31 @@ class QueryAgent(BaseAgent):
                     if not _is_proper and _ob.endswith("ed"):
                         continue
                     _original_terms.add(_ob)
+            # Signal 5 coverage gate: only fire when fewer than 75% of candidates are
+            # on-topic.  When the wiki broadly covers the query (≥ 75% on-topic pages
+            # and strong retrieval score), a term with qualifying_pages=0 is almost
+            # always a query-framing word, not a content gap — Guard B (post-synthesis)
+            # handles residual gaps in that regime.  The 75% threshold is higher than
+            # Signal 4's 50% gate so Signal 5 can still fire at moderate coverage
+            # (e.g., 4/8 on-topic pages) where the wiki has genuinely thin depth.
+            # Apply original-question filter: only fire on terms the user actually typed.
+            _signal5_triggers_filtered = (
+                [t for t in _signal5_triggers if t in _original_terms]
+                if _original_q_given else _signal5_triggers
+            )
+            _signal5_active = _pages_with_overlap < _n_cands * 3 // 4
+            _defining_term_absent = _signal5_active and bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers_filtered)
+            # Signal 6: a specific acronym or proper-name abbreviation typed
+            # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
+            # across all retrieved pages — the wiki simply does not cover this
+            # entity regardless of how well the general topic is represented.
+            _acronym_absent = bool(_acronym_key_terms) and any(
+                _term_doc_freq.get(t, 0) == 0
+                for t in _acronym_key_terms
+            )
+            # Signal 7: a key term appears in the query but has zero occurrences in
+            # every retrieved page, AND overall coverage is genuinely thin (< 65 % of
+            # candidates are on-topic).  Restricted to _original_terms (see above).
             _signal7_terms = (_key_terms & _original_terms) if _original_q_given else _key_terms
             _prominent_term_absent = (
                 _pages_with_overlap < _n_cands * 0.65
@@ -1648,6 +1646,9 @@ class QueryAgent(BaseAgent):
         if full_answer != "".join(_streamed):
             yield {"event": "answer", "data": {"text": full_answer}}
 
+        # Gap answers come from general knowledge — no wiki pages were cited inline.
+        if _gap:
+            citations = []
         yield {"event": "citations", "data": {"citations": citations}}
 
         if _gap:

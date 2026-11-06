@@ -176,6 +176,12 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
         if w.lower() in _AUX_VERBS:
             words = words[:i]
             break
+    # Strip a leading past-tense verb left by WH-question stripping — e.g.
+    # "Who invented X?" strips "Who" but leaves "invented" as words[0].
+    # Any lowercase word ending in -ed at position 0 is a predicate, not a
+    # topic noun.  Proper nouns / acronyms (uppercase first char) are kept.
+    if words and words[0][0].islower() and words[0].lower().endswith("ed") and len(words[0]) >= 4:
+        words = words[1:]
     # Second truncation pass: drop predicate-verb phrases that follow the noun
     # phrase (e.g. "first computers start talking" → "first computers").
     # Only applies from position 1 onward so the first word is never stripped.
