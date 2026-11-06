@@ -738,13 +738,13 @@ def _test_context_budget() -> None:
         "capping sources (old top_n=5 behaviour?)"
     )
 
-    assert synthesizing_sources == len(citations), (
-        f"status.sources={synthesizing_sources} does not match "
-        f"len(citations)={len(citations)} — budget count inconsistent"
+    assert synthesizing_sources >= len(citations), (
+        f"status.sources={synthesizing_sources} < len(citations)={len(citations)} — "
+        "retrieved fewer pages than the LLM cited, which should be impossible"
     )
 
-    print(f"[OK] context budget: {len(citations)} citation(s) from {node_count}-page wiki, "
-          f"status.sources={synthesizing_sources}")
+    print(f"[OK] context budget: retrieved={synthesizing_sources} cited={len(citations)} "
+          f"from {node_count}-page wiki (retrieved >= cited)")
 
 
 def _test_streaming_query_audit() -> None:
