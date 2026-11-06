@@ -143,7 +143,12 @@ STEP 3 — Per-page loop.
   3a. DUPLICATES FIRST: if the page's issues include duplicate_section, call
       merge_duplicate_sections(slug). It handles every duplicate on the page,
       including copies with different text, and asks the user itself.
-      If it returns remaining_issues=0 or status="cancelled" → page done, next slug.
+      If status="cancelled" → page done, next slug.
+      If remaining_issues=0 → page done, next slug.
+      If merged=[] (message: "No duplicate sections could be merged automatically."):
+        → The duplicate sections have conflicting content and cannot be auto-merged.
+        → Skip 3b–3d. Go directly to 3e to dismiss the duplicate_section issues,
+          explaining that the conflicting copies require a human editorial pass.
       Otherwise continue with 3b for the remaining issues.
 
   3b. Call get_page_content using the EXACT slug string from the pages[] entry.
@@ -172,8 +177,10 @@ STEP 3 — Per-page loop.
         'roll back <slug>' to undo."
 
   3e. DISMISSAL — only for issues that no structural change can fix (fixing them
-      would require writing new factual sentences). Duplicate sections are NEVER
-      dismissed: merge_duplicate_sections fixes them.
+      would require writing new factual sentences), OR for duplicate_section issues
+      where merge_duplicate_sections returned merged=[] (conflicting content that
+      a human must reconcile — see step 3a). Do NOT dismiss duplicate_section issues
+      for any other reason: if merge_duplicate_sections has not been called yet, call it first.
       1. Call notify(level="warning", message="<slug>: N issue(s) cannot be fixed
          automatically. [Explain which issues and why human editing is needed.]")
       2. Call dismiss_content_health_issues(slug=<slug>, reason="<brief reason>").
