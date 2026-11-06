@@ -80,14 +80,19 @@ def _stream_with_confirm_response(
                             # so the streaming connection stays open.
                             if current_type == "confirm_request":
                                 session_id = data.get("session_id", "")
+                                run_id = data.get("run_id", "")
 
-                                def _respond(sid: str = session_id) -> None:
+                                def _respond(sid: str = session_id, rid: str = run_id) -> None:
                                     time.sleep(confirm_delay)
                                     with httpx.Client(timeout=10) as c:
                                         try:
                                             c.post(
                                                 f"{BASE}/action/confirm",
-                                                json={"session_id": sid, "confirmed": accept},
+                                                json={
+                                                    "session_id": sid,
+                                                    "run_id": rid,
+                                                    "confirmed": accept,
+                                                },
                                             )
                                         except Exception:
                                             pass
