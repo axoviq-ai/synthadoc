@@ -158,20 +158,27 @@ def _run_workflow(
                             # so the streaming connection stays open.
                             if current_type == "confirm_request":
                                 session_id = data.get("session_id", "")
+                                run_id = data.get("run_id", "")
                                 if callable(confirm_response):
                                     accepted = confirm_response(data)
                                 else:
                                     accepted = bool(confirm_response)
 
                                 def _respond(
-                                    sid: str = session_id, acc: bool = accepted
+                                    sid: str = session_id,
+                                    rid: str = run_id,
+                                    acc: bool = accepted,
                                 ) -> None:
                                     time.sleep(0.3)
                                     with httpx.Client(timeout=10) as c:
                                         try:
                                             c.post(
                                                 f"{BASE}/action/confirm",
-                                                json={"session_id": sid, "confirmed": acc},
+                                                json={
+                                                    "session_id": sid,
+                                                    "run_id": rid,
+                                                    "confirmed": acc,
+                                                },
                                             )
                                         except Exception:
                                             pass
