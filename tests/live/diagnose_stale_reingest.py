@@ -252,9 +252,11 @@ def main() -> None:
                 for evt_type, data in snapshot:
                     if evt_type == "confirm_request":
                         sid = data.get("session_id", session_id)
+                        rid = data.get("run_id", "")
                         try:
                             _raw("/action/confirm", "POST", {
                                 "session_id": sid,
+                                "run_id": rid,
                                 "confirmed": True,
                             })
                         except Exception:
