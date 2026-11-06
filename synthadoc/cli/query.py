@@ -181,6 +181,7 @@ def _handle_confirm(wiki: str, data: dict) -> None:
     """
     message = data.get("message", "Proceed?")
     session_id = data.get("session_id", "")
+    run_id = data.get("run_id", "")
     yes_label = data.get("yes_label", "Yes")
     no_label = data.get("no_label", "No")
     diff = data.get("diff", "")
@@ -194,7 +195,7 @@ def _handle_confirm(wiki: str, data: dict) -> None:
     confirmed = response.strip().lower() in ("y", "yes", yes_label.lower())
     if session_id:
         try:
-            post(wiki, "/action/confirm", {"session_id": session_id, "confirmed": confirmed})
+            post(wiki, "/action/confirm", {"session_id": session_id, "run_id": run_id, "confirmed": confirmed})
         except Exception:
             pass  # Confirm gate will time out on the server if the POST fails
 
@@ -208,6 +209,7 @@ def _handle_scoped_confirm(wiki: str, data: dict) -> None:
     using the same HTTP client as :func:`_handle_confirm`.
     """
     session_id = data.get("session_id", "")
+    run_id = data.get("run_id", "")
     header_message = data.get("header_message", "Edits ready")
     blocks = data.get("blocks", [])
     applied = [b for b in blocks if b.get("status") == "applied"]
@@ -230,6 +232,7 @@ def _handle_scoped_confirm(wiki: str, data: dict) -> None:
         try:
             post(wiki, "/action/confirm-scoped", {
                 "session_id": session_id,
+                "run_id": run_id,
                 "confirmed": confirmed,
                 "mode": "blocks",
                 "included_block_ids": [b["id"] for b in applied] if confirmed else [],
