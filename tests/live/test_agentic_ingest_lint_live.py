@@ -1004,9 +1004,11 @@ def test_agentic_confirm_decline_cancels_workflow():
                 for evt_type, data in list(collected):
                     if evt_type == "confirm_request" and not declined.is_set():
                         sid = data.get("session_id", session_id)
+                        rid = data.get("run_id", "")
                         try:
                             _raw("/action/confirm", "POST", {
                                 "session_id": sid,
+                                "run_id": rid,
                                 "confirmed": False,
                             })
                         except Exception:
