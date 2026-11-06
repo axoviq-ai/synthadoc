@@ -896,7 +896,7 @@ async def tool_scoped_confirm(
     """Send a ``scoped_edit_confirm`` SSE event and wait for the user to approve.
 
     Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` (same
-    registry as :func:`tool_confirm`) keyed by ``ctx.session_id``.  The HTTP
+    registry as :func:`tool_confirm`) keyed by ``ctx.run_id``.  The HTTP
     handler resolves the gate via ``POST /action/confirm-scoped``.
 
     Returns ``{"confirmed": bool, "final_body": str | None}``.  Times out with
@@ -1045,7 +1045,7 @@ async def tool_confirm(
     """Send a confirmation request to the client and wait for the response.
 
     Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` keyed
-    by ``ctx.session_id``.  The HTTP handler resolves the gate when the user
+    by ``ctx.run_id``.  The HTTP handler resolves the gate when the user
     responds.
 
     When *diff* is provided (a unified-diff string), it is included in the SSE
