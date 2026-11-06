@@ -958,9 +958,9 @@ def test_cli_summary_mentions_rollback_only_when_something_resolved():
 
 async def _auto_confirm_orphan(ctx, confirmed=True):
     await asyncio.sleep(0.05)
-    gate = ctx.confirm_registry.get("test-session")
+    gate = ctx.confirm_registry.get(ctx.run_id)
     if gate:
-        ctx.confirm_result_registry["test-session"] = confirmed
+        ctx.confirm_result_registry[ctx.run_id] = confirmed
         gate.set()
 
 
