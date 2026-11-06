@@ -142,7 +142,7 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
             {
                 "slug": p["slug"],
                 "source_path": source_path,
-                "stale_since": p.get("updated") or p.get("created") or "unknown",
+                "stale_since": p.get("updated_at") or "unknown",
             }
         )
     return result

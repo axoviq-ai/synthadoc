@@ -1155,6 +1155,11 @@ class ActionAgent(BaseAgent):
     async def _fetch_jobs(self):
         return await self._orch.queue.list_jobs()
 
+    @staticmethod
+    def _fmt_job_status(status) -> str:
+        val = status.value if hasattr(status, "value") else str(status)
+        return {"in_progress": "running"}.get(val, val)
+
     async def _do_job_list(self, params: dict | None = None) -> ActionResult:
         from synthadoc.core.queue import JobStatus
         raw_filter = (params or {}).get("status_filter")
@@ -1174,14 +1179,14 @@ class ActionAgent(BaseAgent):
             for j in jobs:
                 err = (j.error or "").replace("|", "\\|")
                 lines.append(
-                    f"| `{j.id}` | {j.operation} | {j.status}"
+                    f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)}"
                     f" | {fmt_ts(str(j.created_at))} | {err} |"
                 )
         else:
             lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
             for j in jobs:
                 lines.append(
-                    f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
+                    f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)} | {fmt_ts(str(j.created_at))} |"
                 )
         return ActionResult(action_type="job_list", success=True,
                             message="\n".join(lines))
@@ -1201,7 +1206,7 @@ class ActionAgent(BaseAgent):
             lines = [
                 f"**Job `{job.id}`**\n",
                 f"- **Operation:** {job.operation}",
-                f"- **Status:** {job.status}",
+                f"- **Status:** {self._fmt_job_status(job.status)}",
                 f"- **Started:** {fmt_ts(str(job.created_at))}",
             ]
             if job.error:
@@ -1223,7 +1228,7 @@ class ActionAgent(BaseAgent):
         candidates: list[str] = []
         for j in jobs:
             table_lines.append(
-                f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
+                f"| `{j.id}` | {j.operation} | {self._fmt_job_status(j.status)} | {fmt_ts(str(j.created_at))} |"
             )
             candidates.append(j.id)
         prompt = "Which job would you like to see the status for?"
