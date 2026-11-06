@@ -52,7 +52,7 @@ Unlike traditional retrieval-augmented generation (RAG) tools that synthesize at
 
 **Web chat UI** — `synthadoc web` opens a multi-turn browser chat with streaming answers, citation links, knowledge-gap callouts, and adaptive hint chips.
 
-**Obsidian plugin** — query modal, ingest modal, jobs list, lifecycle management, lint report, candidates review, routing management, export wiki, and claim provenance viewer, all in the Command Palette.
+**Obsidian plugin** — query modal, ingest modal, jobs list, lifecycle management, lint report, candidates review, routing management, export wiki, claim provenance viewer, and an interactive **knowledge graph panel** (Canvas force-graph with type filter, hover tooltips, and click-to-open), all in the Command Palette.
 
 **Export formats** — `llms.txt` (compact index for AI consumption), `llms-full.txt` (full content), `graphml` (wikilink graph for yEd / Gephi), `json` (full dump with claims, lifecycle history, per-page cost), `okf` ([OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — consumable by any OKF-aware agent without code changes).
 
@@ -73,6 +73,10 @@ Unlike traditional retrieval-augmented generation (RAG) tools that synthesize at
 **MCP server** — exposes wiki tools (query, ingest, export, lifecycle) to any MCP-compatible client (Claude Desktop, Cursor, Zed, etc.) for live brain/memory access.
 
 **Backup and restore** — `synthadoc backup` creates a portable ZIP (wiki pages, raw sources, audit DB); `synthadoc restore` re-registers the wiki from a backup ZIP.
+
+**Page content snapshots and rollback** — the audit DB stores a content snapshot at every lifecycle transition. Roll back any page to a prior snapshot via `synthadoc lifecycle rollback <slug>`, the Obsidian plugin snapshot viewer, or the MCP `rollback_page` tool.
+
+**Docker deployment** — official `synthadoc` Docker image (amd64 + arm64); one container per wiki exposing the HTTP API, Web UI, and MCP server on a single port. See `docs/docker-deploy.md` for Compose recipes including multi-wiki cross-wiki setups and an Ollama sidecar.
 
 ---
 
