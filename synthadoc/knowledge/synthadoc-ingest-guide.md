@@ -1,13 +1,13 @@
 ---
 title: Synthadoc Ingest Guide
-keywords: [ingest, import, pdf, docx, pptx, xlsx, csv, markdown, txt, youtube, re-ingest, reingest, reprocess, manifest, rescan, png, jpg]
+keywords: [ingest, import, pdf, docx, pptx, xlsx, csv, markdown, txt, youtube, jsonl, session, ai session, re-ingest, reingest, reprocess, manifest, rescan, png, jpg]
 ---
 
 # Synthadoc Ingest Guide
 
 ## Everything You Can Ingest
 
-Synthadoc accepts six categories of input — local files, images, web pages, YouTube videos, and web search results:
+Synthadoc accepts seven categories of input — local files, images, web pages, YouTube videos, AI session transcripts, and web search results:
 
 | Category | Supported formats / how to use |
 |---|---|
@@ -16,6 +16,7 @@ Synthadoc accepts six categories of input — local files, images, web pages, Yo
 | **Text / Markdown** | `.md`, `.txt` |
 | **Web pages** | Any `http://` or `https://` URL |
 | **YouTube videos** | YouTube URL — transcript is extracted automatically |
+| **AI session transcripts** | `.jsonl` — Claude Code, Cursor, and other tool session exports; extracts decisions, code changes, and rationale |
 | **Web search** | Intent phrase: `search for: <topic>`, `find on the web: <topic>`, `look up: <topic>`, or `web search: <topic>` |
 
 ## Basic Ingest Commands
