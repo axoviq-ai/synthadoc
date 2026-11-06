@@ -180,15 +180,19 @@ def _run_workflow_http(
 
                             if current_type == "confirm_request":
                                 session_id = data.get("session_id", "")
+                                run_id = data.get("run_id", "")
 
-                                def _respond(sid: str = session_id) -> None:
+                                def _respond(sid: str = session_id, rid: str = run_id) -> None:
                                     time.sleep(0.3)
                                     with httpx.Client(timeout=10) as c:
                                         try:
                                             c.post(
                                                 f"{BASE}/action/confirm",
-                                                json={"session_id": sid,
-                                                      "confirmed": confirm_response},
+                                                json={
+                                                    "session_id": sid,
+                                                    "run_id": rid,
+                                                    "confirmed": confirm_response,
+                                                },
                                             )
                                         except Exception:
                                             pass
@@ -197,6 +201,7 @@ def _run_workflow_http(
 
                             if current_type == "scoped_edit_confirm":
                                 session_id = data.get("session_id", "")
+                                run_id = data.get("run_id", "")
                                 blks = data.get("blocks", [])
                                 applied_ids = [
                                     b["id"] for b in blks
@@ -205,6 +210,7 @@ def _run_workflow_http(
 
                                 def _respond_scoped(
                                     sid: str = session_id,
+                                    rid: str = run_id,
                                     ids: list = applied_ids,
                                 ) -> None:
                                     time.sleep(0.3)
@@ -214,6 +220,7 @@ def _run_workflow_http(
                                                 f"{BASE}/action/confirm-scoped",
                                                 json={
                                                     "session_id": sid,
+                                                    "run_id": rid,
                                                     "confirmed": confirm_response,
                                                     "mode": "blocks",
                                                     "included_block_ids": ids if confirm_response else [],

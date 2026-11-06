@@ -174,7 +174,7 @@ async def test_query_deduplicates_pages_across_sub_questions(tmp_wiki):
             text='["Moore\'s Law transistors", "Moore\'s Law hardware impact"]',
             input_tokens=10, output_tokens=10,
         ),
-        CompletionResponse(text="Moore's Law answer.", input_tokens=100, output_tokens=20),
+        CompletionResponse(text="Moore's Law answer. [[moores-law]]", input_tokens=100, output_tokens=20),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
@@ -296,7 +296,7 @@ async def test_query_citations_match_search_results(tmp_wiki):
     provider = AsyncMock()
     provider.complete.side_effect = [
         CompletionResponse(text='["chlorine pool algae"]', input_tokens=10, output_tokens=5),
-        CompletionResponse(text="Use chlorine shock.", input_tokens=100, output_tokens=20),
+        CompletionResponse(text="Use chlorine shock. [[pool-chemicals]]", input_tokens=100, output_tokens=20),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
@@ -319,7 +319,7 @@ async def test_query_multiple_pages_all_cited(tmp_wiki):
     provider.complete.side_effect = [
         CompletionResponse(text='["pool ph chlorine alkalinity"]',
                            input_tokens=10, output_tokens=5),
-        CompletionResponse(text="Balance pH, chlorine, and alkalinity.",
+        CompletionResponse(text="Balance [[pool-ph]], [[pool-chlorine]], and [[pool-alkalinity]].",
                            input_tokens=200, output_tokens=30),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
@@ -356,7 +356,7 @@ async def test_compound_query_retrieves_both_parts(tmp_wiki):
             input_tokens=20, output_tokens=15,
         ),
         CompletionResponse(
-            text="FORTRAN was by Backus. Bombe was by Turing.",
+            text="[[fortran-history|FORTRAN]] was by Backus. [[bombe-machine|Bombe]] was by Turing.",
             input_tokens=200, output_tokens=30,
         ),
     ]
@@ -1885,7 +1885,7 @@ async def test_query_cjk_pages_answered_without_gap(tmp_wiki):
     provider.complete.side_effect = [
         CompletionResponse(text="What is a Turing machine?", input_tokens=20, output_tokens=5),  # translate
         CompletionResponse(text='["What is a Turing machine?"]', input_tokens=5, output_tokens=5),  # decompose
-        CompletionResponse(text="图灵机是一种理论计算模型。", input_tokens=80, output_tokens=20),  # synthesis
+        CompletionResponse(text="图灵机是一种理论计算模型。[[图灵机-0]]", input_tokens=80, output_tokens=20),  # synthesis
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)
@@ -1894,7 +1894,7 @@ async def test_query_cjk_pages_answered_without_gap(tmp_wiki):
         result = await agent.run("图灵机是什么？")
 
     assert result.knowledge_gap is False
-    assert result.answer == "图灵机是一种理论计算模型。"
+    assert "图灵机是一种理论计算模型" in result.answer
     assert any("图灵机" in c for c in result.citations)
     # Verify CJK page content reached the synthesis prompt (3rd call: translate, decompose, synthesis)
     synthesis_call = provider.complete.call_args_list[2]
@@ -3416,6 +3416,378 @@ def test_detect_gap_accepts_a_single_mention_on_a_top_page_matching_the_whole_qu
     gap, *_ = agent._detect_gap(question="OARnet director Ohio Supercomputer",
                                 candidates=candidates, max_score=10.0)
     assert gap is False
+
+
+def test_signal7_does_not_fire_on_subquestion_expansion_terms():
+    """Signal 7 must not fire on terms the LLM added during decomposition.
+
+    Regression: "How did the first computers start talking to each other?"
+    was decomposed to sub-questions containing "technologie". That term
+    is absent from all pages, triggering Signal 7, even though the wiki
+    has 7 relevant pages on the topic. With original_q set to the user's
+    actual question, Signal 7 is restricted to terms the user typed.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Pages repeat "computer" and "network" multiple times to clear the
+    # _MIN_TERM_FREQ=2 on-topic gate and push _pages_with_overlap high enough
+    # to close the coverage gate for the original-question terms.
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "tcp-ip": (
+            "TCP/IP governs computer network communication. "
+            "Every computer on the internet uses TCP/IP network protocols. "
+            "TCP/IP replaced earlier computer networking protocols."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Transistors replaced vacuum tubes in computing hardware.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=8.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # Simulate what happens when LLM-generated sub-questions contain "technologie"
+    # and "reseau" (French terms added by the LLM) — these are absent from all pages.
+    gap_q_with_expansion = "how did computers network technologie reseau"
+    original_question = "How did computers network?"
+
+    # With original_q: Signal 7 is restricted to terms in the original question
+    # ("computer", "network") — both are well-covered. "technologie" and "reseau"
+    # are filtered out. Signal 7 must NOT fire.
+    gap, term, _, _ = agent._detect_gap(
+        question=gap_q_with_expansion,
+        candidates=candidates,
+        max_score=8.0,
+        original_q=original_question,
+    )
+    assert gap is False, (
+        f"Signal 7 fired on expansion term '{term}' not present in original question"
+    )
+
+
+def test_signal7_still_fires_on_absent_term_in_original_question():
+    """Signal 7 must still fire when a term from the ORIGINAL question is absent.
+
+    Verifies that the original_q filter does not suppress Signal 7 entirely —
+    it only removes false positives from LLM-expanded sub-question terms.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Pages cover "computer" but NOT "bluetooth". Four fillers ensure the
+    # coverage gate (_pages_with_overlap < _n_cands * 0.65) stays open so
+    # Signal 7 can fire on "bluetooth".
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Transistors replaced vacuum tubes in hardware.",
+        "filler-c": "Magnetic tape was used for early data storage.",
+        "filler-d": "The IBM System 360 was introduced in 1964.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=5.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # "bluetooth" is in both sub-questions and the original question, and absent
+    # from all pages — Signal 7 should fire because it's a genuine missing topic.
+    gap, _, _, _ = agent._detect_gap(
+        question="how does bluetooth connect computers over short range",
+        candidates=candidates,
+        max_score=5.0,
+        original_q="how does bluetooth connect computers",
+    )
+    assert gap is True
+
+
+def test_signal7_does_not_fire_on_expansion_terms_when_original_q_has_no_extractable_words():
+    """Signal 7 must not fire on LLM-expansion terms when original_q yields no content words.
+
+    For short follow-ups like "And so?" all words are filtered out of
+    _original_terms.  Under the old code the fallback to _key_terms let
+    expansion terms (e.g. "technologie") re-enter and trigger Signal 7.
+    With original_q supplied but _original_terms empty, Signal 7 must stay
+    silent: it has no safe original-question term to test.
+
+    Page setup mirrors test_signal7_does_not_fire_on_subquestion_expansion_terms
+    so that Signals 3-5 stay inactive (3 of 5 pages on-topic) while the
+    Signal 7 coverage gate remains open (3/5 = 60% < 65%).
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "arpanet": (
+            "ARPANET was the first computer network. "
+            "Each computer on the ARPANET network communicated via packets. "
+            "Computers at universities shared data across the network."
+        ),
+        "ethernet": (
+            "Ethernet is a computer networking standard. "
+            "Ethernet allows computers to form a local network. "
+            "The computer network uses Ethernet for high-speed networking."
+        ),
+        "tcp-ip": (
+            "TCP/IP governs computer network communication. "
+            "Every computer on the internet uses TCP/IP network protocols. "
+            "TCP/IP replaced earlier computer networking protocols."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Transistors replaced vacuum tubes in computing hardware.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=8.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # gap_q contains "technologie" (LLM expansion term absent from all pages).
+    # original_q is a short follow-up whose words are all too short / stopwords
+    # to extract — so _original_terms is empty and _signal7_terms must be too.
+    gap, term, _, _ = agent._detect_gap(
+        question="how did computers network technologie reseau",
+        candidates=candidates,
+        max_score=8.0,
+        original_q="And so?",
+    )
+    assert gap is False, (
+        f"Signal 7 fired on expansion term '{term}' — expected no gap "
+        "because original_q yielded no extractable terms"
+    )
+
+
+def test_signal7_does_not_fire_on_past_tense_verb_in_original_question():
+    """Signal 7 must not fire when the absent term is a past-tense verb.
+
+    Regression: "Who invented the transistor?" caused Signal 7 to fire on
+    "invented" because the wiki pages say "built" and "demonstrated" instead.
+    Words ending in -ed (lowercase) are predicates, not topic nouns; they are
+    excluded from _original_terms so Signal 7 ignores their absence.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Three pages cover "transistor" ≥ 2× each — clearly on-topic.
+    # Four fillers keep the coverage gate open: 3/7 = 43% < 65%.
+    pages = {
+        "transistor-history": (
+            "The transistor was built at Bell Labs in 1947. "
+            "Bardeen and Brattain demonstrated the transistor. "
+            "The transistor replaced vacuum tubes. "
+            "Transistor technology transformed electronics."
+        ),
+        "bell-labs": (
+            "Bell Labs developed the transistor in 1947. "
+            "The transistor invention at Bell Labs changed computing. "
+            "Bell Labs produced many transistor-based devices."
+        ),
+        "computing-timeline": (
+            "1947: transistor created at Bell Labs. "
+            "The transistor device enabled miniaturisation. "
+            "Transistor circuits replaced vacuum tubes."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Ethernet is a networking standard.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was used for early data storage.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # gap_q simulates LLM-expanded sub-questions; original_q is what the user typed.
+    gap, term, _, _ = agent._detect_gap(
+        question="who invented transistor vacuum tubes semiconductor 1947",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="Who invented the transistor?",
+    )
+    assert gap is False, (
+        f"Signal 7 fired on past-tense verb '{term}' — expected no gap"
+    )
+
+
+def test_signal7_stays_silent_for_cjk_question():
+    """Signal 7 must NOT fire for CJK questions.
+
+    For Chinese/Japanese/Korean queries the call sites pass the original CJK
+    text as _gap_q so _contains_cjk is True, _key_terms is never built, and
+    the entire key-term block is skipped.  Signal 7 therefore stays silent
+    rather than risk a false gap on content the tokeniser cannot parse.
+    Signals 1-6 still run for CJK.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # Deliberately thin coverage so Signal 7 *would* fire for a non-CJK
+    # question with the same term frequencies.
+    pages = {
+        "transistor-history": (
+            "The transistor was built at Bell Labs. "
+            "Transistor technology replaced vacuum tubes. "
+            "The transistor device changed electronics."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969.",
+        "filler-b": "Ethernet is a networking standard.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was used for early data storage.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=5.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # Pass a Chinese question directly as `question` (= _gap_q), which is what
+    # the real run() path does for CJK.  _contains_cjk becomes True, _key_terms
+    # stays empty, and the entire key-term gap block is skipped.
+    gap, _, _, _ = agent._detect_gap(
+        question="蓝牙无线技术是什么？",
+        candidates=candidates,
+        max_score=5.0,
+        original_q="蓝牙无线技术是什么？",
+    )
+    assert gap is False, "Signal 7 must not fire for CJK questions"
+
+
+def test_signal5_does_not_fire_on_expansion_term_from_followup():
+    """Signal 5 must not fire on terms the LLM added when rewriting a follow-up.
+
+    Scenario: "Who invented the transistor?" is a follow-up in a session about
+    Bell Labs.  The LLM rewrites it to a standalone question that appends person
+    names like "walter" and "brattain".  "walter" appears once in
+    transistor-history (< _MIN_TERM_FREQ=2), so _term_qualifying_pages["walter"]
+    == 0 — the exact Signal 5 trigger pattern.
+
+    Before the fix Signal 5 would fire (gap=True).  After the fix,
+    _signal5_triggers is filtered to terms the user actually typed.  "transistor"
+    (the only user content term) is well-covered, so the filtered trigger list is
+    empty and Signal 5 stays silent.
+
+    The design avoids Signal 7 by ensuring the user's content term ("transistor")
+    appears in multiple pages (doc_freq > 0), so it cannot trigger Signal 7.
+    Signal 4 is kept inactive by giving transistor enough on-topic pages
+    (pages_with_overlap = 3 ≥ 7 // 2 = 3 is False, so Signal 4 is off).
+    """
+    from synthadoc.storage.search import SearchResult
+
+    # "transistor" appears ≥ _MIN_TERM_FREQ=2 times in the first three pages so
+    # those pages count as on-topic (pages_with_overlap=3).
+    # "walter" appears only once in transistor-history → qualifying_pages=0 →
+    # Signal 5 trigger (before the fix) or filtered away (after the fix).
+    pages = {
+        "transistor-history": (
+            "Walter Brattain and John Bardeen invented the transistor at Bell Labs. "
+            "The transistor device changed semiconductor electronics significantly. "
+            "Bell Labs produced the transistor in 1947."
+        ),
+        "bell-labs": (
+            "Bell Labs is an industrial research laboratory known for the transistor. "
+            "Many important transistor inventions came from Bell Labs research. "
+            "Bell Labs employed thousands of scientists on the transistor project."
+        ),
+        "semiconductor": (
+            "Semiconductor transistor devices include diodes and other components. "
+            "Silicon is the most common transistor semiconductor material used today. "
+            "Semiconductor transistor devices include many varieties."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Ethernet is a networking standard from Xerox PARC.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was an early data storage medium.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # LLM rewrites "Who invented the transistor?" → standalone expansion appends
+    # "walter brattain bell labs 1947".  "walter" has doc_freq=1 (appears once in
+    # transistor-history) and qualifying_pages=0 — exactly Signal 5's pattern.
+    # With the fix, Signal 5 is filtered to original_q terms: only "transistor"
+    # (the -ed verb "invented" is stripped by the past-tense filter).
+    # "transistor" is well-covered (qualifying_pages=3), so the filtered list is
+    # empty and Signal 5 stays silent.
+    gap, term, _, _ = agent._detect_gap(
+        question="who invented transistor walter brattain bell labs 1947",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="Who invented the transistor?",
+    )
+    assert gap is False, (
+        f"Gap fired on expansion term '{term}' — signal5 filter not suppressing it"
+    )
+
+
+def test_signal5_does_not_fire_on_typed_name_present_once_on_page():
+    """Signal 5 must not declare a name absent when it appears once on a top page.
+
+    "Walter Brattain" appears once in transistor-history.  The page is rank 0,
+    so the top-page exception (_TOP_PAGES_ONE_MENTION) sets _needed=1, which
+    means qualifying_pages["walter"]=1 (≥ _needed).  Signal 5 should stay silent
+    because qualifying_pages > 0 for a top-ranked page that covers the topic.
+    """
+    from synthadoc.storage.search import SearchResult
+
+    pages = {
+        "transistor-history": (
+            "Walter Brattain and John Bardeen invented the transistor at Bell Labs. "
+            "The transistor device changed semiconductor electronics significantly. "
+            "Bell Labs produced the transistor in 1947."
+        ),
+        "bell-labs": (
+            "Bell Labs is an industrial research laboratory known for the transistor. "
+            "Many important transistor inventions came from Bell Labs research. "
+            "Bell Labs employed thousands of scientists on the transistor project."
+        ),
+        "semiconductor": (
+            "Semiconductor transistor devices include diodes and other components. "
+            "Silicon is the most common transistor semiconductor material used today. "
+            "Semiconductor transistor devices include many varieties."
+        ),
+        "filler-a": "Unix was written at Bell Labs in 1969 by Ken Thompson.",
+        "filler-b": "Ethernet is a networking standard from Xerox PARC.",
+        "filler-c": "The IBM System 360 was introduced in 1964.",
+        "filler-d": "Magnetic tape was an early data storage medium.",
+    }
+    agent = _gap_agent(pages)
+    candidates = [
+        SearchResult(slug=s, score=7.0 - i, title=s, snippet="")
+        for i, s in enumerate(pages)
+    ]
+
+    # "Walter" is in original_q AND appears once in the top-ranked page.
+    # The top-page exception means qualifying_pages["walter"]=1, so Signal 5
+    # should not include "walter" in its triggers at all.
+    gap, term, _, _ = agent._detect_gap(
+        question="what did walter brattain invent transistor bell labs",
+        candidates=candidates,
+        max_score=7.0,
+        original_q="What did Walter Brattain invent?",
+    )
+    assert gap is False, (
+        f"Signal 5 fired on '{term}' even though it appears on the top-ranked page"
+    )
 
 
 def test_resolve_wikilinks_points_titles_and_aliases_at_slugs():

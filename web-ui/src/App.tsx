@@ -139,12 +139,12 @@ export default function App() {
         refreshSessions();
     }, [refreshSessions]);
 
-    const handleConfirmDecision = useCallback(async (sessionId: string, confirmed: boolean) => {
+    const handleConfirmDecision = useCallback(async (sessionId: string, runId: string, confirmed: boolean) => {
         try {
             await fetch(`/action/confirm`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ session_id: sessionId, confirmed }),
+                body: JSON.stringify({ session_id: sessionId, run_id: runId, confirmed }),
             });
         } catch {
             // fire-and-forget; backend times out gracefully
@@ -153,6 +153,7 @@ export default function App() {
 
     const handleScopedConfirmDecision = useCallback(async (decision: {
         sessionId: string;
+        runId: string;
         confirmed: boolean;
         mode: "blocks" | "page";
         includedBlockIds: string[];
@@ -164,6 +165,7 @@ export default function App() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     session_id: decision.sessionId,
+                    run_id: decision.runId,
                     confirmed: decision.confirmed,
                     mode: decision.mode,
                     included_block_ids: decision.includedBlockIds,

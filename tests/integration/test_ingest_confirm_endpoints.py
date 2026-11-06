@@ -91,11 +91,11 @@ def test_post_ingest_rejects_nonexistent_source(app_client):
 # ---------------------------------------------------------------------------
 
 def test_action_confirm_unknown_session_returns_404(app_client):
-    """A session_id with no entry in confirm_registry must return 404."""
+    """A run_id with no entry in confirm_registry must return 404."""
     client, _ = app_client
     resp = client.post(
         "/action/confirm",
-        json={"session_id": "unknown-session", "confirmed": True},
+        json={"session_id": "s1", "run_id": "unknown-run", "confirmed": True},
     )
     assert resp.status_code == 404
 
@@ -105,13 +105,13 @@ def test_action_confirm_unknown_session_returns_404(app_client):
 # ---------------------------------------------------------------------------
 
 def test_action_confirm_already_processed_returns_409(app_client):
-    """A session whose gate is already set must return 409."""
+    """A run whose gate is already set must return 409."""
     client, _ = app_client
     gate = asyncio.Event()
     gate.set()  # already resolved
-    client.app.state.confirm_registry["dup-session"] = gate
+    client.app.state.confirm_registry["dup-run"] = gate
     resp = client.post(
         "/action/confirm",
-        json={"session_id": "dup-session", "confirmed": True},
+        json={"session_id": "s1", "run_id": "dup-run", "confirmed": True},
     )
     assert resp.status_code == 409

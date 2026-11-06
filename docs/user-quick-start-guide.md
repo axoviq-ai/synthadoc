@@ -2627,7 +2627,7 @@ The left navigation bar shows your recent runs grouped by session. Synthadoc per
 
 ### Settings — query timeout
 
-The ⚙ gear icon in the bottom-left corner of the chat window opens a settings popover. Use it to set the **per-request query timeout** (10–600 seconds, default 60 s) without editing `config.toml`. The value is saved in your browser's `localStorage` and persists across page refreshes.
+The ⚙ gear icon in the bottom-left corner of the chat window opens a settings popover. Use it to set the **per-request query timeout** (10–600 seconds, default 300 s) without editing `config.toml`. The value is saved in your browser's `localStorage` and persists across page refreshes.
 
 Increase the timeout when using a reasoning model (e.g. MiniMax M3, Qwen with thinking enabled) that takes longer on large or complex questions. Lower it to fail fast if you suspect the server is hanging.
 
@@ -2979,7 +2979,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Eight workflows are available, listed in the order the web UI will pre-prompt them at session start:
+Nine workflows are available, listed in the order the web UI will pre-prompt them at session start:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                                                                                                                                                                                                       |
@@ -3453,7 +3453,7 @@ For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress
 
 **Scoped edit confirmation (contradiction resolver and content health resolver):** when running `synthadoc workflow` or using the web UI for contradiction or content-health checks, the approval dialog shows individual edits as per-block include/skip toggles rather than a single full-page diff. You can approve all edits, skip individual ones, or tick **"Edit full page manually"** to switch to a full CodeMirror editor with an Edit/Preview toggle. No write happens until you click **Approve**, and every approved write is preceded by a snapshot that can be rolled back with "roll back `<slug>`".
 
-→ **CLI and API provider differences by workflow:** [Provider Compatibility](design.md#provider-compatibility) — all seven workflows work with both provider types; the table shows confirm-gate pattern and execution model for each.
+→ **CLI and API provider differences by workflow:** [Provider Compatibility](design.md#provider-compatibility) — all nine workflows work with both provider types; the table shows confirm-gate pattern and execution model for each.
 
 → Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)
 
