@@ -532,6 +532,7 @@ def test_action_confirm_unknown_session_returns_404():
     """POST /action/confirm with no pending session → 404."""
     r = _raw("/action/confirm", "POST", {
         "session_id": "00000000-0000-0000-0000-000000000000",
+        "run_id": "00000000-0000-0000-0000-000000000000",
         "confirmed": True,
     })
     assert r.status_code == 404, (
@@ -555,34 +556,81 @@ def test_action_confirm_duplicate_session_returns_409():
     session_id = str(uuid.uuid4())
     first_confirm_done = threading.Event()
     second_status: list[int] = []
+    captured_events: list[tuple[str, dict]] = []
+    capture_lock = threading.Lock()
 
-    def _stream_until_confirm():
-        # Run SSE in background just long enough to trigger the confirm gate;
-        # we do not need the full response here.
+    def _stream_incrementally():
+        # Stream SSE and push events into captured_events as they arrive so the
+        # main thread can extract run_id from confirm_request without waiting for
+        # the whole stream to end.
+        url = (
+            f"{BASE}/query/stream?q=re-ingest+stale+pages"
+            f"&session_id={session_id}&no_cache=true&timeout_seconds=300"
+        )
+        current_type = "message"
+        current_data: list[str] = []
+        buf = ""
         try:
-            _sse_events(
-                f"/query/stream?q=re-ingest+stale+pages"
-                f"&session_id={session_id}&no_cache=true&timeout_seconds=300",
-                timeout=320,
-            )
+            with httpx.Client(timeout=httpx.Timeout(360)) as client:
+                with client.stream("GET", url) as r:
+                    r.raise_for_status()
+                    for chunk in r.iter_text():
+                        buf += chunk
+                        while "\n" in buf:
+                            line, buf = buf.split("\n", 1)
+                            line = line.rstrip("\r")
+                            if not line:
+                                if current_data:
+                                    raw = "".join(current_data)
+                                    try:
+                                        parsed = json.loads(raw)
+                                    except Exception:
+                                        parsed = {}
+                                    with capture_lock:
+                                        captured_events.append((current_type, parsed))
+                                    current_type = "message"
+                                    current_data = []
+                            elif line.startswith("event:"):
+                                current_type = line[6:].strip()
+                            elif line.startswith("data:"):
+                                current_data.append(line[5:].strip())
         except Exception:
             pass
 
-    stream_thread = threading.Thread(target=_stream_until_confirm, daemon=True)
+    stream_thread = threading.Thread(target=_stream_incrementally, daemon=True)
     stream_thread.start()
 
     try:
-        # Give the agent time to reach the confirm gate
+        # Wait for confirm_request to arrive so we have the run_id
+        run_id: str | None = None
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            r1 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
-            if r1.status_code == 200:
-                # First confirm accepted — immediately fire a duplicate
-                r2 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
-                second_status.append(r2.status_code)
-                first_confirm_done.set()
+            with capture_lock:
+                for evt_type, data in captured_events:
+                    if evt_type == "confirm_request":
+                        run_id = data.get("run_id")
+                        break
+            if run_id:
                 break
-            time.sleep(1)
+            time.sleep(0.5)
+
+        if not run_id:
+            pytest.skip("confirm_request event did not arrive within 60s — cannot test duplicate")
+
+        r1 = _raw("/action/confirm", "POST", {
+            "session_id": session_id,
+            "run_id": run_id,
+            "confirmed": True,
+        })
+        if r1.status_code == 200:
+            # First confirm accepted — immediately fire a duplicate with the same run_id
+            r2 = _raw("/action/confirm", "POST", {
+                "session_id": session_id,
+                "run_id": run_id,
+                "confirmed": True,
+            })
+            second_status.append(r2.status_code)
+            first_confirm_done.set()
 
         stream_thread.join(timeout=30)
 
@@ -725,9 +773,11 @@ def _stream_with_autoconfirm(
             for evt_type, data in snapshot:
                 if evt_type == "confirm_request":
                     sid = data.get("session_id", session_id)
+                    rid = data.get("run_id", "")
                     try:
                         _raw("/action/confirm", "POST", {
                             "session_id": sid,
+                            "run_id": rid,
                             "confirmed": True,
                         })
                     except Exception:

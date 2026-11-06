@@ -142,14 +142,22 @@ def _post_action_with_confirm(
     def _confirm_watcher():
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline and not done_flag.is_set():
+            run_id: str | None = None
             with lock:
-                has_confirm = any(e[0] == "confirm_request" for e in events)
-            if has_confirm and not confirm_sent.is_set():
+                for evt_type, data in events:
+                    if evt_type == "confirm_request":
+                        run_id = data.get("run_id")
+                        break
+            if run_id and not confirm_sent.is_set():
                 confirm_sent.set()
                 try:
                     _raw(
                         "/action/confirm", "POST",
-                        {"session_id": session_id, "confirmed": confirmed},
+                        {
+                            "session_id": session_id,
+                            "run_id": run_id,
+                            "confirmed": confirmed,
+                        },
                     )
                 except Exception:
                     pass
