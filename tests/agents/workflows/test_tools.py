@@ -131,9 +131,8 @@ async def test_resolve_stale_pages_resolves_relative_path(tmp_path):
     result = await _resolve_stale_pages(ctx)
 
     assert len(result) == 1
-    # _resolve_stale_pages now returns wiki-relative paths
-    expected = str(Path("raw") / "a.md")
-    assert result[0]["source_path"] == expected
+    # _resolve_stale_pages returns posix paths (forward slashes on all platforms)
+    assert result[0]["source_path"] == "raw/a.md"
 
 
 async def test_resolve_stale_pages_resolves_raw_sources_fallback(tmp_path):
@@ -172,9 +171,8 @@ async def test_resolve_stale_pages_resolves_raw_sources_fallback(tmp_path):
     result = await _resolve_stale_pages(ctx)
 
     assert len(result) == 1
-    # _resolve_stale_pages now returns wiki-relative paths
-    expected = str(Path("raw_sources") / "public-domain" / "a.txt")
-    assert result[0]["source_path"] == expected
+    # _resolve_stale_pages returns posix paths (forward slashes on all platforms)
+    assert result[0]["source_path"] == "raw_sources/public-domain/a.txt"
 
 
 # ---------------------------------------------------------------------------
