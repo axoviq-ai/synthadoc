@@ -68,6 +68,8 @@ Unlike traditional retrieval-augmented generation (RAG) tools that synthesize at
 
 **Citation faithfulness audit** — opt-in LLM pass that verifies every compiled claim against its cited source lines and flags hallucinations or drifts. Run with `synthadoc audit citations --faithfulness`.
 
+**Cross-wiki federation** — `synthadoc query --cross-wiki` fans a single question out across all registered running wikis simultaneously. The LLM auto-routes to relevant wikis, citations use `[[wiki-name::PageTitle]]` pills, and answers degrade gracefully when a target wiki is offline. Manage the optional routing override with `synthadoc cross-wiki routing init/show/edit`.
+
 **MCP server** — exposes wiki tools (query, ingest, export, lifecycle) to any MCP-compatible client (Claude Desktop, Cursor, Zed, etc.) for live brain/memory access.
 
 **Backup and restore** — `synthadoc backup` creates a portable ZIP (wiki pages, raw sources, audit DB); `synthadoc restore` re-registers the wiki from a backup ZIP.
