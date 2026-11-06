@@ -135,9 +135,17 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     for p in stale:
         page = ctx.store.read_page(p["slug"])
         raw_file = page.sources[0].file if page and page.sources else None
-        source_path: str | None = (
+        abs_path: str | None = (
             _resolve_source_path(ctx.wiki_root, raw_file) if raw_file is not None else None
         )
+        # Return wiki-relative path so LLM-written confirm cards show readable names.
+        # tool_ingest_source resolves relative paths back to absolute.
+        source_path: str | None = None
+        if abs_path is not None:
+            try:
+                source_path = str(Path(abs_path).relative_to(ctx.wiki_root))
+            except ValueError:
+                source_path = Path(abs_path).name
         result.append(
             {
                 "slug": p["slug"],
@@ -173,7 +181,12 @@ async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
                 "candidates": candidates,
             }
         return {"error": f"Page {slug!r} has no local source file recorded"}
-    source_path = _resolve_source_path(ctx.wiki_root, raw_file)
+    abs_path = _resolve_source_path(ctx.wiki_root, raw_file)
+    # Return wiki-relative path; tool_ingest_source resolves it back.
+    try:
+        source_path = str(Path(abs_path).relative_to(ctx.wiki_root))
+    except ValueError:
+        source_path = Path(abs_path).name
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "find_page_source", "message": f"Found source for {slug}"},
@@ -211,9 +224,10 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     if is_url:
         label = source_path
     else:
-        # Must be an absolute path — relative paths are ambiguous on the server.
+        # Resolve relative paths (returned by find_stale_pages / find_page_source)
+        # against wiki_root so the LLM can pass them through without modification.
         if not os.path.isabs(source_path):
-            return {"error": f"source_path must be an absolute path, got: {source_path!r}"}
+            source_path = str(ctx.wiki_root / source_path)
         path = Path(source_path)
         if not path.exists():
             return {"error": f"File not found: {source_path!r}"}
@@ -922,13 +936,14 @@ async def tool_scoped_confirm(
 
     # 4. Register gate
     gate = asyncio.Event()
-    ctx.confirm_registry[ctx.session_id] = gate
-    ctx.confirm_result_registry[ctx.session_id] = {}
+    ctx.confirm_registry[ctx.run_id] = gate
+    ctx.confirm_result_registry[ctx.run_id] = {}
 
     try:
         # 5. Send SSE
         payload: dict = {
             "session_id": ctx.session_id,
+            "run_id": ctx.run_id,
             "page_slug": slug,
             "current_body": current_body,
             "accumulated_body": apply_result.accumulated_body,
@@ -943,8 +958,8 @@ async def tool_scoped_confirm(
             await ctx.send_sse_event("scoped_edit_confirm", payload)
         except Exception:  # noqa: BLE001
             _log.warning(
-                "tool_scoped_confirm: failed to send SSE (session=%s)",
-                ctx.session_id,
+                "tool_scoped_confirm: failed to send SSE (session=%s run=%s)",
+                ctx.session_id, ctx.run_id,
                 exc_info=True,
             )
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
@@ -956,14 +971,14 @@ async def tool_scoped_confirm(
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 7. Read result
-        res = ctx.confirm_result_registry.get(ctx.session_id, {})
+        res = ctx.confirm_result_registry.get(ctx.run_id, {})
 
         # Guard: a plain bool (from tool_confirm) must not be read as a scoped dict
         if not isinstance(res, dict):
             _log.error(
                 "tool_scoped_confirm: unexpected non-dict result in registry for "
-                "session=%s (type=%s) — treating as declined",
-                ctx.session_id, type(res).__name__,
+                "session=%s run=%s (type=%s) — treating as declined",
+                ctx.session_id, ctx.run_id, type(res).__name__,
             )
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
@@ -994,8 +1009,8 @@ async def tool_scoped_confirm(
 
     finally:
         # 12. Cleanup
-        ctx.confirm_registry.pop(ctx.session_id, None)
-        ctx.confirm_result_registry.pop(ctx.session_id, None)
+        ctx.confirm_registry.pop(ctx.run_id, None)
+        ctx.confirm_result_registry.pop(ctx.run_id, None)
 
 
 def unified_diff_preview(slug: str, old: str, new: str, max_lines: int = 80) -> str:
@@ -1043,11 +1058,12 @@ async def tool_confirm(
     """
     _CONFIRM_TIMEOUT = 300.0
     gate = asyncio.Event()
-    ctx.confirm_registry[ctx.session_id] = gate
-    ctx.confirm_result_registry[ctx.session_id] = False
+    ctx.confirm_registry[ctx.run_id] = gate
+    ctx.confirm_result_registry[ctx.run_id] = False
     try:
         payload: dict = {
             "session_id": ctx.session_id,
+            "run_id": ctx.run_id,
             "message": message,
             "yes_label": yes_label,
             "no_label": no_label,
@@ -1058,11 +1074,11 @@ async def tool_confirm(
         try:
             await ctx.send_sse_event("confirm_request", payload)
         except Exception:  # noqa: BLE001
-            _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s); treating as declined", ctx.session_id, exc_info=True)
+            _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s run=%s); treating as declined", ctx.session_id, ctx.run_id, exc_info=True)
             return {"confirmed": False}
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
-            raw_result = ctx.confirm_result_registry.get(ctx.session_id, False)
+            raw_result = ctx.confirm_result_registry.get(ctx.run_id, False)
             # Explicit bool check: a scoped-confirm dict is truthy but must not
             # be mistaken for a plain confirmed=True from tool_confirm.
             confirmed = raw_result is True
@@ -1070,8 +1086,8 @@ async def tool_confirm(
         except asyncio.TimeoutError:
             return {"confirmed": False}
     finally:
-        ctx.confirm_registry.pop(ctx.session_id, None)
-        ctx.confirm_result_registry.pop(ctx.session_id, None)
+        ctx.confirm_registry.pop(ctx.run_id, None)
+        ctx.confirm_result_registry.pop(ctx.run_id, None)
 
 
 # ---------------------------------------------------------------------------

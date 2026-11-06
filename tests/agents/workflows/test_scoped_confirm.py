@@ -28,6 +28,7 @@ async def test_tool_scoped_confirm_sends_correct_sse_event():
     from synthadoc.agents.workflows._tools import tool_scoped_confirm
     ctx = MagicMock()
     ctx.session_id = "sess1"
+    ctx.run_id = "run1"
     ctx.send_sse_event = AsyncMock()
     ctx.confirm_registry = {}
     ctx.confirm_result_registry = {}
@@ -38,11 +39,11 @@ async def test_tool_scoped_confirm_sends_correct_sse_event():
     # Simulate immediate resolution (blocks mode, include all applied)
     async def resolver():
         await asyncio.sleep(0)  # yield
-        ctx.confirm_result_registry["sess1"] = {
+        ctx.confirm_result_registry["run1"] = {
             "confirmed": True, "mode": "blocks",
             "included_block_ids": ["b0", "b1"], "page_body": None,
         }
-        ctx.confirm_registry["sess1"].set()
+        ctx.confirm_registry["run1"].set()
 
     asyncio.get_event_loop().create_task(resolver())
     result = await tool_scoped_confirm(ctx, slug="pg", apply_result=ar,
@@ -64,6 +65,7 @@ async def test_tool_scoped_confirm_zero_blocks_sends_page_tab_default():
     from synthadoc.agents.workflows._tools import tool_scoped_confirm
     ctx = MagicMock()
     ctx.session_id = "sess2"
+    ctx.run_id = "run2"
     ctx.send_sse_event = AsyncMock()
     ctx.confirm_registry = {}
     ctx.confirm_result_registry = {}
@@ -73,11 +75,11 @@ async def test_tool_scoped_confirm_zero_blocks_sends_page_tab_default():
 
     async def resolver():
         await asyncio.sleep(0)
-        ctx.confirm_result_registry["sess2"] = {
+        ctx.confirm_result_registry["run2"] = {
             "confirmed": False, "mode": "page",
             "included_block_ids": [], "page_body": None,
         }
-        ctx.confirm_registry["sess2"].set()
+        ctx.confirm_registry["run2"].set()
 
     asyncio.get_event_loop().create_task(resolver())
     await tool_scoped_confirm(ctx, slug="pg", apply_result=ar, current_body="original content.")

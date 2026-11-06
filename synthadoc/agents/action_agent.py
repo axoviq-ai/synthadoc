@@ -532,6 +532,7 @@ class ActionAgent(BaseAgent):
 
         import uuid as _uuid
         _session_id = session_id or str(_uuid.uuid4())
+        _run_id = str(_uuid.uuid4())
         _cfg = getattr(self._orch, "_cfg", None)
         _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
         from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
@@ -551,7 +552,16 @@ class ActionAgent(BaseAgent):
             ),
             search=getattr(self._orch, "_search", None),
             is_cli_provider=isinstance(self._provider, CodingToolCLIProvider),
+            run_id=_run_id,
         )
+
+        # Cancel any previous workflow still running on this session so its
+        # orphaned confirm gates can't interfere with the new run.
+        if not hasattr(self._orch, "_workflow_tasks"):
+            self._orch._workflow_tasks = {}
+        _prev = self._orch._workflow_tasks.get(_session_id)
+        if _prev is not None and not _prev.done():
+            _prev.cancel()
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
 
@@ -635,6 +645,9 @@ class ActionAgent(BaseAgent):
 
             task = _asyncio.create_task(_run_loop())
 
+        # Register so the NEXT run on this session can cancel this one promptly.
+        self._orch._workflow_tasks[_session_id] = task
+
         # ── Drain the sse_queue (shared for CLI and normal paths) ─────────────
         try:
             while True:
@@ -695,6 +708,9 @@ class ActionAgent(BaseAgent):
                     await task
                 except _asyncio.CancelledError:
                     pass
+            # Deregister so a future run doesn't try to cancel an already-done task.
+            if self._orch._workflow_tasks.get(_session_id) is task:
+                self._orch._workflow_tasks.pop(_session_id, None)
 
     # ── private ───────────────────────────────────────────────────────────────
 
@@ -791,7 +807,7 @@ class ActionAgent(BaseAgent):
                 )
             lines = [f"**Stale pages ({len(stale)})** — source changed, re-ingest to refresh:\n"]
             for p in stale:
-                since = p.get("updated") or p.get("created") or "unknown"
+                since = p.get("updated_at") or "unknown"
                 lines.append(f"- `{p['slug']}` (stale since {since})")
             return ActionResult(
                 action_type="lint_report", success=True,
@@ -917,7 +933,7 @@ class ActionAgent(BaseAgent):
                 lines.append("")
                 lines.append(f"**Stale pages ({len(stale_pages)}):**")
                 for p in stale_pages:
-                    since = p.get("updated") or p.get("created") or "unknown"
+                    since = p.get("updated_at") or "unknown"
                     lines.append(f"- `{p['slug']}` (stale since {since})")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
