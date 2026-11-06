@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 # SPDX-License-Identifier: AGPL-3.0-or-later
-from synthadoc.agents.content_health_scanner import ContentIssue, scan_page, scan_pages
+from dataclasses import asdict
+from synthadoc.agents.content_health_scanner import ContentIssue, refresh_wiki_health_issues, scan_page, scan_pages
 
 
 def test_duplicate_section_detected():
@@ -147,3 +148,93 @@ def test_resolvable_issues_drops_report_only_types():
     issues = [{"type": "thin_section"}, {"type": "duplicate_section"}, {"type": "empty_section"}]
     assert REPORT_ONLY_ISSUE_TYPES == {"thin_section"}
     assert resolvable_issues(issues) == issues[1:]
+
+
+# ── refresh_wiki_health_issues respects dismissals ────────────────────────────
+
+def test_refresh_does_not_restore_dismissed_issue_types(tmp_path):
+    """Lint re-scan must not undo a user dismissal of a resolvable issue type."""
+    from synthadoc.storage.wiki import LifecycleState, WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    # Page has a duplicate section (resolvable) — the user dismissed it.
+    dup_content = "# Page\n\n## Intro\nHello.\n\n## Intro\nDuplicate.\n"
+    page = WikiPage(
+        title="Page", tags=[], content=dup_content,
+        status=LifecycleState.ACTIVE, confidence="", sources=[],
+        content_health_issues=[],
+        content_health_fix_record={
+            "slug": "test-page",
+            "dismissed_at": "2026-11-06T10:00:00+00:00",
+            "dismissed_count": 1,
+            "dismissed_types": ["duplicate_section"],
+            "dismissed_reason": "needs manual edit",
+            "timestamp": "2026-11-06T10:00:00+00:00",
+            "issues_fixed": [],
+        },
+    )
+    store.write_page("test-page", page)
+
+    refresh_wiki_health_issues(store)
+
+    refreshed = store.read_page("test-page")
+    assert refreshed is not None
+    # The dismissed type must not reappear.
+    assert not any(i.get("type") == "duplicate_section" for i in refreshed.content_health_issues)
+
+
+def test_refresh_keeps_non_dismissed_issue_types(tmp_path):
+    """Lint re-scan must still flag issue types that were NOT dismissed."""
+    from synthadoc.storage.wiki import LifecycleState, WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    # Page has both a duplicate section AND an unclosed code block.
+    # The user dismissed only duplicate_section.
+    mixed_content = (
+        "# Page\n\n## Intro\nHello.\n\n## Intro\nDuplicate.\n\n"
+        "## Code\nSome text.\n\n```python\ncode here\n"  # unclosed
+    )
+    page = WikiPage(
+        title="Page", tags=[], content=mixed_content,
+        status=LifecycleState.ACTIVE, confidence="", sources=[],
+        content_health_issues=[],
+        content_health_fix_record={
+            "slug": "test-page",
+            "dismissed_at": "2026-11-06T10:00:00+00:00",
+            "dismissed_count": 1,
+            "dismissed_types": ["duplicate_section"],
+            "dismissed_reason": "needs manual edit",
+            "timestamp": "2026-11-06T10:00:00+00:00",
+            "issues_fixed": [],
+        },
+    )
+    store.write_page("test-page", page)
+
+    refresh_wiki_health_issues(store)
+
+    refreshed = store.read_page("test-page")
+    assert refreshed is not None
+    types = {i.get("type") for i in refreshed.content_health_issues}
+    # Dismissed type filtered out; non-dismissed type still present.
+    assert "duplicate_section" not in types
+    assert "unclosed_code_block" in types
+
+
+def test_refresh_without_dismissal_still_detects_issues(tmp_path):
+    """Pages with no fix_record are scanned normally."""
+    from synthadoc.storage.wiki import LifecycleState, WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    dup_content = "# Page\n\n## Intro\nHello.\n\n## Intro\nDuplicate.\n"
+    page = WikiPage(
+        title="Page", tags=[], content=dup_content,
+        status=LifecycleState.ACTIVE, confidence="", sources=[],
+        content_health_issues=[],
+        content_health_fix_record=None,
+    )
+    store.write_page("test-page", page)
+
+    refresh_wiki_health_issues(store)
+
+    refreshed = store.read_page("test-page")
+    assert any(i.get("type") == "duplicate_section" for i in refreshed.content_health_issues)
