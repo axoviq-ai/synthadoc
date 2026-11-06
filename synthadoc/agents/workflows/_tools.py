@@ -963,11 +963,13 @@ async def tool_scoped_confirm(
                 exc_info=True,
             )
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
+        _log.info("tool_scoped_confirm: sent slug=%s (session=%s run=%s)", slug, ctx.session_id, ctx.run_id)
 
         # 6. Wait for gate
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
         except asyncio.TimeoutError:
+            _log.info("tool_scoped_confirm: expired after %.0fs slug=%s (session=%s run=%s)", _CONFIRM_TIMEOUT, slug, ctx.session_id, ctx.run_id)
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 7. Read result
@@ -984,6 +986,7 @@ async def tool_scoped_confirm(
 
         # 8. If not confirmed
         if not res.get("confirmed"):
+            _log.info("tool_scoped_confirm: declined slug=%s (session=%s run=%s)", slug, ctx.session_id, ctx.run_id)
             return {"confirmed": False, "final_body": None, "mode": "blocks"}
 
         # 9 / 10. Compute final_body
@@ -1005,6 +1008,7 @@ async def tool_scoped_confirm(
             final_body = re_result.accumulated_body
 
         # 11. Return — include mode so callers can apply mode-specific validation
+        _log.info("tool_scoped_confirm: approved mode=%s slug=%s (session=%s run=%s)", mode, slug, ctx.session_id, ctx.run_id)
         return {"confirmed": True, "final_body": final_body, "mode": mode}
 
     finally:
@@ -1076,14 +1080,17 @@ async def tool_confirm(
         except Exception:  # noqa: BLE001
             _log.warning("tool_confirm: failed to send confirm_request SSE (session=%s run=%s); treating as declined", ctx.session_id, ctx.run_id, exc_info=True)
             return {"confirmed": False}
+        _log.info("tool_confirm: sent (session=%s run=%s)", ctx.session_id, ctx.run_id)
         try:
             await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
             raw_result = ctx.confirm_result_registry.get(ctx.run_id, False)
             # Explicit bool check: a scoped-confirm dict is truthy but must not
             # be mistaken for a plain confirmed=True from tool_confirm.
             confirmed = raw_result is True
+            _log.info("tool_confirm: answered confirmed=%s (session=%s run=%s)", confirmed, ctx.session_id, ctx.run_id)
             return {"confirmed": confirmed}
         except asyncio.TimeoutError:
+            _log.info("tool_confirm: expired after %.0fs (session=%s run=%s)", _CONFIRM_TIMEOUT, ctx.session_id, ctx.run_id)
             return {"confirmed": False}
     finally:
         ctx.confirm_registry.pop(ctx.run_id, None)
