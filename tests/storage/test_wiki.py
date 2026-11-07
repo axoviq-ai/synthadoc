@@ -2,7 +2,9 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import threading
 import pytest
-from synthadoc.storage.wiki import WikiStorage, WikiPage
+from synthadoc.storage.wiki import (
+    WikiStorage, WikiPage, LifecycleState, clear_stale_fix_record_on_fresh_contradiction,
+)
 
 
 def test_write_and_read_page(tmp_wiki):
@@ -409,3 +411,37 @@ def test_write_page_strips_control_characters(tmp_wiki):
     raw = (tmp_wiki / "wiki" / "turing.md").read_bytes()
     assert b"\x00" not in raw and b"\x1b" not in raw
     assert store.read_page("turing").content == "GCCS and the Bombe.\n\tIndented"
+
+
+# ── clear_stale_fix_record_on_fresh_contradiction ───────────────────────────
+# Shared by lint_agent.py's adversarial-gate demotion and the manual
+# POST /lifecycle/transition endpoint, so both paths into CONTRADICTED
+# clear a stale last_fix_record the same way.
+
+def _page_with_fix_record(status: str) -> WikiPage:
+    return WikiPage(
+        title="Suspect", tags=[], content="x", status=status, confidence="high",
+        sources=[], last_fix_record={"slug": "suspect", "strategy_name": "Strategy 1"},
+    )
+
+
+@pytest.mark.parametrize("from_state", [LifecycleState.ACTIVE, LifecycleState.STALE])
+def test_clears_fix_record_on_fresh_contradiction(from_state):
+    page = _page_with_fix_record(from_state)
+    clear_stale_fix_record_on_fresh_contradiction(page, from_state, LifecycleState.CONTRADICTED)
+    assert page.last_fix_record is None
+
+
+def test_leaves_fix_record_when_already_contradicted():
+    # Not a "fresh" demotion — from_state is already contradicted.
+    page = _page_with_fix_record(LifecycleState.CONTRADICTED)
+    clear_stale_fix_record_on_fresh_contradiction(
+        page, LifecycleState.CONTRADICTED, LifecycleState.CONTRADICTED,
+    )
+    assert page.last_fix_record is not None
+
+
+def test_leaves_fix_record_for_non_contradiction_transitions():
+    page = _page_with_fix_record(LifecycleState.ACTIVE)
+    clear_stale_fix_record_on_fresh_contradiction(page, LifecycleState.ACTIVE, LifecycleState.ARCHIVED)
+    assert page.last_fix_record is not None

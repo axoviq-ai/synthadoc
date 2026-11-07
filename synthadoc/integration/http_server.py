@@ -2562,10 +2562,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if not page:
             raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
         from_state = page.status
-        from synthadoc.storage.wiki import validate_lifecycle_transition
+        from synthadoc.storage.wiki import (
+            validate_lifecycle_transition, clear_stale_fix_record_on_fresh_contradiction,
+        )
         err = validate_lifecycle_transition(from_state, req.to_state)
         if err:
             raise HTTPException(status_code=422, detail=err)
+        clear_stale_fix_record_on_fresh_contradiction(page, from_state, req.to_state)
         page.status = req.to_state
         orch._store.write_page(req.slug, page)
         from datetime import datetime, timezone
