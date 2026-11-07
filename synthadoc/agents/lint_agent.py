@@ -1097,8 +1097,10 @@ class LintAgent(BaseAgent):
                     continue
 
                 # Check 2: stale detection -- source file hash changed
-                # Also fires for contradicted pages: an updated source likely
-                # resolves the contradiction and must be re-ingested to confirm.
+                # Contradicted pages are checked but NOT demoted: the contradiction
+                # flag takes priority and must be resolved before stale state is
+                # considered.  Demoting a contradicted page to stale silently loses
+                # the flag and prevents lint from reporting the unresolved conflict.
                 if current in (LifecycleState.ACTIVE, LifecycleState.CONTRADICTED) and self._audit:
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
@@ -1109,6 +1111,10 @@ class LintAgent(BaseAgent):
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
                                 if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
+                                    if current == LifecycleState.CONTRADICTED:
+                                        # Source changed, but contradiction must be resolved first.
+                                        # Skip stale demotion to preserve the contradiction flag.
+                                        break
                                     await self._transition(slug, page, current,
                                                            LifecycleState.STALE,
                                                            "source file modified since last ingest")
@@ -1117,6 +1123,8 @@ class LintAgent(BaseAgent):
                                     break
                         # URL stale: age-based (no network call)
                         elif src_ref.file and is_url(src_ref.file) and url_staleness_days > 0 and self._audit:
+                            if current == LifecycleState.CONTRADICTED:
+                                break  # contradiction takes priority over URL staleness
                             record = await self._audit.find_by_source_path(src_ref.file)
                             if record and record.get("ingested_at"):
                                 try:
