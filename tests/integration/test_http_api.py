@@ -887,6 +887,54 @@ def test_lifecycle_transition_any_state_allowed(tmp_wiki):
     assert r2.status_code == 200, r2.json()
 
 
+def test_lifecycle_transition_to_contradicted_clears_stale_last_fix_record(tmp_wiki):
+    """A manual active/stale -> contradicted transition must clear a stale
+    last_fix_record, the same way the adversarial gate's automated demotion
+    already does in lint_agent.py.
+
+    Without this, a page fixed once (last_fix_record stays set by design
+    after promotion, so a later rollback can reach it) and later manually
+    re-flagged as contradicted via this endpoint would carry that stale
+    record into the new resolution episode. A retry inside
+    tool_propose_and_apply would then chain onto it, and "roll back" would
+    silently restore content from the OLD, already-resolved episode instead
+    of the page as it stood just before this new contradiction.
+    """
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    wiki_dir = tmp_wiki / "wiki"
+    page = WikiPage(
+        title="Suspect", tags=[], content="# Suspect",
+        status="active", confidence="medium", sources=[],
+        last_fix_record={
+            "slug": "suspect", "snapshot_id": 1, "snapshot_index_before": 1,
+            "timestamp": "2026-01-01T00:00:00+00:00", "strategy_name": "Strategy 1",
+            "pre_fix_status": "contradicted", "pre_fix_contradiction_note": None,
+        },
+    )
+    WikiStorage(wiki_dir).write_page("suspect", page)
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("suspect", "active", "lint"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "suspect", "to_state": "contradicted", "reason": "manual re-flag"
+        })
+    assert resp.status_code == 200, resp.json()
+
+    reread = WikiStorage(wiki_dir).read_page("suspect")
+    assert reread is not None
+    assert reread.status == "contradicted"
+    assert reread.last_fix_record is None, (
+        "Stale last_fix_record from the earlier, already-promoted episode "
+        "must be cleared on a fresh manual demotion to contradicted."
+    )
+
+
 def test_audit_events_endpoint(tmp_wiki):
     """GET /audit/events returns records."""
     from synthadoc.integration.http_server import create_app
