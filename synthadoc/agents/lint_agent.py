@@ -338,6 +338,7 @@ def find_broken_citation_refs(
     extracted_dir: Path,
     *,
     slugs: list[str] | None = None,
+    exclude_archived: bool = True,
 ) -> dict[str, list[dict]]:
     """Return {slug: [{"citation": str, "reason": str}, ...]} for pages
     with broken ^[file:L-L] markers.
@@ -346,15 +347,18 @@ def find_broken_citation_refs(
       "citation" — the raw marker text, e.g. "^[bio.txt:5-12]"
       "reason"   — "broken_ref" | "malformed" | "out_of_range"
 
-    All non-system pages are scanned (including stale/contradicted), consistent
-    with the CLI lint report and /lint/report HTTP endpoint.
-    Returns an empty dict when no issues are found.
+    When *slugs* is omitted, all non-system pages are scanned.  Archived pages
+    are excluded by default (*exclude_archived=True*) because the broken-citation
+    resolver skips them — reporting unfixable issues produces noise.  Pass
+    ``exclude_archived=False`` only when scanning for archival/audit purposes.
     """
     candidates = slugs if slugs is not None else store.list_pages()
     result: dict[str, list[dict]] = {}
     for slug in candidates:
         page = store.read_page(slug)
         if page is None:
+            continue
+        if exclude_archived and page.status == LifecycleState.ARCHIVED:
             continue
         issues = _check_page_citations(slug, page, extracted_dir)
         if issues:
@@ -1093,8 +1097,10 @@ class LintAgent(BaseAgent):
                     continue
 
                 # Check 2: stale detection -- source file hash changed
-                # Also fires for contradicted pages: an updated source likely
-                # resolves the contradiction and must be re-ingested to confirm.
+                # Contradicted pages are checked but NOT demoted: the contradiction
+                # flag takes priority and must be resolved before stale state is
+                # considered.  Demoting a contradicted page to stale silently loses
+                # the flag and prevents lint from reporting the unresolved conflict.
                 if current in (LifecycleState.ACTIVE, LifecycleState.CONTRADICTED) and self._audit:
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
@@ -1105,6 +1111,10 @@ class LintAgent(BaseAgent):
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
                                 if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
+                                    if current == LifecycleState.CONTRADICTED:
+                                        # Source changed, but contradiction must be resolved first.
+                                        # Skip stale demotion to preserve the contradiction flag.
+                                        break
                                     await self._transition(slug, page, current,
                                                            LifecycleState.STALE,
                                                            "source file modified since last ingest")
@@ -1113,6 +1123,8 @@ class LintAgent(BaseAgent):
                                     break
                         # URL stale: age-based (no network call)
                         elif src_ref.file and is_url(src_ref.file) and url_staleness_days > 0 and self._audit:
+                            if current == LifecycleState.CONTRADICTED:
+                                break  # contradiction takes priority over URL staleness
                             record = await self._audit.find_by_source_path(src_ref.file)
                             if record and record.get("ingested_at"):
                                 try:
@@ -1389,17 +1401,24 @@ class LintAgent(BaseAgent):
             await self._emit_progress({"phase": "citations", "message": "Checking citations..."})
             wiki_root = self._store._root.parent
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
-            for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:
-                page = self._store.read_page(slug)
-                if not page:
-                    continue
-                issues = _check_page_citations(slug, page, extracted_dir)
+            _lint_slugs = [s for s in slugs if s not in LINT_SKIP_SLUGS]
+            # Shared function excludes archived pages by default.
+            broken_by_slug = find_broken_citation_refs(
+                self._store, extracted_dir, slugs=_lint_slugs
+            )
+            for slug, issues in broken_by_slug.items():
                 for issue in issues:
                     report.citation_issues.append(issue)
                     if self._audit:
                         await self._audit.record_audit_event(
                             job_id, "citation_validation_failed", issue,
                         )
+
+            # Check 5b + 6: per-page warnings (archived pages excluded inline).
+            for slug in _lint_slugs:
+                page = self._store.read_page(slug)
+                if not page or page.status == LifecycleState.ARCHIVED:
+                    continue
                 # Check 6: truncated source warnings
                 truncation_warnings = self._check_truncated_sources(slug, page)
                 for warning in truncation_warnings:
