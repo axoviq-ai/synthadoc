@@ -24,7 +24,10 @@ from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
 from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource, SYSTEM_PAGE_SLUGS
+from synthadoc.storage.wiki import (
+    WikiStorage, LifecycleState, is_url, TriggerSource, SYSTEM_PAGE_SLUGS,
+    clear_stale_fix_record_on_fresh_contradiction,
+)
 
 import logging as _logging
 
@@ -952,17 +955,7 @@ class LintAgent(BaseAgent):
                 slug, from_state, to_state, reason, TriggerSource.LINT,
                 content_snapshot=page.content or None,
             )
-        if to_state == LifecycleState.CONTRADICTED and from_state in (
-            LifecycleState.ACTIVE, LifecycleState.STALE,
-        ):
-            # A fresh demotion starts a new resolution episode. last_fix_record
-            # is never cleared on promotion (it stays so the user can roll back
-            # the episode that was just resolved), so without this, a stale
-            # record from that earlier episode would still be here — and a
-            # retry inside tool_propose_and_apply would chain onto it, making
-            # "roll back" reach past this new contradiction into the old,
-            # already-resolved one.
-            page.last_fix_record = None
+        clear_stale_fix_record_on_fresh_contradiction(page, from_state, to_state)
         page.status = to_state
         self._store.write_page(slug, page)
         if self._search is not None:

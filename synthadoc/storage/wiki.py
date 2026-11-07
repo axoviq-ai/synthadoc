@@ -74,6 +74,31 @@ def validate_lifecycle_transition(from_state: str, to_state: str) -> str | None:
     return None
 
 
+def clear_stale_fix_record_on_fresh_contradiction(
+    page: "WikiPage", from_state: str, to_state: str,
+) -> None:
+    """Clear page.last_fix_record when a page is freshly demoted to
+    'contradicted' from 'active' or 'stale'.
+
+    A fresh demotion starts a new resolution episode. last_fix_record is
+    never cleared on promotion (it stays set so the user can roll back the
+    episode that was just resolved) — so without this, a stale record from
+    an earlier, already-resolved episode would still be here when the page
+    is later re-demoted. A retry inside tool_propose_and_apply's chaining
+    logic (_resolve_fix_episode) would then latch onto that stale record,
+    making "roll back" reach past this new contradiction into the old,
+    already-resolved one instead.
+
+    Every path that can transition a page to CONTRADICTED must call this —
+    currently the adversarial gate (lint_agent.py's _transition) and the
+    manual POST /lifecycle/transition endpoint (http_server.py).
+    """
+    if to_state == LifecycleState.CONTRADICTED and from_state in (
+        LifecycleState.ACTIVE, LifecycleState.STALE,
+    ):
+        page.last_fix_record = None
+
+
 def is_url(path: str) -> bool:
     """Return True if path is an HTTP/HTTPS URL (not a local file reference)."""
     return path.startswith(("http://", "https://"))
