@@ -35,6 +35,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from synthadoc.skills.url.scripts.main import UrlSkill
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 # This script lives in  <repo>/scripts/validate_seeds.py
@@ -112,7 +114,7 @@ class _Backend:
         self,
         label: str,
         client=None,          # anthropic.AsyncAnthropic | None
-        cli_cmd: list = None,  # base command list; prompt appended as last arg
+        cli_cmd: list = None,  # base command list; prompt appended as last arg # type: ignore
         model: str = "",
     ) -> None:
         self.label = label
@@ -208,7 +210,7 @@ async def check_scope(
     """
     prompt = _SCOPE_PROMPT.format(
         purpose=purpose.strip()[:4_000],
-        content=content[:8_000],
+        content=content[:30_000],
     )
     raw = await backend.complete(prompt)
     try:
@@ -303,7 +305,7 @@ async def validate_url(
         if in_scope and len(content) > 32_000:
             result["large_content_warning"] = (
                 f"content is large ({len(content):,} chars); "
-                "scope evaluated on first 8,000 chars only — verify full page manually"
+                "scope evaluated on first 30,000 chars only — verify full page manually"
             )
 
     return result
