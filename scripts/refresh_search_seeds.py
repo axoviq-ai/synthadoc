@@ -284,7 +284,7 @@ def _extract_scope_json(raw: str) -> dict:
 
 
 class _Backend:
-    def __init__(self, label: str, client=None, cli_cmd: list = None, model: str = "") -> None:
+    def __init__(self, label: str, client=None, cli_cmd: list = None, model: str = "") -> None: # type: ignore
         self.label = label
         self._client = client
         self._cli_cmd: list = cli_cmd or []
@@ -404,7 +404,7 @@ def _detect_backend(
 
 async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asyncio.Semaphore) -> bool:
     """Return True when the LLM judges *content* as in scope for *purpose*."""
-    prompt = _SCOPE_PROMPT.format(purpose=purpose.strip()[:4_000], content=content[:8_000])
+    prompt = _SCOPE_PROMPT.format(purpose=purpose.strip()[:4_000], content=content[:30_000])
     async with sem:
         try:
             raw = await backend.complete(prompt)
