@@ -463,11 +463,13 @@ def _make_cross_wiki_agent(app: FastAPI) -> "CrossWikiQueryAgent":
     registry = read_registry_all()
     own_wiki_name = orch._root.name
     provider = make_provider("query", orch._cfg)
+    gap_score_threshold = getattr(getattr(orch._cfg, "query", None), "gap_score_threshold", 2.0)
     return CrossWikiQueryAgent(
         provider=provider,
         registry=registry,
         own_wiki_name=own_wiki_name,
         orchestrator=orch,
+        gap_score_threshold=gap_score_threshold,
     )
 
 
@@ -539,6 +541,7 @@ async def _cw_cache_write(key: str, orch, result) -> None:
             "answer": result.answer,
             "citations": result.citations,
             "knowledge_gap": result.knowledge_gap,
+            "suggested_searches": getattr(result, "suggested_searches", []),
             "cross_wiki_searched": result.cross_wiki_searched,
             "cross_wiki_offline": result.cross_wiki_offline,
             "cross_wiki_skipped": result.cross_wiki_skipped,
@@ -1272,6 +1275,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "answer": result.answer,
             "citations": result.citations,
             "knowledge_gap": result.knowledge_gap,
+            "suggested_searches": result.suggested_searches,
             "tokens_used": result.tokens_used,
             "routing_warning": result.routing_warning,
             "cross_wiki_searched": result.cross_wiki_searched,
@@ -1321,13 +1325,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 if _cached.get("citations"):
                     yield f"event: citations\ndata: {_json.dumps({'citations': _cached['citations']})}\n\n"
                 if _cached.get("knowledge_gap"):
-                    yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+                    _raw = _cached.get("suggested_searches", [])
+                    _filtered = _filter_blocked_suggestions(_raw, _load_blocked_domains(_orch._root))
+                    yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': _filtered})}\n\n"
                 if session_id and _cached.get("answer"):
                     try:
                         await _orch._audit.append_message(session_id, "user", q)
                         await _orch._audit.append_message(
                             session_id, "assistant", _cached["answer"],
                             citations=_cached.get("citations") or None,
+                            gap_suggestions=_cached.get("suggested_searches") or None,
                         )
                     except _asyncio.CancelledError:
                         return
@@ -1391,7 +1398,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             if result.citations:
                 yield f"event: citations\ndata: {_json.dumps({'citations': result.citations})}\n\n"
             if result.knowledge_gap:
-                yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': []})}\n\n"
+                _raw = result.suggested_searches or []
+                _filtered = _filter_blocked_suggestions(_raw, _load_blocked_domains(_orch._root))
+                yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': _filtered})}\n\n"
             # Persist before done so the client's sidebar refresh sees fresh data
             if session_id and result.answer:
                 try:
@@ -1399,6 +1408,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     await _orch._audit.append_message(
                         session_id, "assistant", result.answer,
                         citations=result.citations or None,
+                        gap_suggestions=result.suggested_searches or None,
                     )
                 except _asyncio.CancelledError:
                     return

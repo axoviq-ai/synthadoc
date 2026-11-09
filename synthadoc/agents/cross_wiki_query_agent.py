@@ -15,7 +15,8 @@ from synthadoc.agents._query_utils import (
     build_synthesis_system, decompose_question, has_cjk,
     history_block, translate_for_retrieval, trim_history, strip_answer_tags,
 )
-from synthadoc.agents.query_agent import QueryResult
+from synthadoc.agents.query_agent import QueryResult, _guard_c_suppress
+from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.cli._wiki import CROSS_WIKI_ROUTING_PATH, peer_base_url
 from synthadoc.providers.base import LLMProvider, Message
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ class CrossWikiQueryAgent(BaseAgent):
         http_timeout_secs: float = _HTTP_TIMEOUT,
         max_tokens: int = 8192,
         orchestrator: object | None = None,
+        gap_score_threshold: float = 2.0,
     ) -> None:
         super().__init__(provider)
         self._registry = registry
@@ -107,6 +109,7 @@ class CrossWikiQueryAgent(BaseAgent):
         self._http_timeout = http_timeout_secs
         self._max_tokens = max_tokens
         self._orchestrator = orchestrator
+        self._gap_score_threshold = gap_score_threshold
 
     async def run(  # type: ignore[override]
         self,
@@ -177,7 +180,22 @@ class CrossWikiQueryAgent(BaseAgent):
 
         pages, offline_wikis, warnings = self._merge_results(target_wikis, raw_results)
 
+        purpose_summaries = {
+            name: resp.purpose_summary
+            for (name, _), resp in zip(target_wikis, raw_results)
+            if isinstance(resp, _RetrieveResponse) and resp.purpose_summary
+        }
+        domain_ctx = "; ".join(f"{name}: {s}" for name, s in purpose_summaries.items()) if purpose_summaries else ""
+
         if not pages:
+            try:
+                suggested = await SearchDecomposeAgent(self._provider).run(
+                    retrieval_question, domain_context=domain_ctx
+                ) or [retrieval_question]
+            except Exception as exc:
+                logger.warning("SearchDecomposeAgent failed: %s", exc)
+                suggested = [retrieval_question]
+
             if offline_wikis:
                 offline_str = ", ".join(offline_wikis)
                 return QueryResult(
@@ -188,6 +206,7 @@ class CrossWikiQueryAgent(BaseAgent):
                     ),
                     citations=[],
                     knowledge_gap=True,
+                    suggested_searches=suggested,
                     cacheable=False,
                     cross_wiki_offline=offline_wikis,
                     cross_wiki_searched=[n for n, _ in target_wikis],
@@ -197,15 +216,10 @@ class CrossWikiQueryAgent(BaseAgent):
                 answer="No relevant pages found across the queried wikis.",
                 citations=[],
                 knowledge_gap=True,
+                suggested_searches=suggested,
                 cacheable=False,
                 cross_wiki_searched=[n for n, _ in target_wikis],
             )
-
-        purpose_summaries = {
-            name: resp.purpose_summary
-            for (name, _), resp in zip(target_wikis, raw_results)
-            if isinstance(resp, _RetrieveResponse) and resp.purpose_summary
-        }
 
         trimmed_history = trim_history(history or [], _HISTORY_BUDGET)
         context = self._build_cross_wiki_context(pages)
@@ -233,24 +247,54 @@ class CrossWikiQueryAgent(BaseAgent):
                 ),
                 citations=[],
                 knowledge_gap=True,
+                suggested_searches=[],
                 cacheable=False,
                 routing_warning=str(exc),
                 cross_wiki_offline=offline_wikis,
                 cross_wiki_searched=[n for n, _ in target_wikis],
             )
 
-        cited_slugs = [
-            f"{p['wiki_name']}::{p['slug']}"
-            for p in pages[:10]
-        ]
+        answer_text = strip_answer_tags(resp.text)
+        knowledge_gap = False
+        suggested: list[str] = []
+
+        if answer_text.startswith("[GAP]"):
+            answer_text = answer_text[len("[GAP]"):].lstrip("\n")
+            knowledge_gap = True
+        else:
+            max_score = max((p.get("score", 0.0) for p in pages), default=0.0)
+            if max_score < self._gap_score_threshold:
+                knowledge_gap = _guard_c_suppress(True, answer_text, "cross_wiki")
+
+        if knowledge_gap:
+            try:
+                suggested = await SearchDecomposeAgent(self._provider).run(
+                    retrieval_question, domain_context=domain_ctx
+                ) or [retrieval_question]
+            except Exception as exc:
+                logger.warning("SearchDecomposeAgent failed: %s", exc)
+                suggested = [retrieval_question]
+            cited_slugs = [
+                f"{p['wiki_name']}::{p['slug']}"
+                for p in pages[:10]
+                if f"{p['wiki_name']}::{p['slug']}" in answer_text
+                or (bool(p.get("title")) and p["title"] in answer_text)
+            ]
+        else:
+            cited_slugs = [
+                f"{p['wiki_name']}::{p['slug']}"
+                for p in pages[:10]
+            ]
+
         return QueryResult(
             question=question,
-            answer=strip_answer_tags(resp.text),
+            answer=answer_text,
             citations=cited_slugs,
             tokens_used=resp.total_tokens,
             input_tokens=resp.input_tokens,
             output_tokens=resp.output_tokens,
-            knowledge_gap=False,
+            knowledge_gap=knowledge_gap,
+            suggested_searches=suggested,
             routing_warning="; ".join(warnings) if warnings else "",
             cacheable=True,
             cross_wiki_offline=offline_wikis,
@@ -402,10 +446,12 @@ class CrossWikiQueryAgent(BaseAgent):
         return prefix + (
             "You are answering from content drawn from multiple knowledge wikis.\n"
             "Each page is labeled with its source wiki in brackets, e.g. [finance-wiki].\n"
-            "Answer the question using ONLY the pages below.\n"
+            "Answer the question using the pages below.\n"
             "Cite sources as [[wiki-name::PageTitle]].\n"
             "Respond in the same language as the question.\n"
-            "Extract all specific facts — dates, numbers, names — even when they appear briefly.\n\n"
+            "Extract all specific facts — dates, numbers, names — even when they appear briefly.\n"
+            "If the pages below do not answer the question, start your reply with [GAP] on its own line; "
+            "if they do answer it, do not write [GAP].\n\n"
             + scope_block + offline_block
             + f"Question: {question}\n\nPages:\n{context}"
         )
