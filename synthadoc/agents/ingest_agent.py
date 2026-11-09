@@ -1428,7 +1428,7 @@ class IngestAgent(BaseAgent):
                     page_title = _h1.group(1).strip() if _h1 else title
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
-                        title=page_title, tags=tags,
+                        title=page_title, tags=tags, # type: ignore
                         content=body,
                         status=LifecycleState.DRAFT, confidence="medium",
                         sources=[SourceRef(

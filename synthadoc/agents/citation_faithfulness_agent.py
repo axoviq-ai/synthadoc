@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE
+from synthadoc.config import Config
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
 

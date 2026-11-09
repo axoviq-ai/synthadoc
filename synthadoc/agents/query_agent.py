@@ -827,7 +827,7 @@ class QueryAgent(BaseAgent):
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:
-                _queue = self._orchestrator._queue
+                _queue = self._orchestrator._queue # type: ignore
                 _job_id_match = re.search(r'\b([0-9a-f]{8})\b', q_lower)
                 if _job_id_match:
                     _job_id = _job_id_match.group(1)

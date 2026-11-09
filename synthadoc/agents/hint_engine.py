@@ -55,7 +55,7 @@ def _load_hints_file(path: Path) -> tuple[dict[str, list[str]], list[tuple[list[
         for pat in data.get("topic_patterns", [])
         if pat.get("keywords") and pat.get("hints")
     ]
-    return by_mode, patterns
+    return by_mode, patterns # type: ignore
 
 # ── working copies (reset by configure()) ────────────────────────────────────
 
@@ -254,7 +254,7 @@ class HintEngine:
             _hints_by_mode[mode] = existing + [h for h in extras if h not in existing]
 
         # User patterns prepended so they fire before bundled ones
-        for q_kws, a_kws, hints in reversed(extra_patterns):
+        for q_kws, a_kws, hints in reversed(extra_patterns): # type: ignore
             _topic_patterns.insert(0, (q_kws, a_kws, hints))
 
         logger.info(

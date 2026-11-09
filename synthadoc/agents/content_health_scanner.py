@@ -12,6 +12,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from synthadoc.storage.wiki import WikiStorage
+
 
 @dataclass
 class ContentIssue:
