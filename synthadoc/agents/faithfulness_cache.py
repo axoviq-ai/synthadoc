@@ -43,8 +43,8 @@ def _page_key(page: "WikiPage") -> str | None:
     # Convert each value to a comparable, serialisable string.
     strs: list[str] = []
     for v in raw:
-        if hasattr(v, "isoformat"):      # datetime.date / datetime.datetime
-            strs.append(v.isoformat())
+        if hasattr(v, "isoformat"):    # datetime.date / datetime.datetime
+            strs.append(v.isoformat()) # type: ignore
         else:
             strs.append(str(v))
     return max(strs)
