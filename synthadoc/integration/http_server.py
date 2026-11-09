@@ -2001,36 +2001,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         "growth_warning": True,
                     })
 
-        # Citation issues — same logic as CLI lint report
-        from synthadoc.agents.lint_agent import _check_page_citations, LINT_SKIP_SLUGS as _SKIP
-        from synthadoc.storage.wiki import WikiPage as _WP, SourceRef as _SR
+        # Citation issues — use shared function (excludes archived pages by default).
+        from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_bcr
         extracted_dir = wiki_root / ".synthadoc" / "extracted"
-        citation_issues_by_slug: dict[str, list[dict]] = {}
-        for stem, text in page_texts.items():
-            if stem in _SKIP:
-                continue
-            _fm_m = _FM_RE.match(text)
-            _fm: dict = {}
-            if _fm_m:
-                try:
-                    _fm = load_yaml(_fm_m.group(1)) or {}
-                except Exception:
-                    pass
-            _body = text[_fm_m.end():] if _fm_m else text
-            _sources = [
-                _SR(file=s.get("file", ""), hash=s.get("hash", ""),
-                    size=s.get("size", 0), ingested=s.get("ingested", ""))
-                for s in (_fm.get("sources") or [])
-                if isinstance(s, dict)
-            ]
-            _fake_page = _WP(
-                title=stem, tags=[], content=_body,
-                status=_fm.get("status", ""), confidence=_fm.get("confidence", "medium"),
-                sources=_sources,
-            )
-            issues = _check_page_citations(stem, _fake_page, extracted_dir)
-            if issues:
-                citation_issues_by_slug[stem] = issues
+        citation_issues_by_slug = _find_bcr(orch._store, extracted_dir)
 
         citation_issues = [
             {"slug": slug, "citation": iss["citation"], "reason": iss["reason"]}
@@ -2540,10 +2514,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _broken_total = sum(len(refs) for refs in _broken.values())
             if _broken_total > 0:
                 health["broken_wikilinks"] = _broken_total
-            # Broken source citations: count broken ^[file:L-L] markers across active pages.
+            # Broken source citations: active pages only (consistent with other health chips).
+            # find_broken_citation_refs also excludes archived pages by default.
             from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
             _extracted_dir = wiki_root / ".synthadoc" / "extracted"
-            _broken_cite = _find_broken_cite(orch._store, _extracted_dir)
+            _broken_cite = _find_broken_cite(orch._store, _extracted_dir, slugs=list(_active_scan))
             _broken_cite_total = sum(len(issues) for issues in _broken_cite.values())
             if _broken_cite_total > 0:
                 health["broken_citations"] = _broken_cite_total
