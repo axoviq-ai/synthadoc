@@ -208,6 +208,13 @@ STEP 5 — Final summary (markdown — ends the loop)
       MUST equal the orphan count from step 1. If they do not match,
       do NOT write the summary — call tool_notify(level="error") with
       the discrepancy and then write the summary with corrected counts.
+  CRITICAL — orphan subjects only: the three lists (resolved_list,
+    unresolved_list, skipped_list) may contain ONLY slugs from the orphan
+    list built in STEP 1.  Candidate host pages — pages you proposed
+    editing to INSERT a [[wikilink]] pointing TO an orphan — are NOT
+    orphans.  Never list them as resolved, unresolved, or skipped.
+    In single-slug mode (--slug was given), exactly one slug may appear
+    across all three lists: the slug that was specified.
 
   Use markdown list syntax so the web UI renders each slug on its own line.
   NEVER use bullet characters (•) or plain newlines — they collapse in HTML.
