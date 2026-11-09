@@ -505,3 +505,109 @@ async def test_synthesis_error_returns_graceful_result():
 
     assert result.knowledge_gap is True
     assert "provider error" in result.answer.lower() or "synthesis" in result.answer.lower()
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_no_pages_triggers_gap_with_suggested_searches():
+    """When all wikis return empty pages, knowledge_gap is True and suggested_searches is populated."""
+    provider = _make_provider()
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    empty_resp = {"wiki_name": "coordinator", "pages": [], "purpose_summary": "Finance", "routing_warning": ""}
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=empty_resp)):
+        with patch("synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+                   AsyncMock(return_value=["how to calculate conversion ratio", "conversion metrics"])):
+            result = await agent.run("what is the conversion ratio?")
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) == 2
+    assert "how to calculate conversion ratio" in result.suggested_searches
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_gap_sentinel_triggers_knowledge_gap_and_suggestions():
+    """When pages are retrieved but LLM signals [GAP], knowledge_gap is True and [GAP] is stripped."""
+    provider = _make_provider(answer="[GAP]\nThe provided pages do not contain information on this topic.")
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "misc", "title": "Miscellaneous", "score": 1.2, "content": "general text"}],
+        "purpose_summary": "Legal domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        with patch("synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+                   AsyncMock(return_value=["quantum error correction docs"])):
+            result = await agent.run("what is quantum error correction?")
+    assert result.knowledge_gap is True
+    assert not result.answer.startswith("[GAP]")
+    assert "The provided pages do not contain" in result.answer
+    assert result.suggested_searches == ["quantum error correction docs"]
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_empty_title_does_not_cause_irrelevant_citation():
+    """A retrieved page with an empty title must not cause an irrelevant citation to be included during a gap."""
+    provider = _make_provider(answer="[GAP]\nI do not have information about this topic.")
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [
+            {"slug": "unrelated-page", "title": "", "score": 0.5, "content": "unrelated content"},
+        ],
+        "purpose_summary": "Legal domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        with patch("synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+                   AsyncMock(return_value=["search query"])):
+            result = await agent.run("what is quantum entanglement?")
+    assert result.knowledge_gap is True
+    assert result.citations == []
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_multiple_low_score_pages_triggers_gap():
+    """Multiple (>=3) pages with low BM25 scores trigger a knowledge gap when the answer is not substantial."""
+    provider = _make_provider(answer="I could not find relevant details in the provided pages.")
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [
+            {"slug": "page-1", "title": "Page 1", "score": 0.8, "content": "thin content"},
+            {"slug": "page-2", "title": "Page 2", "score": 0.5, "content": "thin content"},
+            {"slug": "page-3", "title": "Page 3", "score": 0.3, "content": "thin content"},
+        ],
+        "purpose_summary": "Legal domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        with patch("synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+                   AsyncMock(return_value=["enrich topic"])):
+            result = await agent.run("what is topic X?")
+    assert result.knowledge_gap is True
+    assert result.suggested_searches == ["enrich topic"]
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_multiple_low_score_pages_guard_c_suppresses_gap():
+    """Guard C suppresses knowledge gap when multiple low-score pages yield a substantial, cited answer."""
+    long_answer = (
+        "According to [[target::page-1]] and [[target::page-2]], this topic is explained in detail. "
+        + ("Here is extensive verified context explaining every relevant aspect of this concept. " * 6)
+    )
+    assert len(long_answer) > 300
+    provider = _make_provider(answer=long_answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [
+            {"slug": "page-1", "title": "Page 1", "score": 0.8, "content": "content"},
+            {"slug": "page-2", "title": "Page 2", "score": 0.5, "content": "content"},
+            {"slug": "page-3", "title": "Page 3", "score": 0.3, "content": "content"},
+        ],
+        "purpose_summary": "Legal domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("what is topic X?")
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []

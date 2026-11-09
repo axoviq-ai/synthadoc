@@ -3,6 +3,7 @@
 """Integration tests for POST /cross-wiki/query and GET /cross-wiki/query/stream endpoints."""
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -386,3 +387,141 @@ def test_cross_wiki_stream_non_cacheable_result_skips_write(tmp_wiki):
 
     assert resp.status_code == 200
     mock_cache_write.assert_not_called()
+
+
+def test_cross_wiki_post_query_includes_suggested_searches(tmp_wiki):
+    """POST /cross-wiki/query response includes suggested_searches."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=_mock_result(
+        knowledge_gap=True,
+        suggested_searches=["search term A", "https://docs.example.com"],
+    ))
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        app = _make_app(tmp_wiki)
+        with TestClient(app) as client:
+            resp = client.post("/cross-wiki/query", json={"question": "missing topic"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["knowledge_gap"] is True
+    assert data["suggested_searches"] == ["search term A", "https://docs.example.com"]
+
+
+def test_cross_wiki_stream_emits_gap_event_with_suggestions(tmp_wiki):
+    """GET /cross-wiki/query/stream emits gap event carrying suggested_searches."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=_mock_result(
+        knowledge_gap=True,
+        suggested_searches=["suggested query 1"],
+    ))
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {}}):
+            app = _make_app(tmp_wiki)
+            with TestClient(app) as client:
+                resp = client.get("/cross-wiki/query/stream", params={"q": "missing topic"})
+    assert resp.status_code == 200
+    body = resp.text
+    assert "event: gap" in body
+    assert "suggested query 1" in body
+
+
+def test_cross_wiki_successful_query_no_gap_event(tmp_wiki):
+    """Successful cross-wiki query must return knowledge_gap=False, empty suggested_searches, and no gap event."""
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=_mock_result(
+        knowledge_gap=False,
+        suggested_searches=[],
+        answer="Valid answer from [[wiki-a::Page1]]",
+    ))
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {}}):
+            app = _make_app(tmp_wiki)
+            with TestClient(app) as client:
+                post_resp = client.post("/cross-wiki/query", json={"question": "what is leverage?"})
+                assert post_resp.status_code == 200
+                post_data = post_resp.json()
+                assert post_data["knowledge_gap"] is False
+                assert post_data["suggested_searches"] == []
+
+                stream_resp = client.get("/cross-wiki/query/stream", params={"q": "what is leverage?"})
+                assert stream_resp.status_code == 200
+                assert "event: gap" not in stream_resp.text
+
+
+def test_cross_wiki_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
+    """A cross-wiki gap response persists suggestions in cache and replays them on cache hit."""
+    mock_agent = MagicMock()
+    gap_result = _mock_result(
+        knowledge_gap=True,
+        suggested_searches=["ingest topic A", "https://docs.example.com/topic-a"],
+        answer="No relevant pages found.",
+        cacheable=True,
+    )
+    mock_agent.run = AsyncMock(return_value=gap_result)
+
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {"port": 7070}}):
+            with patch("synthadoc.integration.http_server._cw_fetch_peer_epochs",
+                       new=AsyncMock(return_value={"wiki-a": 1})):
+                app = _make_app(tmp_wiki)
+                with TestClient(app) as client:
+                    # Request 1: live query triggers gap and writes to cache
+                    resp1 = client.get("/cross-wiki/query/stream", params={"q": "what is missing?"})
+                    assert resp1.status_code == 200
+                    assert "event: gap" in resp1.text
+                    assert "ingest topic A" in resp1.text
+
+                    # Replace agent with one that would raise to guarantee cache hit
+                    mock_agent.run = AsyncMock(side_effect=AssertionError("should not call agent on cache hit"))
+
+                    # Request 2: served from cache, gap event replayed with suggestions
+                    resp2 = client.get("/cross-wiki/query/stream", params={"q": "what is missing?"})
+                    assert resp2.status_code == 200
+                    assert "event: gap" in resp2.text
+                    assert "ingest topic A" in resp2.text
+                    assert "https://docs.example.com/topic-a" in resp2.text
+
+
+def test_cross_wiki_stream_filters_blocked_domains(tmp_wiki):
+    """GET /cross-wiki/query/stream must filter blocked domains from suggested_searches."""
+    blocked_dir = tmp_wiki / ".synthadoc"
+    blocked_dir.mkdir(parents=True, exist_ok=True)
+    (blocked_dir / "blocked_domains.json").write_text(
+        json.dumps(["blocked.example.com"]), encoding="utf-8"
+    )
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=_mock_result(
+        knowledge_gap=True,
+        suggested_searches=[
+            "https://allowed.example.com/docs",
+            "https://blocked.example.com/bad",
+        ],
+    ))
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {}}):
+            app = _make_app(tmp_wiki)
+            with TestClient(app) as client:
+                resp = client.get("/cross-wiki/query/stream", params={"q": "test gap query"})
+
+    assert resp.status_code == 200
+
+    gap_payload = None
+    for part in resp.text.split("\n\n"):
+        lines = part.strip().splitlines()
+        event_type = None
+        data_str = None
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[len("event: "):].strip()
+            elif line.startswith("data: "):
+                data_str = line[len("data: "):].strip()
+        if event_type == "gap" and data_str:
+            gap_payload = json.loads(data_str)
+            break
+
+    assert gap_payload is not None, f"No gap event found in stream output:\n{resp.text}"
+    assert gap_payload.get("gap") is True
+    suggestions = gap_payload.get("suggested_searches", [])
+    assert "https://allowed.example.com/docs" in suggestions
+    assert "https://blocked.example.com/bad" not in suggestions
+    assert "https://blocked.example.com/bad" not in resp.text
