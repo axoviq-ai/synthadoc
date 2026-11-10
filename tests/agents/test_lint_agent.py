@@ -876,7 +876,7 @@ def test_has_citations_empty_content():
     page = WikiPage(
         title="Test",
         tags=[],
-        content=None,
+        content=None, # type: ignore
         status="active",
         confidence="high",
         sources=[],
@@ -896,7 +896,7 @@ async def test_lint_warns_when_no_citations_on_substantive_page(tmp_wiki):
     content = " ".join(["word"] * 60)
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
-    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig()) # type: ignore
     report = await agent.run(adversarial=False)
 
     assert any("plan" in w and "citation" in w.lower() for w in report.warnings), \
@@ -914,7 +914,7 @@ async def test_lint_no_warning_when_page_has_citations(tmp_wiki):
     content = " ".join(["word"] * 60) + "^[source.md:1-3]"
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
-    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig()) # type: ignore
     report = await agent.run(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "plan" in w]
@@ -932,7 +932,7 @@ async def test_lint_no_warning_for_stub_page_below_min_words(tmp_wiki):
     content = " ".join(["word"] * 30)  # 30 words, below threshold
     wiki.write_page("stub", WikiPage(title="Stub", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
-    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig()) # type: ignore
     report = await agent.run(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "stub" in w]
@@ -950,7 +950,7 @@ async def test_lint_warns_at_exactly_min_words_boundary(tmp_wiki):
     content = " ".join(["word"] * _CITATION_MIN_WORDS)
     wiki.write_page("boundary", WikiPage(title="Boundary", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
-    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig()) # type: ignore
     report = await agent.run(adversarial=False)
 
     assert any("boundary" in w and "citation" in w.lower() for w in report.warnings)
@@ -979,7 +979,7 @@ async def test_lint_archives_ghost_draft(tmp_wiki):
     report = await agent.run(adversarial=False)
 
     ghost_state = await audit.get_page_state("ghost-draft")
-    assert ghost_state["state"] == "archived", "ghost draft must be archived by lint"
+    assert ghost_state["state"] == "archived", "ghost draft must be archived by lint" # type: ignore
     assert report.lifecycle_archived >= 1
     # The real page should be promoted, not affected
     assert report.lifecycle_promoted >= 1
@@ -1010,7 +1010,7 @@ async def test_lint_does_not_archive_staged_candidates(tmp_wiki):
     await agent.run(adversarial=False)
 
     state = await audit.get_page_state("my-candidate")
-    assert state["state"] == "draft", "staged candidate must not be archived by ghost-draft sweep"
+    assert state["state"] == "draft", "staged candidate must not be archived by ghost-draft sweep" # type: ignore
 
 
 # ── cascade_archive ───────────────────────────────────────────────────────────
@@ -1039,7 +1039,7 @@ async def test_cascade_archive_writes_audit_events(tmp_path):
         "referencing": "See [[old-page]] for details.",
     })
     page = store.read_page("old-page")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("old-page", page)
 
     mock_audit = AsyncMock()
@@ -1065,7 +1065,7 @@ async def test_cascade_archive_no_audit_when_no_refs(tmp_path):
         "other": "Talks about something else.",
     })
     page = store.read_page("isolated")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("isolated", page)
 
     mock_audit = AsyncMock()
@@ -1085,15 +1085,15 @@ async def test_cascade_archive_removes_inline_link(tmp_path):
     })
     # Archive silicon-transistors
     page = store.read_page("silicon-transistors")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("silicon-transistors", page)
 
     affected = await cascade_archive("silicon-transistors", store)
 
     assert "cpu-design" in affected
     updated = store.read_page("cpu-design")
-    assert "[[silicon-transistors]]" not in updated.content
-    assert "silicon-transistors" in updated.content  # display text preserved
+    assert "[[silicon-transistors]]" not in updated.content # type: ignore
+    assert "silicon-transistors" in updated.content  # type: ignore # display text preserved
 
 
 @pytest.mark.asyncio
@@ -1105,6 +1105,7 @@ async def test_cascade_archive_removes_list_item(tmp_path):
         "beta": "See also:\n- [[alpha]]\n- other item",
     })
     page = store.read_page("alpha")
+    assert page is not None
     page.status = "archived"
     store.write_page("alpha", page)
 
@@ -1112,9 +1113,9 @@ async def test_cascade_archive_removes_list_item(tmp_path):
 
     assert "beta" in affected
     updated = store.read_page("beta")
-    assert "[[alpha]]" not in updated.content
+    assert "[[alpha]]" not in updated.content # type: ignore
     # list item dropped entirely
-    assert "- [[alpha]]" not in updated.content
+    assert "- [[alpha]]" not in updated.content # type: ignore
 
 
 @pytest.mark.asyncio
@@ -1126,7 +1127,7 @@ async def test_cascade_archive_no_op_when_no_refs(tmp_path):
         "other": "Talks about something else entirely.",
     })
     page = store.read_page("lonely")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("lonely", page)
 
     affected = await cascade_archive("lonely", store)
@@ -1143,11 +1144,11 @@ async def test_cascade_archive_skips_already_archived_pages(tmp_path):
         "already-archived": "References [[target]] extensively.",
     })
     page = store.read_page("target")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("target", page)
     # Mark already-archived as archived too
     other = store.read_page("already-archived")
-    other.status = "archived"
+    other.status = "archived" # type: ignore
     store.write_page("already-archived", other)
 
     affected = await cascade_archive("target", store)
@@ -1170,7 +1171,7 @@ async def test_cascade_archive_skips_lint_skip_slugs(tmp_path):
             status="active", confidence="high", sources=[],
         ))
     page = store.read_page("some-page")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("some-page", page)
 
     affected = await cascade_archive("some-page", store)
@@ -1189,15 +1190,15 @@ async def test_cascade_archive_aliased_link(tmp_path):
         "history": "Early computers used [[vacuum-tubes|vacuum tube technology]].",
     })
     page = store.read_page("vacuum-tubes")
-    page.status = "archived"
+    page.status = "archived" # type: ignore
     store.write_page("vacuum-tubes", page)
 
     affected = await cascade_archive("vacuum-tubes", store)
 
     assert "history" in affected
     updated = store.read_page("history")
-    assert "[[vacuum-tubes" not in updated.content
-    assert "vacuum tube technology" in updated.content
+    assert "[[vacuum-tubes" not in updated.content # type: ignore
+    assert "vacuum tube technology" in updated.content # type: ignore
 
 
 # ── lint auto-archive cascade integration ─────────────────────────────────────
@@ -1233,11 +1234,11 @@ async def test_lint_auto_archive_cascades_links(tmp_wiki):
 
     # page-b archived because source-b.txt missing
     page_b = store.read_page("page-b")
-    assert page_b.status == "archived"
+    assert page_b.status == "archived" # type: ignore
 
     # cascade: [[page-b]] removed from page-a immediately (not waiting for next lint)
     page_a = store.read_page("page-a")
-    assert "[[page-b]]" not in page_a.content
+    assert "[[page-b]]" not in page_a.content # type: ignore
     assert report.dangling_links_removed >= 1
 
 
@@ -1266,7 +1267,7 @@ async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
     report = await agent.run(scope="all", adversarial=False)
 
     page = store.read_page("multi-source-page")
-    assert page.status == "stale"        # NOT archived
+    assert page.status == "stale"        # type: ignore # NOT archived
     assert report.lifecycle_stale >= 1
     assert report.lifecycle_archived == 0
 
@@ -1352,7 +1353,7 @@ async def test_lint_auto_resolve_failed_no_lifecycle_event(tmp_wiki):
     events, total = await audit.get_lifecycle_events("unresolvable-page")
     assert total == 0, "failed auto-resolve must not write a lifecycle_events row"
     page = store.read_page("unresolvable-page")
-    assert page.status == "contradicted"
+    assert page.status == "contradicted" # type: ignore
 
 
 @pytest.mark.asyncio
@@ -1445,7 +1446,7 @@ async def test_adversarial_gate_demotes_page_at_threshold(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=3))
+        cfg=_gate_cfg(threshold=3)) # type: ignore
 
     three_warnings = [
         {"claim": "Claim A", "concern": "unverified"},
@@ -1502,7 +1503,7 @@ async def test_adversarial_gate_demotion_clears_stale_last_fix_record(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=3))
+        cfg=_gate_cfg(threshold=3)) # type: ignore
 
     three_warnings = [
         {"claim": "Claim A", "concern": "unverified"},
@@ -1542,7 +1543,7 @@ async def test_adversarial_gate_disabled_when_threshold_is_none(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=None))
+        cfg=_gate_cfg(threshold=None)) # type: ignore
 
     ten_warnings = [{"claim": f"Claim {i}", "concern": "disputed"} for i in range(10)]
 
@@ -1573,7 +1574,7 @@ async def test_adversarial_gate_skips_already_contradicted_page(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=1))
+        cfg=_gate_cfg(threshold=1)) # type: ignore
 
     async def _mock_single(slug, content):
         return [{"claim": "Claim", "concern": "disputed"}], 20
@@ -1583,7 +1584,7 @@ async def test_adversarial_gate_skips_already_contradicted_page(tmp_wiki):
 
     page = store.read_page("already-bad")
     # Status unchanged; no extra transition fired
-    assert page.status == "contradicted"
+    assert page.status == "contradicted" # type: ignore
     assert report.adversarial_demotions == 0
 
 
@@ -1602,7 +1603,7 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=1))
+        cfg=_gate_cfg(threshold=1)) # type: ignore
 
     async def _mock_single(slug, content):
         return [{"claim": "Claim", "concern": "disputed"}], 20
@@ -1612,7 +1613,7 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
 
     # archived page's status is not in (ACTIVE, STALE) → gate guard prevents demotion
     page = store.read_page("retired")
-    assert page.status == "archived"
+    assert page.status == "archived" # type: ignore
     assert report.adversarial_demotions == 0
 
 
@@ -1631,7 +1632,7 @@ async def test_adversarial_gate_threshold_zero_disables_gate(tmp_wiki):
 
     agent = LintAgent(
         provider=provider, store=store, log_writer=log,
-        cfg=_gate_cfg(threshold=0))
+        cfg=_gate_cfg(threshold=0)) # type: ignore
 
     many_warnings = [{"claim": f"Claim {i}", "concern": "disputed"} for i in range(5)]
 
@@ -1823,7 +1824,7 @@ async def test_auto_resolve_skipped_when_gate_threshold_exceeded(tmp_wiki):
     ))
 
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    agent._cfg = _gate_cfg(3)  # threshold = 3
+    agent._cfg = _gate_cfg(3)  # type: ignore # threshold = 3
 
     report = await agent.run(scope="contradictions", auto_resolve=True)
 
@@ -1872,7 +1873,7 @@ async def test_auto_resolve_proceeds_when_gate_disabled(tmp_wiki):
     ))
 
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    agent._cfg = _gate_cfg(None)  # gate disabled
+    agent._cfg = _gate_cfg(None)  # type: ignore # gate disabled
 
     report = await agent.run(scope="contradictions", auto_resolve=True)
 
@@ -1915,7 +1916,7 @@ async def test_auto_resolve_proceeds_when_warnings_below_threshold(tmp_wiki):
     ))
 
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    agent._cfg = _gate_cfg(3)  # threshold = 3, but only 1 warning
+    agent._cfg = _gate_cfg(3)  # type: ignore # threshold = 3, but only 1 warning
 
     report = await agent.run(scope="contradictions", auto_resolve=True)
 
@@ -2040,7 +2041,7 @@ async def test_adversarial_single_no_false_positive_warning_on_empty_array_with_
 
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
     agent._adversarial_provider = adv_provider
-    agent._adversarial_enabled = True
+    agent._adversarial_enabled = True # type: ignore
     agent._adversarial_concurrency = 1
 
     with patch("synthadoc.agents.lint_agent._log") as mock_log:
@@ -2066,7 +2067,7 @@ async def test_lint_transition_invalidates_search_index(tmp_wiki):
     mock_search = MagicMock()
     agent = LintAgent(provider=AsyncMock(), store=store, search=mock_search)
 
-    await agent._transition("test-page", page, "active", "contradicted", "test demotion")
+    await agent._transition("test-page", page, "active", "contradicted", "test demotion") # type: ignore
 
     mock_search.invalidate_index.assert_called_once()
-    assert store.read_page("test-page").status == "contradicted"
+    assert store.read_page("test-page").status == "contradicted" # type: ignore

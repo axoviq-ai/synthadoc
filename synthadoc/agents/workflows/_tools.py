@@ -129,6 +129,8 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     Each dict has keys ``slug``, ``source_path`` (str or None), and
     ``stale_since`` (str).
     """
+    assert ctx.audit_db is not None
+    assert ctx.store is not None
     all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
     stale = [p for p in all_states if p.get("state") == "stale"]
     result: list[dict] = []
@@ -169,6 +171,7 @@ async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
         {"slug": str, "source_path": str}  — page found with a local source file
         {"error": str}                      — page not found or has no local source
     """
+    assert ctx.store is not None
     page = ctx.store.read_page(slug)
     if page is None:
         return {"error": f"Page {slug!r} not found in this wiki"}
@@ -248,6 +251,7 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
+            assert ctx.queue is not None
             job_id = await ctx.queue.enqueue(
                 "ingest", {"source": source_path, "force": True, "bust_cache": False,
                            "allow_external_paths": True}
@@ -306,6 +310,7 @@ async def tool_poll_job(
             }
 
         try:
+            assert ctx.queue is not None
             job = await ctx.queue.get_job(job_id)
         except Exception as exc:  # noqa: BLE001
             return {"status": "failed", "message": f"Queue error for job {job_id}: {exc}"}
@@ -351,6 +356,7 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
     """
     await ctx.send_sse_event("tool_progress", {"tool": "run_lint", "message": "Running wiki lint check..."})
     try:
+        assert ctx.queue is not None
         job_id = await ctx.queue.enqueue(
             "lint",
             {
@@ -395,6 +401,7 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
     )
     summary = await ctx.audit_db.get_last_lint_summary() if ctx.audit_db else None
 
+    assert ctx.store is not None
     all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists) \
         if ctx.audit_db else []
     contradicted = [
@@ -454,6 +461,7 @@ async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict
     results: list[dict] = []
     for slug in slugs:
         try:
+            assert ctx.audit_db is not None
             row = await ctx.audit_db.get_page_state(slug)
             state = row["state"] if row else "unknown"
         except Exception:  # noqa: BLE001
@@ -524,6 +532,8 @@ async def tool_find_broken_wikilinks(
           "total_broken": int,   # total broken link references found
         }
     """
+    assert ctx.audit_db is not None
+    assert ctx.store is not None
     all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
     active_slugs: set[str] = {p["slug"] for p in all_states if p.get("state") == "active"}
     all_slugs: list[str] = ctx.store.all_slugs()
@@ -616,6 +626,7 @@ async def tool_find_broken_citations(
 
     if page_slug is not None:
         # Single-page mode: check existence and active status via the store.
+        assert ctx.store is not None
         page_check = ctx.store.read_page(page_slug)
         if page_check is not None and page_check.status == "active":
             scan_slugs: list[str] | None = [page_slug]
@@ -627,6 +638,7 @@ async def tool_find_broken_citations(
         # find_broken_citation_refs scans all pages (no status filter), so we
         # pre-filter to active slugs here — consistent with GET /lifecycle/status
         # and the pre-prompt broken-citation chip.
+        assert ctx.store is not None
         scan_slugs = [
             slug for slug in ctx.store.list_pages()
             if (p := ctx.store.read_page(slug)) is not None and p.status == "active"
@@ -695,6 +707,7 @@ async def tool_apply_citation_fixes(
     Each entry in *fixes* is a dict with keys old_citation and new_citation.
     new_citation=None removes the marker; a string value replaces it.
     """
+    assert ctx.store is not None
     page = ctx.store.read_page(page_slug)
     if page is None:
         return {"status": ToolStatus.ERROR, "error": f"Page {page_slug!r} not found", "changes": 0, "page": page_slug}
@@ -752,6 +765,7 @@ async def tool_apply_link_fixes(
         {"status": "success", "changes": int, "page": str}
         {"status": "error",   "error": str}
     """
+    assert ctx.store is not None
     page = ctx.store.read_page(page_slug)
     if page is None:
         return {"status": ToolStatus.ERROR, "error": f"Page {page_slug!r} not found"}
@@ -854,6 +868,7 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
         {"tool": "run_scaffold", "message": f"Running scaffold for '{domain}'..."},
     )
     try:
+        assert ctx.queue is not None
         job_id = await ctx.queue.enqueue("scaffold", {"domain": domain})
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
@@ -937,7 +952,7 @@ async def tool_scoped_confirm(
     # 4. Register gate
     gate = asyncio.Event()
     ctx.confirm_registry[ctx.run_id] = gate
-    ctx.confirm_result_registry[ctx.run_id] = {}
+    ctx.confirm_result_registry[ctx.run_id] = {} # type: ignore
 
     try:
         # 5. Send SSE
@@ -1115,6 +1130,7 @@ async def tool_read_page_content(ctx: "WorkflowContext", slug: str) -> dict:
          "contradiction_note": str | None, "status": str}
         {"error": str}  — page not found
     """
+    assert ctx.store is not None
     page = ctx.store.read_page(slug)
     if page is None:
         return {"error": f"Page not found: {slug!r}"}
@@ -1162,6 +1178,7 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
         {"tool": "run_scoped_lint", "message": f"Re-linting {slug}..."},
     )
     try:
+        assert ctx.queue is not None
         job_id = await ctx.queue.enqueue(
             "lint",
             {"scope": "slug", "slug": slug, "adversarial": True, "lifecycle": False},
@@ -1181,6 +1198,7 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
         return {"pass": False, "warnings_count": 0, "contradiction_note": None,
                 "error": poll_result.get("message", "lint job did not succeed")}
 
+    assert ctx.store is not None
     page = ctx.store.read_page(slug)
     if page is None:
         return {"pass": False, "warnings_count": 0, "contradiction_note": None,
@@ -1222,16 +1240,17 @@ async def _resolve_fix_episode(
         or page.contradiction_note == existing_record.get("pre_fix_contradiction_note")
     )
     if same_episode:
+        assert existing_record is not None
         return (
             existing_record.get("snapshot_id"),
             existing_record.get("pre_fix_status"),
             existing_record.get("pre_fix_contradiction_note"),
             existing_record.get("pre_fix_lint_warnings"),
         )
-    await ctx.audit_db.snapshot_if_changed(
+    await ctx.audit_db.snapshot_if_changed( # type: ignore
         slug, page.content, triggered_by=strategy_name, reason=rationale,
     )
-    snapshots = await ctx.audit_db.list_page_snapshots(slug)
+    snapshots = await ctx.audit_db.list_page_snapshots(slug) # type: ignore
     snapshot_id = snapshots[0]["id"] if snapshots else None
     return snapshot_id, page.status, page.contradiction_note, page.lint_warnings
 
@@ -1288,6 +1307,7 @@ async def tool_propose_and_apply(
         {"applied": False, "diff_preview": "", "error": str}  — page not found,
             or the rewrite was rejected for changing a heading
     """
+    assert ctx.store is not None
     page = ctx.store.read_page(slug)
     if page is None:
         return {"applied": False, "diff_preview": "",
@@ -1389,6 +1409,7 @@ async def tool_propose_and_apply_blocks(
     """
     from synthadoc.agents.workflows.block_apply import apply_blocks, describe_all_blocks_rejected
 
+    assert ctx.store is not None
     page = ctx.store.read_page(slug)
     if page is None:
         return {"applied": False, "diff_preview": "", "error": f"Page not found: {slug!r}"}
@@ -1561,6 +1582,7 @@ async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:
         # this status-only change doesn't touch page.content, so it doesn't
         # need its own reindex.)
         try:
+            assert ctx.audit_db is not None
             await ctx.audit_db.set_page_state(slug, page.status, "workflow")
         except Exception:  # noqa: BLE001
             pass
@@ -1659,6 +1681,7 @@ async def tool_transition_lifecycle_state(
     # without holding it during validation.  The authoritative re-read happens
     # inside update_page, which holds the lock for the full read→modify→write
     # sequence and eliminates the TOCTOU window.
+    assert ctx.store is not None
     pre_check = ctx.store.read_page(slug)
     if pre_check is None:
         return {"success": False, "error": f"Page not found: {slug!r}"}
@@ -1755,6 +1778,7 @@ async def tool_get_wiki_status(ctx: "WorkflowContext") -> dict:
     counts: dict[str, int] = {
         "active": 0, "draft": 0, "stale": 0, "contradicted": 0, "archived": 0,
     }
+    assert ctx.store is not None
     for slug in ctx.store.list_pages():
         if slug in SYSTEM_PAGE_SLUGS:
             continue

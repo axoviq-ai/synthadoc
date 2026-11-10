@@ -263,7 +263,7 @@ async def test_ingest_flags_contradiction(tmp_wiki, cache):
 
     assert "grace-hopper" in result.pages_flagged
     page = store.read_page("grace-hopper")
-    assert page.status == "contradicted"
+    assert page.status == "contradicted" # type: ignore
 
     events, total = await audit.get_lifecycle_events("grace-hopper")
     assert total > 0, "contradiction flag must write a lifecycle_events row"
@@ -308,7 +308,7 @@ async def test_ingest_flag_ignores_skip_slugs(tmp_wiki, cache):
 
     assert "index" not in result.pages_flagged
     page = store.read_page("index")
-    assert page.status == "active", "skip slugs must never be set to contradicted"
+    assert page.status == "active", "skip slugs must never be set to contradicted" # type: ignore
 
 
 @pytest.mark.asyncio
@@ -350,7 +350,7 @@ async def test_force_skip_promotes_stale_page_to_draft(tmp_wiki, cache):
 
     assert result.skipped is True
     page = store.read_page("alan-turing")
-    assert page.status == "draft", "force+skip must promote the stale source page to draft"
+    assert page.status == "draft", "force+skip must promote the stale source page to draft" # type: ignore
 
 
 @pytest.mark.asyncio
@@ -389,8 +389,8 @@ async def test_ingest_updates_existing_page(tmp_wiki, cache):
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
-    assert "Enigma" in page.content
-    assert "New detail." in page.content
+    assert "Enigma" in page.content # type: ignore
+    assert "New detail." in page.content # type: ignore
 
 
 # ── OKF type + resource fields ───────────────────────────────────────────────
@@ -497,7 +497,7 @@ async def test_force_reingest_backfills_okf_fields(tmp_wiki, cache):
         title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nMathematician.",
         status="active", confidence="high", sources=[], created="2026-01-01",
     ))
-    assert store.read_page("alan-turing").type is None
+    assert store.read_page("alan-turing").type is None # type: ignore
 
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
@@ -513,6 +513,7 @@ async def test_force_reingest_backfills_okf_fields(tmp_wiki, cache):
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
+    assert page is not None
     assert page.type == "person"
 
 
@@ -538,7 +539,7 @@ async def test_update_action_stamps_updated_field(tmp_wiki, cache):
         title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nMathematician.",
         status="active", confidence="high", sources=[], created="2026-01-01",
     ))
-    assert store.read_page("alan-turing").updated is None
+    assert store.read_page("alan-turing").updated is None # type: ignore
 
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
@@ -554,7 +555,7 @@ async def test_update_action_stamps_updated_field(tmp_wiki, cache):
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
-    assert page.updated == date.today().isoformat()
+    assert page.updated == date.today().isoformat() # type: ignore
 
 
 @pytest.mark.asyncio
@@ -1097,9 +1098,9 @@ async def test_ingest_uses_page_content_for_new_pages(tmp_wiki, cache):
 
     assert "ada-lovelace" in result.pages_created
     page = store.read_page("ada-lovelace")
-    assert "[[charles-babbage]]" in page.content
-    assert "[[analytical-engine]]" in page.content
-    assert "Ada Lovelace raw text" not in page.content  # raw text not used
+    assert "[[charles-babbage]]" in page.content # type: ignore
+    assert "[[analytical-engine]]" in page.content # type: ignore
+    assert "Ada Lovelace raw text" not in page.content  # type: ignore # raw text not used
 
 
 @pytest.mark.asyncio
@@ -1141,8 +1142,8 @@ async def test_ingest_preserves_wikilinks_in_update_content(tmp_wiki, cache):
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
-    assert "[[enigma]]" in page.content
-    assert "[[bletchley-park]]" in page.content
+    assert "[[enigma]]" in page.content # type: ignore
+    assert "[[bletchley-park]]" in page.content # type: ignore
 
 
 # ── _coerce_str_list ──────────────────────────────────────────────────────────
@@ -1301,7 +1302,7 @@ async def test_ingest_slug_collision_appends_as_update(tmp_wiki, cache):
     assert "alan-turing" in result.pages_updated
     assert "alan-turing" not in result.pages_created
     page = store.read_page("alan-turing")
-    assert "Original content." in page.content
+    assert "Original content." in page.content # type: ignore
 
 
 @pytest.mark.asyncio
@@ -1608,8 +1609,8 @@ async def test_ingest_cjk_page_update_appends_content(tmp_wiki, cache):
 
     assert "人工智能" in result.pages_updated
     page = store.read_page("人工智能")
-    assert "机器学习" in page.content
-    assert "人工智能" in page.content   # original content preserved
+    assert "机器学习" in page.content # type: ignore
+    assert "人工智能" in page.content   # type: ignore # original content preserved
 
 
 @pytest.mark.asyncio
@@ -1881,9 +1882,9 @@ async def test_pass4_only_annotates_update_content(tmp_wiki):
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
     # Original body must be unchanged
-    assert original_body in page.content
+    assert original_body in page.content # type: ignore
     # The new update section has the citation marker
-    assert "^[" in page.content, f"Expected citation in page, got: {page.content!r}"
+    assert "^[" in page.content, f"Expected citation in page, got: {page.content!r}" # type: ignore
     await agent._cache.close()
 
 
@@ -2655,7 +2656,7 @@ async def test_force_reingest_bypasses_staging_policy_all(tmp_wiki, cache):
         sources=[SourceRef(file="turing.md", hash="abc", size=50000, ingested="2026-01-01", truncated=True)],
         created="2026-01-01",
     ))
-    assert store.read_page("alan-turing").sources[0].truncated is True
+    assert store.read_page("alan-turing").sources[0].truncated is True # type: ignore
 
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
@@ -2680,7 +2681,7 @@ async def test_force_reingest_bypasses_staging_policy_all(tmp_wiki, cache):
     assert not cand.exists(), "force re-ingest must not stage to candidates/"
     # SourceRef truncated flag must be cleared
     page = store.read_page("alan-turing")
-    assert page.sources[0].truncated is False
+    assert page.sources[0].truncated is False # type: ignore
 
 
 @pytest.mark.asyncio
@@ -2956,7 +2957,7 @@ async def test_ingest_update_snapshots_the_page_before_changing_it(tmp_wiki, moc
     assert events[0]["triggered_by"] == "ingest"
     assert "before ingest update from leiner.txt" in events[0]["reason"]
     snap = await audit.get_snapshot_by_index("internet-origins", 1)   # 1 = newest
-    assert snap["content_snapshot"] == "## ARPANET\nThe first message was sent in 1969."
+    assert snap["content_snapshot"] == "## ARPANET\nThe first message was sent in 1969." # type: ignore
 
 
 @pytest.mark.asyncio

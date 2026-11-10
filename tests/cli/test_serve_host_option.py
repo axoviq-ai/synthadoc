@@ -120,7 +120,7 @@ def test_serve_fails_when_wiki_not_registered():
     cfg = _make_cfg()
     fake_root = MagicMock()
     fake_root.resolve.return_value = fake_root
-    fake_root.__truediv__ = lambda self, other: MagicMock(**{"exists.return_value": False})
+    fake_root.__truediv__ = lambda self, other: MagicMock(**{"exists.return_value": False}) # type: ignore
     fake_root.parent = MagicMock()
     with patch("synthadoc.cli._wiki.resolve_wiki", return_value="unregistered-wiki"), \
          patch("synthadoc.cli.serve.resolve_wiki_path", return_value=fake_root), \
@@ -136,8 +136,8 @@ def test_serve_error_shows_absolute_path_when_wiki_on_disk():
     """ERR-WIKI-006 hint must show absolute path and omit install suggestion when wiki exists on disk."""
     cfg = _make_cfg()
     abs_path = MagicMock()
-    abs_path.__str__ = lambda self: "/home/user/wikis/my-wiki"
-    config_toml = MagicMock(**{"exists.return_value": True})
+    abs_path.__str__ = lambda self: "/home/user/wikis/my-wiki" # type: ignore
+    config_toml = MagicMock(**{"exists.return_value": True}) # type: ignore
     abs_path.__truediv__ = lambda self, other: config_toml
 
     fake_root = MagicMock()

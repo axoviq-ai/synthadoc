@@ -182,7 +182,7 @@ def _call_anthropic(system_prompt: str, user_prompt: str, model: str) -> str:
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return _strip_think_tags(message.content[0].text)
+    return _strip_think_tags(message.content[0].text) # type: ignore
 
 
 def _call_openai_compat(
