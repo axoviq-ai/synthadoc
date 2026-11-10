@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -12,7 +13,7 @@ from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents._query_utils import (
-    build_synthesis_system, decompose_question, has_cjk,
+    STOPWORDS, build_synthesis_system, decompose_question, has_cjk,
     history_block, translate_for_retrieval, trim_history, strip_answer_tags,
 )
 from synthadoc.agents.query_agent import QueryResult, _guard_c_suppress
@@ -42,6 +43,71 @@ _OPERATION_BLOCKED_UNDER_CROSS_WIKI_MESSAGE = (
     "Turn off cross-wiki search (deselect the \U0001F310 icon) and ask again to "
     "run this."
 )
+
+
+_NEGATIVE_ADMISSION_RE = re.compile(
+    r"\b("
+    r"do(?:es)?\s+not\s+contain"
+    r"|no\s+information\s+(?:about|on|regarding|in)"
+    r"|not\s+mentioned"
+    r"|not\s+found\s+in\s+the\s+provided(?:\s+pages)?"
+    r"|do(?:es)?\s+not\s+discuss"
+    r"|do(?:es)?\s+not\s+provide"
+    r"|lack(?:s)?\s+information"
+    r"|no\s+mention\s+of"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_GENERIC_QUERY_WORDS: frozenset[str] = frozenset({
+    "application", "applications",
+    "information", "informations",
+    "page", "pages",
+    "detail", "details",
+    "data", "content", "contents",
+    "document", "documents",
+    "wiki", "wikis",
+    "query", "queries",
+    "answer", "answers",
+    "question", "questions",
+})
+
+
+def _extract_meaningful_terms(text: str) -> set[str]:
+    """Extract non-generic content words and roots for relevance verification."""
+    terms: set[str] = set()
+    for w in text.split():
+        bare = w.lower().rstrip("s'?!.,\"():;").replace("-", " ")
+        orig_lower = w.lower().rstrip("'?!.,\"():;")
+        if (
+            (len(w) >= 4 or (len(w) >= 2 and w.upper() == w))
+            and bare not in STOPWORDS
+            and orig_lower not in STOPWORDS
+            and bare not in _GENERIC_QUERY_WORDS
+            and orig_lower not in _GENERIC_QUERY_WORDS
+        ):
+            for part in bare.split():
+                if len(part) >= 3 and part not in STOPWORDS and part not in _GENERIC_QUERY_WORDS:
+                    terms.add(part)
+                    root = part
+                    if root.endswith("ing") and len(root) > 5:
+                        root = root[:-3]
+                    elif root.endswith("ment") and len(root) > 6:
+                        root = root[:-4]
+                    elif root.endswith("tion") and len(root) > 6:
+                        root = root[:-4]
+                    if len(root) >= 3 and root not in STOPWORDS and root not in _GENERIC_QUERY_WORDS:
+                        terms.add(root)
+    return terms
+
+
+def _get_question_parts(question: str, sub_questions: list[str] | None = None) -> list[str]:
+    """Return distinct question parts, using sub_questions if multi-element, else splitting on conjunctions."""
+    if sub_questions and len(sub_questions) > 1:
+        return sub_questions
+    parts = re.split(r"\s+(?:and|as well as)\s+|[;?]+", question, flags=re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts if len(parts) > 1 else [question]
 
 
 @dataclass
@@ -258,28 +324,72 @@ class CrossWikiQueryAgent(BaseAgent):
         knowledge_gap = False
         suggested: list[str] = []
 
-        if answer_text.startswith("[GAP]"):
+        matching_cited_pages = [
+            f"{p['wiki_name']}::{p['slug']}"
+            for p in pages[:10]
+            if f"{p['wiki_name']}::{p['slug']}" in answer_text
+            or (bool(p.get("title")) and f"{p['wiki_name']}::{p['title']}" in answer_text)
+            or f"[[{p['slug']}]]" in answer_text
+            or (bool(p.get("title")) and f"[[{p['title']}]]" in answer_text)
+            or (bool(p.get("title")) and p["title"] in answer_text)
+        ]
+
+        cited_page_objs = [
+            p for p in pages
+            if f"{p['wiki_name']}::{p['slug']}" in matching_cited_pages
+            or (bool(p.get("title")) and f"{p['wiki_name']}::{p['title']}" in matching_cited_pages)
+            or (bool(p.get("title")) and f"[[{p['title']}]]" in answer_text)
+            or (bool(p.get("title")) and p["title"] in answer_text)
+            or f"[[{p['slug']}]]" in answer_text
+        ]
+        cited_text = " ".join(
+            f"{p.get('title', '')} {p.get('content', '')} {p.get('slug', '').replace('-', ' ')}"
+            for p in cited_page_objs
+        ).lower()
+
+        parts = _get_question_parts(retrieval_question, sub_questions)
+        parts_with_terms = [
+            (part, _extract_meaningful_terms(part))
+            for part in parts
+        ]
+        parts_with_terms = [(part, terms) for part, terms in parts_with_terms if terms]
+        uncovered_parts = [
+            part for part, terms in parts_with_terms
+            if not any(t in cited_text for t in terms)
+        ]
+
+        has_negative_admission = bool(_NEGATIVE_ADMISSION_RE.search(answer_text))
+        starts_with_gap = answer_text.startswith("[GAP]")
+
+        if starts_with_gap:
             answer_text = answer_text[len("[GAP]"):].lstrip("\n")
+            knowledge_gap = True
+        elif has_negative_admission and (uncovered_parts or not matching_cited_pages):
             knowledge_gap = True
         else:
             max_score = max((p.get("score", 0.0) for p in pages), default=0.0)
             if max_score < self._gap_score_threshold:
-                knowledge_gap = _guard_c_suppress(True, answer_text, "cross_wiki")
+                if not matching_cited_pages or not parts_with_terms:
+                    knowledge_gap = _guard_c_suppress(True, answer_text, "cross_wiki")
+                else:
+                    if not uncovered_parts:
+                        knowledge_gap = False
+                    else:
+                        knowledge_gap = _guard_c_suppress(True, answer_text, "cross_wiki")
 
         if knowledge_gap:
+            decompose_query = retrieval_question
+            if not starts_with_gap and uncovered_parts and len(uncovered_parts) < len(parts_with_terms):
+                decompose_query = " ".join(uncovered_parts)
+
             try:
                 suggested = await SearchDecomposeAgent(self._provider).run(
-                    retrieval_question, domain_context=domain_ctx
-                ) or [retrieval_question]
+                    decompose_query, domain_context=domain_ctx
+                ) or [decompose_query]
             except Exception as exc:
                 logger.warning("SearchDecomposeAgent failed: %s", exc)
-                suggested = [retrieval_question]
-            cited_slugs = [
-                f"{p['wiki_name']}::{p['slug']}"
-                for p in pages[:10]
-                if f"{p['wiki_name']}::{p['slug']}" in answer_text
-                or (bool(p.get("title")) and p["title"] in answer_text)
-            ]
+                suggested = [decompose_query]
+            cited_slugs = matching_cited_pages
         else:
             cited_slugs = [
                 f"{p['wiki_name']}::{p['slug']}"
