@@ -611,3 +611,218 @@ async def test_cross_wiki_multiple_low_score_pages_guard_c_suppresses_gap():
         result = await agent.run("what is topic X?")
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_concise_multi_wiki_answer_low_bm25_no_gap():
+    """A concise, correctly answered multi-wiki query with low BM25 scores (< 2.0) must not trigger a false gap."""
+    answer = (
+        "The leverage ratio is debt divided by equity [[coordinator::leverage]]. "
+        "To deploy, run make build and kubectl apply [[target::deployment-runbook]]."
+    )
+    assert len(answer) < 300  # concise answer that would fail Guard C's 300-char threshold
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    coord_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "leverage", "title": "Leverage", "score": 1.38, "content": "leverage content"}],
+        "purpose_summary": "Finance",
+        "routing_warning": "",
+    }
+    target_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "deployment-runbook", "title": "Deployment Runbook", "score": 1.45, "content": "deploy content"}],
+        "purpose_summary": "DevOps",
+        "routing_warning": "",
+    }
+
+    async def _mock_fetch(base_url, question, sub_questions):
+        if "127.0.0.1:7070" in base_url:
+            return coord_resp
+        return target_resp
+
+    with patch.object(agent, "_fetch_retrieve", side_effect=_mock_fetch):
+        result = await agent.run("What is the leverage ratio and how do I deploy the application?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert "coordinator::leverage" in result.citations
+    assert "target::deployment-runbook" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_concise_single_domain_answer_low_bm25_no_gap():
+    """A concise single-domain answer citing one retrieved page with low BM25 score (< 2.0) must not trigger a false gap."""
+    answer = "To roll back, run kubectl rollout undo deployment/app [[target::deployment-runbook]]."
+    assert len(answer) < 300
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "deployment-runbook", "title": "Deployment Runbook", "score": 1.4, "content": "rollback content"}],
+        "purpose_summary": "DevOps",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("How do I roll back a Kubernetes deployment?")
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert "target::deployment-runbook" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_maintainer_reproduction_irrelevant_citations_negative_statement_triggers_gap():
+    """Reproduces maintainer scenario: irrelevant retrieved pages cited in a negative statement must trigger knowledge gap."""
+    answer = (
+        "The provided pages from [[history-of-computing::Alan Turing]] and [[history-of-computing::Grace Hopper]] "
+        "do not contain information about leverage ratio or deploying applications."
+    )
+    provider = _make_provider(answer=answer)
+    registry = {"history-of-computing": {"port": 7070}}
+    agent = CrossWikiQueryAgent(provider=provider, registry=registry, own_wiki_name="history-of-computing")
+
+    retrieve_resp = {
+        "wiki_name": "history-of-computing",
+        "pages": [
+            {"slug": "alan-turing", "title": "Alan Turing", "score": 1.1, "content": "computing history and turing machines"},
+            {"slug": "grace-hopper", "title": "Grace Hopper", "score": 1.0, "content": "compiler history and cobol"},
+        ],
+        "purpose_summary": "Computing history",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        with patch(
+            "synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+            AsyncMock(return_value=["how to calculate leverage ratio", "how to deploy applications"]),
+        ):
+            result = await agent.run("What is the leverage ratio and how do I deploy the application?")
+
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) == 2
+    assert "how to calculate leverage ratio" in result.suggested_searches
+    assert "history-of-computing::alan-turing" in result.citations
+    assert "history-of-computing::grace-hopper" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_partial_answer_triggers_gap_with_suggestions():
+    """When a multi-part question is only partially answered, knowledge gap is triggered and suggestions are generated."""
+    answer = (
+        "The leverage ratio is debt divided by equity [[coordinator::leverage]]. "
+        "However, the provided pages do not contain information about deploying applications."
+    )
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    coord_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "leverage", "title": "Leverage", "score": 1.5, "content": "leverage is debt divided by equity"}],
+        "purpose_summary": "Finance domain",
+        "routing_warning": "",
+    }
+    target_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "history", "title": "History", "score": 0.5, "content": "history content"}],
+        "purpose_summary": "General domain",
+        "routing_warning": "",
+    }
+
+    async def _mock_fetch(base_url, question, sub_questions):
+        if "127.0.0.1:7070" in base_url:
+            return coord_resp
+        return target_resp
+
+    with patch.object(agent, "_fetch_retrieve", side_effect=_mock_fetch):
+        with patch(
+            "synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+            AsyncMock(return_value=["application deployment guide"]),
+        ):
+            result = await agent.run("What is the leverage ratio and how do I deploy the application?")
+
+    assert result.knowledge_gap is True
+    assert result.suggested_searches == ["application deployment guide"]
+    assert "coordinator::leverage" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_partial_answer_passes_only_missing_question_to_decompose():
+    """When a query is partially answered, SearchDecomposeAgent must receive only the uncovered question part."""
+    answer = (
+        "The leverage ratio is debt divided by equity [[coordinator::leverage]]. "
+        "However, the provided pages do not contain information about deploying applications."
+    )
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    coord_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "leverage", "title": "Leverage", "score": 1.5, "content": "leverage is debt divided by equity"}],
+        "purpose_summary": "Finance domain",
+        "routing_warning": "",
+    }
+    target_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "history", "title": "History", "score": 0.5, "content": "history content"}],
+        "purpose_summary": "General domain",
+        "routing_warning": "",
+    }
+
+    async def _mock_fetch(base_url, question, sub_questions):
+        if "127.0.0.1:7070" in base_url:
+            return coord_resp
+        return target_resp
+
+    with patch.object(agent, "_fetch_retrieve", side_effect=_mock_fetch):
+        with patch(
+            "synthadoc.agents.cross_wiki_query_agent.SearchDecomposeAgent.run",
+            AsyncMock(return_value=["application deployment guide"]),
+        ) as mock_decomp:
+            result = await agent.run("What is the leverage ratio and how do I deploy the application?")
+
+    assert result.knowledge_gap is True
+    assert result.suggested_searches == ["application deployment guide"]
+    assert "coordinator::leverage" in result.citations
+    mock_decomp.assert_called_once()
+    decomp_query_arg = mock_decomp.call_args[0][0]
+    assert "deploy" in decomp_query_arg
+    assert "leverage" not in decomp_query_arg
+    assert decomp_query_arg == "how do I deploy the application"
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_peer_wiki_negative_admission_does_not_trigger_gap():
+    """A valid answer from one wiki is not classified as a gap merely because another wiki lacks the information."""
+    answer = (
+        "The coordinator wiki does not contain deployment documentation. "
+        "According to [[target::deployment-runbook]], you can roll back a Kubernetes deployment "
+        "by running kubectl rollout undo deployment/app."
+    )
+    assert len(answer) < 300  # concise answer that would fail Guard C
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+
+    coord_resp = {
+        "wiki_name": "coordinator",
+        "pages": [{"slug": "finance-summary", "title": "Finance Summary", "score": 0.2, "content": "financial statements"}],
+        "purpose_summary": "Finance domain",
+        "routing_warning": "",
+    }
+    target_resp = {
+        "wiki_name": "target",
+        "pages": [{"slug": "deployment-runbook", "title": "Deployment Runbook", "score": 1.4, "content": "Kubernetes deployment rollback kubectl rollout undo"}],
+        "purpose_summary": "DevOps domain",
+        "routing_warning": "",
+    }
+
+    async def _mock_fetch(base_url, question, sub_questions):
+        if "127.0.0.1:7070" in base_url:
+            return coord_resp
+        return target_resp
+
+    with patch.object(agent, "_fetch_retrieve", side_effect=_mock_fetch):
+        result = await agent.run("How do I roll back a Kubernetes deployment?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert "target::deployment-runbook" in result.citations

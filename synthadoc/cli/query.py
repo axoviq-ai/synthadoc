@@ -32,10 +32,8 @@ def print_cross_wiki_result(result: dict, wiki: str) -> None:
         typer.echo(f"   Run `synthadoc serve --all --background` to include them.")
     if result.get("cross_wiki_skipped"):
         typer.echo(f"\n[Ran on {wiki} only — {result.get('cross_wiki_skip_reason', 'operation detected')}]")
-    if result.get("knowledge_gap"):
-        suggestions = result.get("suggested_searches") or []
-        if suggestions:
-            typer.echo("\nRelated: " + ", ".join(suggestions))
+    if result.get("knowledge_gap") and result.get("suggested_searches"):
+        typer.echo(_format_gap_callout(result["suggested_searches"], wiki))
 
 
 def _format_gap_callout(suggested_searches: list[str], wiki: str) -> str:
@@ -111,7 +109,9 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int | None)
         typer.echo(_format_gap_callout(suggested, wiki)) # type: ignore
 
 
-def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> None:
+def _stream_cross_wiki_query(
+    wiki: str, question: str, no_cache: bool = False, timeout: int | None = None
+) -> None:
     """Stream a cross-wiki query via SSE, handling cross-wiki-specific events."""
     citations: list[str] = []
     cross_wiki_offline: list[str] = []
@@ -122,6 +122,8 @@ def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> N
     params: dict = {"q": question}
     if timeout is not None:
         params["timeout_seconds"] = timeout
+    if no_cache:
+        params["no_cache"] = "true"
     try:
         for event_name, data in get_stream(wiki, "/cross-wiki/query/stream", timeout=timeout, **params):
             if event_name == "token":
@@ -169,7 +171,7 @@ def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> N
     if cross_wiki_skipped:
         typer.echo(f"\n[Ran on {wiki} only — {cross_wiki_skip_reason or 'operation detected'}]")
     if knowledge_gap and suggested:
-        typer.echo("\nRelated: " + ", ".join(suggested))
+        typer.echo(_format_gap_callout(suggested, wiki))
 
 
 def _handle_confirm(wiki: str, data: dict) -> None:
@@ -275,6 +277,6 @@ def query_cmd(
             typer.echo(_format_gap_callout(result["suggested_searches"], wiki))
     else:
         if cross_wiki:
-            _stream_cross_wiki_query(wiki, question, timeout=timeout)
+            _stream_cross_wiki_query(wiki, question, no_cache=no_cache, timeout=timeout)
             return
         _stream_query(wiki, question, no_cache=no_cache, timeout=timeout)
