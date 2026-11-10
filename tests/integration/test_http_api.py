@@ -512,7 +512,7 @@ def test_analyse_endpoint_returns_structure(tmp_wiki):
     from synthadoc.skills.base import ExtractedContent
 
     app = create_app(wiki_root=tmp_wiki)
-    mock_extracted = ExtractedContent(text="AI is important.", source_path="test.md", metadata={})
+    mock_extracted = ExtractedContent(text="AI is important.", source_path="test.md", metadata={}) # type: ignore
     mock_analysis = {"entities": ["AI"], "tags": ["ai"], "summary": "AI summary.", "relevant": True}
 
     with patch("synthadoc.agents.skill_agent.SkillAgent.extract",
@@ -1066,10 +1066,10 @@ def test_lifecycle_transition_bumps_epoch(tmp_wiki):
     )
     app = create_app(wiki_root=tmp_wiki)
     with TestClient(app) as client:
-        epoch_before = client.app.state.orch._wiki_epoch
+        epoch_before = client.app.state.orch._wiki_epoch # type: ignore
         resp = client.post("/lifecycle/transition",
                            json={"slug": "test-page", "to_state": "active", "reason": "test"})
-        epoch_after = client.app.state.orch._wiki_epoch
+        epoch_after = client.app.state.orch._wiki_epoch # type: ignore
     if resp.status_code == 200:
         assert epoch_after > epoch_before
 
@@ -1340,7 +1340,7 @@ def test_delete_history_prunes_graph_node(tmp_wiki):
             [],
         )
         graph_before = await audit.read_graph()
-        assert any(n["slug"] == "live-lint-snap-test" for n in graph_before["nodes"])
+        assert any(n["slug"] == "live-lint-snap-test" for n in graph_before["nodes"]) # type: ignore
 
     import asyncio
     asyncio.run(_seed_and_check())

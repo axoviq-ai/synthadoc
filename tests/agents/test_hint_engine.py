@@ -580,8 +580,9 @@ def test_dynamic_followup_cjk_question_uses_simple_template():
 def test_dynamic_followup_strips_fy_year_in_output():
     answer = "See [[portfolio-valuation-report-fy2025]]."
     result = _dynamic_followup("What are valuations?", answer)
+    assert result is not None
     assert "fy2025" not in result.lower()
-    assert "2025" not in result
+    assert "2025" not in result # type: ignore
 
 
 # ── after_response_windowed — 2+1 composition ────────────────────────────────

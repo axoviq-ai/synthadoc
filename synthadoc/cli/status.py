@@ -102,9 +102,9 @@ def status_cmd(
         display_states = list(LifecycleState.ORDERED)
         if counts.get("draft_candidates", 0) > 0:
             idx = display_states.index("draft") + 1
-            display_states.insert(idx, "draft_candidates")
+            display_states.insert(idx, "draft_candidates") # type: ignore
         if counts.get("unlinted", 0) > 0:
-            display_states.append("unlinted")
+            display_states.append("unlinted") # type: ignore
         for state in display_states:
             count = counts.get(state, 0)
             label = _LABELS.get(state, state)

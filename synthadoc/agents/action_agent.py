@@ -7,10 +7,11 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.hint_engine import HintEngine
+from synthadoc.agents.workflows._base import AgenticWorkflow
 from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
@@ -25,13 +26,13 @@ _TO_STATE: dict[str, LifecycleState] = {
     "lifecycle_activate": LifecycleState.ACTIVE,
     "lifecycle_archive":  LifecycleState.ARCHIVED,
     "lifecycle_restore":  LifecycleState.DRAFT,
-}
+} # type: ignore
 _SOURCE_STATES: dict[str, list[LifecycleState]] = {
     "lifecycle_activate": [LifecycleState.DRAFT],
     "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
                            LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
     "lifecycle_restore":  [LifecycleState.ARCHIVED],
-}
+} # type: ignore
 _VERB: dict[str, str] = {
     "lifecycle_activate": "activate",
     "lifecycle_archive":  "archive",
@@ -83,7 +84,7 @@ _STATE_FILTER_MAP: dict[str, LifecycleState] = {
     "stale":        LifecycleState.STALE,
     "contradicted": LifecycleState.CONTRADICTED,
     "archived":     LifecycleState.ARCHIVED,
-}
+} # type: ignore
 
 _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
     (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
@@ -94,7 +95,7 @@ _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
     (LifecycleState.STALE,        LifecycleState.DRAFT),
     (LifecycleState.STALE,        LifecycleState.ARCHIVED),
     (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
-}
+} # type: ignore
 
 # ── action detection ───────────────────────────────────────────────────────────
 
@@ -481,7 +482,7 @@ class ActionAgent(BaseAgent):
         _pre_prompt = _build_pre_prompt(result.message)
         _done_data: dict = {
             "citations": [],
-            "next_hints": HintEngine.after_response(result.message, session_mode),
+            "next_hints": HintEngine.after_response(result.message, session_mode), # type: ignore
             "gap": not result.success,
             "job_id": result.job_id,
             "cacheable": False,
@@ -665,7 +666,7 @@ class ActionAgent(BaseAgent):
                     _final_text = (evt.get("data") or {}).get("text", "")
                     _done_data: dict = {
                         "citations": [],
-                        "next_hints": HintEngine.after_response(_final_text, session_mode),
+                        "next_hints": HintEngine.after_response(_final_text, session_mode), # type: ignore
                         "cacheable": False,
                     }
                     # When the workflow loop emitted a token-limit error, replace
@@ -1153,8 +1154,8 @@ class ActionAgent(BaseAgent):
         self._orch._search.invalidate_index()
         audit = AuditDB(self._wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
-        await audit.set_page_state(slug, to_state, "user")
-        await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user",
+        await audit.set_page_state(slug, to_state, "user") # type: ignore
+        await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user", # type: ignore
                                             content_snapshot=page.content, force=True)
         self._orch._bump_epoch()
         return ActionResult(

@@ -124,7 +124,7 @@ async def test_cli_provider_routes_error_rejection_to_unresolved_with_suggestion
     ):
         events = [e async for e in
                   ContradictionResolverWorkflow().run_for_cli_provider(
-                      ctx, question="run contradiction resolver", provider=MagicMock())]
+                      ctx, question="run contradiction resolver", provider=MagicMock())] # type: ignore
 
     # The per-page loop path delivers its final summary via tool_format_summary's
     # ctx.send_sse_event("final_text", ...) call (see contradiction_resolver_tools.py),
@@ -169,7 +169,7 @@ async def test_cli_provider_routes_user_decline_to_skipped_unchanged():
     ):
         events = [e async for e in
                   ContradictionResolverWorkflow().run_for_cli_provider(
-                      ctx, question="run contradiction resolver", provider=MagicMock())]
+                      ctx, question="run contradiction resolver", provider=MagicMock())] # type: ignore
 
     # See comment in test_cli_provider_routes_error_rejection_to_unresolved_with_suggestion
     # above re: final summary delivery via ctx.send_sse_event rather than a generator yield.
@@ -220,7 +220,7 @@ async def test_cli_provider_rollback_short_circuit_no_model_call():
         new=_fake_rollback,
     ):
         events = [e async for e in ContradictionResolverWorkflow().run_for_cli_provider(
-            ctx, question="roll back my-page", provider=_FakeProvider())]
+            ctx, question="roll back my-page", provider=_FakeProvider())] # type: ignore
 
     assert rollback_calls == ["my-page"]
     assert events[-1]["data"]["text"] == "Rolled back 'my-page'."

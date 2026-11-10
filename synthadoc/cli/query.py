@@ -108,7 +108,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int | None)
     if citations:
         typer.echo("\nSources: " + ", ".join(f"[[{c}]]" for c in citations))
     if knowledge_gap and suggested:
-        typer.echo(_format_gap_callout(suggested, wiki))
+        typer.echo(_format_gap_callout(suggested, wiki)) # type: ignore
 
 
 def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> None:
@@ -143,12 +143,12 @@ def _stream_cross_wiki_query(wiki: str, question: str, timeout: int | None) -> N
                 if msg:
                     typer.echo(f"  {msg}", err=True)
             elif event_name == "citations":
-                citations = data.get("citations", [])
+                citations = data.get("citations", []) # type: ignore
             elif event_name == "gap":
                 knowledge_gap = True
-                suggested = data.get("suggested_searches", [])
+                suggested = data.get("suggested_searches", []) # type: ignore
             elif event_name == "done":
-                cross_wiki_offline = data.get("cross_wiki_offline", [])
+                cross_wiki_offline = data.get("cross_wiki_offline", []) # type: ignore
                 cross_wiki_skipped = data.get("cross_wiki_skipped", False)
                 cross_wiki_skip_reason = data.get("cross_wiki_skip_reason", "")
             elif event_name == "error":

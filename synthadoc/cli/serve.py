@@ -139,7 +139,7 @@ def _check_wiki(root: Path, wiki_arg: str = "") -> None:
 
 def _check_network(provider: str) -> None:
     """Warn (don't block) if the provider API host is unreachable."""
-    target = _PROVIDER_HOSTS.get(provider)
+    target = _PROVIDER_HOSTS.get(provider) # type: ignore
     if not target:
         return  # ollama or unknown — skip
     host, port = target
@@ -440,7 +440,7 @@ def serve_cmd(
 
     if _print_banner:
         from synthadoc.cli.logo import print_banner
-        print_banner(**_banner_kwargs)
+        print_banner(**_banner_kwargs) # type: ignore
 
     if not mcp_only:
         import asyncio

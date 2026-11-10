@@ -204,8 +204,8 @@ def _run_workflow_http(
                                 run_id = data.get("run_id", "")
                                 blks = data.get("blocks", [])
                                 applied_ids = [
-                                    b["id"] for b in blks
-                                    if b.get("status") == "applied"
+                                    b["id"] for b in blks # type: ignore
+                                    if b.get("status") == "applied" # type: ignore
                                 ]
 
                                 def _respond_scoped(

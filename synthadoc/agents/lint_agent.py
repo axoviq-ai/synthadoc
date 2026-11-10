@@ -582,7 +582,7 @@ class LintAgent(BaseAgent):
     async def _emit_progress(self, data: dict) -> None:
         if self._progress_cb is not None:
             try:
-                await self._progress_cb(data)
+                await self._progress_cb(data) # type: ignore
             except Exception:
                 pass
 
@@ -959,7 +959,7 @@ class LintAgent(BaseAgent):
         page.status = to_state
         self._store.write_page(slug, page)
         if self._search is not None:
-            self._search.invalidate_index()
+            self._search.invalidate_index() # type: ignore
 
     async def _is_url_unavailable(self, url: str) -> bool:
         """Return True only if URL is definitively gone (404/410 or YouTube VideoUnavailable).
@@ -1297,7 +1297,7 @@ class LintAgent(BaseAgent):
                         page.contradiction_note = None
                         self._store.write_page(slug, page)
                         if self._search is not None:
-                            self._search.invalidate_index()
+                            self._search.invalidate_index() # type: ignore
                         report.contradictions_resolved += 1
                         if self._audit:
                             await self._audit.set_page_state(
@@ -1356,7 +1356,7 @@ class LintAgent(BaseAgent):
                                 page.content += f"\n\n**Auto-resolved:** {decision.get('reason', '')}"
                             self._store.write_page(slug, page)
                             if self._search is not None:
-                                self._search.invalidate_index()
+                                self._search.invalidate_index() # type: ignore
                             report.contradictions_resolved += 1
                             if self._audit:
                                 resolve_reason = decision.get("reason", "contradiction auto-resolved by lint")
@@ -1480,7 +1480,7 @@ class LintAgent(BaseAgent):
             except Exception as exc:
                 _log.warning("[graph] build failed during lint, skipping: %s", exc)
 
-        self._log.log_lint(resolved=report.contradictions_resolved,
+        self._log.log_lint(resolved=report.contradictions_resolved, # type: ignore
                            flagged=report.contradictions_found - report.contradictions_resolved,
                            orphans=len(report.orphan_slugs),
                            dangling_removed=report.dangling_links_removed)

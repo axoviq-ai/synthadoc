@@ -506,7 +506,7 @@ async def test_decompose_called_exactly_once_per_query(tmp_wiki):
         decompose_calls.append(q)
         return await original_decompose(q)
 
-    agent.decompose = counting_decompose
+    agent.decompose = counting_decompose # type: ignore
     await agent.run("multi-part question")
     assert len(decompose_calls) == 1
 

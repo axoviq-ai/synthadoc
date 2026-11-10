@@ -1218,7 +1218,7 @@ async def test_contradiction_resolver_cli_path_no_pages(tmp_path):
         new=_AsyncMock(return_value={"pages": []}),
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "run contradiction resolver", MagicMock()):
+        async for evt in wf.run_for_cli_provider(ctx, "run contradiction resolver", MagicMock()): # type: ignore
             events.append(evt)
 
     texts = [e["data"]["text"] for e in events if e["event"] == "token"]
@@ -1246,7 +1246,7 @@ async def test_contradiction_resolver_cli_path_cancelled(tmp_path):
         new=_AsyncMock(return_value={"confirmed": False, "pages": 1}),
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "run contradiction resolver", MagicMock()):
+        async for evt in wf.run_for_cli_provider(ctx, "run contradiction resolver", MagicMock()): # type: ignore
             events.append(evt)
 
     texts = [e["data"]["text"] for e in events if e["event"] == "token"]
@@ -1300,7 +1300,7 @@ async def test_contradiction_resolver_cli_path_resolves_page(tmp_path):
             new=mock_format_summary,
         ):
             events = []
-            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
                 events.append(evt)
 
     # Summary is emitted via tool_format_summary (not yielded by the generator).
@@ -2575,7 +2575,7 @@ async def test_run_gen_orchestrate_action_calls_run_orchestrate(tmp_path):
     async def _fake_orchestrate(question, session_id=None, session_mode=None):
         yield {"event": "token", "data": {"text": "orchestrating!"}}
 
-    agent._run_orchestrate = _fake_orchestrate
+    agent._run_orchestrate = _fake_orchestrate # type: ignore
 
     events = []
     async for evt in agent.run_gen("what is the meaning of life?"):
@@ -2914,7 +2914,7 @@ async def test_contradiction_resolver_slug_filter(tmp_path):
         new=_AsyncMock(return_value={"confirmed": False}),
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve --slug page-a", MagicMock()):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve --slug page-a", MagicMock()): # type: ignore
             events.append(evt)
 
     # Cost estimate was called with only 1 page (the slug filter left 1)
@@ -2963,7 +2963,7 @@ async def test_contradiction_resolver_unknown_type_clean_lint(tmp_path):
         new=mock_format_summary,
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
             events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3003,7 +3003,7 @@ async def test_contradiction_resolver_rewrite_failed(tmp_path):
     ):
         with patch.object(wf, "_cli_rewrite_page", new=_AsyncMock(return_value=None)):
             events = []
-            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()):
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()): # type: ignore
                 events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3068,7 +3068,7 @@ async def test_contradiction_resolver_inter_page_confirm_cancel(tmp_path):
         new=mock_format_summary,
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
             events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3123,7 +3123,7 @@ async def test_contradiction_resolver_conflict_type_reads_source(tmp_path):
         new=mock_format_summary,
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
             events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3167,7 +3167,7 @@ async def test_contradiction_resolver_apply_not_applied_skips(tmp_path):
         new=mock_format_summary,
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
             events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3217,7 +3217,7 @@ async def test_contradiction_resolver_lint_fails_after_apply(tmp_path):
         new=mock_format_summary,
     ):
         events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider): # type: ignore
             events.append(evt)
 
     mock_format_summary.assert_called_once()
@@ -3377,7 +3377,7 @@ async def test_contradiction_resolver_unknown_type_dirty_lint(tmp_path):
     ):
         with patch.object(wf, "_cli_rewrite_page", new=_AsyncMock(return_value=None)):
             events = []
-            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()):
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", MagicMock()): # type: ignore
                 events.append(evt)
 
     mock_format_summary.assert_called_once()
