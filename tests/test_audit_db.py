@@ -12,7 +12,7 @@ async def test_audit_db_uses_wal_journal_mode(tmp_path):
     async with aiosqlite.connect(tmp_path / "audit.db") as conn:
         async with conn.execute("PRAGMA journal_mode") as cur:
             row = await cur.fetchone()
-    assert row[0] == "wal"
+    assert row[0] == "wal" # type: ignore
 
 
 @pytest.mark.asyncio
@@ -49,7 +49,7 @@ async def test_graph_write_and_read_roundtrip(tmp_path):
     # write_graph() defaults edge_type to 'mixed' when the key is absent
     await db.write_graph(nodes, [{"from_slug": "a", "to_slug": "b", "weight": 1}])
     result2 = await db.read_graph()
-    assert result2["edges"][0]["edge_type"] == "mixed"
+    assert result2["edges"][0]["edge_type"] == "mixed" # type: ignore
 
 
 @pytest.mark.asyncio

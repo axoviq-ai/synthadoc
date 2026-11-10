@@ -31,6 +31,7 @@ def test_scan_page_stores_issues_on_write(tmp_path):
     store.write_page("test-page", page)
 
     loaded = store.read_page("test-page")
+    assert loaded is not None
     assert loaded.content_health_issues
     assert loaded.content_health_issues[0]["type"] == "duplicate_section"
     assert loaded.content_health_issues[0]["severity"] == "critical"
@@ -47,7 +48,7 @@ def test_clean_page_stores_empty_issues(tmp_path):
     store.write_page("clean-page", page)
 
     loaded = store.read_page("clean-page")
-    assert loaded.content_health_issues == []
+    assert loaded.content_health_issues == [] # type: ignore
     assert store.count_content_health_issues() == 0
 
 
@@ -62,10 +63,11 @@ def test_fix_record_not_touched_by_ingest(tmp_path):
 
     # Re-ingest: only update content_health_issues, not fix_record
     loaded = store.read_page("test-page")
-    new_issues = scan_page("test-page", loaded.content)
+    new_issues = scan_page("test-page", loaded.content) # type: ignore
+    assert loaded is not None
     loaded.content_health_issues = [asdict(i) for i in new_issues]
     store.write_page("test-page", loaded)
 
     final = store.read_page("test-page")
-    assert final.content_health_fix_record == fix_record  # unchanged
-    assert final.content_health_issues  # re-set from scan
+    assert final.content_health_fix_record == fix_record  # type: ignore # unchanged
+    assert final.content_health_issues  # type: ignore # re-set from scan

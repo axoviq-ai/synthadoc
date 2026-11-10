@@ -549,8 +549,8 @@ async def test_fail_dead_clears_retry_after(tmp_wiki):
     async with aiosqlite.connect(q._path) as db:
         async with db.execute("SELECT status, retry_after FROM jobs WHERE id=?", (job_id,)) as cur:
             row = await cur.fetchone()
-    assert row[0] == "dead"
-    assert row[1] is None, "dead jobs must not have retry_after set"
+    assert row[0] == "dead" # type: ignore
+    assert row[1] is None, "dead jobs must not have retry_after set" # type: ignore
 
 
 @pytest.mark.asyncio

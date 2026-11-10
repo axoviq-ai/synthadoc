@@ -57,7 +57,7 @@ async def test_run_scheduled_job_timeout_kills_proc(tmp_path):
     entry = {"id": "sched-test-timeout", "op": "lint"}
 
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
-        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=0.05)
+        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=0.05) # type: ignore
 
     mock_proc.kill.assert_called_once()
     mock_proc.wait.assert_awaited_once()

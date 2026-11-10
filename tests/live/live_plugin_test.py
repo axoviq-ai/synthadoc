@@ -546,7 +546,7 @@ def _test_sanitizer_and_truncation_flag() -> None:
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
-        final = _wait_for_terminal(job_id, max_wait=600)
+        final = _wait_for_terminal(job_id, max_wait=600) # type: ignore
         assert final == "completed", \
             f"Ingest job did not complete (status={final!r}) — cannot verify sanitizer or truncation flag"
 
@@ -704,7 +704,7 @@ def _test_context_budget() -> None:
 
         code, body = POST("/sessions", {"mode": "query"})
         assert code == 200, f"POST /sessions returned HTTP {code}"
-        session_id = body.get("session_id", "")
+        session_id = body.get("session_id", "") # type: ignore
 
         path = (f"/query/stream?q={urllib.parse.quote(q)}"
                 f"&session_id={urllib.parse.quote(session_id)}&no_cache=true&timeout_seconds=180")
@@ -738,7 +738,7 @@ def _test_context_budget() -> None:
         "capping sources (old top_n=5 behaviour?)"
     )
 
-    assert synthesizing_sources >= len(citations), (
+    assert synthesizing_sources >= len(citations), ( # type: ignore
         f"status.sources={synthesizing_sources} < len(citations)={len(citations)} — "
         "retrieved fewer pages than the LLM cited, which should be impossible"
     )
@@ -761,7 +761,7 @@ def _test_streaming_query_audit() -> None:
     """
     code, body = POST("/sessions", {"mode": "query"})
     assert code == 200, f"POST /sessions returned HTTP {code}"
-    session_id = body.get("session_id", "")
+    session_id = body.get("session_id", "") # type: ignore
 
     q = "streaming token audit live test"
     path = (f"/query/stream?q={urllib.parse.quote(q)}"
@@ -790,10 +790,10 @@ def _test_streaming_query_audit() -> None:
     assert rows, "No query audit rows found after streaming query"
 
     latest = rows[0]
-    assert latest.get("tokens", 0) > 0, (
-        f"Audit row tokens={latest.get('tokens')} — streaming token count not persisted"
+    assert latest.get("tokens", 0) > 0, ( # type: ignore
+        f"Audit row tokens={latest.get('tokens')} — streaming token count not persisted" # type: ignore
     )
-    assert latest.get("cost_usd", 0.0) >= 0.0  # 0.0 is valid for Ollama (local)
+    assert latest.get("cost_usd", 0.0) >= 0.0  # type: ignore # 0.0 is valid for Ollama (local)
 
 
 def _test_citation_failures_pagination() -> None:
@@ -822,15 +822,15 @@ def _test_citation_failures_pagination() -> None:
     # Pagination: limit=1 must return at most 1 row
     code2, body2 = GET("/provenance/citations?broken=true&limit=1&offset=0")
     assert code2 == 200, f"pagination call returned HTTP {code2}"
-    paged = body2.get("citations", [])
+    paged = body2.get("citations", []) # type: ignore
     assert len(paged) <= 1, f"limit=1 returned {len(paged)} rows — LIMIT not respected"
 
     # Non-broken path with page filter (exercises the list_citations SQL path)
     code3, lc_body = GET("/lifecycle/pages")
     if code3 == 200:
-        lc_pages = lc_body if isinstance(lc_body, list) else lc_body.get("pages", [])
+        lc_pages = lc_body if isinstance(lc_body, list) else lc_body.get("pages", []) # type: ignore
         if lc_pages:
-            slug = (lc_pages[0].get("slug") if isinstance(lc_pages[0], dict) else lc_pages[0])
+            slug = (lc_pages[0].get("slug") if isinstance(lc_pages[0], dict) else lc_pages[0]) # type: ignore
             if slug:
                 code4, body4 = GET(f"/provenance/citations?page={urllib.parse.quote(slug)}&limit=10")
                 assert code4 == 200, f"page-filtered citations returned HTTP {code4}"
@@ -867,7 +867,7 @@ def _test_blocked_domain_filter() -> None:
     try:
         code, body = POST("/sessions", {"mode": "query"})
         assert code == 200, f"POST /sessions returned HTTP {code}"
-        session_id = body.get("session_id", "")
+        session_id = body.get("session_id", "") # type: ignore
 
         # Topic unlikely to be in any demo wiki → forces a knowledge gap
         q = "blocked domain filter live test xyzzy nonexistent topic 2099"
@@ -921,7 +921,7 @@ def _test_knowledge_graph() -> None:
     # Poll until graph is ready (up to 15 × 2 s = 30 s)
     data: dict = {}
     for _ in range(15):
-        code, data = GET("/graph")
+        code, data = GET("/graph") # type: ignore
         assert code == 200, f"GET /graph returned HTTP {code}: {str(data)[:120]}"
         if isinstance(data, dict) and data.get("status") == "ready":
             break
@@ -1130,14 +1130,14 @@ def main(no_restore: bool = False) -> None:
     second_terminal: dict | None = None
     if code == 200 and isinstance(jobs_list, list):
         for j in reversed(jobs_list):
-            if j.get("created_at", "") < _cutoff:
+            if j.get("created_at", "") < _cutoff: # type: ignore
                 break  # list is ASC by created_at; nothing older will match
             # dead jobs cannot be retried (409) — skip for retry target, ok for delete
-            if j.get("status") in (JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.SKIPPED, JobStatus.FAILED):
+            if j.get("status") in (JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.SKIPPED, JobStatus.FAILED): # type: ignore
                 if terminal_job is None:
-                    terminal_job = j
+                    terminal_job = j # type: ignore
                 elif second_terminal is None:
-                    second_terminal = j
+                    second_terminal = j # type: ignore
                     break
 
     if terminal_job:

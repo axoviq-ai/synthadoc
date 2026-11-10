@@ -179,6 +179,7 @@ async def test_apply_citation_fixes_replace(tmp_path):
     assert result["status"] == "success"
     assert result["changes"] == 1
     # Verify the page was written with the corrected content
+    assert ctx.store is not None
     call_args = ctx.store.write_page.call_args
     written_page: WikiPage = call_args[0][1]
     assert "^[new.txt:1-5]" in written_page.content
@@ -201,6 +202,7 @@ async def test_apply_citation_fixes_remove(tmp_path):
     )
     assert result["status"] == "success"
     assert result["changes"] == 1
+    assert ctx.store is not None
     call_args = ctx.store.write_page.call_args
     written_page: WikiPage = call_args[0][1]
     assert "^[old.txt:1-5]" not in written_page.content
@@ -236,6 +238,7 @@ async def test_apply_citation_fixes_empty_old_citation_skipped():
     )
     # No valid fixes → no changes; write_page must NOT be called
     assert result["changes"] == 0
+    assert ctx.store is not None
     ctx.store.write_page.assert_not_called()
 
 
@@ -253,6 +256,7 @@ async def test_apply_citation_fixes_invalid_marker_shape_skipped():
         fixes=[{"old_citation": "hallucinated text", "new_citation": "^[bio.txt:1-3]"}],
     )
     assert result["changes"] == 0
+    assert ctx.store is not None
     ctx.store.write_page.assert_not_called()
 
 
@@ -271,6 +275,7 @@ async def test_apply_citation_fixes_no_match_returns_zero_changes():
     )
     assert result["status"] == "success"
     assert result["changes"] == 0
+    assert ctx.store is not None
     ctx.store.write_page.assert_not_called()
 
 

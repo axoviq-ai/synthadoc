@@ -109,4 +109,4 @@ class AnthropicProvider(LLMProvider):
                     self.last_stream_output_tokens = event.usage.output_tokens
                 elif (event.type == "content_block_delta"
                         and hasattr(event.delta, "text")):
-                    yield event.delta.text
+                    yield event.delta.text # type: ignore
