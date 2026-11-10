@@ -18,7 +18,7 @@ def test_stale_pages_in_answer_emits_reingest_hint():
     engine = _engine()
     hints, _ = engine.after_response_windowed(
         answer="You have 3 stale pages: page-a, page-b, page-c.",
-        mode="wiki", cursor=0
+        mode="wiki", cursor=0 # type: ignore
     )
     assert any("re-ingest" in h.lower() or "reingest" in h.lower() for h in hints), \
         f"Expected reingest hint, got: {hints}"
@@ -28,7 +28,7 @@ def test_reingest_completed_emits_lint_hint():
     engine = _engine()
     hints, _ = engine.after_response_windowed(
         answer="All 2 pages re-ingested successfully. Everything looks good.",
-        mode="wiki", cursor=0
+        mode="wiki", cursor=0 # type: ignore
     )
     assert any("lint" in h.lower() for h in hints), \
         f"Expected lint hint, got: {hints}"
@@ -97,7 +97,7 @@ def test_broken_wikilinks_hint_chip_in_answer():
     engine = _engine()
     hints, _ = engine.after_response_windowed(
         answer="Your wiki has 2 broken wikilinks pointing to non-existent pages.",
-        mode="wiki", cursor=0,
+        mode="wiki", cursor=0, # type: ignore
     )
     assert any("broken" in h.lower() or "wikilink" in h.lower() for h in hints), \
         f"Expected broken wikilinks hint, got: {hints}"

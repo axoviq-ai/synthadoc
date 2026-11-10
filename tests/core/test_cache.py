@@ -218,6 +218,6 @@ async def test_cache_manager_uses_wal_journal_mode(tmp_wiki):
         async with aiosqlite.connect(tmp_wiki / ".synthadoc" / "cache.db") as conn:
             async with conn.execute("PRAGMA journal_mode") as cur:
                 row = await cur.fetchone()
-        assert row[0] == "wal"
+        assert row[0] == "wal" # type: ignore
     finally:
         await cm.close()

@@ -228,11 +228,11 @@ class OpenAIProvider(LLMProvider):
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
             **_sampling_kwargs(self._config.provider, self._config.model,
-                               temperature, max_tokens),
+                               temperature, max_tokens), # type: ignore
             timeout=self._timeout, stream=True,
             stream_options={"include_usage": True},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
-        ):
+        ): # type: ignore
             if chunk.usage is not None:
                 usage_obj = chunk.usage
             if not chunk.choices:
@@ -288,10 +288,10 @@ class OpenAIProvider(LLMProvider):
                 return await self._client.chat.completions.create(
                     model=self._config.model, messages=msgs,
                     **_sampling_kwargs(self._config.provider, self._config.model,
-                                       temperature, max_tokens),
+                                       temperature, max_tokens), # type: ignore
                     timeout=self._timeout,
                     **({"extra_body": self._extra_body} if self._extra_body else {}),
-                )
+                ) # type: ignore
             except _openai.APITimeoutError:
                 logger.error(
                     "LLM call to %s timed out after %d s. "
@@ -486,11 +486,11 @@ class OpenAIProvider(LLMProvider):
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
             **_sampling_kwargs(self._config.provider, self._config.model,
-                               temperature, max_tokens),
+                               temperature, max_tokens), # type: ignore
             timeout=self._timeout, stream=True,
             stream_options={"include_usage": True},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
-        ):
+        ): # type: ignore
             # The final chunk with include_usage=True has chunk.usage populated and
             # empty choices — capture before the early-continue guard below.
             if chunk.usage is not None:

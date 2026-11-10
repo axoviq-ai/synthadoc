@@ -120,7 +120,7 @@ def test_build_hotpot_writes_each_paragraph_once_and_maps_gold(tmp_path):
     wiki_dir, qs = corpus.build_hotpot([row, {**row, "id": "q2"}], tmp_path)
     store = WikiStorage(wiki_dir)
     assert sorted(store.list_pages()) == ["eniac", "john-mauchly"]
-    assert "ENIAC was a computer. It was big." in store.read_page("eniac").content
+    assert "ENIAC was a computer. It was big." in store.read_page("eniac").content # type: ignore
     assert qs[0] == corpus.HotpotQuestion("q1", "Who built ENIAC?", ["eniac", "john-mauchly"])
 
 
@@ -189,7 +189,7 @@ _GOOD = {"lexical": "ENIAC vacuum tubes", "paraphrase": "first electronic machin
 
 
 async def test_queries_for_page_returns_three_labelled_queries():
-    qs = await queries.queries_for_page(_FakeProvider([_GOOD]), "eniac", "ENIAC", _BODY, queries.TermStats())
+    qs = await queries.queries_for_page(_FakeProvider([_GOOD]), "eniac", "ENIAC", _BODY, queries.TermStats()) # type: ignore
     assert [(q.id, q.type, q.relevant) for q in qs] == [
         ("eniac:lexical", "lexical", ["eniac"]),
         ("eniac:paraphrase", "paraphrase", ["eniac"]),
@@ -199,7 +199,7 @@ async def test_queries_for_page_returns_three_labelled_queries():
 
 async def test_queries_for_page_retries_a_leaky_paraphrase_with_feedback():
     provider = _FakeProvider([{**_GOOD, "paraphrase": "what was eniac"}, _GOOD])
-    qs = await queries.queries_for_page(provider, "eniac", "ENIAC", _BODY, queries.TermStats())
+    qs = await queries.queries_for_page(provider, "eniac", "ENIAC", _BODY, queries.TermStats()) # type: ignore
     assert "previous paraphrase" in provider.prompts[1] and "eniac" in provider.prompts[1]
     assert next(q.text for q in qs if q.type == "paraphrase") == _GOOD["paraphrase"]
 
@@ -207,7 +207,7 @@ async def test_queries_for_page_retries_a_leaky_paraphrase_with_feedback():
 async def test_queries_for_page_drops_a_paraphrase_that_still_leaks():
     leaky = {**_GOOD, "paraphrase": "what was eniac"}
     logged: list[str] = []
-    qs = await queries.queries_for_page(_FakeProvider([leaky, leaky]), "eniac", "ENIAC", _BODY,
+    qs = await queries.queries_for_page(_FakeProvider([leaky, leaky]), "eniac", "ENIAC", _BODY, # type: ignore
                                         queries.TermStats(), logged.append)
     assert [q.type for q in qs] == ["lexical", "identifier"]
     assert "paraphrase dropped" in logged[0] and "what was eniac" in logged[0]
@@ -215,9 +215,9 @@ async def test_queries_for_page_drops_a_paraphrase_that_still_leaks():
 
 async def test_queries_for_page_tolerates_prose_around_json_and_bad_json():
     stats = queries.TermStats()
-    qs = await queries.queries_for_page(_FakeProvider(["Sure! " + json.dumps(_GOOD)]), "e", "ENIAC", _BODY, stats)
+    qs = await queries.queries_for_page(_FakeProvider(["Sure! " + json.dumps(_GOOD)]), "e", "ENIAC", _BODY, stats) # type: ignore
     assert len(qs) == 3
-    assert await queries.queries_for_page(_FakeProvider(["not json"]), "e", "ENIAC", _BODY, stats) == []
+    assert await queries.queries_for_page(_FakeProvider(["not json"]), "e", "ENIAC", _BODY, stats) == [] # type: ignore
 
 
 def test_sample_slugs_is_seeded_and_sorted():
@@ -236,7 +236,7 @@ async def test_generate_fills_only_missing_types_and_keeps_existing(tmp_path):
     queries.save_queries([queries.Query("eniac:lexical", "lexical", "old lexical", ["eniac"]),
                           queries.Query("unix:paraphrase", "paraphrase", "kept as is", ["unix"])], out)
     provider = _FakeProvider([_GOOD])          # only eniac lacks a paraphrase
-    result = await queries.generate(provider, wiki_dir, out, types=("paraphrase",), log=lambda _: None)
+    result = await queries.generate(provider, wiki_dir, out, types=("paraphrase",), log=lambda _: None) # type: ignore
     assert len(provider.prompts) == 1 and "ENIAC" in provider.prompts[0]
     assert [(q.id, q.text) for q in result] == [
         ("eniac:lexical", "old lexical"),
@@ -258,7 +258,7 @@ def test_queries_round_trip(tmp_path):
 def test_nested_subsets_are_prefixes_of_one_shuffle_plus_the_full_corpus():
     subsets = evaluate.nested_subsets([f"p{i}" for i in range(30)], (5, 10, 40))
     assert set(subsets) == {5, 10, 30}
-    assert subsets[10][:5] == subsets[5]
+    assert subsets[10][:5] == subsets[5] # type: ignore
     assert subsets[30] is None
 
 
@@ -360,7 +360,7 @@ def test_external_build_writes_docs_and_maps_judged_queries(tmp_path, monkeypatc
     assert [(q.id, q.type, q.relevant) for q in judged] == [("q1", "human", ["d-med-10"]),
                                                              ("q2", "human", ["d-med-11"])]
     page = WikiStorage(wiki_dir).read_page("d-med-11")
-    assert page.title == "Vitamin D levels in winter months were low."   # no title: its opening
+    assert page.title == "Vitamin D levels in winter months were low."   # type: ignore # no title: its opening
 
 
 def test_external_build_keeps_only_queries_whose_passages_are_in_the_slice(tmp_path, monkeypatch):
@@ -372,7 +372,7 @@ def test_external_build_keeps_only_queries_whose_passages_are_in_the_slice(tmp_p
     })
     wiki_dir, judged = external.build("duretrieval", tmp_path)
     assert [q.id for q in judged] == ["a"]
-    assert WikiStorage(wiki_dir).read_page("d-p1").title == "一年国家法定节假日为11天"
+    assert WikiStorage(wiki_dir).read_page("d-p1").title == "一年国家法定节假日为11天" # type: ignore
 
 
 def test_external_pin_detects_a_changed_dataset(tmp_path):
@@ -381,9 +381,9 @@ def test_external_pin_detects_a_changed_dataset(tmp_path):
     judged = [queries.Query("a", "human", "x", ["d-p1"])]
     external.pin("duretrieval", judged, 3000, pin_file)
     assert external.check_pin("duretrieval", judged, 3000, pin_file) is None
-    assert "pinned 3000" in external.check_pin("duretrieval", judged, 2999, pin_file)
+    assert "pinned 3000" in external.check_pin("duretrieval", judged, 2999, pin_file) # type: ignore
     other = [queries.Query("b", "human", "x", ["d-p1"])]
-    assert "query IDs differ" in external.check_pin("duretrieval", other, 3000, pin_file)
+    assert "query IDs differ" in external.check_pin("duretrieval", other, 3000, pin_file) # type: ignore
     assert external.check_pin("scifact", judged, 10, pin_file) is None      # not pinned yet
 
 

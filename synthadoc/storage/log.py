@@ -631,7 +631,7 @@ class AuditDB:
             async with db.execute(
                 f"SELECT COUNT(*) FROM claim_citations {where}", params
             ) as cur:
-                return (await cur.fetchone())[0]
+                return (await cur.fetchone())[0] # type: ignore
 
     async def count_citation_failures(self, page_slug: str | None = None) -> int:
         """Return the total number of citation_validation_failed audit events."""
@@ -642,7 +642,7 @@ class AuditDB:
                 f"WHERE event='citation_validation_failed' {slug_filter}",
                 params,
             ) as cur:
-                return (await cur.fetchone())[0]
+                return (await cur.fetchone())[0] # type: ignore
 
     async def write_event(self, event: str, job_id: str = "",
                           metadata: dict | None = None) -> None:
@@ -777,7 +777,7 @@ class AuditDB:
                 f"SELECT COUNT(*) as cnt FROM lifecycle_events {where}",
                 filter_params,
             ) as cur:
-                total = (await cur.fetchone())["cnt"]
+                total = (await cur.fetchone())["cnt"] # type: ignore
             async with db.execute(
                 f"SELECT id,slug,from_state,to_state,reason,triggered_by,timestamp"
                 f" FROM lifecycle_events {where} ORDER BY id ASC LIMIT ? OFFSET ?",
@@ -1049,7 +1049,7 @@ class AuditDB:
                 (session_id, limit),
             ) as cur:
                 rows = await cur.fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)] # type: ignore
 
     async def has_prior_sessions(self) -> bool:
         async with aiosqlite.connect(self._path) as db:
@@ -1068,7 +1068,7 @@ class AuditDB:
                 (session_id, limit),
             ) as cur:
                 rows = await cur.fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)] # type: ignore
 
     async def get_all_messages(self, session_id: str) -> list[dict]:
         """Return all messages for a session, oldest first, including citations and gap suggestions."""

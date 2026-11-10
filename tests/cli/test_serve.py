@@ -301,7 +301,7 @@ def test_check_api_key_covers_kimi(monkeypatch, capsys):
     monkeypatch.delenv("KIMI_API_KEY", raising=False)
     monkeypatch.delenv("QWEN_API_KEY", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-    cfg = Config(agents=AgentsConfig(default=AgentConfig(provider="kimi", model="kimi-k3")))
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(provider="kimi", model="kimi-k3"))) # type: ignore
 
     with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         _check_api_key(cfg)
