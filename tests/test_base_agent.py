@@ -149,7 +149,7 @@ def test_bare_subclass_raises_type_error_on_instantiation():
         pass  # does not override _run
 
     with pytest.raises(TypeError, match="_run"):
-        _BareAgent(MagicMock(spec=LLMProvider))
+        _BareAgent(MagicMock(spec=LLMProvider)) # type: ignore
 
 
 def test_run_passes_args_to_run_impl():

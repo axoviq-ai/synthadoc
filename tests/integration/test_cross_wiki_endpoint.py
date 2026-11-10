@@ -21,7 +21,7 @@ def _mock_result(**kwargs):
         cacheable=True, sub_questions_count=1,
     )
     defaults.update(kwargs)
-    return QueryResult(**defaults)
+    return QueryResult(**defaults) # type: ignore
 
 
 def _make_app(tmp_wiki):

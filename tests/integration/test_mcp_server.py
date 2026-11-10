@@ -555,7 +555,7 @@ async def test_mcp_write_page_snapshot_uses_default_reason(mock_orch):
             {"slug": "konrad-zuse", "content": "same old"},
             convert_result=False,
         )
-    _, _, _, reason_arg = snap_mock.await_args.args
+    _, _, _, reason_arg = snap_mock.await_args.args # type: ignore
     assert reason_arg  # must not be empty
 
 

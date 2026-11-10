@@ -403,9 +403,9 @@ _SAMPLE_GRAPH = {
 def reset_graph_flag():
     """Reset the module-level _graph_computing flag before and after each test."""
     import synthadoc.integration.http_server as _hs
-    _hs._graph_computing = False
+    _hs._graph_computing = False # type: ignore
     yield
-    _hs._graph_computing = False
+    _hs._graph_computing = False # type: ignore
 
 
 @pytest.fixture

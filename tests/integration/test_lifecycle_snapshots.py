@@ -128,7 +128,7 @@ async def test_record_event_with_snapshot(tmp_path: Path):
             "SELECT content_snapshot FROM lifecycle_events"
         ) as cur:
             row = await cur.fetchone()
-    assert row["content_snapshot"] == "# Quantum Computing\n\nContent here."
+    assert row["content_snapshot"] == "# Quantum Computing\n\nContent here." # type: ignore
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,7 @@ async def test_record_event_without_snapshot_defaults_null(tmp_path: Path):
             "SELECT content_snapshot FROM lifecycle_events"
         ) as cur:
             row = await cur.fetchone()
-    assert row["content_snapshot"] is None
+    assert row["content_snapshot"] is None # type: ignore
 
 
 # ── Task 2 tests ────────────────────────────────────────────────────────────
@@ -729,7 +729,7 @@ async def test_snapshot_if_changed_strips_frontmatter_before_compare(tmp_path: P
     assert len(snaps) == 1, "only one snapshot should exist"
     # Verify stored content is body-only (frontmatter was stripped before storage)
     snap = await audit.get_snapshot_by_index("p", 1)
-    assert snap["content_snapshot"] == body
+    assert snap["content_snapshot"] == body # type: ignore
 
 
 @pytest.mark.asyncio
@@ -866,9 +866,9 @@ async def test_record_lifecycle_event_suppresses_duplicate_content_snapshot(tmp_
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT id, content_snapshot FROM lifecycle_events WHERE slug='p'") as cur:
             rows = await cur.fetchall()
-    assert len(rows) == 2
-    assert rows[0]["content_snapshot"] == body
-    assert rows[1]["content_snapshot"] is None
+    assert len(rows) == 2 # type: ignore
+    assert rows[0]["content_snapshot"] == body # type: ignore
+    assert rows[1]["content_snapshot"] is None # type: ignore
 
 
 @pytest.mark.asyncio
@@ -961,14 +961,14 @@ def test_lint_transition_captures_snapshot(tmp_wiki):
         await audit.init()
         await audit.set_page_state("lint-snap", "active", "user")
         agent = LintAgent(
-            provider=None,
+            provider=None, # type: ignore
             store=store,
             log_writer=None,
             audit_db=audit,
             wiki_root=tmp_wiki,
         )
         page = store.read_page("lint-snap")
-        await agent._transition("lint-snap", page, "active", "stale", "source changed")
+        await agent._transition("lint-snap", page, "active", "stale", "source changed") # type: ignore
 
     asyncio.run(run())
 

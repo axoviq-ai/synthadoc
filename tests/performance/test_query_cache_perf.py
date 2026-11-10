@@ -44,7 +44,7 @@ if platform.system() == "Windows":
 @pytest.fixture
 def asyncio_event_loop_policy():
     if platform.system() == "Windows":
-        return asyncio.WindowsSelectorEventLoopPolicy()
+        return asyncio.WindowsSelectorEventLoopPolicy() # type: ignore
     return asyncio.DefaultEventLoopPolicy()
 
 from synthadoc.core.cache import CacheManager, make_query_cache_key
