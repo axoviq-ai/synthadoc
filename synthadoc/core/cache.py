@@ -105,6 +105,17 @@ class CacheManager:
         )
         await self._conn.commit()
 
+    async def clear_query_cache(self) -> int:
+        """Delete all query cache entries.
+
+        Called on startup so answers cached by a previous server run (which had its
+        own _wiki_epoch counter starting at 0) are never served for a new run whose
+        epoch counter also starts at 0 but whose wiki content may have changed.
+        """
+        cur = await self._conn.execute("DELETE FROM query_cache")
+        await self._conn.commit()
+        return cur.rowcount
+
     async def cleanup_query_cache(self, current_epoch: int) -> int:
         """Remove stale cache entries (epoch < current_epoch - 5 or older than 7 days)."""
         cur = await self._conn.execute(
