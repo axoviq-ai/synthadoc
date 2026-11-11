@@ -761,6 +761,10 @@ class Orchestrator:
             ).run(scope=scope, slug=slug, auto_resolve=auto_resolve,
                   adversarial=adversarial, lifecycle=lifecycle,
                   check_url_availability=check_url_availability, job_id=job_id)
+            # Lint can promote candidate pages and change lifecycle states;
+            # bump epoch before completing the job so any immediate query
+            # misses the cache rather than getting a stale answer.
+            await self.wiki_changed()
             await self._queue.complete(job_id, result={
                 "contradictions_found": report.contradictions_found,
                 "contradictions_resolved": report.contradictions_resolved,
@@ -771,9 +775,6 @@ class Orchestrator:
                 "adversarial_demotions": report.adversarial_demotions,
                 "tokens_used": report.tokens_used,
             })
-            # Lint can promote candidate pages to active and change lifecycle states,
-            # so invalidate cached query answers exactly as ingest does.
-            await self.wiki_changed()
             self._hooks.fire("on_lint_complete", {
                 "event": "on_lint_complete", "wiki": str(self._root),
                 "contradictions_found": report.contradictions_found,

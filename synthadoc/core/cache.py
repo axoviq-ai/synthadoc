@@ -83,8 +83,14 @@ class CacheManager:
         await self._conn.commit()
 
     async def clear(self) -> int:
-        """Delete all cached entries (both response and query caches). Returns total rows removed."""
-        cur1 = await self._conn.execute("DELETE FROM response_cache")
+        """Delete all cached entries (both response and query caches). Returns total rows removed.
+
+        The epoch row (key == _EPOCH_KEY) is intentionally preserved so that
+        the restart-bump logic stays monotonically increasing after a clear.
+        """
+        cur1 = await self._conn.execute(
+            "DELETE FROM response_cache WHERE key != ?", (self._EPOCH_KEY,)
+        )
         cur2 = await self._conn.execute("DELETE FROM query_cache")
         await self._conn.commit()
         return cur1.rowcount + cur2.rowcount

@@ -87,6 +87,33 @@ async def test_clear_also_wipes_query_cache(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_clear_preserves_epoch_row(tmp_path):
+    """clear() must delete regular entries but keep the epoch row.
+
+    Without this, 'synthadoc cache clear' would reset the saved epoch to 0
+    so the restart-bump could re-use old epoch numbers, defeating
+    cross-wiki cache invalidation.
+    """
+    cm = CacheManager(tmp_path / "cache.db")
+    await cm.init()
+    try:
+        await cm.save_epoch(42)
+        await cm.set("some-key", {"v": 1})
+        await cm.set_query("q1", epoch=42, result={"answer": "x"})
+
+        removed = await cm.clear()
+        # 2 non-epoch rows: "some-key" (response_cache) + "q1" (query_cache)
+        assert removed == 2
+        # Epoch row survived clear
+        assert await cm.get_saved_epoch() == 42
+        # Other entries are gone
+        assert await cm.get("some-key") is None
+        assert await cm.get_query("q1") is None
+    finally:
+        await cm.close()
+
+
+@pytest.mark.asyncio
 async def test_get_query_returns_none_on_miss(tmp_path):
     """get_query returns None when no matching entry exists."""
     from synthadoc.core.cache import CacheManager
