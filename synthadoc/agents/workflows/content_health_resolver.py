@@ -329,7 +329,17 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         r"|\bduplicate.{0,20}sections?\b"
         r"|\bcontent.{0,20}issues?\b"
         r"|\bcontent.{0,15}resolver\b"
-        r"|\broll\s*back\b",
+        # "roll back" / "rollback" is a Synthadoc command, but the bare phrase also
+        # appears in natural-language questions unrelated to this tool
+        # (e.g. "how do I roll back a Kubernetes deployment?").
+        # Require the phrase to be followed by either:
+        #   • an explicit Synthadoc keyword (fix, change, last, page), or
+        #   • a wiki-slug-shaped token (all-lowercase, 3+ chars, may be hyphenated)
+        #     that is NOT a common English article/possessive stop-word, or
+        #   • end-of-string / punctuation (bare "roll back" command with nothing after).
+        r"|\broll\s*back\b(?=\s+(?:the\s+)?(?:fix|change|last|page)\b"
+        r"|\s+(?!a\b|an\b|the\b|my\b|your\b|their\b|its\b|this\b|our\b|any\b|some\b)[a-z][a-z0-9-]{2,}"
+        r"|\s*[?!.,;]*\s*$)",
         re.IGNORECASE,
     )
 
@@ -343,6 +353,12 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
     _LIST_RE = re.compile(r"\blist\b", re.IGNORECASE)
     _ROLLBACK_BARE_RE = re.compile(r"\broll\s*back\b", re.IGNORECASE)
     _ROLLBACK_RE = re.compile(r"\broll\s*back\b\s+(\S+)", re.IGNORECASE)
+    # English articles/possessives that can never be a wiki slug — if _ROLLBACK_RE
+    # captures one of these it means the question was a natural-language query
+    # ("roll back a Kubernetes…"), not a Synthadoc rollback command.
+    _SLUG_STOPWORDS: frozenset[str] = frozenset({
+        "a", "an", "the", "my", "your", "their", "its", "this", "our", "any", "some",
+    })
 
     @classmethod
     def _parse_intent(cls, user_input: str) -> tuple[str, str | None]:
@@ -357,7 +373,13 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
         # "roll back SLUG" or bare "roll back" → restore a page's pre-fix snapshot
         if cls._ROLLBACK_BARE_RE.search(user_input):
             match = cls._ROLLBACK_RE.search(user_input)
-            return "rollback", match.group(1).rstrip(".,;") if match else None
+            slug = match.group(1).rstrip(".,;") if match else None
+            # Discard slugs that are stop words — these came from a natural-language
+            # question ("roll back a Kubernetes deployment") that is not a Synthadoc
+            # rollback command.  Treat as bare rollback (prompt user for a slug).
+            if slug and slug.lower() in cls._SLUG_STOPWORDS:
+                slug = None
+            return "rollback", slug
         return "fix", None
 
     def build_initial_message(self, user_input: str) -> str:
