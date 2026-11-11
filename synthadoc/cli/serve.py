@@ -343,6 +343,12 @@ def serve_cmd(
     if wiki not in read_registry_all() and not _wiki_is_path:
         import json as _json
         abs_root = root.resolve()
+        # Doubled-path guard: when the user runs from inside the wiki directory
+        # (e.g. CWD = /home/user/my-wiki and wiki = "my-wiki"), root is a relative
+        # Path("my-wiki") that resolves to CWD/my-wiki — a non-existent doubled path.
+        # Detect this by checking whether CWD itself is a valid wiki root.
+        if not abs_root.exists() and (Path.cwd() / ".synthadoc" / "config.toml").exists():
+            abs_root = Path.cwd().resolve()
         # json.dumps produces a quoted, backslash-escaped string safe to paste into wikis.json
         _path_json = _json.dumps(str(abs_root))
         _port = cfg.server.port

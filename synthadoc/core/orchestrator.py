@@ -117,6 +117,11 @@ class Orchestrator:
         await self._queue.init(stale_pending_seconds=self._cfg.server.job_timeout_seconds * 2)
         await self._audit.init()
         await self._cache.init()
+        # Clear the query cache on every startup.  _wiki_epoch restarts at 0 each
+        # run, so an answer cached at epoch 0 in a previous run would be served
+        # again on the first query of a new run even if the wiki changed between
+        # the two runs.
+        await self._cache.clear_query_cache()
         self._log_agent_config()
         if self._search.vectors_requested():
             try:
@@ -746,6 +751,9 @@ class Orchestrator:
                 "adversarial_demotions": report.adversarial_demotions,
                 "tokens_used": report.tokens_used,
             })
+            # Lint can promote candidate pages to active and change lifecycle states,
+            # so invalidate cached query answers exactly as ingest does.
+            self._bump_epoch()
             self._hooks.fire("on_lint_complete", {
                 "event": "on_lint_complete", "wiki": str(self._root),
                 "contradictions_found": report.contradictions_found,
