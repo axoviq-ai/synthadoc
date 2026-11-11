@@ -275,6 +275,31 @@ function PreBlock({ children }: { children?: React.ReactNode }) {
 
 const OBSIDIAN_CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
 
+// Matches [[wiki-name::Page Title]] (cross-wiki) then [[Page Title]] (same-wiki).
+// Applied before obsidianCitationsToGfm so the two transforms compose cleanly.
+const _WIKILINK_CODE_RE  = /```[\s\S]*?```|`[^`]*`/g;
+const _CROSS_WIKI_RE     = /\[\[([^\]]+?)::([^\]]+?)\]\]/g;
+const _SAME_WIKI_RE      = /\[\[([^\]]+?)\]\]/g;
+
+export function wikilinksToGfm(text: string): string {
+    function transformChunk(chunk: string): string {
+        return chunk
+            .replace(_CROSS_WIKI_RE, (_, wiki, title) => `**[${wiki}]** ${title}`)
+            .replace(_SAME_WIKI_RE,  (_, title) => `**${title}**`);
+    }
+    const parts: string[] = [];
+    let cursor = 0;
+    _WIKILINK_CODE_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = _WIKILINK_CODE_RE.exec(text)) !== null) {
+        parts.push(transformChunk(text.slice(cursor, m.index)));
+        parts.push(m[0]);
+        cursor = m.index + m[0].length;
+    }
+    parts.push(transformChunk(text.slice(cursor)));
+    return parts.join("");
+}
+
 export function obsidianCitationsToGfm(text: string): string {
     const refs = new Map<string, number>(); // raw marker → footnote number
     let counter = 1;
@@ -406,7 +431,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                     )
                     : <div className="bubble-md">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
-                            {obsidianCitationsToGfm(escapePlaceholders(localizeISOTimestamps(msg.text)))}
+                            {obsidianCitationsToGfm(wikilinksToGfm(escapePlaceholders(localizeISOTimestamps(msg.text))))}
                         </ReactMarkdown>
                       </div>
             }
