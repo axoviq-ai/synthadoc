@@ -171,20 +171,20 @@ def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
         yield {"event": "gap", "data": {"suggested_searches": ["ingest quantum computing", "add quantum page"]}}
         yield {"event": "done", "data": {"cacheable": True, "next_hints": []}}
 
-    # First request — live stream; verify gap event is forwarded
+    # Both requests run inside the same server lifecycle so they share the same
+    # wiki epoch and the second request is a true cache hit.
     with TestClient(app) as client:
+        # First request — live stream; verify gap event is forwarded
         app.state.orch.query_stream = _gap_stream
         resp = client.get("/query/stream?q=quantum+computing")
 
-    assert resp.status_code == 200
-    assert b"gap" in resp.content
-    assert b"quantum" in resp.content
+        assert resp.status_code == 200
+        assert b"gap" in resp.content
+        assert b"quantum" in resp.content
 
-    # Second request — served from cache; the gap event must still appear
-    # (verifies both that cache stored knowledge_gap=True and that _cached_stream replays it)
-    with TestClient(app) as client:
-        # Replace stream with one that would not emit a gap — any gap in resp2 must come from cache
-        async def _no_gap_stream(question, session_id=None, session_mode="POWER_USER"):
+        # Second request — served from cache; the gap event must still appear
+        # (verifies both that cache stored knowledge_gap=True and that _cached_stream replays it)
+        async def _no_gap_stream(question, session_id=None, session_mode="POWER_USER", history=None):
             raise AssertionError("live stream must not be called on cache hit")
             yield  # make it a generator
 
