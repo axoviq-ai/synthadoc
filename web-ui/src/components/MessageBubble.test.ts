@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 
 // We will import the function once it exists; for now the import will fail.
 // Add the function export to MessageBubble.tsx before running these tests.
-import { obsidianCitationsToGfm } from "./MessageBubble";
+import { obsidianCitationsToGfm, wikilinksToGfm } from "./MessageBubble";
 
 describe("obsidianCitationsToGfm", () => {
     it("transforms a single citation to GFM footnote", () => {
@@ -52,5 +52,44 @@ describe("obsidianCitationsToGfm", () => {
         const out = obsidianCitationsToGfm(input);
         expect(out).toContain("[^1]");
         expect(out).toContain("[^1]: f.md:2-5");
+    });
+});
+
+describe("wikilinksToGfm", () => {
+    it("converts cross-wiki [[wiki::Title]] to bold wiki tag + title", () => {
+        const out = wikilinksToGfm("See [[fernway-product::Smart Alerts]] for details.");
+        expect(out).toBe("See **[fernway-product]** Smart Alerts for details.");
+    });
+
+    it("converts same-wiki [[Title]] to bold title", () => {
+        const out = wikilinksToGfm("Read [[Ada Lovelace]] for context.");
+        expect(out).toBe("Read **Ada Lovelace** for context.");
+    });
+
+    it("handles multiple wikilinks in one string", () => {
+        const out = wikilinksToGfm("[[a::B]] and [[C]]");
+        expect(out).toContain("**[a]** B");
+        expect(out).toContain("**C**");
+    });
+
+    it("leaves content inside inline code spans untouched", () => {
+        const input = "try `[[wiki::Page]]` literally";
+        const out = wikilinksToGfm(input);
+        expect(out).toBe(input);
+    });
+
+    it("leaves content inside fenced code blocks untouched", () => {
+        const input = "```\n[[wiki::Page]]\n```";
+        const out = wikilinksToGfm(input);
+        expect(out).toBe(input);
+    });
+
+    it("returns unchanged text when no wikilinks present", () => {
+        const input = "plain answer with no links";
+        expect(wikilinksToGfm(input)).toBe(input);
+    });
+
+    it("handles empty string", () => {
+        expect(wikilinksToGfm("")).toBe("");
     });
 });
