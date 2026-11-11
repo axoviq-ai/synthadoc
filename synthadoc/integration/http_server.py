@@ -2592,13 +2592,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER,
                                             content_snapshot=page.content, force=True)
-        await orch.wiki_changed()
         cascade_affected: list[str] = []
         if req.to_state == LifecycleState.ARCHIVED:
             from synthadoc.agents.lint_agent import cascade_archive
             cascade_affected = await cascade_archive(
                 req.slug, orch._store, audit_db=audit, trigger_source=TriggerSource.USER
             )
+        # Bump epoch after cascade so the new epoch reflects all writes (primary page +
+        # any cascade-archived pages) atomically.  wiki_changed() also invalidates the
+        # BM25 corpus so the next search sees the updated lifecycle states.
+        await orch.wiki_changed()
         return {
             "slug": req.slug,
             "from_state": from_state,
