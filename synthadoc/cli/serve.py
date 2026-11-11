@@ -329,9 +329,24 @@ def serve_cmd(
     from synthadoc.core.logging_config import setup_logging
 
     root = resolve_wiki_path(wiki)
+    _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
+
+    # Doubled-path guard runs before load_config so we read the right config.toml.
+    # When the user is inside the wiki directory (e.g. CWD=/home/user/alpha, wiki="alpha"),
+    # resolve_wiki_path returns Path("alpha") which resolves to CWD/alpha — non-existent.
+    # Only trust CWD when its directory name matches the requested wiki to avoid picking
+    # up a different wiki's path when running from inside another wiki directory.
+    abs_root = root.resolve()
+    if (
+        not abs_root.exists()
+        and not _wiki_is_path
+        and Path.cwd().name == wiki
+        and (Path.cwd() / ".synthadoc" / "config.toml").exists()
+    ):
+        abs_root = Path.cwd().resolve()
 
     try:
-        cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
+        cfg = load_config(project_config=abs_root / ".synthadoc" / "config.toml")
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
 
@@ -339,16 +354,8 @@ def serve_cmd(
     # alone does not locate the wiki on disk.
     # Path-based wikis (e.g. -w /wiki in Docker, -w . from inside the wiki dir)
     # are self-describing: config.toml loaded above is proof the wiki is valid.
-    _wiki_is_path = wiki.startswith(".") or "/" in wiki or os.sep in wiki
     if wiki not in read_registry_all() and not _wiki_is_path:
         import json as _json
-        abs_root = root.resolve()
-        # Doubled-path guard: when the user runs from inside the wiki directory
-        # (e.g. CWD = /home/user/my-wiki and wiki = "my-wiki"), root is a relative
-        # Path("my-wiki") that resolves to CWD/my-wiki — a non-existent doubled path.
-        # Detect this by checking whether CWD itself is a valid wiki root.
-        if not abs_root.exists() and (Path.cwd() / ".synthadoc" / "config.toml").exists():
-            abs_root = Path.cwd().resolve()
         # json.dumps produces a quoted, backslash-escaped string safe to paste into wikis.json
         _path_json = _json.dumps(str(abs_root))
         _port = cfg.server.port

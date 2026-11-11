@@ -83,11 +83,12 @@ def _docker_wiki_hint(wiki_name: str) -> str:
         return ""
     if wiki_name in _read_registry():
         return ""
-    # Try to read the actual path and port from the wiki config in CWD (or the
-    # SYNTHADOC_WIKI env var root) so the hint shows real values instead of
-    # hardcoded placeholders.
+    # Try to read the actual path and port from the wiki in CWD (or the
+    # SYNTHADOC_WIKI env var root) so the hint shows real values.
+    # Only trust the fallback root when its directory name matches the requested
+    # wiki name to avoid showing another wiki's path.
     fallback_root = _fallback_wiki_root()
-    if fallback_root is not None:
+    if fallback_root is not None and fallback_root.name == wiki_name:
         wiki_path = str(fallback_root.resolve())
         try:
             import tomllib  # Python 3.11+
@@ -101,12 +102,14 @@ def _docker_wiki_hint(wiki_name: str) -> str:
     else:
         wiki_path = f"/absolute/path/to/{wiki_name}"
         wiki_port = 7070
+    # json.dumps produces a quoted, backslash-escaped string safe on Windows paths.
+    _entry_json = json.dumps({wiki_name: {"path": wiki_path, "port": wiki_port}})
     return (
         f"This wiki may have been installed inside a Docker container — its\n"
         f"  registry entry lives only inside that container.\n"
         f"  To use it from the host, add its entry manually to:\n"
         f"    {_REGISTRY}\n"
-        f'  Example entry: {{"{wiki_name}": {{"path": "{wiki_path}", "port": {wiki_port}}}}}\n'
+        f"  Example entry: {_entry_json}\n"
         f"  Or re-install it on the host: synthadoc install {wiki_name} --target <dir>"
     )
 
