@@ -14,9 +14,9 @@ Options:
                    Choices: cli  mcp  plugin  snapshots  (default: all four)
     --provider NAME  Coding-tool CLI provider for suites that need one
                    (cross_wiki, template_install): claude-code or opencode.
-                   Sets SYNTHADOC_LIVE_PROVIDER for the suite subprocess —
-                   equivalent to exporting it yourself. Default: whatever
-                   SYNTHADOC_LIVE_PROVIDER already resolves to.
+                   Sets SYNTHADOC_LIVE_PROVIDER for the suite subprocess,
+                   overriding any value already in the environment.
+                   Default: claude-code.
 
 Examples:
     # Run all suites against the default wiki (history-of-computing, port 7070)
@@ -173,14 +173,14 @@ def main() -> None:
     parser.add_argument(
         "--provider", metavar="NAME",
         choices=["claude-code", "opencode"],
-        default=None,
+        default="claude-code",
         help=(
             "Coding-tool CLI provider for suites that need one (cross_wiki, "
             "template_install) — sets SYNTHADOC_LIVE_PROVIDER for every "
             "suite subprocess, overriding any value already in the "
-            "environment. Default: whatever SYNTHADOC_LIVE_PROVIDER "
-            "resolves to (claude-code if unset). Equivalent to exporting "
-            "SYNTHADOC_LIVE_PROVIDER yourself, just without the extra step."
+            "environment (so a stray SYNTHADOC_LIVE_PROVIDER left over from "
+            "an earlier session never silently changes the provider). "
+            "Default: claude-code."
         ),
     )
     args = parser.parse_args()
@@ -272,9 +272,8 @@ def main() -> None:
         "template_install":         {**os.environ},
         "cross_wiki":               {**os.environ, "SYNTHADOC_LIVE_TESTS": "1"},
     }
-    if args.provider:
-        for env in suite_env.values():
-            env["SYNTHADOC_LIVE_PROVIDER"] = args.provider
+    for env in suite_env.values():
+        env["SYNTHADOC_LIVE_PROVIDER"] = args.provider
 
     print(f"\n{'='*64}")
     print("  SYNTHADOC LIVE TESTS")
@@ -282,7 +281,7 @@ def main() -> None:
     print(f"  url        : {base}")
     print(f"  wiki       : {args.wiki}")
     print(f"  suites     : {', '.join(to_run)}")
-    print(f"  provider   : {args.provider or os.environ.get('SYNTHADOC_LIVE_PROVIDER', 'claude-code (default)')}")
+    print(f"  provider   : {args.provider}")
     if _snap:
         print(f"  snapshot   : {_snap}  (restored on exit)")
     elif _wiki_root:
