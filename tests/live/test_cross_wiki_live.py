@@ -27,7 +27,9 @@ import pytest
 # Provider for live tests — override with SYNTHADOC_LIVE_PROVIDER env var.
 # Allowed: "claude-code" (default), "opencode"
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
-from live_helpers import patch_provider  # noqa: E402
+from live_helpers import (  # noqa: E402
+    patch_provider, patch_slow_provider_timeouts, get_live_provider,
+)
 
 # Suppress console popup windows on Windows when spawning background processes.
 _POPEN_HIDDEN: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
@@ -47,6 +49,27 @@ pytestmark = [
 _COORDINATOR_PORT = 17070
 _TARGET_PORT = 17071
 _WAIT_SECS = 60  # max seconds to wait for server ready
+
+# _query_cross_wiki's own HTTP client timeout. A cross-wiki query chains
+# several sequential LLM calls (decompose, wiki_pick, per-wiki synthesis);
+# 120s is plenty for claude-code but too short for opencode's slower
+# subprocess round-trips (see SLOW_PROVIDER_TIMEOUTS in live_helpers.py —
+# opencode needs client_llm_timeout_seconds=600 server-side), so every
+# query-based test failed with httpx.ReadTimeout under opencode before this.
+#
+# This alone is NOT sufficient to make the suite reliably pass under
+# opencode: CrossWikiQueryAgent/OpencodeProvider serialize all opencode
+# calls on a given server with a single process-wide lock, and a client
+# timeout does not cancel the server-side request — so one abnormally slow
+# (or stuck) first query keeps holding that lock, and every subsequent
+# query in the same run queues up behind it and times out too, even if its
+# own processing would otherwise be fine. A run that still fails on every
+# test with this raised timeout active points at that cascade (or at
+# opencode itself being unhealthy that run), not at this timeout being too
+# small. Revisit once opencode's own performance here is independently
+# verified as stable.
+_QUERY_TIMEOUT_BY_PROVIDER: dict[str, float] = {"opencode": 500.0, "claude-code": 120.0}
+_QUERY_TIMEOUT_S = _QUERY_TIMEOUT_BY_PROVIDER.get(get_live_provider(), 120.0)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -80,10 +103,23 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
+    # Diagnostic: confirm both installs actually persisted into the registry
+    # immediately after they run. If this fires, the registry entries never
+    # made it in (install-time problem); if it passes but a later query still
+    # can't see live-coord/live-target, the entries were removed afterward.
+    _assert_registered(_registry_path, "live-coord", _COORDINATOR_PORT, "right after install")
+    _assert_registered(_registry_path, "live-target", _TARGET_PORT, "right after install")
+
     # Patch config.toml to use a coding-tool CLI provider (no API key needed).
     # Defaults to "claude-code"; set SYNTHADOC_LIVE_PROVIDER=opencode to switch.
+    # Also raise the server's own internal LLM-call timeouts for slower
+    # providers (opencode) — a cross-wiki query chains several LLM calls
+    # (decompose, wiki_pick, per-wiki synthesis), and the config.toml
+    # defaults sized for claude-code are too short for opencode's slower
+    # subprocess round-trips.
     for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
         patch_provider(_wiki_dir)
+        patch_slow_provider_timeouts(_wiki_dir)
 
     # Seed content with status:active frontmatter — coordinator: finance domain
     _write_page(coord_dir / "live-coord", "leverage", (
@@ -153,6 +189,12 @@ def live_wikis(tmp_path_factory):
     # are indexed from disk on the first BM25 query (cold cache).  Verify here.
     _assert_retrieve_works(_COORDINATOR_PORT, "leverage ratio debt equity", label="live-coord")
     _assert_retrieve_works(_TARGET_PORT, "kubernetes deployment rollback", label="live-target")
+
+    # Diagnostic: confirm both entries are STILL in the registry right before
+    # the cross-wiki queries run. If the earlier post-install check passed
+    # but this one fails, something removed them during server startup.
+    _assert_registered(_registry_path, "live-coord", _COORDINATOR_PORT, "right before yield")
+    _assert_registered(_registry_path, "live-target", _TARGET_PORT, "right before yield")
 
     yield {
         "coord_dir": coord_dir,
@@ -280,6 +322,39 @@ def _assert_retrieve_works(port: int, query: str, label: str = "") -> None:
         )
 
 
+def _assert_registered(registry_path: Path, name: str, expected_port: int, when: str) -> None:
+    """Raise with the full registry contents if *name* isn't registered with
+    *expected_port* at this point in the fixture.
+
+    Diagnostic for a failure where the cross-wiki agent's registry (read
+    fresh from this same file on every request — see _make_cross_wiki_agent
+    in http_server.py) ends up missing live-coord/live-target entirely,
+    causing it to fall back to querying whatever OTHER wikis are registered
+    on the machine instead. Two call sites (right after install, right
+    before yield) bisect whether entries never persisted or were removed
+    sometime during server startup.
+    """
+    import json as _json
+    if not registry_path.exists():
+        raise AssertionError(
+            f"{when}: registry file {registry_path} does not exist at all "
+            f"(expected '{name}' with port {expected_port})."
+        )
+    reg = _json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = reg.get(name)
+    if entry is None:
+        raise AssertionError(
+            f"{when}: '{name}' is missing from the registry entirely. "
+            f"Current registry keys: {sorted(reg.keys())}. "
+            f"Full registry: {_json.dumps(reg, indent=2)}"
+        )
+    if entry.get("port") != expected_port:
+        raise AssertionError(
+            f"{when}: '{name}' is registered but with port {entry.get('port')!r}, "
+            f"expected {expected_port}. Entry: {_json.dumps(entry, indent=2)}"
+        )
+
+
 def _free_port(port: int) -> None:
     """Kill any process currently listening on *port* (best-effort, cross-platform)."""
     if sys.platform == "win32":
@@ -328,7 +403,7 @@ def _query_cross_wiki(question: str) -> dict:
     resp = httpx.post(
         f"http://127.0.0.1:{_COORDINATOR_PORT}/cross-wiki/query",
         json={"question": question},
-        timeout=120.0,
+        timeout=_QUERY_TIMEOUT_S,
     )
     resp.raise_for_status()
     return resp.json()
