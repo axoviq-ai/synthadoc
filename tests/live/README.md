@@ -82,6 +82,38 @@ python -X utf8 tests/live/run_all.py --suite citation_faithfulness
 python -X utf8 tests/live/run_all.py --suite cli --suite plugin
 ```
 
+## Cross-wiki suite and provider selection
+
+`test_cross_wiki_live.py` (`--suite cross_wiki`) is self-contained — it
+installs and spins up its own `live-coord`/`live-target` wikis on ports
+17070/17071 and tears them down afterward, so no running server is
+required first:
+
+```
+python -X utf8 tests/live/run_all.py --suite cross_wiki
+```
+
+It (and `template_install`) need an LLM but no API key — they use a
+coding-tool CLI provider (`claude-code` or `opencode`) instead. Select one
+with `--provider`, which sets `SYNTHADOC_LIVE_PROVIDER` for the suite
+subprocess and overrides any value already exported in your shell, so the
+resolved provider is always exactly what you asked for on the command line:
+
+```
+python -X utf8 tests/live/run_all.py --suite cross_wiki --provider opencode
+```
+
+Default is `claude-code`. **opencode is not currently verified as
+reliable for the cross_wiki suite** — a full run can fail on every
+query-based test even with generous timeouts, which looks like one
+abnormally slow (or stuck) first call causing every later query on the
+same server to queue up behind it and time out too, since
+`OpencodeProvider` serializes all opencode calls on a server with a
+single process-wide lock that a client-side timeout does not release.
+See the comments in `test_cross_wiki_live.py` (`_QUERY_TIMEOUT_BY_PROVIDER`)
+and `cross_wiki_query_agent.py` (`_wiki_pick`'s hardcoded 15s LLM-call
+timeout, also too short for opencode) before relying on an opencode run.
+
 ## Run suites individually
 
 ### CLI test
@@ -163,8 +195,10 @@ SYNTHADOC_URL=http://127.0.0.1:7070 pytest tests/live/test_citation_faithfulness
 | `SYNTHADOC_URL` | `http://127.0.0.1:7070/` | CLI test, plugin test |
 | `WIKI_NAME` | wiki set by `synthadoc use`, or `history-of-computing` | CLI test, plugin test |
 | `MCP_URL` | `http://127.0.0.1:7070/mcp/sse` | MCP test |
+| `SYNTHADOC_LIVE_PROVIDER` | `claude-code` | cross_wiki, template_install |
+| `SYNTHADOC_LIVE_TESTS` | unset (must be `1` to run) | cross_wiki — set automatically by `run_all.py` |
 
-CLI flags (`--url`, `--wiki` / `-w`) override environment variables.
+CLI flags (`--url`, `--wiki` / `-w`, `--provider`) override environment variables.
 
 ## Output format
 
