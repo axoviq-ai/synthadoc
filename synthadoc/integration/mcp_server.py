@@ -300,9 +300,8 @@ def create_mcp_server(orchestrator):
         page.contradiction_note = None
         page.updated = date.today().isoformat()
         orchestrator._store.write_page(slug, page)
-        orchestrator._search.invalidate_index()
+        await orchestrator.wiki_changed()
         await orchestrator._search.sync_embeddings()
-        orchestrator._bump_epoch()
         snapped = False
         if slug not in LINT_SKIP_SLUGS:
             snapped = await orchestrator._audit.snapshot_if_changed(
@@ -353,14 +352,13 @@ def create_mcp_server(orchestrator):
             return {"error": err, "slug": slug, "from_state": from_state, "cascade_links_removed_from": []}
         page.status = to_state
         orchestrator._store.write_page(slug, page)
-        orchestrator._search.invalidate_index()
+        await orchestrator.wiki_changed()
         await orchestrator._search.sync_embeddings()
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
             slug, from_state, to_state, reason, TriggerSource.MCP,
             content_snapshot=page.content, force=True,
         )
-        orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         cascade_affected: list[str] = []
         if to_state == LifecycleState.ARCHIVED:

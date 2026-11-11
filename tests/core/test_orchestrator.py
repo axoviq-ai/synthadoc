@@ -177,12 +177,21 @@ async def test_init_never_hints_when_vectors_are_requested(tmp_wiki, caplog, mod
 
 
 @pytest.mark.asyncio
+async def test_wiki_epoch_starts_at_saved_plus_one(tmp_wiki):
+    """init() must restore the saved epoch + 1 so epoch numbers never repeat across restarts."""
+    from synthadoc.core.orchestrator import Orchestrator
+    async with Orchestrator(wiki_root=tmp_wiki) as orch:
+        # Fresh db: saved=0 → startup sets epoch to 1
+        assert orch._wiki_epoch == 1
+
+
+@pytest.mark.asyncio
 async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
     """_wiki_epoch must increment after a successful ingest job."""
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.agents.ingest_agent import IngestResult
     async with Orchestrator(wiki_root=tmp_wiki) as orch:
-        assert orch._wiki_epoch == 0
+        epoch_at_start = orch._wiki_epoch  # 1 on fresh db
 
         job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
         mock_result = IngestResult(
@@ -202,7 +211,7 @@ async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
              patch("synthadoc.agents.ingest_agent.IngestAgent.run", new=AsyncMock(return_value=mock_result)):
             await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
-        assert orch._wiki_epoch == 1
+        assert orch._wiki_epoch == epoch_at_start + 1
 
 
 @pytest.mark.asyncio
@@ -211,6 +220,7 @@ async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.agents.ingest_agent import IngestResult
     async with Orchestrator(wiki_root=tmp_wiki) as orch:
+        epoch_at_start = orch._wiki_epoch
         job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
         mock_result = IngestResult(
             source="http://example.com",
@@ -229,7 +239,7 @@ async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
              patch("synthadoc.agents.ingest_agent.IngestAgent.run", new=AsyncMock(return_value=mock_result)):
             await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
-        assert orch._wiki_epoch == 0
+        assert orch._wiki_epoch == epoch_at_start
 
 
 @pytest.mark.asyncio
@@ -391,3 +401,57 @@ async def test_auto_block_domain_writes_unix_line_endings(tmp_wiki):
         assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
     # Also verify the on-disk bytes contain no CRLF
     assert b"\r\n" not in blocked_path.read_bytes()
+
+
+# ── Epoch-change tests for lint and candidates promote ────────────────────────
+
+@pytest.mark.asyncio
+async def test_lint_increments_epoch(tmp_wiki):
+    """Running lint must bump the wiki epoch so stale query cache answers are dropped."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.lint_agent import LintReport
+
+    cfg = load_config()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch._cache.init()
+    await orch._queue.init(stale_pending_seconds=60)
+    await orch._audit.init()
+    # Simulate startup epoch restore
+    saved = await orch._cache.get_saved_epoch()
+    orch._wiki_epoch = saved + 1
+    await orch._cache.save_epoch(orch._wiki_epoch)
+
+    epoch_before_lint = orch._wiki_epoch
+
+    lint_report = LintReport(adversarial_warnings=[])
+
+    async def fake_lint(self, **kwargs):
+        return lint_report
+
+    with patch("synthadoc.agents.lint_agent.LintAgent.run", new=fake_lint), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.complete = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        mock_queue.fail_permanent = AsyncMock()
+        await orch._run_lint("job-lint", adversarial=False)
+
+    assert orch._wiki_epoch == epoch_before_lint + 1, "lint must bump epoch"
+    # Epoch must also be persisted so a restart after lint uses the new value
+    persisted = await orch._cache.get_saved_epoch()
+    assert persisted == orch._wiki_epoch
+    await orch._cache.close()
+
+
+@pytest.mark.asyncio
+async def test_promote_increments_epoch(tmp_wiki):
+    """Promoting a candidate page must bump the wiki epoch via wiki_changed()."""
+    from synthadoc.core.orchestrator import Orchestrator
+
+    async with Orchestrator(wiki_root=tmp_wiki) as orch:
+        epoch_before = orch._wiki_epoch
+        await orch.wiki_changed()
+        assert orch._wiki_epoch == epoch_before + 1
+        persisted = await orch._cache.get_saved_epoch()
+        assert persisted == orch._wiki_epoch

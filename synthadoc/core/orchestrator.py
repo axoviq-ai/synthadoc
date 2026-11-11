@@ -113,15 +113,35 @@ class Orchestrator:
     def _bump_epoch(self) -> None:
         self._wiki_epoch += 1
 
+    async def wiki_changed(self) -> None:
+        """Bump the cache epoch, persist it, and invalidate the BM25 search index.
+
+        Every write path that modifies wiki content must call this once so that:
+        - The in-process query cache stops serving stale answers for this wiki.
+        - Peer wikis building cross-wiki cache keys see a new epoch number and
+          therefore a different key — they will not serve answers from before the
+          change.
+        - Epoch numbers never decrease (saved + 1 on restart), so a restarted wiki
+          can never accidentally re-use an epoch number whose cached answers belong
+          to different content.
+        """
+        self._bump_epoch()
+        if self._cache._conn is not None:
+            await self._cache.save_epoch(self._wiki_epoch)
+        self._search.invalidate_index()
+
     async def init(self) -> None:
         await self._queue.init(stale_pending_seconds=self._cfg.server.job_timeout_seconds * 2)
         await self._audit.init()
         await self._cache.init()
-        # Clear the query cache on every startup.  _wiki_epoch restarts at 0 each
-        # run, so an answer cached at epoch 0 in a previous run would be served
-        # again on the first query of a new run even if the wiki changed between
-        # the two runs.
-        await self._cache.clear_query_cache()
+        # Restore the epoch from the last saved value, then immediately add 1.
+        # This guarantees epoch numbers never repeat across restarts: even if the
+        # wiki changed while the server was stopped (Obsidian edits, git pull, file
+        # copy), the new run starts at a strictly higher epoch so old cache entries
+        # for epoch N can never be served when the content has changed.
+        saved = await self._cache.get_saved_epoch()
+        self._wiki_epoch = saved + 1
+        await self._cache.save_epoch(self._wiki_epoch)
         self._log_agent_config()
         if self._search.vectors_requested():
             try:
@@ -312,7 +332,7 @@ class Orchestrator:
                 await self._queue.skip(job_id, result.skip_reason or "skipped")
             else:
                 await self._queue.complete(job_id, result=job_result)
-                self._bump_epoch()
+                await self.wiki_changed()
                 # Embed new and updated pages for vector search (no-op when off)
                 self._search.schedule_embedding_sync()
                 self._hooks.fire("on_ingest_complete", {
@@ -753,7 +773,7 @@ class Orchestrator:
             })
             # Lint can promote candidate pages to active and change lifecycle states,
             # so invalidate cached query answers exactly as ingest does.
-            self._bump_epoch()
+            await self.wiki_changed()
             self._hooks.fire("on_lint_complete", {
                 "event": "on_lint_complete", "wiki": str(self._root),
                 "contradictions_found": report.contradictions_found,

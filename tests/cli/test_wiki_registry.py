@@ -65,3 +65,51 @@ def test_probe_port_returns_false_on_exception(tmp_path):
     # Port 1 is always refused on non-root
     result = probe_port(1, timeout=0.1)
     assert result is False
+
+
+# ── _docker_wiki_hint path/port tests ────────────────────────────────────────
+
+def test_docker_wiki_hint_uses_cwd_path_and_port_for_non_serve_command(tmp_path):
+    """_docker_wiki_hint must show actual wiki path and port, not hardcoded placeholders.
+
+    This covers ingest, lint, status, etc. — any command that calls
+    _raise_wiki_not_registered rather than serve's own error handler.
+    """
+    wiki_root = tmp_path / "my-wiki"
+    wiki_root.mkdir()
+    sd = wiki_root / ".synthadoc"
+    sd.mkdir()
+    (sd / "config.toml").write_text("[server]\nport = 8042\n", encoding="utf-8")
+
+    reg_path = tmp_path / "wikis.json"
+    reg_path.write_text(json.dumps({}))  # registry exists but wiki not in it
+
+    import synthadoc.cli._wiki as _wiki_mod
+
+    with (
+        patch.object(_wiki_mod, "_REGISTRY", reg_path),
+        patch.object(_wiki_mod, "_fallback_wiki_root", return_value=wiki_root),
+    ):
+        hint = _wiki_mod._docker_wiki_hint("my-wiki")
+
+    assert str(wiki_root.resolve()) in hint, "hint must include actual wiki path"
+    assert "8042" in hint, "hint must include actual server port"
+    assert "7070" not in hint, "hint must not use hardcoded placeholder port"
+
+
+def test_docker_wiki_hint_placeholder_when_no_wiki_in_cwd(tmp_path):
+    """When CWD is not a wiki directory, hint falls back to template values."""
+    reg_path = tmp_path / "wikis.json"
+    reg_path.write_text(json.dumps({}))  # registry exists, wiki absent
+
+    import synthadoc.cli._wiki as _wiki_mod
+
+    with (
+        patch.object(_wiki_mod, "_REGISTRY", reg_path),
+        patch.object(_wiki_mod, "_fallback_wiki_root", return_value=None),
+    ):
+        hint = _wiki_mod._docker_wiki_hint("unknown-wiki")
+
+    assert "unknown-wiki" in hint
+    assert "/absolute/path/to/unknown-wiki" in hint
+    assert "7070" in hint
