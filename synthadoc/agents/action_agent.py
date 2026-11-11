@@ -1151,13 +1151,12 @@ class ActionAgent(BaseAgent):
             )
         page.status = to_state
         self._orch._store.write_page(slug, page)
-        self._orch._search.invalidate_index()
         audit = AuditDB(self._wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         await audit.set_page_state(slug, to_state, "user") # type: ignore
         await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user", # type: ignore
                                             content_snapshot=page.content, force=True)
-        self._orch._bump_epoch()
+        await self._orch.wiki_changed()
         return ActionResult(
             action_type=action,
             success=True,

@@ -106,15 +106,28 @@ class CacheManager:
         await self._conn.commit()
 
     async def clear_query_cache(self) -> int:
-        """Delete all query cache entries.
-
-        Called on startup so answers cached by a previous server run (which had its
-        own _wiki_epoch counter starting at 0) are never served for a new run whose
-        epoch counter also starts at 0 but whose wiki content may have changed.
-        """
+        """Delete all query cache entries."""
         cur = await self._conn.execute("DELETE FROM query_cache")
         await self._conn.commit()
         return cur.rowcount
+
+    _EPOCH_KEY = "__wiki_epoch__"
+
+    async def get_saved_epoch(self) -> int:
+        """Return the last persisted epoch, or 0 if never saved."""
+        async with self._conn.execute(
+            "SELECT value FROM response_cache WHERE key=?", (self._EPOCH_KEY,)
+        ) as cur:
+            row = await cur.fetchone()
+        return int(json.loads(row["value"])) if row else 0
+
+    async def save_epoch(self, epoch: int) -> None:
+        """Persist the current epoch so it survives a restart."""
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO response_cache (key, value) VALUES (?, ?)",
+            (self._EPOCH_KEY, json.dumps(epoch)),
+        )
+        await self._conn.commit()
 
     async def cleanup_query_cache(self, current_epoch: int) -> int:
         """Remove stale cache entries (epoch < current_epoch - 5 or older than 7 days)."""
