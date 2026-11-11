@@ -80,6 +80,13 @@ def live_wikis(tmp_path_factory):
     _run(["synthadoc", "install", "live-target", "--target", str(target_dir),
           "--port", str(_TARGET_PORT), "--domain", "Software Engineering and DevOps"])
 
+    # Diagnostic: confirm both installs actually persisted into the registry
+    # immediately after they run. If this fires, the registry entries never
+    # made it in (install-time problem); if it passes but a later query still
+    # can't see live-coord/live-target, the entries were removed afterward.
+    _assert_registered(_registry_path, "live-coord", _COORDINATOR_PORT, "right after install")
+    _assert_registered(_registry_path, "live-target", _TARGET_PORT, "right after install")
+
     # Patch config.toml to use a coding-tool CLI provider (no API key needed).
     # Defaults to "claude-code"; set SYNTHADOC_LIVE_PROVIDER=opencode to switch.
     for _wiki_dir in (coord_dir / "live-coord", target_dir / "live-target"):
@@ -153,6 +160,12 @@ def live_wikis(tmp_path_factory):
     # are indexed from disk on the first BM25 query (cold cache).  Verify here.
     _assert_retrieve_works(_COORDINATOR_PORT, "leverage ratio debt equity", label="live-coord")
     _assert_retrieve_works(_TARGET_PORT, "kubernetes deployment rollback", label="live-target")
+
+    # Diagnostic: confirm both entries are STILL in the registry right before
+    # the cross-wiki queries run. If the earlier post-install check passed
+    # but this one fails, something removed them during server startup.
+    _assert_registered(_registry_path, "live-coord", _COORDINATOR_PORT, "right before yield")
+    _assert_registered(_registry_path, "live-target", _TARGET_PORT, "right before yield")
 
     yield {
         "coord_dir": coord_dir,
@@ -277,6 +290,39 @@ def _assert_retrieve_works(port: int, query: str, label: str = "") -> None:
         raise RuntimeError(
             f"No pages returned by /retrieve on port {port}{tag} "
             f"for query {query!r} — pages may not have status:active"
+        )
+
+
+def _assert_registered(registry_path: Path, name: str, expected_port: int, when: str) -> None:
+    """Raise with the full registry contents if *name* isn't registered with
+    *expected_port* at this point in the fixture.
+
+    Diagnostic for a failure where the cross-wiki agent's registry (read
+    fresh from this same file on every request — see _make_cross_wiki_agent
+    in http_server.py) ends up missing live-coord/live-target entirely,
+    causing it to fall back to querying whatever OTHER wikis are registered
+    on the machine instead. Two call sites (right after install, right
+    before yield) bisect whether entries never persisted or were removed
+    sometime during server startup.
+    """
+    import json as _json
+    if not registry_path.exists():
+        raise AssertionError(
+            f"{when}: registry file {registry_path} does not exist at all "
+            f"(expected '{name}' with port {expected_port})."
+        )
+    reg = _json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = reg.get(name)
+    if entry is None:
+        raise AssertionError(
+            f"{when}: '{name}' is missing from the registry entirely. "
+            f"Current registry keys: {sorted(reg.keys())}. "
+            f"Full registry: {_json.dumps(reg, indent=2)}"
+        )
+    if entry.get("port") != expected_port:
+        raise AssertionError(
+            f"{when}: '{name}' is registered but with port {entry.get('port')!r}, "
+            f"expected {expected_port}. Entry: {_json.dumps(entry, indent=2)}"
         )
 
 
