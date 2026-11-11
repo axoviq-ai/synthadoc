@@ -32,6 +32,79 @@ def test_match_re_does_not_fire_on_unrelated():
     assert not pattern.search("fix broken citations")
 
 
+def test_match_re_rollback_fires_on_synthadoc_commands():
+    """MATCH_RE rollback arm must match genuine Synthadoc rollback requests."""
+    pat = ContentHealthResolverWorkflow.MATCH_RE
+    # Bare "roll back" at end of string — command with no slug yet
+    assert pat.search("roll back")
+    assert pat.search("rollback")
+    # Followed by explicit Synthadoc keywords
+    assert pat.search("roll back the last fix")
+    assert pat.search("roll back the change")
+    assert pat.search("roll back the page")
+    # Followed by a wiki-slug-shaped token (lowercase, 3+ chars)
+    assert pat.search("roll back artificial-intelligence")
+    assert pat.search("roll back history-of-computing")
+    assert pat.search("rollback ada-lovelace")
+
+
+def test_match_re_rollback_does_not_fire_on_natural_language():
+    """MATCH_RE rollback arm must NOT match 'roll back' in unrelated NL questions."""
+    pat = ContentHealthResolverWorkflow.MATCH_RE
+    # Bug #538 — these are general questions, not Synthadoc commands
+    assert not pat.search("How do I roll back a Kubernetes deployment?")
+    assert not pat.search("Can I roll back an npm package update?")
+    assert not pat.search("How to roll back my Git commit?")
+    assert not pat.search("Is it possible to roll back a database migration?")
+    assert not pat.search("What is the best way to roll back a Docker image?")
+    # Stop-word articles after "roll back" should not match
+    assert not pat.search("roll back an old version")
+    assert not pat.search("roll back my changes")
+    assert not pat.search("roll back their edit")
+
+
+def test_parse_intent_rollback_extracts_slug():
+    """_parse_intent extracts the slug from a genuine rollback command."""
+    intent, slug = ContentHealthResolverWorkflow._parse_intent("roll back history-of-computing")
+    assert intent == "rollback"
+    assert slug == "history-of-computing"
+
+
+def test_parse_intent_rollback_bare_returns_none_slug():
+    """Bare 'roll back' with no slug returns (rollback, None)."""
+    intent, slug = ContentHealthResolverWorkflow._parse_intent("roll back")
+    assert intent == "rollback"
+    assert slug is None
+
+
+def test_parse_intent_rollback_stopword_returns_none_slug():
+    """_parse_intent must reject article stop-words as slugs (bug #538 layer 2)."""
+    # "roll back a Kubernetes deployment" — 'a' is a stop-word, not a slug
+    intent, slug = ContentHealthResolverWorkflow._parse_intent(
+        "How do I roll back a Kubernetes deployment?"
+    )
+    assert intent == "rollback"
+    assert slug is None, f"Expected slug=None but got {slug!r}"
+
+    for stop_word in ("a", "an", "the", "my", "your", "their", "its", "this", "our"):
+        _, s = ContentHealthResolverWorkflow._parse_intent(f"roll back {stop_word} thing")
+        assert s is None, f"Stop-word '{stop_word}' was not rejected as slug"
+
+
+def test_parse_intent_list():
+    """_parse_intent returns ('list', None) for list requests."""
+    intent, slug = ContentHealthResolverWorkflow._parse_intent("list content health fixes")
+    assert intent == "list"
+    assert slug is None
+
+
+def test_parse_intent_fix_default():
+    """_parse_intent returns ('fix', None) for plain fix requests."""
+    intent, slug = ContentHealthResolverWorkflow._parse_intent("run content health resolver")
+    assert intent == "fix"
+    assert slug is None
+
+
 @pytest.mark.asyncio
 async def test_system_prompt_contains_tool_inventory():
     wf = ContentHealthResolverWorkflow()
