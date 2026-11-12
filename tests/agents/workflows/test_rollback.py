@@ -160,3 +160,32 @@ class TestRestorePageSnapshot:
         ctx.audit_db.get_snapshot_by_index = AsyncMock(return_value=None)
         result = await restore_page_snapshot(ctx, "turing", "nonexistent-id", fallback_index=999)
         assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_errors_instead_of_silently_using_fallback_when_snapshot_id_pruned(
+        self, tmp_path
+    ):
+        """GitHub #519: when the recorded snapshot_id has been pruned (e.g. by
+        purge_lifecycle_events retention), the lookup must not silently fall
+        through to fallback_index and restore an unrelated snapshot while
+        still reporting success. A pruned, explicitly-requested snapshot_id is
+        a genuine error — fallback_index is only for the snapshot_id=None case.
+        """
+        store = WikiStorage(tmp_path / "wiki")
+        store.write_page("turing", _make_page("turing"))
+        ctx = _make_ctx(store)
+        # The requested snapshot (id=42) was pruned and no longer appears in
+        # list_page_snapshots. A different, unrelated snapshot still exists at
+        # fallback_index=1 — restoring it would silently substitute the wrong
+        # content while reporting "success".
+        ctx.audit_db.list_page_snapshots = AsyncMock(
+            return_value=[{"index": 1, "id": 7}]
+        )
+        ctx.audit_db.get_snapshot_by_index = AsyncMock(return_value={
+            "index": 1, "id": 7, "content_snapshot": "# Turing\n\nUnrelated body.\n",
+        })
+        result = await restore_page_snapshot(ctx, "turing", 42, fallback_index=1)
+        assert result["status"] == "error"
+        assert "42" in result["error"] or "pruned" in result["error"].lower() \
+            or "no longer available" in result["error"].lower()
+        ctx.audit_db.get_snapshot_by_index.assert_not_awaited()
