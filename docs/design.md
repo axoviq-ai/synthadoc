@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.5.1
+**Version:** 1.5.2
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -1663,7 +1663,9 @@ def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | Any`ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
 | `--no-cache` flag on query      | Cache lookup skipped; fresh LLM call; result repopulated                     |
-| `cache clear`                   | Deletes all rows from both`response_cache` and `query_cache` tables          |
+| `cache clear`                   | Deletes all cached rows from both`response_cache` and `query_cache`; the persisted epoch row is preserved |
+| Lint completion, candidate promote | `wiki_changed()` - epoch bump + search-index invalidation (v1.5.2)        |
+| Server restart                  | Epoch resumes at `saved + 1` (v1.5.2), so a restart never reuses an epoch   |
 
 ### Layer 4 — Provider prompt cache
 
@@ -2905,13 +2907,18 @@ cache_key = hash(
 | ----------------------------------------- | ---------------- |
 | `ingest` completes (pages written)        | epoch + 1        |
 | `lifecycle transition` (any state change) | epoch + 1        |
-| `cache clear`                             | epoch reset to 0 |
+| `lint` completes, candidates promoted     | epoch + 1        |
+| MCP / resolver / rollback writes          | epoch + 1        |
+| server restart                            | epoch = saved + 1 |
+| `cache clear`                             | epoch unchanged (cached rows deleted) |
 
 Because the epoch is part of the cache key, any structural change to the wiki automatically invalidates all cached query answers — there is no explicit expiry TTL. Answers cached before an ingest are never served after it.
 
 **`--no-cache` flag:** bypasses `cache.get()` and `cache.set()` for the current call. The existing cache entry (if any) is left intact; it will be served on subsequent calls without `--no-cache`.
 
-**`synthadoc cache clear`:** deletes all entries from `cache.db`, including both ingest response cache and query answer cache. The epoch is reset to 0.
+**`synthadoc cache clear`:** deletes all entries from `cache.db`, including both ingest response cache and query answer cache. The epoch is **not** reset (v1.5.2): it is persisted in the `response_cache` table under a reserved key, which `clear()` preserves, and `Orchestrator.init()` restores it as `saved + 1` on every start. Epoch numbers therefore grow monotonically across restarts, so neither a restarted wiki nor a peer building a cross-wiki cache key can ever match an answer cached against different content.
+
+**`wiki_changed()` (v1.5.2):** every write path (ingest, lint, candidate promote, lifecycle + cascade archive, MCP write/lifecycle, resolver and rollback writes) calls the single `Orchestrator.wiki_changed()` helper, which bumps the epoch, persists it and invalidates the BM25 search index in one step. It replaces the scattered `_bump_epoch()` + `invalidate_index()` pairs so a new write path cannot forget either half. It is called *before* a job is marked complete, so a query that races the job-done notification gets a cache miss rather than a stale answer.
 
 ### QueryAgent integration
 
@@ -4404,6 +4411,18 @@ The cross-wiki feature is accessible from the web chat UI (`synthadoc web`):
 - **Citation pills** — cross-wiki citations use the format `[[wiki-name::PageTitle]]`, rendered as a two-part pill: `[wiki-name]  Page Title`.
 - **Offline indicator** — when one or more target wikis were unreachable, the context bar updates to show which wikis were offline: `🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`.
 - **Operation detection** — if the query text matches an operation keyword (`run`, `lint`, `ingest`, `resolve`, `orphan`, `promote`, etc.) while cross-wiki is ON, a dim footnote appears before submission: "This looks like an operation — will run on `finance-wiki` only." Operations always execute on the active wiki; they are never cross-wiki fanned out. When the server detects this pattern, `cross_wiki_skipped: true` is set in the response.
+- **Blocked operations (v1.5.2)** - when cross-wiki mode is ON and the question is classified as *any* synthadoc operation (lint, ingest, lifecycle, resolvers), nothing is dispatched: the coordinator returns a distinct "action required" box telling the user to deselect the globe icon, and the hint chips and typed question are kept so it can be re-sent. Classification uses `ActionAgent.classify()` (LLM extraction without dispatch), so regex false positives such as "how do I roll back a Kubernetes deployment?" fall through to normal cross-wiki search; a provider error in `classify()` also falls through instead of returning a 500.
+
+### Knowledge-gap detection across wikis (v1.5.2)
+
+Single-wiki queries have always flagged knowledge gaps; the cross-wiki coordinator now applies an equivalent, wiki-agnostic check after synthesis in `cross_wiki_query_agent.py`:
+
+1. **Explicit gap** - the synthesis prompt allows the LLM to start the answer with `[GAP]`; the marker is stripped and `knowledge_gap=true` is set.
+2. **Negative admission** - `_NEGATIVE_ADMISSION_RE` matches phrases such as "does not contain", "no information about", "not mentioned". It only sets the gap when the cited pages also fail to cover part of the question (or nothing is cited).
+3. **Per-part coverage** - the question is split into sub-questions (decomposition output, else conjunction/`;`/`?` splitting). `_extract_meaningful_terms()` extracts non-stopword, non-generic terms and cheap stems (`-ing`, `-ment`, `-tion`); a part is *uncovered* when none of its terms occur in the title, slug or body of the pages the answer actually cites.
+4. **Score threshold** - when the best fused retrieval score is below `gap_score_threshold` (default 2.0) and the citations do not cover every part, the gap is raised, subject to the shared `_guard_c_suppress()` so confident answers are not flagged.
+
+On a gap the coordinator calls `SearchDecomposeAgent` (given each peer wiki's purpose summary as `domain_context`) to propose `suggested_searches`, restricted to the uncovered parts when only some parts are missing. Citations are kept only for pages the answer actually references. A failure in `SearchDecomposeAgent` or in the synthesis call degrades to a non-cacheable, gap-flagged result with `routing_warning` rather than an HTTP 500.
 
 ### API Reference — `POST /retrieve`
 
@@ -4644,6 +4663,35 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.2
+
+**Main features**
+
+- **Cross-wiki knowledge-gap detection** - federated queries now tell the user when the combined wikis cannot answer, with per-sub-question coverage analysis, negative-admission detection, score thresholds, and wiki-aware `suggested_searches` (contributed by rayulumukku; see section 41). Operations typed in cross-wiki mode are blocked with a clear message instead of silently dispatching or being misrouted.
+- **Trustworthy maintenance workflows** - resolver confirm gates are keyed on a per-run `run_id` (no more collisions between runs on one session), "List recent fixes" is answered from real `last_fix_record` data (including the orphan each fix resolved), a "List recent fixes" hint follows every resolver fix, rollback of a pruned snapshot is an explicit error instead of silently restoring a different snapshot, and the content-health resolver preserves dismissals across lint re-scans.
+
+**Cache coherence**
+
+- Persistent, monotonic wiki epoch; `wiki_changed()` consolidates epoch bump + search-index invalidation across ingest, lint, promote, MCP, resolver and rollback paths (see *Epoch-Based Query Result Cache*). `synthadoc cache clear` no longer resets the epoch.
+
+**Docker**
+
+- `synthadoc serve` logs the expected `-p <port>:<port>` mapping when it detects a container; the not-installed hint shows the wiki's real path/port as valid JSON; the doubled `/wikis/<name>/<name>` path is guarded; `docker-deploy.md` documents all of this.
+
+**Providers and dependencies**
+
+- Kimi is routed through the shared rate-limit/5xx retry and daily-quota detection; the Qwen to DashScope routing regex accepts digit-led model suffixes; `pypdf>=7.0.0` and `certifi>=2026.10.23` (security-advisory upgrades).
+
+**Fixes**
+
+- Search: `synthadoc_search` exposes `rank_score`/`similarity`; embeddings sync inline; index invalidated after lint demotion, MCP write and MCP lifecycle.
+- Query: "list recent fixes"/rollback-history questions no longer raise false knowledge-gap alarms; the rollback arm of `MATCH_RE` no longer mis-routes unrelated natural-language queries.
+- Lint: archived pages excluded from broken-citation reports; `contradicted` status preserved during stale detection; a manual contradiction clears a stale `last_fix_record`.
+- Resolvers: absolute source paths fall back by basename after restore; `no_applicable_blocks` AttributeError fixed; `duplicate_section` issues can no longer be written via `write_content_health_fix`; orphan resolver `--slug` mode no longer lists non-orphan slugs and no longer offers hub pages as link candidates; all-blocks-rejected auto-skip shared between resolvers.
+- Web UI: inline `[[wiki::Title]]` citations render as links; the cross-wiki action-blocked message renders (as markdown) in its own box; hint chips are preserved when blocked.
+- Display tools use POSIX paths and date-only `stale_since`.
+
 
 ### v1.5.1
 

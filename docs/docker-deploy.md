@@ -619,21 +619,21 @@ curl http://localhost:7070/health
 `latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
 
 ```bash
-docker pull chenp/synthadoc:1.5.1
+docker pull chenp/synthadoc:1.5.2
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file ~/wikis/.env \
-  chenp/synthadoc:1.5.1
+  chenp/synthadoc:1.5.2
 ```
 
 <details>
 <summary>Windows (Command Prompt)</summary>
 
 ```bat
-docker pull chenp/synthadoc:1.5.1
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.1
+docker pull chenp/synthadoc:1.5.2
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.2
 ```
 
 </details>
@@ -719,6 +719,8 @@ docker start history-of-computing
 # Restart in one step (needed after editing config.toml; does not re-read .env)
 docker restart history-of-computing
 ```
+
+Restarting is safe for cached answers (v1.5.2): the wiki's change counter (epoch) is persisted in the wiki database and resumes at a higher value after every start, so a restarted container never serves an answer cached against older wiki content, including cross-wiki answers cached by peer containers. `synthadoc cache clear` keeps the counter, so it cannot cause stale hits either.
 
 ### Tear down
 
@@ -1413,6 +1415,21 @@ The container user (uid 1000) cannot write to the mounted directory. See [Append
 **Port already in use**
 
 Another process (or a running `synthadoc serve` for this wiki) is already on that port. Stop it first, or install a second wiki on a different port and use `-p 7071:7071` for it.
+
+**Web UI or Obsidian cannot connect even though the container is `healthy`**
+
+The `-p` mapping does not match the port the wiki was installed on. Since v1.5.2 the container prints the expected mapping at startup:
+
+```bash
+docker logs history-of-computing | head
+# Docker: server will listen on port 7080 — make sure your container was started with -p 7080:7080
+```
+
+Re-create the container with the printed `-p <port>:<port>` (see *Port already in use* above for the command shape). The same release makes the "wiki not installed" hint shown by `docker exec` CLI calls use the wiki's real path and port from `config.toml` as a valid JSON registry entry.
+
+**Cross-wiki chat refuses to run lint, ingest or other actions**
+
+By design (v1.5.2): while the Web UI's cross-wiki (globe) toggle is on, detected operations (lint, re-ingest, resolvers, lifecycle changes) are blocked with an explanatory message instead of running against an arbitrary wiki. Turn the toggle off and ask again.
 
 **Health check shows `unhealthy`**
 
