@@ -352,7 +352,6 @@ def create_mcp_server(orchestrator):
             return {"error": err, "slug": slug, "from_state": from_state, "cascade_links_removed_from": []}
         page.status = to_state
         orchestrator._store.write_page(slug, page)
-        await orchestrator._search.sync_embeddings()
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
             slug, from_state, to_state, reason, TriggerSource.MCP,
@@ -367,8 +366,10 @@ def create_mcp_server(orchestrator):
                 audit_db=orchestrator._audit, trigger_source=TriggerSource.MCP,
             )
         # Bump epoch after cascade so all writes (primary page + cascade-archived
-        # pages) are visible under the new epoch key.
+        # pages) are visible under the new epoch key.  sync_embeddings must run
+        # after wiki_changed() so it sees the refreshed (invalidated) corpus.
         await orchestrator.wiki_changed()
+        await orchestrator._search.sync_embeddings()
         return {
             "slug": slug,
             "from_state": from_state,
