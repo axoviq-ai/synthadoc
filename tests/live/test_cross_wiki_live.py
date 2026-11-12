@@ -75,7 +75,7 @@ _QUERY_TIMEOUT_S = _QUERY_TIMEOUT_BY_PROVIDER.get(get_live_provider(), 120.0)
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
-def live_wikis(tmp_path_factory):
+def live_wikis(tmp_path_factory, request):
     """Create two wikis, seed content, start servers, yield, tear down."""
     base = tmp_path_factory.mktemp("live_cross_wiki")
     coord_dir = base / "coordinator-wiki"
@@ -86,6 +86,34 @@ def live_wikis(tmp_path_factory):
     # registry JSON directly instead.
     import json as _json
     _registry_path = Path.home() / ".synthadoc" / "wikis.json"
+
+    # Isolate the cross-wiki registry. The coordinator's LLM router picks at
+    # most 3 wikis out of EVERY wiki in ~/.synthadoc/wikis.json, so on a
+    # developer machine with other registered wikis it sometimes skips
+    # live-target (e.g. picks an unrelated "ops" wiki), and the deploy half of
+    # the question can't be answered -> a correct knowledge-gap result that
+    # fails the test. While this fixture runs, the registry holds only the two
+    # test wikis; the original is restored in teardown. The backup file also
+    # lets the *next* run restore a registry left trimmed by a hard crash.
+    _backup_path = _registry_path.with_name("wikis.json.live-test-backup")
+    if _backup_path.exists():
+        shutil.copyfile(_backup_path, _registry_path)
+        _backup_path.unlink()
+    if _registry_path.exists():
+        shutil.copyfile(_registry_path, _backup_path)
+
+    def _restore_registry() -> None:
+        # Idempotent; also runs if fixture setup fails before reaching yield.
+        if not _backup_path.exists():
+            return
+        _orig = _json.loads(_backup_path.read_text(encoding="utf-8"))
+        for _n in ("live-coord", "live-target"):
+            _orig.pop(_n, None)
+        _registry_path.write_text(_json.dumps(_orig, indent=2), encoding="utf-8")
+        _backup_path.unlink()
+
+    request.addfinalizer(_restore_registry)
+
     for _name in ("live-coord", "live-target"):
         subprocess.run(["synthadoc", "stop", "-w", _name], capture_output=True)
     if _registry_path.exists():
@@ -109,6 +137,13 @@ def live_wikis(tmp_path_factory):
     # can't see live-coord/live-target, the entries were removed afterward.
     _assert_registered(_registry_path, "live-coord", _COORDINATOR_PORT, "right after install")
     _assert_registered(_registry_path, "live-target", _TARGET_PORT, "right after install")
+
+    # Now hide every other wiki from the router (see isolation note above).
+    _reg = _json.loads(_registry_path.read_text(encoding="utf-8"))
+    _registry_path.write_text(
+        _json.dumps({n: _reg[n] for n in ("live-coord", "live-target")}, indent=2),
+        encoding="utf-8",
+    )
 
     # Patch config.toml to use a coding-tool CLI provider (no API key needed).
     # Defaults to "claude-code"; set SYNTHADOC_LIVE_PROVIDER=opencode to switch.
@@ -212,7 +247,9 @@ def live_wikis(tmp_path_factory):
                 proc.kill()
             except Exception:
                 pass
-    if _registry_path.exists():
+    if _backup_path.exists():
+        _restore_registry()  # the developer's original registry, minus live-* entries
+    elif _registry_path.exists():
         _reg = _json.loads(_registry_path.read_text(encoding="utf-8"))
         for _name in ("live-coord", "live-target"):
             _reg.pop(_name, None)
@@ -225,7 +262,7 @@ def live_wikis(tmp_path_factory):
 def test_cross_wiki_both_domains_answered(live_wikis):
     """Query requiring both finance and ops domains → both wikis cited."""
     result = _query_cross_wiki("What is the leverage ratio and how do I deploy the application?")
-    assert result["knowledge_gap"] is False
+    assert result["knowledge_gap"] is False, result
     citations = result["citations"]
     wiki_names = {c.split("::")[0] for c in citations if "::" in c}
     assert "live-coord" in wiki_names or "leverage" in result["answer"].lower()
