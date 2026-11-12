@@ -1,6 +1,6 @@
 # Synthadoc User Quick-Start Guide
 
-**Version: v1.5.1 (Community Edition)**
+**Version: v1.5.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2706,6 +2706,8 @@ The query cache lives in the same `cache.db` as the ingest response cache. Clear
 synthadoc cache clear -w history-of-computing
 ```
 
+> **Restart-safe (v1.5.2):** the cache is invalidated by a persistent, ever-increasing wiki epoch, so answers cached before a server restart, lint run, candidate promotion or MCP write are never served stale. `cache clear` is only needed to force fresh LLM calls.
+
 > **Note:** The query cache is separate from the ingest cache layers. Clearing the cache removes both query answers and LLM responses cached during ingest — the next lint run and the next ingest of any source will re-run LLM calls.
 
 <a name="knowledge-graph"></a>
@@ -4654,6 +4656,8 @@ synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks
 The `-w` flag identifies the coordinator wiki (any registered wiki will do). The `--cross-wiki` flag fans the question out across all running registered wikis.
 
 ![Cross-wiki query — fan-out across multiple wiki domains](png/cross-wiki-queries.png)
+
+**Knowledge gaps across wikis (v1.5.2).** If the combined wikis cannot answer the whole question, the answer carries a Knowledge Gap callout and `suggested_searches` tailored to the missing part of the question and to the domains of the wikis searched (for example, a two-part question where only one part is covered suggests searches for the uncovered part only). Typing an operation such as "run lint" while the globe toggle is on does nothing; the chat explains that cross-wiki search must be turned off first.
 
 ### Step 4 — Understanding citation format
 
