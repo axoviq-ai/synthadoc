@@ -9,7 +9,7 @@ synthadoc ingest "https://www.irs.gov/businesses/small-businesses-self-employed/
 
 **PCAOB auditing standards (free)**
 ```
-synthadoc ingest "https://www.tyteoh.com/what-pcaob-auditing-standard" -w <wiki>
+synthadoc ingest "https://pcaobus.org/standards/auditing/documents/auditing_standards_audits_fyb_after_june_16_2024_before_fyb_december-14-2024.pdf" -w <wiki>
 ```
 
 ## Recommended web searches
