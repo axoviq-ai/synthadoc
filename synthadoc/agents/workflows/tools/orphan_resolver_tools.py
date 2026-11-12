@@ -13,7 +13,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from synthadoc.agents.lint_agent import find_orphan_slugs
+from synthadoc.agents.lint_agent import LINT_SKIP_SOURCE_SLUGS, find_orphan_slugs
 from synthadoc.agents.workflows._tools import ToolStatus, tool_confirm, tool_rollback_last_fix
 from synthadoc.storage.wiki import LifecycleState
 
@@ -275,6 +275,12 @@ async def tool_search_orphan_candidates(
     """
     exclude: set[str] = set(exclude_slugs or [])
     exclude.add(orphan_slug)  # self-links are never useful
+    # find_orphan_slugs() never counts an inbound link FROM one of these hub
+    # pages as rescuing a page from orphan status (LINT_SKIP_SOURCE_SLUGS) —
+    # offering one as a candidate here would let the LLM spend a confirm-gate
+    # edit and a strategy attempt on a fix that can never actually resolve
+    # the orphan.
+    exclude |= LINT_SKIP_SOURCE_SLUGS
 
     if strategy == "title_bm25":
         if ctx.search is None:
