@@ -286,6 +286,80 @@ async def test_search_candidates_unknown_strategy():
     assert "error" in result
 
 
+async def test_full_title_scan_excludes_skip_source_pages():
+    """GitHub live-test regression: full_title_scan must never offer 'index'
+    (or other LINT_SKIP_SOURCE_SLUGS hub pages) as a candidate host.
+
+    find_orphan_slugs() never counts an inbound link FROM a skip_source page
+    (index/overview/log/dashboard) as rescuing a page from orphan status —
+    that's by design, since a page listed only on the site index isn't
+    integrated into the content graph. Before this fix, tool_search_orphan_
+    candidates offered these pages anyway: the LLM could pick "index", the
+    edit would apply successfully, and tool_verify_orphan_resolved would
+    still (correctly, but confusingly) report resolved=False — wasting a
+    confirm-gate round trip and a strategy attempt on an edit that can never
+    resolve the orphan.
+    """
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({
+        "orphan":   ("active", "Content."),
+        "index":    ("active", "Hub page listing everything."),
+        "overview": ("active", "Another hub page."),
+        "page-one": ("active", "Content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "full_title_scan", [])
+    slugs = [p["slug"] for p in result["all_page_titles"]]
+    assert "index" not in slugs
+    assert "overview" not in slugs
+    assert "page-one" in slugs
+
+
+async def test_contextual_reasoning_excludes_skip_source_pages():
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({
+        "orphan":   ("active", "Content."),
+        "index":    ("active", "Hub page listing everything."),
+        "page-one": ("active", "Content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "contextual_reasoning", [])
+    slugs = [p["slug"] for p in result["all_page_titles"]]
+    assert "index" not in slugs
+    assert "page-one" in slugs
+
+
+async def test_title_bm25_excludes_skip_source_pages():
+    """BM25 could surface 'index' or 'overview' by keyword match — it must
+    still never be offered as a candidate, since it structurally can't
+    rescue the orphan."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("index", 0.95), ("page-a", 0.7)])
+    store = _make_wiki_store({
+        "orphan-topic": ("active", "Content."),
+        "index":        ("active", "Hub page."),
+        "page-a":       ("active", "Related."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(ctx, "orphan-topic", "title_bm25", [])
+    assert "index" not in result["candidates"]
+    assert "page-a" in result["candidates"]
+
+
+async def test_content_bm25_excludes_skip_source_pages():
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("overview", 0.9), ("candidate", 0.8)])
+    store = _make_wiki_store({
+        "orphan":    ("active", "This page discusses quantum computing in detail."),
+        "overview":  ("active", "Hub page."),
+        "candidate": ("active", "Quantum topics."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "content_bm25", [])
+    assert "overview" not in result["candidates"]
+    assert "candidate" in result["candidates"]
+
+
 # ---------------------------------------------------------------------------
 # Task 5: tool_estimate_and_confirm
 # ---------------------------------------------------------------------------
