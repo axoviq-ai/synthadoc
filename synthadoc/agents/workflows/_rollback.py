@@ -95,8 +95,21 @@ async def restore_page_snapshot(
         snapshots = await ctx.audit_db.list_page_snapshots(slug)
         resolved_index = next(
             (s["index"] for s in snapshots if s.get("id") == snapshot_id),
-            fallback_index,
+            None,
         )
+        if resolved_index is None:
+            # The caller asked for a specific snapshot and it's gone — most
+            # likely purge_lifecycle_events retention pruning. Falling back
+            # to fallback_index here would silently restore an unrelated
+            # snapshot while still reporting success, so this is a genuine
+            # error, not a cue to guess.
+            return {
+                "status": _STATUS_ERR,
+                "error": (
+                    f"Snapshot {snapshot_id} for '{slug}' is no longer "
+                    "available (retention policy may have pruned it)."
+                ),
+            }
     else:
         resolved_index = fallback_index
 
