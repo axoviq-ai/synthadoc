@@ -699,6 +699,45 @@ async def test_mcp_lifecycle_invalidates_search_index(mock_orch):
     mock_invalidate.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_mcp_lifecycle_syncs_embeddings_after_index_invalidation(mock_orch):
+    """sync_embeddings must be called AFTER invalidate_index so it sees the refreshed corpus.
+
+    When a page is archived, wiki_changed() calls invalidate_index() first;
+    sync_embeddings must follow, otherwise it rebuilds the vector index from
+    the old page list that still includes the now-archived page.
+    """
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Test Page", tags=[], content="content",
+        status="active", confidence="high", sources=[],
+    )
+    call_order: list = []
+
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch("synthadoc.storage.log.AuditDB.set_page_state", new=AsyncMock()), \
+         patch("synthadoc.storage.log.AuditDB.record_lifecycle_event", new=AsyncMock()), \
+         patch("synthadoc.agents.lint_agent.cascade_archive", new=AsyncMock(return_value=[])), \
+         patch.object(mock_orch._search, "invalidate_index",
+                      side_effect=lambda: call_order.append("invalidate_index")), \
+         patch.object(mock_orch._search, "sync_embeddings",
+                      new=AsyncMock(side_effect=lambda: call_order.append("sync_embeddings"))):
+        await mcp._tool_manager.call_tool(
+            "synthadoc_lifecycle",
+            {"slug": "test-page", "to_state": "archived", "reason": "obsolete"},
+            convert_result=False,
+        )
+
+    assert "invalidate_index" in call_order, "invalidate_index must be called"
+    assert "sync_embeddings" in call_order, "sync_embeddings must be called"
+    assert call_order.index("invalidate_index") < call_order.index("sync_embeddings"), \
+        "invalidate_index must run before sync_embeddings"
+
+
 # ── New tool: synthadoc_jobs ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio
