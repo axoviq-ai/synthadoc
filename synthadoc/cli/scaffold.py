@@ -36,7 +36,7 @@ def scaffold_cmd(
         cfg_info = get(wiki, "/config")
         domain = cfg_info.get("domain", "General")
     except Exception as exc:
-        E.cli_error(E.SERVER_NOT_RUNNING,
+        E.cli_error(E.SRV_NOT_RUNNING,
                     f"Cannot reach server: {exc}",
                     "Run `synthadoc serve` first.")
 

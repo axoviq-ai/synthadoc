@@ -2379,6 +2379,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _cand_add_to_index(wd, new_pages)
         if promoted:
             _queue_overview_if_empty(background_tasks, cd, f"promoted {len(promoted)} page(s) to wiki")
+            orch = app.state.orch
+            await orch.wiki_changed()
         return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
 
     @app.post("/candidates/discard-all")
@@ -2410,6 +2412,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if is_new:
             _cand_add_to_index(wd, [(slug, title)])
         _queue_overview_if_empty(background_tasks, cd, f"promoted slug={slug} to wiki")
+        orch = app.state.orch
+        await orch.wiki_changed()
         return {"slug": slug, "promoted": True, "updated": not is_new}
 
     @app.post("/candidates/{slug}/discard")
@@ -2588,17 +2592,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER,
                                             content_snapshot=page.content, force=True)
-        orch._bump_epoch()
         cascade_affected: list[str] = []
         if req.to_state == LifecycleState.ARCHIVED:
             from synthadoc.agents.lint_agent import cascade_archive
             cascade_affected = await cascade_archive(
                 req.slug, orch._store, audit_db=audit, trigger_source=TriggerSource.USER
             )
-        # Invalidate BM25 corpus after all writes (primary page + any cascade-archived
-        # pages) so the next search sees the updated lifecycle states.  bump_epoch above
-        # busts the LLM query cache; this busts the separate in-memory search corpus.
-        orch._search.invalidate_index()
+        # Bump epoch after cascade so the new epoch reflects all writes (primary page +
+        # any cascade-archived pages) atomically.  wiki_changed() also invalidates the
+        # BM25 corpus so the next search sees the updated lifecycle states.
+        await orch.wiki_changed()
         return {
             "slug": req.slug,
             "from_state": from_state,
@@ -2722,8 +2725,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.storage.log import strip_frontmatter
         page.content = strip_frontmatter(snap["content_snapshot"])
         orch._store.write_page(slug, page)
-        orch._bump_epoch()
-        orch._search.invalidate_index()
+        await orch.wiki_changed()
 
         return {
             "slug": slug,

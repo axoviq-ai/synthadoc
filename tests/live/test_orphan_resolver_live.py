@@ -424,17 +424,28 @@ def test_slug_filter_targets_single():
         final_text = "".join(
             e["data"].get("text", "") for e in events if e["event"] == "token"
         )
+        # A section's content is only its header line, "- " bullet lines, and
+        # blank lines in between. Any other non-blank line — e.g. the model's
+        # trailing prose explaining why no edit was proposed — ends the
+        # section block immediately. Without this, a trailing prose
+        # paragraph after the last ("Skipped") header never matched the old
+        # "exit on next bold header" check (prose isn't bolded) and got
+        # swallowed into the section's lines, wrongly flagging any
+        # candidate-host slug it happened to mention as a processed orphan.
         _section_lines: list[str] = []
         _in_section = False
         for _line in final_text.splitlines():
             if _re.search(r"(Resolved|Unresolved|Skipped)\s*\(\d+\)", _line):
                 _in_section = True
-            elif _in_section and _line.startswith("**") and not _re.search(
-                r"(Resolved|Unresolved|Skipped)\s*\(\d+\)", _line
-            ):
-                _in_section = False
-            if _in_section:
                 _section_lines.append(_line)
+                continue
+            if not _in_section:
+                continue
+            _stripped = _line.strip()
+            if _stripped == "" or _stripped.startswith("-"):
+                _section_lines.append(_line)
+                continue
+            _in_section = False
         _bad_lines = [_l for _l in _section_lines if _ISOLATED_SLUG in _l]
         assert not _bad_lines, (
             f"Non-targeted slug {_ISOLATED_SLUG!r} appeared as orphan subject "
