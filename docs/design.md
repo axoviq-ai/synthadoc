@@ -1255,6 +1255,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-SRV-002`    | Port already bound by another process                     |
 | `ERR-SRV-003`    | Server returned a 4xx/5xx HTTP response                   |
 | `ERR-SRV-004`    | Background server process exited immediately              |
+| `ERR-SRV-005`    | `serve --all` cannot read system memory to limit how many wikis start (pass `--max-memory`) |
 | `ERR-WIKI-001`   | Wiki root directory does not exist                        |
 | `ERR-WIKI-002`   | Directory exists but missing`wiki/` subfolder             |
 | `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
@@ -4396,7 +4397,7 @@ For how to create and manage the file, with a full annotated example, see [Step 
 |---|---|
 | `synthadoc query --cross-wiki "question"` | Fan-out query across all registered running wikis |
 | `synthadoc status --all` | Print running/stopped table for all registered wikis |
-| `synthadoc serve --all --background` | Start background servers for all wikis in the registry |
+| `synthadoc serve --all [--max-memory 6GB]` | Start background servers for registered wikis, one at a time, within a memory limit (see *Starting many wikis*) |
 | `synthadoc stop` | Stop the active wiki server |
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
@@ -4555,6 +4556,25 @@ Results are written to cache only when:
 
 The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
 
+### Starting many wikis — `serve --all` {#serve-all}
+
+`synthadoc serve --all` starts one detached server per registered wiki. Each idle server costs several hundred MB (an empty wiki measures roughly 140 MB resident / 340 MB committed; wikis with pages and embeddings are larger), so starting ten at once can exhaust a machine.
+
+**Behavior**
+
+1. Validate `--max-memory` first; nothing starts if it is invalid.
+2. Wikis start **sequentially**. After each is healthy (`GET /health`, up to 60 s), its real resident memory is measured and the next wiki is only started if it still fits. The next wiki's cost is estimated from the wikis already started (500 MB before the first measurement).
+3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
+4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
+5. Wikis that do not fit are listed with `synthadoc serve -w <name> --background` and a `--max-memory` hint. The command still exits 0.
+6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading).
+
+**Units are mandatory.** `--max-memory 6GB` and `--max-memory 6000MB` are valid (case-insensitive, decimals allowed, 1 GB = 1024 MB). A bare `6000`, `6KB`, `6G`, zero or a negative value is rejected before anything starts, with the message *Memory size needs a unit: GB or MB*. `--max-memory` without `--all` is an error.
+
+**Memory readers** (`synthadoc/cli/_memory.py`) use no extra dependency: `GlobalMemoryStatusEx` / `GetProcessMemoryInfo` via `ctypes` on Windows, `/proc/meminfo` and `/proc/<pid>/status` on Linux, `vm_stat` / `ps` on macOS. If system memory cannot be read and no `--max-memory` is given, the command stops with `ERR-SRV-005` and asks for an explicit limit.
+
+**Child processes.** Each wiki is launched as `serve -w <wiki>` (forwarding only `--provider`, `--host` and `--verbose`). Earlier versions forwarded the parent's own arguments, which included `--all`, so every child re-ran `--all` and spawned children of its own without end. The spawn arguments are now explicit and covered by tests that fake process creation.
+
 ### Graceful Degradation
 
 | Scenario | Behaviour |
@@ -4663,6 +4683,10 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.3 (in development)
+
+- **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
 
 ### v1.5.2
 

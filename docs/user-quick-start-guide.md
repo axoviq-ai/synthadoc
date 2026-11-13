@@ -4620,13 +4620,18 @@ synthadoc install legal-wiki   --target ~/wikis --template legal/compliance
 Start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to running wikis, so starting a subset is a valid way to scope the results:
 
 ```bash
-# Start all registered wikis
-synthadoc serve --all --background
+# Start all registered wikis (one at a time; stops before the machine passes ~60% memory use)
+synthadoc serve --all
+
+# Or set the total memory the started wikis may use. A unit is required: GB or MB
+synthadoc serve --all --max-memory 6GB
 
 # Or start only the wikis you need (e.g. 2 of 5 registered)
 synthadoc serve -w finance-wiki --background
 synthadoc serve -w legal-wiki --background
 ```
+
+Each running wiki uses a few hundred MB of memory, so `--all` starts wikis one at a time and measures real memory use. If not every wiki fits, it lists the ones it skipped with the exact `synthadoc serve -w <name> --background` command to start them. To allow more, raise the limit, for example `--max-memory 8GB`. The number must always include its unit (`GB` or `MB`); `--max-memory 6000` is rejected.
 
 Each server starts on its registered port. `--all` skips any wiki whose port is already responding.
 
