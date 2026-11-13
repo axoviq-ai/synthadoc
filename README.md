@@ -309,25 +309,22 @@ The Obsidian plugin is bundled inside the package. New wikis created with `synth
 
 For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
-Commands are shown for **Linux / macOS**. On Windows, expand the **Windows (Command Prompt)** block for single-line `cmd.exe` versions: `\` line continuation and `~` in `-v` paths don't work there. (In PowerShell, replace `%USERPROFILE%` with `$env:USERPROFILE`.)
+Commands are shown **Windows first**, then **Linux / macOS**. Notes on Windows: `~` in `-v` paths and `\` line continuation don't work in `cmd.exe`, so Windows commands use `"%USERPROFILE%\wikis\…"` and are single-line.
 
-**1. Create the wiki** in a one-off container. It lands in `~/wikis/history-of-computing`; note the port it prints, e.g. `7070`. `docker run` downloads the image on first use. Run `docker pull chenp/synthadoc:latest` later to update a cached image.
+**1. Create the wiki** in a one-off container. It lands in `%USERPROFILE%\wikis\history-of-computing` (Windows) or `~/wikis/history-of-computing` (Linux/macOS); note the port it prints, e.g. `7070`. `docker run` downloads the image on first use. Run `docker pull chenp/synthadoc:latest` later to update a cached image.
 
-```bash
-mkdir -p ~/wikis
-docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
-  synthadoc install history-of-computing --target /wikis --demo
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
 docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
+```
 
 **2. Put your LLM API key in `~/wikis/.env`**, never on the command line. Create it with any text editor (Windows: `notepad "%USERPROFILE%\wikis\.env"`). For example, to use MiniMax:
 
@@ -349,6 +346,12 @@ default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
 
 **3. Run the server in a container**, using the same port on both sides of `-p`:
 
+**Windows:**
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+**Linux / macOS:**
 ```bash
 docker run -d --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
@@ -356,15 +359,6 @@ docker run -d --name history-of-computing \
   --env-file ~/wikis/.env \
   chenp/synthadoc:latest
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
-```
-
-</details>
 
 **4. Use it.** Open the Web UI at `http://localhost:7070/app`, or run the CLI inside the container (same on every platform):
 
@@ -480,12 +474,14 @@ Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `syn
 
 A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
 
+```bat
+REM Windows
+synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
+```
+
 ```bash
 # Linux / macOS
 synthadoc install history-of-computing --target ~/wikis --demo
-
-# Windows (cmd.exe)
-synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
 Then start the engine:
