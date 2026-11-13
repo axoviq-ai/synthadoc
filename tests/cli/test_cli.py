@@ -158,13 +158,55 @@ def test_uninstall_aborts_on_wrong_name(tmp_path, monkeypatch):
 
 
 def test_uninstall_not_registered_shows_manual_instructions(tmp_path, monkeypatch):
-    """uninstall of unregistered wiki prints path-of-manual-deletion instructions."""
+    """uninstall of unregistered wiki with no folder found prints manual-deletion hint."""
     import synthadoc.cli.install as install_mod
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
+    # Ensure the default-location scan returns nothing so the error path fires.
+    monkeypatch.setattr(install_mod, "_find_wiki_at_default_location", lambda n: None)
 
     result = runner.invoke(app, ["uninstall", "ghost-wiki"])
     assert result.exit_code != 0
     assert "rm -rf" in result.output or "Remove-Item" in result.output
+
+
+def test_uninstall_docker_wiki_not_in_registry_found_at_default_location(tmp_path, monkeypatch):
+    """uninstall finds a Docker-installed wiki at ~/wikis/<name> and deletes it after confirmation."""
+    import synthadoc.cli.install as install_mod
+
+    wiki_folder = tmp_path / "my-wiki"
+    wiki_folder.mkdir()
+    (wiki_folder / ".synthadoc").mkdir()
+    (wiki_folder / ".synthadoc" / "config.toml").write_text("")
+
+    monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
+    # Registry is empty — simulates Docker-only install.
+    install_mod._write_registry({})
+    monkeypatch.setattr(install_mod, "_find_wiki_at_default_location", lambda n: wiki_folder if n == "my-wiki" else None)
+
+    result = runner.invoke(app, ["uninstall", "my-wiki"], input="y\nmy-wiki\n")
+    assert result.exit_code == 0, result.output
+    assert not wiki_folder.exists()
+    assert "not registered" in result.output.lower() or "docker" in result.output.lower()
+
+
+def test_uninstall_stale_registry_path_found_at_default_location(tmp_path, monkeypatch):
+    """uninstall with a stale registry path falls back to ~/wikis/<name> and deletes it."""
+    import synthadoc.cli.install as install_mod
+
+    stale_path = tmp_path / "container-path"  # doesn't exist on host
+    actual_wiki = tmp_path / "actual-wiki"
+    actual_wiki.mkdir()
+    (actual_wiki / ".synthadoc").mkdir()
+    (actual_wiki / ".synthadoc" / "config.toml").write_text("")
+
+    monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
+    install_mod._write_registry({"my-wiki": {"path": str(stale_path), "installed": "2026-01-01"}})
+    monkeypatch.setattr(install_mod, "_find_wiki_at_default_location", lambda n: actual_wiki if n == "my-wiki" else None)
+
+    result = runner.invoke(app, ["uninstall", "my-wiki"], input="y\nmy-wiki\n")
+    assert result.exit_code == 0, result.output
+    assert not actual_wiki.exists()
+    assert "my-wiki" not in install_mod._read_registry()
 
 
 # ---------------------------------------------------------------------------

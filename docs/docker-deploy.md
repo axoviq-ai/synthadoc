@@ -706,6 +706,35 @@ docker stop history-of-computing
 docker rm history-of-computing
 ```
 
+### Uninstalling a wiki installed via Docker
+
+When a wiki is installed with the one-off container (`docker run --rm … synthadoc install`), the container writes the registry to its own ephemeral filesystem. Because the container exits with `--rm`, that registry is discarded — the host's `~/.synthadoc/wikis.json` is never updated.
+
+Running `synthadoc uninstall <name>` on the host handles this automatically:
+
+1. If the wiki is not in the host registry, Synthadoc scans `~/wikis/<name>` for a valid wiki folder.
+2. If found, it shows a message noting the wiki was likely Docker-installed, then proceeds with the usual two-step confirmation before deleting the folder.
+3. If the folder is not found either, Synthadoc exits with an error and shows the path to remove manually.
+
+**Example** — uninstalling the demo wiki installed via Docker:
+
+```bat
+synthadoc uninstall history-of-computing
+```
+
+You will see something like:
+
+```
+Wiki 'history-of-computing' is not registered on this host (it was likely installed via Docker).
+The wiki folder was found at: C:\Users\you\wikis\history-of-computing
+
+Delete wiki 'history-of-computing' at C:\Users\you\wikis\history-of-computing and all its contents? [y/N]: y
+Type 'history-of-computing' to confirm permanent deletion: history-of-computing
+Wiki 'history-of-computing' removed.
+```
+
+If you also want to remove the stopped container (it was torn down already with `docker stop`/`docker rm`), there is nothing extra to do — the container is already gone and only the wiki folder remains.
+
 ### Backup
 
 The built-in backup command is the safest option, because it snapshots the databases consistently while the server runs. It works the same on every platform:
