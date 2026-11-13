@@ -4573,6 +4573,8 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 
 **Memory readers** (`synthadoc/cli/_memory.py`) use no extra dependency: `GlobalMemoryStatusEx` / `GetProcessMemoryInfo` via `ctypes` on Windows, `/proc/meminfo` and `/proc/<pid>/status` on Linux, `vm_stat` / `ps` on macOS. If system memory cannot be read and no `--max-memory` is given, the command stops with `ERR-SRV-005` and asks for an explicit limit.
 
+**Cross-platform testing.** The readers are split into thin I/O wrappers and pure parsers (`_parse_meminfo`, `_parse_proc_status_rss`, `_parse_macos_memory`, `_parse_ps_rss`). `tests/cli/test_memory.py` feeds the parsers recorded Linux `/proc` and macOS `vm_stat` samples (including 4 KB and 16 KB page sizes and old kernels without `MemAvailable`), so those code paths run on every platform. It also contains smoke tests that run the *real* readers on whatever OS runs the suite; CI (`ci.yml`) runs the full suite on ubuntu, windows and macos, so each real reader is exercised natively on every push.
+
 **Child processes.** Each wiki is launched as `serve -w <wiki>` (forwarding only `--provider`, `--host` and `--verbose`). Earlier versions forwarded the parent's own arguments, which included `--all`, so every child re-ran `--all` and spawned children of its own without end. The spawn arguments are now explicit and covered by tests that fake process creation.
 
 ### Graceful Degradation

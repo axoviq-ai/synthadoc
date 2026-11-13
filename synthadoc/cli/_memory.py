@@ -129,23 +129,64 @@ def _system_memory_windows() -> tuple[float, float]:
     return st.ullTotalPhys / mib, (st.ullTotalPhys - st.ullAvailPhys) / mib
 
 
-def _system_memory_linux() -> tuple[float, float]:
+# Thin I/O wrappers (patched in tests) and pure parsers. The parsers are plain
+# functions of the text the OS returns, so the Linux and macOS logic is tested
+# on every platform from recorded samples.
+
+def _read_text(path: str) -> str:
+    return Path(path).read_text()
+
+
+def _run_text(cmd: list[str]) -> str:
+    return subprocess.check_output(cmd, text=True)
+
+
+def _parse_meminfo(text: str) -> tuple[float, float]:
+    """``/proc/meminfo`` text -> ``(total_mb, used_mb)``; falls back to MemFree on old kernels."""
     info: dict[str, float] = {}
-    for line in Path("/proc/meminfo").read_text().splitlines():
+    for line in text.splitlines():
         key, _, rest = line.partition(":")
-        info[key] = float(rest.split()[0]) / 1024.0  # kB -> MB
+        if rest.split():
+            info[key] = float(rest.split()[0]) / 1024.0  # kB -> MB
+    if "MemTotal" not in info:
+        raise ValueError("MemTotal missing from /proc/meminfo")
     total = info["MemTotal"]
     available = info.get("MemAvailable", info.get("MemFree", 0.0))
     return total, total - available
 
 
-def _system_memory_macos() -> tuple[float, float]:
-    total = float(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)) / (1024 * 1024)
-    out = subprocess.check_output(["vm_stat"], text=True)
-    page = float(re.search(r"page size of (\d+) bytes", out).group(1))
-    pages = {k: float(v) for k, v in re.findall(r"Pages (free|inactive|speculative):\s+(\d+)", out)}
-    available = sum(pages.get(k, 0.0) for k in ("free", "inactive", "speculative")) * page / (1024 * 1024)
+def _parse_proc_status_rss(text: str) -> Optional[float]:
+    """``/proc/<pid>/status`` text -> resident memory in MB (``None`` for kernel threads)."""
+    for line in text.splitlines():
+        if line.startswith("VmRSS:"):
+            return float(line.split()[1]) / 1024.0
+    return None
+
+
+def _parse_macos_memory(sysctl_memsize: str, vm_stat: str) -> tuple[float, float]:
+    """``sysctl -n hw.memsize`` + ``vm_stat`` output -> ``(total_mb, used_mb)``.
+
+    free, inactive and speculative pages count as available.
+    """
+    mib = 1024.0 * 1024.0
+    total = float(sysctl_memsize.strip()) / mib
+    page = float(re.search(r"page size of (\d+) bytes", vm_stat).group(1))
+    pages = {k: float(v) for k, v in re.findall(r"Pages (free|inactive|speculative):\s+(\d+)", vm_stat)}
+    available = sum(pages.get(k, 0.0) for k in ("free", "inactive", "speculative")) * page / mib
     return total, total - available
+
+
+def _parse_ps_rss(text: str) -> float:
+    """``ps -o rss= -p <pid>`` output (kB) -> MB."""
+    return float(text.strip()) / 1024.0
+
+
+def _system_memory_linux() -> tuple[float, float]:
+    return _parse_meminfo(_read_text("/proc/meminfo"))
+
+
+def _system_memory_macos() -> tuple[float, float]:
+    return _parse_macos_memory(_run_text(["sysctl", "-n", "hw.memsize"]), _run_text(["vm_stat"]))
 
 
 def process_memory_mb(pid: int) -> Optional[float]:
@@ -154,14 +195,10 @@ def process_memory_mb(pid: int) -> Optional[float]:
         if sys.platform == "win32":
             return _process_memory_windows(pid)
         if sys.platform == "darwin":
-            out = subprocess.check_output(["ps", "-o", "rss=", "-p", str(pid)], text=True)
-            return float(out.strip()) / 1024.0
-        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
-            if line.startswith("VmRSS:"):
-                return float(line.split()[1]) / 1024.0
+            return _parse_ps_rss(_run_text(["ps", "-o", "rss=", "-p", str(pid)]))
+        return _parse_proc_status_rss(_read_text(f"/proc/{pid}/status"))
     except Exception:
         return None
-    return None
 
 
 def _process_memory_windows(pid: int) -> Optional[float]:

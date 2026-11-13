@@ -85,3 +85,156 @@ def test_gate_describes_its_limit_in_units():
     budget = MemoryGate(total_mb=16000, used_mb=8000, budget_mb=6144)
     assert "60%" in default.describe()
     assert "6.0 GB" in budget.describe()
+
+
+# ── OS readers: parsers tested on realistic samples (run on every OS) ────────
+# The parsers are pure functions of the text the OS returns, so the Linux and
+# macOS code paths are exercised on every CI platform, not just on the matching one.
+
+import os
+import sys
+
+from synthadoc.cli import _memory
+from synthadoc.cli._memory import process_memory_mb, system_memory_mb
+
+LINUX_MEMINFO = """\
+MemTotal:       16384000 kB
+MemFree:          812340 kB
+MemAvailable:    8192000 kB
+Buffers:          204800 kB
+Cached:          6144000 kB
+SwapTotal:       2097148 kB
+"""
+
+LINUX_MEMINFO_NO_AVAILABLE = """\
+MemTotal:        8192000 kB
+MemFree:         1024000 kB
+Buffers:          102400 kB
+"""
+
+LINUX_PROC_STATUS = """\
+Name:\tpython
+VmPeak:\t  412000 kB
+VmSize:\t  398000 kB
+VmRSS:\t  143360 kB
+VmData:\t  120000 kB
+"""
+
+MACOS_SYSCTL_MEMSIZE = "17179869184\n"   # 16 GiB
+MACOS_VM_STAT = """\
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               100000.
+Pages active:                             400000.
+Pages inactive:                           200000.
+Pages speculative:                         20000.
+Pages throttled:                               0.
+Pages wired down:                         150000.
+"""
+
+
+def test_parse_meminfo_uses_memavailable():
+    total, used = _memory._parse_meminfo(LINUX_MEMINFO)
+    assert total == pytest.approx(16384000 / 1024)
+    assert used == pytest.approx((16384000 - 8192000) / 1024)
+
+
+def test_parse_meminfo_falls_back_to_memfree_on_old_kernels():
+    total, used = _memory._parse_meminfo(LINUX_MEMINFO_NO_AVAILABLE)
+    assert total == pytest.approx(8192000 / 1024)
+    assert used == pytest.approx((8192000 - 1024000) / 1024)
+
+
+def test_parse_meminfo_rejects_text_without_memtotal():
+    with pytest.raises(ValueError):
+        _memory._parse_meminfo("Buffers: 1 kB\n")
+
+
+def test_parse_proc_status_reads_vmrss_in_mb():
+    assert _memory._parse_proc_status_rss(LINUX_PROC_STATUS) == pytest.approx(140.0)
+
+
+def test_parse_proc_status_without_vmrss_is_none():
+    assert _memory._parse_proc_status_rss("Name:\tkthreadd\n") is None
+
+
+def test_parse_macos_memory_counts_free_inactive_and_speculative_as_available():
+    total, used = _memory._parse_macos_memory(MACOS_SYSCTL_MEMSIZE, MACOS_VM_STAT)
+    assert total == pytest.approx(16384.0)
+    available = (100000 + 200000 + 20000) * 16384 / (1024 * 1024)
+    assert used == pytest.approx(16384.0 - available)
+
+
+def test_parse_macos_memory_handles_4k_pages():
+    vm = MACOS_VM_STAT.replace("16384", "4096")
+    total, used = _memory._parse_macos_memory(MACOS_SYSCTL_MEMSIZE, vm)
+    assert used == pytest.approx(16384.0 - (320000 * 4096 / (1024 * 1024)))
+
+
+def test_parse_ps_rss_kb_to_mb():
+    assert _memory._parse_ps_rss("  143360\n") == pytest.approx(140.0)
+
+
+def test_parse_ps_rss_rejects_empty_output():
+    with pytest.raises(ValueError):
+        _memory._parse_ps_rss("\n")
+
+
+# ── dispatch: the right reader for each platform; failure -> None ────────────
+
+@pytest.mark.parametrize("platform, reader", [
+    ("win32", "_system_memory_windows"),
+    ("darwin", "_system_memory_macos"),
+    ("linux", "_system_memory_linux"),
+])
+def test_system_memory_dispatches_by_platform(monkeypatch, platform, reader):
+    monkeypatch.setattr(_memory.sys, "platform", platform)
+    monkeypatch.setattr(_memory, reader, lambda: (1000.0, 250.0))
+    assert system_memory_mb() == (1000.0, 250.0)
+
+
+def test_system_memory_returns_none_when_the_reader_fails(monkeypatch):
+    def boom():
+        raise OSError("no /proc")
+    monkeypatch.setattr(_memory.sys, "platform", "linux")
+    monkeypatch.setattr(_memory, "_system_memory_linux", boom)
+    assert system_memory_mb() is None
+
+
+def test_process_memory_linux_reads_proc_status(monkeypatch):
+    monkeypatch.setattr(_memory.sys, "platform", "linux")
+    monkeypatch.setattr(_memory, "_read_text", lambda path: LINUX_PROC_STATUS)
+    assert process_memory_mb(1234) == pytest.approx(140.0)
+
+
+def test_process_memory_macos_reads_ps(monkeypatch):
+    monkeypatch.setattr(_memory.sys, "platform", "darwin")
+    monkeypatch.setattr(_memory, "_run_text", lambda cmd: "  143360\n")
+    assert process_memory_mb(1234) == pytest.approx(140.0)
+
+
+def test_process_memory_returns_none_for_a_vanished_process(monkeypatch):
+    def gone(path):
+        raise FileNotFoundError(path)
+    monkeypatch.setattr(_memory.sys, "platform", "linux")
+    monkeypatch.setattr(_memory, "_read_text", gone)
+    assert process_memory_mb(999999) is None
+
+
+# ── real readers on the CI runner's own OS (ubuntu, windows, macos) ──────────
+
+def test_real_system_memory_is_sane_on_this_os():
+    result = system_memory_mb()
+    assert result is not None, f"system memory unreadable on {sys.platform}"
+    total, used = result
+    assert total > 256                      # any CI runner has more than 256 MB
+    assert 0 < used < total
+
+
+def test_real_process_memory_of_this_process_is_sane_on_this_os():
+    rss = process_memory_mb(os.getpid())
+    assert rss is not None, f"process memory unreadable on {sys.platform}"
+    assert 5 < rss < 8192                   # a running pytest is tens to hundreds of MB
+
+
+def test_real_process_memory_of_a_missing_pid_is_none():
+    assert process_memory_mb(2_000_000_000) is None
