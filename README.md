@@ -765,8 +765,13 @@ synthadoc serve -w my-wiki --host 0.0.0.0
 # Verbose debug logging to console
 synthadoc serve -w my-wiki --verbose
 
-# Start servers for all registered wikis in the background (cross-wiki queries)
-synthadoc serve --all --background
+# Start servers for all registered wikis in the background (cross-wiki queries).
+# Wikis start one at a time and stop before the machine passes ~60% memory use;
+# skipped wikis are listed with the command to start them.
+synthadoc serve --all
+
+# Same, but cap the total memory the started wikis may use (a unit is required: GB or MB)
+synthadoc serve --all --max-memory 6GB
 
 # Stop the active wiki server
 synthadoc stop

@@ -28,7 +28,8 @@ Cross-wiki queries fan out only to **running** wikis. Start the wikis you want t
 
 ```bash
 # Start all registered wikis in the background
-synthadoc serve --all --background
+synthadoc serve --all                    # one at a time, stops before ~60% memory use
+synthadoc serve --all --max-memory 6GB   # cap total memory of started wikis (unit required)
 
 # Or start specific wikis only
 synthadoc serve -w finance-wiki --background

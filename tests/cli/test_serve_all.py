@@ -14,7 +14,7 @@ def test_serve_all_spawns_each_wiki():
     }
     with patch("synthadoc.cli.serve.read_registry_all", return_value=registry):
         with patch("synthadoc.cli._wiki.probe_port", return_value=False):  # shared helper
-            with patch("synthadoc.cli.serve._spawn_background_for_path") as mock_spawn:
+            with patch("synthadoc.cli.serve._spawn_background_for_path", return_value=(4242, 7070)) as mock_spawn,                  patch("synthadoc.cli.serve._wait_for_health", return_value=True),                  patch("synthadoc.cli.serve.system_memory_mb", return_value=(64000.0, 8000.0)),                  patch("synthadoc.cli.serve.process_memory_mb", return_value=300.0):
                 result = runner.invoke(app, ["serve", "--all", "--background"])
     assert mock_spawn.call_count == 2
 

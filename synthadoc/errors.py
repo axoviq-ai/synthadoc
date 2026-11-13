@@ -25,6 +25,7 @@ SRV_NOT_RUNNING  = "ERR-SRV-001"   # No server listening for the requested wiki
 SRV_PORT_IN_USE  = "ERR-SRV-002"   # Port already bound by another process
 SRV_HTTP_ERROR   = "ERR-SRV-003"   # Server returned a 4xx/5xx response
 SRV_BG_CRASH     = "ERR-SRV-004"   # Background server process exited immediately
+SRV_MEMORY_UNREADABLE = "ERR-SRV-005"   # serve --all cannot read system memory to limit how many wikis start
 
 # ── Wiki ──────────────────────────────────────────────────────────────────────
 WIKI_NOT_FOUND       = "ERR-WIKI-001"  # Wiki root directory does not exist
