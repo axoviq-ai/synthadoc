@@ -393,6 +393,14 @@ def list_cmd():
             typer.echo(f"{name:<30}  installed: {installed}{port_str}{demo_tag}")
 
 
+def _find_wiki_at_default_location(name: str) -> Optional[Path]:
+    """Return ~/wikis/<name> if it looks like a valid wiki (has .synthadoc/config.toml), else None."""
+    candidate = Path.home() / "wikis" / name
+    if candidate.exists() and (candidate / ".synthadoc" / "config.toml").exists():
+        return candidate
+    return None
+
+
 @app.command("uninstall")
 def uninstall_cmd(
     name: str = typer.Argument(help="Name of the wiki to remove"),
@@ -406,6 +414,26 @@ def uninstall_cmd(
     registry = _read_registry()
 
     if name not in registry:
+        # Not in host registry — may be a Docker-installed wiki whose registry
+        # lived only inside the (now gone) container. Check the default location.
+        candidate = _find_wiki_at_default_location(name)
+        if candidate is not None:
+            typer.echo(
+                f"Wiki '{name}' is not registered on this host (it was likely installed "
+                f"via Docker).\nThe wiki folder was found at: {candidate}"
+            )
+            typer.confirm(
+                f"\nDelete wiki '{name}' at {candidate} and all its contents?",
+                abort=True,
+            )
+            typed = typer.prompt(f"Type '{name}' to confirm permanent deletion")
+            if typed != name:
+                typer.echo("Name did not match - aborted. Nothing was deleted.")
+                raise typer.Exit(1)
+            shutil.rmtree(candidate)
+            typer.echo(f"Wiki '{name}' removed.")
+            raise typer.Exit(0)
+
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
             f"Wiki '{name}' is not in the registry.",
@@ -418,6 +446,29 @@ def uninstall_cmd(
     dest = Path(registry[name]["path"])
 
     if not dest.exists():
+        # Registered path is stale (e.g. Docker container path vs. host path mismatch).
+        # Check the default location before giving up.
+        candidate = _find_wiki_at_default_location(name)
+        if candidate is not None:
+            typer.echo(
+                f"Wiki '{name}' was registered at {dest} which no longer exists.\n"
+                f"The wiki folder was found at: {candidate}\n"
+                f"(This can happen when a Docker-installed wiki used a different path.)"
+            )
+            typer.confirm(
+                f"\nDelete wiki '{name}' at {candidate} and all its contents?",
+                abort=True,
+            )
+            typed = typer.prompt(f"Type '{name}' to confirm permanent deletion")
+            if typed != name:
+                typer.echo("Name did not match - aborted. Nothing was deleted.")
+                raise typer.Exit(1)
+            shutil.rmtree(candidate)
+            del registry[name]
+            _write_registry(registry)
+            typer.echo(f"Wiki '{name}' removed.")
+            raise typer.Exit(0)
+
         typer.echo(f"Wiki '{name}' no longer exists on disk - removing from registry.")
         del registry[name]
         _write_registry(registry)
