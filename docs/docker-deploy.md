@@ -90,12 +90,11 @@ All runtimes use the same OCI image — no separate image per platform.
 
 **No Python needed on the host.** Every `synthadoc` command in this guide, including creating a wiki, runs inside a container. Besides a container runtime you only need a text editor (to set the LLM provider in `config.toml`) and, optionally, Obsidian.
 
-**How commands are shown.** Commands are written for **Linux / macOS** (bash or zsh), with long commands split across lines using `\`. Where Windows differs, a collapsible **Windows (Command Prompt)** block follows with single-line commands that paste directly into `cmd.exe`. On Windows:
+**How commands are shown.** Each section shows **Windows** commands first, then **Linux / macOS**. Notes on Windows differences:
 
-- `\` line continuation does not work in Command Prompt, so use the single-line versions.
-- `~` is not expanded inside `docker -v` paths, so the Windows versions use `"%USERPROFILE%\wikis\…"`.
-- `docker exec …` commands are identical on every platform and are shown once.
-- Using PowerShell instead? Replace `%USERPROFILE%` with `$env:USERPROFILE`, and type `curl.exe` instead of `curl` (in PowerShell, `curl` is an alias for `Invoke-WebRequest`).
+- `~` is not expanded inside `docker -v` paths — Windows commands use `"%USERPROFILE%\wikis\…"` instead.
+- Long commands use backslash (`\`) continuation on Linux / macOS. Windows commands are single-line so they paste directly into `cmd.exe` without issues.
+- `docker exec …` commands work identically on every platform and are shown once.
 
 ---
 
@@ -142,37 +141,38 @@ The container serves a wiki folder that lives on the host, so create that folder
 
 Create the parent folder first (on Linux, Docker would otherwise create it owned by root):
 
-```bash
-mkdir -p ~/wikis
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+mkdir -p ~/wikis
+```
 
 **Option A — Demo wiki** (used in this guide): pre-populated with sample pages, ready to query immediately:
 
+**Windows:**
+```bat
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+```
+
+**Linux / macOS:**
 ```bash
 docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
   synthadoc install history-of-computing --target /wikis --demo
 ```
 
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
-```
-
-</details>
-
 **Option B — Template wiki**: scaffolded for a specific domain. Browse the 30 available templates first, then install:
 
+**Windows:**
+```bat
+docker run --rm chenp/synthadoc:latest synthadoc templates list
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-market-wiki --target /wikis --template research/market-research
+```
+
+**Linux / macOS:**
 ```bash
 docker run --rm chenp/synthadoc:latest synthadoc templates list
 
@@ -180,31 +180,18 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
   synthadoc install my-market-wiki --target /wikis --template research/market-research
 ```
 
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker run --rm chenp/synthadoc:latest synthadoc templates list
-docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-market-wiki --target /wikis --template research/market-research
-```
-
-</details>
-
 **Option C — Custom domain wiki**: no template; provide a `--domain` description:
 
-```bash
-docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
-  synthadoc install my-wiki --target /wikis --domain "Your domain description"
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install my-wiki --target /wikis --domain "Your domain description"
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install my-wiki --target /wikis --domain "Your domain description"
+```
 
 Install makes no LLM call, so no API key is needed for this step. `/wikis` is only the path inside the one-off container; the wiki is created on the host at `~/wikis/<name>`.
 
@@ -266,6 +253,12 @@ Then make sure `~/wikis/.env` contains the API key for the provider you selected
 
 Use the port that `synthadoc install` assigned (shown in Step 2) for both sides of `-p`. For the demo wiki that is 7070:
 
+**Windows:**
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+**Linux / macOS:**
 ```bash
 docker run -d \
   --name history-of-computing \
@@ -274,15 +267,6 @@ docker run -d \
   --env-file ~/wikis/.env \
   chenp/synthadoc:latest
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
-```
-
-</details>
 
 Using the same port on both sides means the Obsidian plugin, Web UI, and any scripts that already point at `localhost:7070` work without any changes — whether the wiki is running in Docker or via `synthadoc serve` directly.
 
@@ -551,6 +535,13 @@ docker restart history-of-computing
 
 To try another provider without editing `config.toml`, re-create the container with `--provider`, appending the full start command (`synthadoc serve -w /wiki --host 0.0.0.0`) and the override:
 
+**Windows:**
+```bat
+docker rm -f history-of-computing
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
+```
+
+**Linux / macOS:**
 ```bash
 docker rm -f history-of-computing
 docker run -d \
@@ -561,16 +552,6 @@ docker run -d \
   chenp/synthadoc:latest \
   synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker rm -f history-of-computing
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest synthadoc serve -w /wiki --host 0.0.0.0 --provider openai
-```
-
-</details>
 
 `.env` must contain that provider's key (here `OPENAI_API_KEY`).
 
@@ -618,6 +599,13 @@ curl http://localhost:7070/health
 
 `latest` always pulls the newest release, which can introduce breaking changes. For a stable deployment, pin to a specific release tag:
 
+**Windows:**
+```bat
+docker pull chenp/synthadoc:1.5.2
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.2
+```
+
+**Linux / macOS:**
 ```bash
 docker pull chenp/synthadoc:1.5.2
 docker run -d \
@@ -627,16 +615,6 @@ docker run -d \
   --env-file ~/wikis/.env \
   chenp/synthadoc:1.5.2
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker pull chenp/synthadoc:1.5.2
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.2
-```
-
-</details>
 
 ### Viewing logs
 
@@ -654,6 +632,15 @@ Synthadoc also writes structured logs to `.synthadoc/logs/` inside the wiki dire
 
 Pull the latest build, then recreate the container. Wiki data is safe — it lives in the host volume, not inside the container:
 
+**Windows:**
+```bat
+docker pull chenp/synthadoc:latest
+docker stop history-of-computing
+docker rm history-of-computing
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+**Linux / macOS:**
 ```bash
 docker pull chenp/synthadoc:latest
 docker stop history-of-computing
@@ -665,18 +652,6 @@ docker run -d \
   --env-file ~/wikis/.env \
   chenp/synthadoc:latest
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker pull chenp/synthadoc:latest
-docker stop history-of-computing
-docker rm history-of-computing
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
-```
-
-</details>
 
 Then refresh the Obsidian plugin stored in the vault so it matches the new server version:
 
@@ -742,22 +717,19 @@ docker exec history-of-computing synthadoc backup
 
 Alternatively, stop the container and archive the wiki folder like any directory:
 
-```bash
-docker stop history-of-computing
-tar -czf history-of-computing-backup-$(date +%Y%m%d).tar.gz -C ~/wikis history-of-computing
-docker start history-of-computing
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 docker stop history-of-computing
 tar -czf history-of-computing-backup.tar.gz -C "%USERPROFILE%\wikis" history-of-computing
 docker start history-of-computing
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+docker stop history-of-computing
+tar -czf history-of-computing-backup-$(date +%Y%m%d).tar.gz -C ~/wikis history-of-computing
+docker start history-of-computing
+```
 
 ---
 
@@ -807,20 +779,17 @@ Run all `docker compose` commands from `~/wikis`.
 
 #### Single wiki
 
-```bash
-cd ~/wikis
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 cd /d "%USERPROFILE%\wikis"
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+cd ~/wikis
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/single-wiki.yml
+```
 
 Add the wiki path to `~/wikis/.env` (alongside your API key), then start:
 
@@ -851,6 +820,14 @@ Download `multi-wiki.yml` into `~/wikis` (see Step 1 below). It is pre-configure
 
 **Step 0 — Install both demo wikis** (skip if you already have two wikis). The second wiki needs an explicit `--port`, because a one-off container cannot see which ports earlier installs took:
 
+**Windows:**
+```bat
+if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
+docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install ai-research --target /wikis --demo --port 7071
+```
+
+**Linux / macOS:**
 ```bash
 mkdir -p ~/wikis
 docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
@@ -859,33 +836,19 @@ docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
   synthadoc install ai-research --target /wikis --demo --port 7071
 ```
 
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
-docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
-docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install ai-research --target /wikis --demo --port 7071
-```
-
-</details>
-
 **Step 1 — Download the Compose file and set `.env`**
 
-```bash
-cd ~/wikis
-curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 cd /d "%USERPROFILE%\wikis"
 curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+cd ~/wikis
+curl -fsSL -o multi-wiki.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/multi-wiki.yml
+```
 
 ```bash
 # ~/wikis/.env  (same folder as multi-wiki.yml)
@@ -1002,20 +965,17 @@ When the file is present, the LLM routing call is skipped and keyword matching i
 
 Download the Compose file into `~/wikis` and set `WIKI_PATH` in `~/wikis/.env` as for a single wiki (no API key needed):
 
-```bash
-cd ~/wikis
-curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 cd /d "%USERPROFILE%\wikis"
 curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+cd ~/wikis
+curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml
+```
 
 ```bash
 docker compose -f with-ollama.yml up -d
@@ -1144,6 +1104,13 @@ Avoid absolute host-style paths (`--output ~/backups/`): `~` expands to
 The zip file must be reachable inside the container. The easiest way is to
 copy it into the mounted wiki directory first:
 
+**Windows:**
+```bat
+copy "%USERPROFILE%\Downloads\synthadoc-backup-history-of-computing-20261010.zip" "%USERPROFILE%\wikis\history-of-computing\"
+docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
+```
+
+**Linux / macOS:**
 ```bash
 # On the host — copy the zip into the wiki mount
 cp ~/Downloads/synthadoc-backup-history-of-computing-20261010.zip ~/wikis/history-of-computing/
@@ -1152,52 +1119,36 @@ cp ~/Downloads/synthadoc-backup-history-of-computing-20261010.zip ~/wikis/histor
 docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-copy "%USERPROFILE%\Downloads\synthadoc-backup-history-of-computing-20261010.zip" "%USERPROFILE%\wikis\history-of-computing\"
-docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
-```
-
-</details>
-
 Alternatively, use `docker cp` to push the file directly into the container:
 
-```bash
-docker cp ~/Downloads/synthadoc-backup-history-of-computing-20261010.zip history-of-computing:/wiki/
-docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 docker cp "%USERPROFILE%\Downloads\synthadoc-backup-history-of-computing-20261010.zip" history-of-computing:/wiki/
 docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+docker cp ~/Downloads/synthadoc-backup-history-of-computing-20261010.zip history-of-computing:/wiki/
+docker exec -it history-of-computing synthadoc restore /wiki/synthadoc-backup-history-of-computing-20261010.zip
+```
 
 #### Export (CLI)
 
 For formats that print to stdout (`json`, `llms.txt`, `llms-full.txt`,
 `graphml`), redirect on the host side — no path issue:
 
-```bash
-docker exec history-of-computing synthadoc export --format llms.txt > ~/wiki-export.txt
-docker exec history-of-computing synthadoc export --format json     > ~/wiki-export.json
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 docker exec history-of-computing synthadoc export --format llms.txt > "%USERPROFILE%\wiki-export.txt"
 docker exec history-of-computing synthadoc export --format json > "%USERPROFILE%\wiki-export.json"
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+docker exec history-of-computing synthadoc export --format llms.txt > ~/wiki-export.txt
+docker exec history-of-computing synthadoc export --format json     > ~/wiki-export.json
+```
 
 For **OKF**, the CLI writes a directory tree to `--output`. Use a path inside
 `/wiki/` so it lands on the host:
@@ -1307,8 +1258,6 @@ Select the matching provider in `history-of-computing\.synthadoc\config.toml` (Q
 
 #### Step 5 — Run the container
 
-Single line, because backslash continuation does not work in Command Prompt:
-
 ```bat
 docker run -d --name synthadoc-test -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" synthadoc:local
 ```
@@ -1377,6 +1326,14 @@ layer and your code changes are silently ignored.
 
 `docker restart` reuses the environment captured at `docker run` time — it does not re-read `.env`. After updating `.env`, stop and recreate the container:
 
+**Windows:**
+```bat
+docker stop history-of-computing
+docker rm history-of-computing
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+**Linux / macOS:**
 ```bash
 docker stop history-of-computing
 docker rm history-of-computing
@@ -1387,17 +1344,6 @@ docker run -d \
   --env-file ~/wikis/.env \
   chenp/synthadoc:latest
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker stop history-of-computing
-docker rm history-of-computing
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
-```
-
-</details>
 
 
 **Container exits immediately**
