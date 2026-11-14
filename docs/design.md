@@ -4059,9 +4059,22 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace  # single page
 ```
 
 When `--slug` is passed the resolver first calls `tool_verify_orphan_resolved`
-to check whether the page is actually an orphan. If it already has inbound
-wikilinks the workflow exits immediately with a plain-text confirmation; no
-LLM calls or strategy attempts are made.
+to check whether the page is actually an orphan, and exits immediately with a
+plain-text message (no cost estimate, no LLM calls, no strategy attempts) unless
+it is one:
+
+| Slug | Result |
+|---|---|
+| Active page with no inbound wikilinks | Treated as the single orphan; cost estimate for 1 page, then the usual loop |
+| Active page that already has inbound wikilinks | "not an active orphan page - it already has inbound wikilinks from: ..." |
+| No such page | "Page '<slug>' does not exist in this wiki ..." |
+| Archived or contradicted page | "'<slug>' is archived (or contradicted), not active ..." |
+
+The tool distinguishes these cases: for a slug that is not an active page it returns
+`{"resolved": false, "linked_by": [], "not_active": true, "reason": "not_found" | "archived" | "contradicted"}`.
+Before v1.5.3, `resolved=false` for a nonexistent slug was read as "this page is an
+orphan", so a mistyped slug was estimated as one page and sent into the resolution loop.
+Both the CLI-provider path and the model's system prompt (STEP 1) use `not_active`.
 
 ### Cost model
 
@@ -4708,6 +4721,8 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ## Appendix A — Release Feature Index
 
 ### v1.5.3 (in development)
+
+- **Orphan resolver `--slug` validation** - a slug that does not exist, or is archived or contradicted, is no longer treated as an orphan and estimated as one page; the resolver stops with a message naming the reason, before any estimate or LLM call. `tool_verify_orphan_resolved` now returns `not_active` and `reason` for such slugs.
 
 - **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
 
