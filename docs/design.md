@@ -4566,7 +4566,7 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 2. Wikis start **sequentially**. After each is healthy (`GET /health`, up to 60 s), its real resident memory is measured and the next wiki is only started if it still fits. The next wiki's cost is estimated from the wikis already started (500 MB before the first measurement).
 3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
 4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
-5. Output is compact: one line per wiki while starting, then a single **Summary** with the running wikis (name, port, domain, measured memory; wikis that were already running are included and marked), the skipped wikis with the exact `synthadoc serve -w <name> --background` command for each, and a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
+5. Output is compact: one line per wiki while starting, then a single **Summary**, produced by one shared function so the default and `--max-memory` runs have the same layout: **Running (N)** (name, port, domain truncated to 28 characters, measured memory; wikis that were already running are included and marked), a total in human-readable form (`1.5 GB`), and **Skipped (M)** with the exact `synthadoc serve -w <name> --background` command for each (an empty section prints `none`), plus a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
 6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading).
 
 ```
@@ -4578,12 +4578,12 @@ Summary
   Running (5):
     my-op-supply-docker       port 7070  General   160 MB
     ...
-  Started 5 wiki(s) using about 800MB in total.
-  Skipped (3), memory limit reached:
+  Started 5 wiki(s) using about 800 MB in total.
+  Skipped (3):
     synthadoc serve -w pc-fin-invest --background
     ...
 
-To start the skipped wikis too: synthadoc serve --all --max-memory 2GB
+Not started because of the memory limit. To start them too: synthadoc serve --all --max-memory 2GB
 To stop all running wikis: synthadoc stop --all
 ```
 

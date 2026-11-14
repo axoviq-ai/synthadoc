@@ -50,7 +50,8 @@ def parse_memory_size(text: str) -> float:
     return value * 1024.0 if m.group(2).upper() == "GB" else value
 
 
-def _fmt(mb: float) -> str:
+def format_memory_display(mb: float) -> str:
+    """Short, human-readable size for messages: ``161 MB`` or ``1.5 GB``."""
     return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb:.0f} MB"
 
 
@@ -88,10 +89,10 @@ class MemoryGate:
 
     def describe(self) -> str:
         if self.budget_mb is not None:
-            return f"--max-memory budget {_fmt(self.budget_mb)} for the wikis started by this command"
+            return f"--max-memory budget {format_memory_display(self.budget_mb)} for the wikis started by this command"
         pct = int(DEFAULT_CEILING_FRACTION * 100)
         return (f"keep system memory under {pct}% "
-                f"({_fmt(DEFAULT_CEILING_FRACTION * self.total_mb)} of {_fmt(self.total_mb)})")
+                f"({format_memory_display(DEFAULT_CEILING_FRACTION * self.total_mb)} of {format_memory_display(self.total_mb)})")
 
 
 # ── OS readers ───────────────────────────────────────────────────────────────

@@ -184,12 +184,12 @@ def test_summary_lists_running_wikis_with_port_domain_and_memory(tmp_path):
     reg = _registry(tmp_path, ["alpha", "beta"])
     out = _run(["serve", "--all"], reg, total=64000, used=8000, per_wiki_rss=400).output
     summary = out[out.index("Summary"):]
-    assert "Running (2)" in summary
+    assert "Running (2)" in summary and "Skipped (0)" in summary
     for name, port in (("alpha", 7100), ("beta", 7101)):
         line = next(l for l in summary.splitlines() if name in l and str(port) in l)
         assert f"Domain {name}" in line
         assert "400 MB" in line
-    assert "Skipped" not in summary
+    assert "Skipped (0)" in summary
 
 
 def test_summary_includes_wikis_that_were_already_running(tmp_path):
@@ -238,8 +238,8 @@ def test_hint_suggests_a_budget_that_fits_the_skipped_wikis(tmp_path):
 def test_no_hint_when_every_wiki_was_started(tmp_path):
     reg = _registry(tmp_path, ["alpha", "beta"])
     out = _run(["serve", "--all", "--max-memory", "6GB"], reg, total=16000, used=15000, per_wiki_rss=400).output
-    assert "Skipped" not in out
-    assert "--max-memory 6GB" not in out.split("Summary")[-1]
+    assert "Skipped (0)" in out
+    assert "--max-memory" not in out.split("Summary")[-1]
 
 
 def test_verbose_shows_the_per_wiki_pid_and_log_details(tmp_path):
@@ -252,3 +252,57 @@ def test_summary_tells_how_to_stop_everything(tmp_path):
     reg = _registry(tmp_path, ["alpha"])
     out = _run(["serve", "--all"], reg, total=64000, used=8000).output
     assert "synthadoc stop --all" in out
+
+
+# ── both limit modes print the same summary layout ───────────────────────────
+
+def _summary_headings(output: str) -> list[str]:
+    """The two-space-indented section headings of the Summary, with counts masked."""
+    import re
+    lines = output[output.index("Summary"):].splitlines()
+    return [re.sub(r"\d+(\.\d+)?( MB| GB)?", "N", l.strip()) for l in lines
+            if l.startswith("  ") and not l.startswith("    ")]
+
+
+def test_summary_always_shows_running_and_skipped_even_when_nothing_was_skipped(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    out = _run(["serve", "--all", "--max-memory", "2.5GB"], reg,
+               total=16000, used=15000, per_wiki_rss=400).output
+    summary = out[out.index("Summary"):]
+    assert "Running (2)" in summary
+    assert "Skipped (0)" in summary and "none" in summary.split("Skipped (0)")[1].splitlines()[1]
+    assert "--max-memory" not in summary          # nothing to suggest when all started
+
+
+def test_default_and_budget_modes_print_the_same_summary_layout(tmp_path):
+    names = ["alpha", "beta", "gamma"]
+    reg = _registry(tmp_path, names)
+    default_mode = _run(["serve", "--all"], reg, total=16000, used=9000, per_wiki_rss=400).output
+    budget_mode = _run(["serve", "--all", "--max-memory", "2.5GB"], reg,
+                       total=16000, used=15000, per_wiki_rss=400).output
+    assert _summary_headings(default_mode) == _summary_headings(budget_mode)
+    # and both end with the same stop line
+    assert default_mode.rstrip().splitlines()[-1] == budget_mode.rstrip().splitlines()[-1]
+
+
+def test_summary_total_is_human_readable_not_a_long_decimal(tmp_path):
+    reg = _registry(tmp_path, [f"w{i}" for i in range(7)])
+    out = _run(["serve", "--all", "--max-memory", "4GB"], reg,
+               total=16000, used=15000, per_wiki_rss=221.3).output
+    line = next(l for l in out.splitlines() if l.strip().startswith("Started"))
+    assert "1.5 GB" in line, line                  # 7 x 221.3 = 1549 MB
+    import re
+    assert not re.search(r"\d\.\d{2,}", line), line
+
+
+def test_long_domains_are_truncated_so_the_table_stays_aligned(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    long_domain = "Private equity M&A due diligence - LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD"
+    cfg = tmp_path / "alpha" / ".synthadoc" / "config.toml"
+    cfg.write_text(f'[wiki]\ndomain = "{long_domain}"\n\n[server]\nport = 7100\n', encoding="utf-8")
+    out = _run(["serve", "--all"], reg, total=64000, used=8000, per_wiki_rss=400).output
+    rows = [l for l in out.splitlines() if "port 710" in l and l.startswith("    ")]
+    assert len(rows) == 2
+    assert long_domain not in out.split("Summary")[1]
+    assert "..." in rows[0]
+    assert max(len(r) for r in rows) <= 90, rows
