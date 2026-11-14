@@ -442,7 +442,11 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
     try:
         # ── [10] ingest staging ───────────────────────────────────────────────
         print("\n[10] ingest staging")
-        tmp_file = pathlib.Path(tempfile.mktemp(suffix=".txt", prefix="synthadoc_tmpl_"))
+        # mkstemp (not mktemp) — atomically creates the file, avoiding the
+        # TOCTOU race a bare mktemp() name leaves open. #CodeQL py/insecure-temporary-file
+        _fd, _tmp_file_name = tempfile.mkstemp(suffix=".txt", prefix="synthadoc_tmpl_")
+        os.close(_fd)
+        tmp_file = pathlib.Path(_tmp_file_name)
         tmp_file.write_text(
             "The Basel III accord requires banks to hold sufficient capital reserves "
             "as a percentage of their risk-weighted assets.\n",
