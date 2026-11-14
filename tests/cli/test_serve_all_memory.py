@@ -319,3 +319,55 @@ def test_long_domains_are_truncated_so_the_table_stays_aligned(tmp_path):
     assert long_domain not in out.split("Summary")[1]
     assert "..." in rows[0]
     assert max(len(r) for r in rows) <= 90, rows
+
+
+# ── memory is only read when there is something to start ─────────────────────
+
+def test_nothing_to_start_never_reads_memory_and_never_fails_on_unreadable_memory(tmp_path):
+    from synthadoc.cli.main import app
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    with patch("synthadoc.cli.serve.read_registry_all", return_value=reg), \
+         patch("synthadoc.cli._wiki.probe_port", return_value=True), \
+         patch("synthadoc.cli.serve.system_memory_mb") as sysmem, \
+         patch("synthadoc.cli.serve.subprocess.Popen") as popen:
+        result = runner.invoke(app, ["serve", "--all"])
+    assert result.exit_code == 0, result.output
+    sysmem.assert_not_called()
+    popen.assert_not_called()
+    out = _plain(result.output)
+    assert "Running (2)" in out and "Skipped (0)" in out
+
+
+def test_unreadable_memory_with_a_wiki_to_start_still_asks_for_max_memory(tmp_path):
+    """The ERR-SRV-005 guard still applies when something does need starting."""
+    from synthadoc.cli.main import app
+    reg = _registry(tmp_path, ["alpha"])
+    with patch("synthadoc.cli.serve.read_registry_all", return_value=reg), \
+         patch("synthadoc.cli._wiki.probe_port", return_value=False), \
+         patch("synthadoc.cli.serve.system_memory_mb", return_value=None), \
+         patch("synthadoc.cli.serve.subprocess.Popen") as popen:
+        result = runner.invoke(app, ["serve", "--all"])
+    assert result.exit_code != 0
+    popen.assert_not_called()
+    assert "ERR-SRV-005" in _plain(result.output)
+
+
+def test_all_running_with_a_subprocess_based_memory_reader_does_not_shell_out(tmp_path, monkeypatch):
+    """Regression: on macOS the memory reader shells out (sysctl/vm_stat) through
+    subprocess, so tests that patch subprocess.Popen made it fail and `serve --all`
+    exited with ERR-SRV-005 before printing a summary. Nothing to start -> no read.
+
+    Reproduced on any OS by pointing this platform's reader at the macOS one.
+    """
+    import sys
+    from synthadoc.cli import _memory
+    from synthadoc.cli.main import app
+    reader = {"win32": "_system_memory_windows", "linux": "_system_memory_linux",
+              "darwin": "_system_memory_macos"}[sys.platform]
+    monkeypatch.setattr(_memory, reader, _memory._system_memory_macos)
+    reg = _registry(tmp_path, ["alpha"])
+    with patch("synthadoc.cli.serve.read_registry_all", return_value=reg),          patch("synthadoc.cli._wiki.probe_port", return_value=True),          patch("synthadoc.cli.serve.subprocess.Popen") as popen:
+        result = runner.invoke(app, ["serve", "--all"])
+    assert result.exit_code == 0, result.output
+    popen.assert_not_called()
+    assert "Summary" in _plain(result.output)

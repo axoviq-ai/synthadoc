@@ -4570,7 +4570,7 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
 4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
 5. Output is compact: one line per wiki while starting, then a single **Summary**, produced by one shared function so the default and `--max-memory` runs have the same layout: **Running (N)** (name, port, domain truncated to 28 characters, measured memory; wikis that were already running are included and marked), a total in human-readable form (`1.5 GB`), and **Skipped (M)** with the exact `synthadoc serve -w <name> --background` command for each (an empty section prints `none`), plus a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
-6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading).
+6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading). Memory is only read when at least one wiki has to be started; if every wiki is already running, the command prints the summary and exits 0 without reading memory, so an unreadable memory source cannot make it fail.
 
 ```
 $ synthadoc serve --all --max-memory 1GB
