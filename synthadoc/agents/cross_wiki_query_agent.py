@@ -101,13 +101,26 @@ def _extract_meaningful_terms(text: str) -> set[str]:
     return terms
 
 
+_MIN_QUESTION_PART_WORDS = 4
+
+
 def _get_question_parts(question: str, sub_questions: list[str] | None = None) -> list[str]:
-    """Return distinct question parts, using sub_questions if multi-element, else splitting on conjunctions."""
+    """Return distinct question parts, using sub_questions if multi-element, else splitting on conjunctions.
+
+    Splitting on "and" can orphan a grammatical-subject-less fragment — e.g.
+    "growth projections" from "What are the revenue figures and growth
+    projections?" — whose terms are unlikely to appear in cited_text, causing
+    a false knowledge-gap callout even when the answer is fully covered
+    (#544). Fragments shorter than _MIN_QUESTION_PART_WORDS words are
+    discarded; if fewer than 2 valid parts remain, the whole question is
+    used as a single part instead of the orphaned fragment(s).
+    """
     if sub_questions and len(sub_questions) > 1:
         return sub_questions
     parts = re.split(r"\s+(?:and|as well as)\s+|[;?]+", question, flags=re.IGNORECASE)
     parts = [p.strip() for p in parts if p.strip()]
-    return parts if len(parts) > 1 else [question]
+    valid_parts = [p for p in parts if len(p.split()) >= _MIN_QUESTION_PART_WORDS]
+    return valid_parts if len(valid_parts) > 1 else [question]
 
 
 @dataclass
