@@ -18,7 +18,8 @@ from synthadoc.cli._wiki import (
 )
 from synthadoc import errors as E
 from synthadoc.cli._memory import (
-    DEFAULT_WIKI_ESTIMATE_MB, MemoryGate, format_memory_size, parse_memory_size,
+    DEFAULT_WIKI_ESTIMATE_MB, MemoryGate, format_memory_display, format_memory_size,
+    parse_memory_size,
     process_memory_mb, suggest_budget_mb, system_memory_mb,
 )
 from synthadoc.config import Provider
@@ -393,32 +394,49 @@ def _serve_all(
     _print_serve_all_summary(running, skipped, measured)
 
 
+_DOMAIN_COLUMN_MAX = 28
+
+
+def _short(text: str, width: int = _DOMAIN_COLUMN_MAX) -> str:
+    """Truncate with ``...`` so one long domain cannot push the table out of line."""
+    return text if len(text) <= width else text[: width - 3].rstrip() + "..."
+
+
 def _print_serve_all_summary(
     running: list[tuple[str, int, str, str]],
     skipped: list[str],
     measured: list[float],
 ) -> None:
-    """One summary at the end: what is running, what was skipped, and what to do next."""
+    """One summary, identical in layout for every limit mode.
+
+    Both sections are always shown (an empty one says ``none``), so the default
+    and ``--max-memory`` runs read the same.
+    """
     typer.echo("\nSummary")
     typer.echo(f"  Running ({len(running)}):")
     if running:
-        w_name = max(len(r[0]) for r in running)
-        w_dom = max(len(r[2]) for r in running)
-        for name, port, domain, mem in running:
+        rows = [(n, p, _short(d), m) for n, p, d, m in running]
+        w_name = max(len(r[0]) for r in rows)
+        w_dom = max(len(r[2]) for r in rows)
+        for name, port, domain, mem in rows:
             typer.echo(f"    {name:<{w_name}}  port {port}  {domain:<{w_dom}}  {mem}")
     else:
         typer.echo("    none")
     if measured:
-        typer.echo(f"  Started {len(measured)} wiki(s) using about {format_memory_size(sum(measured))} in total.")
+        typer.echo(f"  Started {len(measured)} wiki(s) using about "
+                   f"{format_memory_display(sum(measured))} in total.")
 
+    typer.echo(f"  Skipped ({len(skipped)}):")
     if skipped:
-        typer.echo(f"  Skipped ({len(skipped)}), memory limit reached:")
         for name in skipped:
             typer.echo(f"    synthadoc serve -w {name} --background")
         per_wiki = (sum(measured) / len(measured)) if measured else DEFAULT_WIKI_ESTIMATE_MB
         suggestion = format_memory_size(
             suggest_budget_mb(sum(measured), per_wiki, len(skipped)))
-        typer.echo(f"\nTo start the skipped wikis too: synthadoc serve --all --max-memory {suggestion}")
+        typer.echo(f"\nNot started because of the memory limit. "
+                   f"To start them too: synthadoc serve --all --max-memory {suggestion}")
+    else:
+        typer.echo("    none")
     typer.echo("To stop all running wikis: synthadoc stop --all")
 
 

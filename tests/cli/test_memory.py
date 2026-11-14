@@ -268,3 +268,13 @@ def test_suggested_budget_always_parses_and_fits_the_wikis():
         mb = suggest_budget_mb(started_mb=started, per_wiki_mb=per, remaining=rem)
         assert parse_memory_size(format_memory_size(mb)) == mb
         assert mb >= started + per * rem
+
+
+from synthadoc.cli._memory import format_memory_display
+
+
+@pytest.mark.parametrize("mb, expected", [
+    (161.0, "161 MB"), (800.4, "800 MB"), (1024.0, "1.0 GB"), (1581.8, "1.5 GB"), (2560.0, "2.5 GB"),
+])
+def test_format_memory_display_is_short_and_human_readable(mb, expected):
+    assert format_memory_display(mb) == expected
