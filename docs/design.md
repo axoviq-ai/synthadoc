@@ -1047,8 +1047,9 @@ synthadoc
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
-├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all [--max-memory <n>GB|<n>MB]]
 │                                                    — --host 0.0.0.0 binds all interfaces (Docker / remote access; v1.4.2)
+│                                                    — --all starts every registered wiki one at a time within a memory limit (~60% of the machine, or --max-memory; unit required)
 ├── stop [-w wiki] [--all]                           — stop a running wiki server (sends /shutdown; falls back to PID file)
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N] [--cross-wiki]
@@ -3156,6 +3157,8 @@ The audit trail records the same fields as a manual CLI transition — the MCP p
 | ------------- | -------------------------------------------------------------- |
 | `--mcp-only`  | Start only the MCP endpoint; suppress HTTP REST API and web UI |
 | `--http-only` | Start only the HTTP server; suppress the MCP mount             |
+| `--all`       | Start every registered wiki in the background, one at a time, within a memory limit (see *Starting many wikis*) |
+| `--max-memory <n>GB\|<n>MB` | With `--all`: most memory the started wikis may use in total; the unit is required. Default without it: keep the machine under ~60 % memory use |
 
 Default (no flag): both MCP and HTTP start together on the same port.
 
