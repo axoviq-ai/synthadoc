@@ -21,7 +21,7 @@ def _registry(tmp_path, names):
         root = tmp_path / n
         (root / ".synthadoc").mkdir(parents=True)
         (root / ".synthadoc" / "config.toml").write_text(
-            f"[server]\nport = {7100 + i}\n", encoding="utf-8")
+            f'[wiki]\ndomain = "Domain {n}"\n\n[server]\nport = {7100 + i}\n', encoding="utf-8")
         reg[n] = {"path": str(root), "port": 7100 + i}
     return reg
 
@@ -168,3 +168,87 @@ def test_max_memory_without_all_is_rejected():
     result = runner.invoke(app, ["serve", "--max-memory", "6GB"])
     assert result.exit_code != 0
     assert "--all" in result.output
+
+
+# ── output: compact lines + one summary at the end ───────────────────────────
+
+def test_all_mode_does_not_print_a_banner_block_for_every_wiki(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta", "gamma"])
+    out = _run(["serve", "--all"], reg, total=64000, used=8000).output
+    assert "To stop: kill" not in out
+    assert "Server running in background" not in out
+    assert out.count("Logs") == 0
+
+
+def test_summary_lists_running_wikis_with_port_domain_and_memory(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    out = _run(["serve", "--all"], reg, total=64000, used=8000, per_wiki_rss=400).output
+    summary = out[out.index("Summary"):]
+    assert "Running (2)" in summary
+    for name, port in (("alpha", 7100), ("beta", 7101)):
+        line = next(l for l in summary.splitlines() if name in l and str(port) in l)
+        assert f"Domain {name}" in line
+        assert "400 MB" in line
+    assert "Skipped" not in summary
+
+
+def test_summary_includes_wikis_that_were_already_running(tmp_path):
+    from synthadoc.cli.main import app
+    reg = _registry(tmp_path, ["alpha"])
+    with patch("synthadoc.cli.serve.read_registry_all", return_value=reg), \
+         patch("synthadoc.cli._wiki.probe_port", return_value=True), \
+         patch("synthadoc.cli.serve.subprocess.Popen"):
+        out = runner.invoke(app, ["serve", "--all"]).output
+    summary = out[out.index("Summary"):]
+    assert "Running (1)" in summary and "alpha" in summary and "already running" in summary
+
+
+def test_summary_lists_skipped_wikis_with_commands(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta", "gamma"])
+    out = _run(["serve", "--all"], reg, total=16000, used=9000, per_wiki_rss=400).output
+    summary = out[out.index("Summary"):]
+    assert "Running (1)" in summary
+    assert "Skipped (2)" in summary
+    assert "synthadoc serve -w beta --background" in summary
+    assert "synthadoc serve -w gamma --background" in summary
+
+
+def test_no_nested_parentheses_in_the_skipped_output(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    out = _run(["serve", "--all"], reg, total=16000, used=9000, per_wiki_rss=400).output
+    assert "memory limit (keep" not in out
+    for line in out.splitlines():
+        depth = 0
+        for ch in line:
+            depth += (ch == "(") - (ch == ")")
+            assert depth <= 1, f"nested parentheses: {line}"
+
+
+# ── the hint suggests a budget computed from what was measured ───────────────
+
+def test_hint_suggests_a_budget_that_fits_the_skipped_wikis(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta", "gamma", "delta"])
+    # busy machine -> only alpha starts (400 MB). 3 skipped x 400 = 1200; total 1600 MB
+    # plus 25% headroom = 2000 MB -> rounded up to 2GB.
+    out = _run(["serve", "--all"], reg, total=16000, used=15000, per_wiki_rss=400).output
+    assert "--max-memory 2GB" in out
+    assert "8GB" not in out
+
+
+def test_no_hint_when_every_wiki_was_started(tmp_path):
+    reg = _registry(tmp_path, ["alpha", "beta"])
+    out = _run(["serve", "--all", "--max-memory", "6GB"], reg, total=16000, used=15000, per_wiki_rss=400).output
+    assert "Skipped" not in out
+    assert "--max-memory 6GB" not in out.split("Summary")[-1]
+
+
+def test_verbose_shows_the_per_wiki_pid_and_log_details(tmp_path):
+    reg = _registry(tmp_path, ["alpha"])
+    out = _run(["serve", "--all", "--verbose"], reg, total=64000, used=8000).output
+    assert "Server running in background" in out and "Logs" in out
+
+
+def test_summary_tells_how_to_stop_everything(tmp_path):
+    reg = _registry(tmp_path, ["alpha"])
+    out = _run(["serve", "--all"], reg, total=64000, used=8000).output
+    assert "synthadoc stop --all" in out

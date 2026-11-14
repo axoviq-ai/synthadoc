@@ -234,3 +234,24 @@ def _process_memory_windows(pid: int) -> Optional[float]:
         return counters.WorkingSetSize / (1024.0 * 1024.0)
     finally:
         kernel32.CloseHandle(handle)
+
+
+# ── formatting and suggestions ───────────────────────────────────────────────
+
+def format_memory_size(mb: float) -> str:
+    """Format MB as a valid ``--max-memory`` value: ``2GB``, ``1.5GB`` or ``800MB``."""
+    if mb >= 1024:
+        return f"{mb / 1024:g}GB"
+    return f"{int(round(mb))}MB"
+
+
+def suggest_budget_mb(started_mb: float, per_wiki_mb: float, remaining: int,
+                      headroom: float = 1.25) -> float:
+    """A ``--max-memory`` budget big enough for the started wikis plus ``remaining`` more.
+
+    Adds 25 % headroom (wikis grow once their embedding model loads) and rounds up
+    to a tidy value: 100 MB steps below 1 GB, 0.5 GB steps above.
+    """
+    needed = (started_mb + per_wiki_mb * remaining) * headroom
+    step = 100.0 if needed < 1024 else 512.0
+    return float(-(-needed // step) * step)

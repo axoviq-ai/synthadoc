@@ -8,7 +8,9 @@ import pytest
 from synthadoc.cli._memory import (
     DEFAULT_CEILING_FRACTION,
     MemoryGate,
+    format_memory_size,
     parse_memory_size,
+    suggest_budget_mb,
 )
 
 
@@ -238,3 +240,31 @@ def test_real_process_memory_of_this_process_is_sane_on_this_os():
 
 def test_real_process_memory_of_a_missing_pid_is_none():
     assert process_memory_mb(2_000_000_000) is None
+
+
+# ── suggested budget + parseable formatting ──────────────────────────────────
+
+
+
+@pytest.mark.parametrize("mb, expected", [
+    (2048.0, "2GB"), (1536.0, "1.5GB"), (2560.0, "2.5GB"), (800.0, "800MB"), (1024.0, "1GB"),
+])
+def test_format_memory_size_is_always_a_valid_flag_value(mb, expected):
+    assert format_memory_size(mb) == expected
+    assert parse_memory_size(format_memory_size(mb)) == mb
+
+
+def test_suggest_budget_adds_headroom_and_rounds_up_to_half_a_gb():
+    # (400 started + 3 x 400 skipped) = 1600 MB, +25% = 2000 MB -> 2048 MB
+    assert suggest_budget_mb(started_mb=400, per_wiki_mb=400, remaining=3) == 2048.0
+
+
+def test_suggest_budget_rounds_small_budgets_up_to_100mb():
+    assert suggest_budget_mb(started_mb=100, per_wiki_mb=100, remaining=1) == 300.0   # 200*1.25=250 -> 300
+
+
+def test_suggested_budget_always_parses_and_fits_the_wikis():
+    for started, per, rem in [(160, 160, 10), (1500, 700, 4), (50, 50, 1)]:
+        mb = suggest_budget_mb(started_mb=started, per_wiki_mb=per, remaining=rem)
+        assert parse_memory_size(format_memory_size(mb)) == mb
+        assert mb >= started + per * rem
