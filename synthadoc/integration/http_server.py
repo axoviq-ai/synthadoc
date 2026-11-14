@@ -1381,7 +1381,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
                     return
                 except Exception as exc:
-                    yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+                    # Log the real exception server-side only — its message text
+                    # can carry internal details (paths, hostnames, library
+                    # internals) that must not reach the external client. #CodeQL py/stack-trace-exposure
+                    logger.exception("cross-wiki query failed for session %s", session_id)
+                    yield f"event: error\ndata: {_json.dumps({'message': 'The query could not be completed due to an internal error.'})}\n\n"
                     return
             else:
                 try:
@@ -1390,7 +1394,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s'})}\n\n"
                     return
                 except Exception as exc:
-                    yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+                    logger.exception("cross-wiki query failed for session %s", session_id)
+                    yield f"event: error\ndata: {_json.dumps({'message': 'The query could not be completed due to an internal error.'})}\n\n"
                     return
 
             yield f"event: wikis_result\ndata: {_json.dumps({'responded': [w for w in result.cross_wiki_searched if w not in result.cross_wiki_offline], 'offline': result.cross_wiki_offline})}\n\n"
@@ -1859,13 +1864,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/ingest")
     async def agent_ingest(request: Request, req: AgentIngestRequest):
-        src = Path(req.source_path)
-        # Validate path is within wiki_root.
-        try:
-            resolved = src.resolve()
-            wiki_root_resolved = wiki_root.resolve()
-            resolved.relative_to(wiki_root_resolved)
-        except ValueError:
+        # Validate path is within wiki_root before any filesystem access —
+        # an explicit boolean check (not exception-driven control flow) so
+        # the rejection is unambiguous. #CodeQL py/path-injection
+        src = Path(req.source_path).resolve()
+        wiki_root_resolved = wiki_root.resolve()
+        if not src.is_relative_to(wiki_root_resolved):
             raise HTTPException(status_code=403, detail="source_path is outside wiki root")
         if not src.exists():
             raise HTTPException(status_code=404, detail=f"File not found: {req.source_path}")
