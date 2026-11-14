@@ -332,17 +332,6 @@ def _serve_all(
         except ValueError as exc:
             raise typer.BadParameter(str(exc), param_hint="--max-memory")
 
-    snapshot = system_memory_mb()
-    if snapshot is None:
-        if budget_mb is None:
-            E.cli_error(
-                E.SRV_MEMORY_UNREADABLE,
-                "Cannot read this machine's memory use, so --all cannot limit how many wikis start.",
-                "Pass an explicit limit, for example: synthadoc serve --all --max-memory 6GB",
-            )
-        snapshot = (0.0, 0.0)
-    gate = MemoryGate(total_mb=snapshot[0], used_mb=snapshot[1], budget_mb=budget_mb)
-
     extra_args: list[str] = []
     if provider_override:
         extra_args += ["--provider", provider_override]
@@ -352,7 +341,28 @@ def _serve_all(
         extra_args += ["--verbose"]
 
     registry = read_registry_all()
-    typer.echo(f"Starting wikis one at a time. Limit: {gate.describe()}")
+    already_running = {
+        n for n, e in registry.items() if e.get("port") and _probe_port(e["port"])
+    }
+
+    # Memory is only read when something has to be started: if every wiki is
+    # already running there is nothing to limit, and an unreadable memory source
+    # must not make `serve --all` fail.
+    gate: MemoryGate | None = None
+    if len(already_running) < len(registry):
+        snapshot = system_memory_mb()
+        if snapshot is None:
+            if budget_mb is None:
+                E.cli_error(
+                    E.SRV_MEMORY_UNREADABLE,
+                    "Cannot read this machine's memory use, so --all cannot limit how many wikis start.",
+                    "Pass an explicit limit, for example: synthadoc serve --all --max-memory 6GB",
+                )
+            snapshot = (0.0, 0.0)
+        gate = MemoryGate(total_mb=snapshot[0], used_mb=snapshot[1], budget_mb=budget_mb)
+        typer.echo(f"Starting wikis one at a time. Limit: {gate.describe()}")
+    else:
+        typer.echo("All registered wikis are already running.")
     running: list[tuple[str, int, str, str]] = []   # (name, port, domain, memory text)
     measured: list[float] = []
     skipped: list[str] = []
@@ -360,7 +370,7 @@ def _serve_all(
     for name, entry in registry.items():
         port_val = entry.get("port")
         wiki_path = Path(entry["path"])
-        if port_val and _probe_port(port_val):
+        if name in already_running:
             typer.echo(f"  {name}: already running on port {port_val}")
             running.append((name, port_val, _wiki_domain(wiki_path), "already running"))
             continue
@@ -369,6 +379,7 @@ def _serve_all(
             continue
         next_cost = max(sum(measured) / len(measured), DEFAULT_WIKI_ESTIMATE_MB * 0.6) \
             if measured else DEFAULT_WIKI_ESTIMATE_MB
+        assert gate is not None           # a wiki that needs starting implies the gate exists
         if not gate.allows_next(started=len(measured), next_cost_mb=next_cost):
             skipped.append(name)
             continue
