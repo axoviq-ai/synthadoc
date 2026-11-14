@@ -6,6 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Default GITHUB_TOKEN scope for jobs that don't declare their own
+# permissions block. coverage-badge below declares its own contents:write,
+# which fully overrides this default for that job only.
+# #CodeQL actions/missing-workflow-permissions
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
