@@ -1,7 +1,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent
+from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _get_question_parts
 
 REGISTRY = {
     "coordinator": {"path": "/wikis/coord", "port": 7070, "purpose_summary": "Finance domain"},
@@ -863,3 +863,50 @@ async def test_cross_wiki_title_only_citation_still_covers_terms_no_gap():
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
+
+
+class TestGetQuestionParts:
+    """GitHub #544: splitting on "and" can orphan a grammatical-subject-less
+    fragment (e.g. "growth projections" from "...revenue figures and growth
+    projections?"), whose terms are unlikely to appear in cited_text — causing
+    a false knowledge-gap callout even when the answer is fully covered.
+    """
+
+    def test_short_trailing_fragment_falls_back_to_whole_question(self):
+        question = "What are the revenue figures and growth projections?"
+        # "growth projections" (2 words) is discarded as too short to carry
+        # its own grammatical subject, leaving only 1 valid part — below the
+        # 2-part minimum — so the whole original question is used instead of
+        # the orphaned fragment.
+        assert _get_question_parts(question) == [question]
+
+    def test_two_sufficiently_long_parts_still_split(self):
+        question = "What is the leverage ratio and how do I deploy the application?"
+        assert _get_question_parts(question) == [
+            "What is the leverage ratio",
+            "how do I deploy the application",
+        ]
+
+    def test_short_leading_fragment_also_falls_back(self):
+        question = "Costs and how does the revenue recognition process work?"
+        assert _get_question_parts(question) == [question]
+
+    def test_no_conjunction_returns_whole_question(self):
+        question = "What is the deployment process?"
+        assert _get_question_parts(question) == [question]
+
+    def test_sub_questions_bypass_conjunction_splitting(self):
+        sub_questions = ["revenue figures", "growth projections"]
+        assert _get_question_parts(
+            "What are the revenue figures and growth projections?", sub_questions
+        ) == sub_questions
+
+    def test_three_parts_two_valid_one_short_keeps_only_valid(self):
+        question = "What is the leverage ratio and how do I deploy it and costs?"
+        # "costs?" (1 word) is discarded; the other two parts (5+ words each)
+        # meet the minimum and 2 valid parts is enough to split rather than
+        # fall back.
+        assert _get_question_parts(question) == [
+            "What is the leverage ratio",
+            "how do I deploy it",
+        ]
