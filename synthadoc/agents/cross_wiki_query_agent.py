@@ -336,8 +336,13 @@ class CrossWikiQueryAgent(BaseAgent):
 
         cited_page_objs = [
             p for p in pages
+            # matching_cited_pages always stores the "wiki::slug" form
+            # regardless of which citation style matched it (slug, title, or
+            # bracket) — so this slug check alone already covers every page
+            # matching_cited_pages contains. A "wiki::title" variant of this
+            # check was dead code: comparing against a list that only ever
+            # holds "wiki::slug" strings. #545
             if f"{p['wiki_name']}::{p['slug']}" in matching_cited_pages
-            or (bool(p.get("title")) and f"{p['wiki_name']}::{p['title']}" in matching_cited_pages)
             or (bool(p.get("title")) and f"[[{p['title']}]]" in answer_text)
             or (bool(p.get("title")) and p["title"] in answer_text)
             or f"[[{p['slug']}]]" in answer_text
