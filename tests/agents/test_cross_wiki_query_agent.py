@@ -826,3 +826,40 @@ async def test_cross_wiki_peer_wiki_negative_admission_does_not_trigger_gap():
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
     assert "target::deployment-runbook" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_title_only_citation_still_covers_terms_no_gap():
+    """GitHub #545: a page cited only in "wiki::title" form (never "wiki::slug"
+    or a [[bracket]] form) must still count toward term coverage.
+
+    cited_page_objs had a dead branch comparing "wiki::title" against
+    matching_cited_pages — a list that only ever holds "wiki::slug" strings
+    (matching_cited_pages always stores the slug form regardless of which
+    citation style actually matched). That branch could never fire. This
+    pins the behavior the fix must preserve: a page that's only identifiable
+    via its title-qualified citation is still pulled into cited_text (via
+    matching_cited_pages's slug-based membership, and independently via the
+    bare-title check), so its content satisfies term coverage and no
+    knowledge gap is raised.
+    """
+    answer = "According to target::Quantum Thermostat Configuration Guide, this works great."
+    assert len(answer) < 300  # concise answer that would fail Guard C
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [{
+            "slug": "quantum-thermostat-guide",
+            "title": "Quantum Thermostat Configuration Guide",
+            "score": 0.5,
+            "content": "This guide explains how quantum thermostats are configured for optimal performance.",
+        }],
+        "purpose_summary": "Engineering domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("How are quantum thermostats configured?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
