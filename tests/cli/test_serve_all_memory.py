@@ -7,12 +7,25 @@ server processes without end, so these tests never launch anything.
 """
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile("\x1b\\[[0-9;?]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI colour codes.
+
+    Typer/Rich colour error boxes when GITHUB_ACTIONS (or FORCE_COLOR) is set, and
+    highlight each option separately ("-" + "-all"), so a literal "--all" is never
+    present in the raw text on CI even though it is on a developer machine.
+    """
+    return _ANSI_RE.sub("", text)
 
 
 def _registry(tmp_path, names):
@@ -135,7 +148,7 @@ def test_max_memory_without_valid_unit_is_rejected_before_anything_starts(tmp_pa
     result = _run(["serve", "--all", "--max-memory", bad], reg)
     assert result.exit_code != 0
     assert _FakePopen.instances == []
-    assert "GB" in result.output and "MB" in result.output
+    assert "GB" in _plain(result.output) and "MB" in _plain(result.output)
 
 
 # ── unchanged behavior ───────────────────────────────────────────────────────
@@ -160,14 +173,14 @@ def test_unreadable_system_memory_requires_explicit_max_memory(tmp_path):
         result = runner.invoke(app, ["serve", "--all"])
     popen.assert_not_called()
     assert result.exit_code != 0
-    assert "ERR-SRV-005" in result.output and "--max-memory" in result.output
+    assert "ERR-SRV-005" in _plain(result.output) and "--max-memory" in _plain(result.output)
 
 
 def test_max_memory_without_all_is_rejected():
     from synthadoc.cli.main import app
     result = runner.invoke(app, ["serve", "--max-memory", "6GB"])
     assert result.exit_code != 0
-    assert "--all" in result.output
+    assert "--all" in _plain(result.output)
 
 
 # ── output: compact lines + one summary at the end ───────────────────────────
