@@ -18,8 +18,8 @@ from synthadoc.cli._wiki import (
 )
 from synthadoc import errors as E
 from synthadoc.cli._memory import (
-    DEFAULT_WIKI_ESTIMATE_MB, MemoryGate, parse_memory_size,
-    process_memory_mb, system_memory_mb,
+    DEFAULT_WIKI_ESTIMATE_MB, MemoryGate, format_memory_size, parse_memory_size,
+    process_memory_mb, suggest_budget_mb, system_memory_mb,
 )
 from synthadoc.config import Provider
 
@@ -190,7 +190,8 @@ def _check_api_key(cfg, agent_name: str = "ingest") -> None:
 
 def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
                        banner_kwargs: dict | None = None,
-                       server_args: list[str] | None = None) -> int:
+                       server_args: list[str] | None = None,
+                       quiet: bool = False) -> int:
     """Detach the server as a background process and return its PID.
 
     ``server_args`` is the argument list for the child (everything after the
@@ -246,14 +247,15 @@ def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
             f"Check logs: {log_path}",
         )
 
-    typer.echo(
-        f"\nServer running in background\n"
-        f"  PID   {proc.pid}\n"
-        f"  Port  {effective_port}\n"
-        f"  Logs  {log_path}\n"
-        f"\nTo stop: kill {proc.pid}"
-        + (f"  (or: taskkill /PID {proc.pid} /F)" if sys.platform == "win32" else "")
-    )
+    if not quiet:
+        typer.echo(
+            f"\nServer running in background\n"
+            f"  PID   {proc.pid}\n"
+            f"  Port  {effective_port}\n"
+            f"  Logs  {log_path}\n"
+            f"\nTo stop: kill {proc.pid}"
+            + (f"  (or: taskkill /PID {proc.pid} /F)" if sys.platform == "win32" else "")
+        )
     return proc.pid
 
 
@@ -261,6 +263,7 @@ def _spawn_background_for_path(
     wiki_path: Path,
     wiki_name: str,
     extra_args: list[str] | None = None,
+    quiet: bool = False,
 ) -> tuple[int, int] | None:
     """Start one wiki's server in the background. Used by --all.
 
@@ -276,8 +279,17 @@ def _spawn_background_for_path(
     port = cfg.server.port
     log_path = wiki_path / ".synthadoc" / "logs" / "synthadoc.log"
     child_args = ["serve", "-w", wiki_name] + list(extra_args or [])
-    pid = _spawn_background(wiki_path, port, log_path, server_args=child_args)
+    pid = _spawn_background(wiki_path, port, log_path, server_args=child_args, quiet=quiet)
     return pid, port
+
+
+def _wiki_domain(wiki_path: Path) -> str:
+    """The wiki's ``[wiki] domain`` from its config.toml, or ``-`` if unreadable."""
+    try:
+        from synthadoc.config import load_config
+        return load_config(project_config=wiki_path / ".synthadoc" / "config.toml").wiki.domain
+    except Exception:
+        return "-"
 
 
 _HEALTH_WAIT_SECONDS = 60.0
@@ -339,32 +351,35 @@ def _serve_all(
         extra_args += ["--verbose"]
 
     registry = read_registry_all()
-    typer.echo(f"Starting wikis one at a time — {gate.describe()}")
-    started: list[str] = []
+    typer.echo(f"Starting wikis one at a time. Limit: {gate.describe()}")
+    running: list[tuple[str, int, str, str]] = []   # (name, port, domain, memory text)
     measured: list[float] = []
     skipped: list[str] = []
 
     for name, entry in registry.items():
         port_val = entry.get("port")
+        wiki_path = Path(entry["path"])
         if port_val and _probe_port(port_val):
             typer.echo(f"  {name}: already running on port {port_val}")
+            running.append((name, port_val, _wiki_domain(wiki_path), "already running"))
             continue
         if skipped:                       # the limit was already hit; the rest wait
             skipped.append(name)
             continue
         next_cost = max(sum(measured) / len(measured), DEFAULT_WIKI_ESTIMATE_MB * 0.6) \
             if measured else DEFAULT_WIKI_ESTIMATE_MB
-        if not gate.allows_next(started=len(started), next_cost_mb=next_cost):
+        if not gate.allows_next(started=len(measured), next_cost_mb=next_cost):
             skipped.append(name)
             continue
 
-        spawned = _spawn_background_for_path(Path(entry["path"]), name, extra_args)
+        # Per-wiki PID/log details are only useful when debugging: shown with --verbose.
+        spawned = _spawn_background_for_path(wiki_path, name, extra_args, quiet=not verbose)
         if spawned is None:
             continue
         pid, port = spawned
         if not _wait_for_health(port):
             typer.echo(f"  {name}: did not answer on port {port} within "
-                       f"{int(_HEALTH_WAIT_SECONDS)}s — continuing", err=True)
+                       f"{int(_HEALTH_WAIT_SECONDS)}s, continuing", err=True)
         rss = process_memory_mb(pid)
         used_by_wiki = rss if rss else DEFAULT_WIKI_ESTIMATE_MB
         measured.append(used_by_wiki)
@@ -372,20 +387,39 @@ def _serve_all(
         latest = system_memory_mb()
         if latest is not None:
             gate.update_used(latest[1])
-        started.append(name)
-        typer.echo(f"  {name}: started in background ({used_by_wiki:.0f} MB)")
+        running.append((name, port, _wiki_domain(wiki_path), f"{used_by_wiki:.0f} MB"))
+        typer.echo(f"  {name}: started ({used_by_wiki:.0f} MB)")
+
+    _print_serve_all_summary(running, skipped, measured)
+
+
+def _print_serve_all_summary(
+    running: list[tuple[str, int, str, str]],
+    skipped: list[str],
+    measured: list[float],
+) -> None:
+    """One summary at the end: what is running, what was skipped, and what to do next."""
+    typer.echo("\nSummary")
+    typer.echo(f"  Running ({len(running)}):")
+    if running:
+        w_name = max(len(r[0]) for r in running)
+        w_dom = max(len(r[2]) for r in running)
+        for name, port, domain, mem in running:
+            typer.echo(f"    {name:<{w_name}}  port {port}  {domain:<{w_dom}}  {mem}")
+    else:
+        typer.echo("    none")
+    if measured:
+        typer.echo(f"  Started {len(measured)} wiki(s) using about {format_memory_size(sum(measured))} in total.")
 
     if skipped:
-        typer.echo(
-            f"\nSkipped {len(skipped)} wiki(s) to stay within the memory limit "
-            f"({gate.describe()}):"
-        )
+        typer.echo(f"  Skipped ({len(skipped)}), memory limit reached:")
         for name in skipped:
-            typer.echo(f"  synthadoc serve -w {name} --background")
-        typer.echo(
-            "\nTo start more at once, set a larger limit, for example: "
-            "synthadoc serve --all --max-memory 8GB"
-        )
+            typer.echo(f"    synthadoc serve -w {name} --background")
+        per_wiki = (sum(measured) / len(measured)) if measured else DEFAULT_WIKI_ESTIMATE_MB
+        suggestion = format_memory_size(
+            suggest_budget_mb(sum(measured), per_wiki, len(skipped)))
+        typer.echo(f"\nTo start the skipped wikis too: synthadoc serve --all --max-memory {suggestion}")
+    typer.echo("To stop all running wikis: synthadoc stop --all")
 
 
 def _apply_provider_override(cfg, provider_name: str) -> None:

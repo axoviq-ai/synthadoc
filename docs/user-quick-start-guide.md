@@ -4631,7 +4631,7 @@ synthadoc serve -w finance-wiki --background
 synthadoc serve -w legal-wiki --background
 ```
 
-Each running wiki uses a few hundred MB of memory, so `--all` starts wikis one at a time and measures real memory use. If not every wiki fits, it lists the ones it skipped with the exact `synthadoc serve -w <name> --background` command to start them. To allow more, raise the limit, for example `--max-memory 8GB`. The number must always include its unit (`GB` or `MB`); `--max-memory 6000` is rejected.
+Each running wiki uses a few hundred MB of memory, so `--all` starts wikis one at a time and measures real memory use. It finishes with a summary of the wikis that are running (port, domain, memory) and, if not every wiki fit, the ones it skipped with the exact `synthadoc serve -w <name> --background` command to start them, plus a suggested `--max-memory` value that fits them all. Add `--verbose` to also see each server's PID and log path. Stop everything with `synthadoc stop --all`. The number must always include its unit (`GB` or `MB`); `--max-memory 6000` is rejected.
 
 Each server starts on its registered port. `--all` skips any wiki whose port is already responding.
 
