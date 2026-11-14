@@ -125,6 +125,29 @@ def test_path_traversal_rejected(tmp_wiki):
         store.read_page("../outside")
 
 
+def test_absolute_path_slug_rejected(tmp_wiki):
+    """GitHub code-scanning py/path-injection: pathlib's ``/`` operator
+    discards the left operand entirely when the right operand is absolute
+    (``Path("/root") / "/etc/passwd"`` == ``Path("/etc/passwd")``), so a slug
+    of "/etc/passwd" must not be allowed to override the wiki root.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    with pytest.raises(PermissionError):
+        store.read_page("/etc/passwd")
+
+
+def test_embedded_separator_slug_rejected(tmp_wiki):
+    """A slug is a single filename component — embedded "/" or "\\" must be
+    rejected outright rather than relying solely on the post-hoc resolve()
+    check, as explicit defense-in-depth against path injection.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    with pytest.raises(PermissionError):
+        store.read_page("sub/dir")
+    with pytest.raises(PermissionError):
+        store.read_page("sub\\dir")
+
+
 def test_orphan_flag_roundtrip(tmp_wiki):
     """orphan=True must be written to and read from frontmatter correctly."""
     store = WikiStorage(tmp_wiki / "wiki")

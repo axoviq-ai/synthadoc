@@ -187,6 +187,16 @@ class WikiStorage:
             )
 
     def _page_path(self, slug: str) -> Path:
+        # A slug must name a single file directly under root — reject
+        # embedded path separators up front rather than relying solely on
+        # the post-hoc resolve()+relative_to() check below, which only
+        # catches an escape *outside* root. "sub/dir" stays inside root but
+        # still lets user-controlled input dictate filesystem shape (nested
+        # dirs) the slug contract never promised. #CodeQL py/path-injection
+        if "/" in slug or "\\" in slug:
+            raise PermissionError(
+                f"Slug {slug!r} contains a path separator and could place the page outside wiki root"
+            )
         page_path = self._root / f"{slug}.md"
         self._assert_in_root(page_path)
         return page_path
