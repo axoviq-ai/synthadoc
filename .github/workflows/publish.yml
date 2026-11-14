@@ -7,6 +7,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # #CodeQL actions/missing-workflow-permissions — only needs to read the
+    # checkout; no write access required for building the dist artifact.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

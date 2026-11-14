@@ -30,6 +30,15 @@ jobs:
       packages: write   # needed if also pushing to ghcr.io
 
     steps:
+      # #CodeQL actions/untrusted-checkout/high — this checks out a SHA from
+      # a privileged `workflow_run` trigger, which the query flags generically
+      # since that SHA can be fork-PR-controlled in the common case. Reviewed:
+      # the only upstream workflow this can fire after is "Publish to PyPI"
+      # (see publish.yml), which itself only triggers on `release: published`
+      # — an event only a maintainer with repo write access can create. The
+      # `workflow_dispatch` path here requires the same write access to
+      # trigger manually. Neither path lets an untrusted fork PR reach this
+      # checkout, so there is no privilege-escalation route through it.
       - uses: actions/checkout@v4
         with:
           # workflow_run sets head_sha; workflow_dispatch falls back to the triggering commit.
