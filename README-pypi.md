@@ -752,6 +752,9 @@ synthadoc serve --all
 # Same, but cap the total memory the started wikis may use (a unit is required: GB or MB)
 synthadoc serve --all --max-memory 6GB
 
+# Also show each server's PID and log path (hidden by default; only useful when debugging)
+synthadoc serve --all --verbose
+
 # Stop the active wiki server
 synthadoc stop
 
