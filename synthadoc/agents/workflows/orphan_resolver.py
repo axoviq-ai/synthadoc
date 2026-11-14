@@ -40,6 +40,19 @@ if TYPE_CHECKING:
 
 _log = __import__("logging").getLogger(__name__)
 
+def slug_not_active_message(slug: str, reason: str) -> str:
+    """User-facing text for ``--slug`` naming a page that is not an active page.
+
+    ``reason`` is the tool's value: ``not_found``, ``archived`` or ``contradicted``.
+    Kept in step with the wording in the system prompt's STEP 1.
+    """
+    if reason == "not_found":
+        return (f"Page '{slug}' does not exist in this wiki, so there is nothing to resolve. "
+                f"Check the slug, or omit --slug to scan all orphans.")
+    return (f"'{slug}' is {reason}, not active. The orphan resolver only handles active "
+            f"pages. No action taken.")
+
+
 _SYSTEM_PROMPT = """\
 You are a wiki maintenance agent specialising in resolving orphaned pages.
 An orphaned page is an active page with no incoming [[wikilinks]] from other \
@@ -104,8 +117,16 @@ STEP 1 — Discover orphans
                        Respond with plain text (ends loop):
                        "<slug> is not an active orphan page — it already has inbound
                         wikilinks from: <linked_by list>. No action needed."
-    • resolved=false → treat this slug as the only orphan. Set orphan count = 1
-                       and proceed directly to STEP 3 (skip STEP 2).
+    • not_active=true → the slug is not an active page, so it is NOT an orphan
+                       ("reason" says why: not_found, archived or contradicted).
+                       Respond with plain text (ends loop). For reason=not_found:
+                       "Page '<slug>' does not exist in this wiki, so there is nothing
+                        to resolve. Check the slug, or omit --slug to scan all orphans."
+                       Otherwise: "'<slug>' is <reason>, not active. The orphan resolver
+                        only handles active pages. No action taken."
+                       Do NOT call tool_estimate_and_confirm for it.
+    • resolved=false (and no not_active) → treat this slug as the only orphan.
+                       Set orphan count = 1 and proceed directly to STEP 3 (skip STEP 2).
   Otherwise call tool_find_orphaned_pages().
 
 STEP 2 — Check for work
@@ -468,6 +489,12 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         if page_slug:
             # Single-orphan path: verify first (system prompt §STEP 1 --slug branch)
             pre = await tool_verify_orphan_resolved(ctx, orphan_slug=page_slug)
+            if pre.get("not_active"):
+                # Nonexistent / archived / contradicted: not an orphan, so no estimate.
+                msg = slug_not_active_message(page_slug, pre.get("reason", "not_found"))
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
             if pre.get("resolved"):
                 linked_by = ", ".join(pre.get("linked_by") or []) or "unknown"
                 msg = (
