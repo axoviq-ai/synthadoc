@@ -4566,8 +4566,26 @@ The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for th
 2. Wikis start **sequentially**. After each is healthy (`GET /health`, up to 60 s), its real resident memory is measured and the next wiki is only started if it still fits. The next wiki's cost is estimated from the wikis already started (500 MB before the first measurement).
 3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
 4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
-5. Wikis that do not fit are listed with `synthadoc serve -w <name> --background` and a `--max-memory` hint. The command still exits 0.
+5. Output is compact: one line per wiki while starting, then a single **Summary** with the running wikis (name, port, domain, measured memory; wikis that were already running are included and marked), the skipped wikis with the exact `synthadoc serve -w <name> --background` command for each, and a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
 6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading).
+
+```
+$ synthadoc serve --all --max-memory 1GB
+Starting wikis one at a time. Limit: --max-memory budget 1.0 GB for the wikis started by this command
+  my-op-supply-docker: started (160 MB)
+  ...
+Summary
+  Running (5):
+    my-op-supply-docker       port 7070  General   160 MB
+    ...
+  Started 5 wiki(s) using about 800MB in total.
+  Skipped (3), memory limit reached:
+    synthadoc serve -w pc-fin-invest --background
+    ...
+
+To start the skipped wikis too: synthadoc serve --all --max-memory 2GB
+To stop all running wikis: synthadoc stop --all
+```
 
 **Units are mandatory.** `--max-memory 6GB` and `--max-memory 6000MB` are valid (case-insensitive, decimals allowed, 1 GB = 1024 MB). A bare `6000`, `6KB`, `6G`, zero or a negative value is rejected before anything starts, with the message *Memory size needs a unit: GB or MB*. `--max-memory` without `--all` is an error.
 
