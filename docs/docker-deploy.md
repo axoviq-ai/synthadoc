@@ -682,6 +682,10 @@ docker exec history-of-computing synthadoc templates set-origin ai-research/main
 docker exec history-of-computing synthadoc templates set-origin history-of-computing
 ```
 
+### Several wikis on one host
+
+Run one container per wiki and size them yourself: `synthadoc serve --all` is a host-level command that starts native processes and does not apply inside the image. Each idle wiki server needs a few hundred MB, so limit container memory (`docker run --memory 1g ...`) and keep the total under your host's capacity. For native installs, `synthadoc serve --all --max-memory 6GB` enforces a total (a unit is required).
+
 ### Stop and restart
 
 ```bash
