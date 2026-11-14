@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.5.1
+**Version:** 1.5.2
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -1047,8 +1047,9 @@ synthadoc
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
-├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all [--max-memory <n>GB|<n>MB]]
 │                                                    — --host 0.0.0.0 binds all interfaces (Docker / remote access; v1.4.2)
+│                                                    — --all starts every registered wiki one at a time within a memory limit (~60% of the machine, or --max-memory; unit required)
 ├── stop [-w wiki] [--all]                           — stop a running wiki server (sends /shutdown; falls back to PID file)
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N] [--cross-wiki]
@@ -1255,6 +1256,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-SRV-002`    | Port already bound by another process                     |
 | `ERR-SRV-003`    | Server returned a 4xx/5xx HTTP response                   |
 | `ERR-SRV-004`    | Background server process exited immediately              |
+| `ERR-SRV-005`    | `serve --all` cannot read system memory to limit how many wikis start (pass `--max-memory`) |
 | `ERR-WIKI-001`   | Wiki root directory does not exist                        |
 | `ERR-WIKI-002`   | Directory exists but missing`wiki/` subfolder             |
 | `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
@@ -1663,7 +1665,9 @@ def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | Any`ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
 | `--no-cache` flag on query      | Cache lookup skipped; fresh LLM call; result repopulated                     |
-| `cache clear`                   | Deletes all rows from both`response_cache` and `query_cache` tables          |
+| `cache clear`                   | Deletes all cached rows from both`response_cache` and `query_cache`; the persisted epoch row is preserved |
+| Lint completion, candidate promote | `wiki_changed()` - epoch bump + search-index invalidation (v1.5.2)        |
+| Server restart                  | Epoch resumes at `saved + 1` (v1.5.2), so a restart never reuses an epoch   |
 
 ### Layer 4 — Provider prompt cache
 
@@ -2905,13 +2909,18 @@ cache_key = hash(
 | ----------------------------------------- | ---------------- |
 | `ingest` completes (pages written)        | epoch + 1        |
 | `lifecycle transition` (any state change) | epoch + 1        |
-| `cache clear`                             | epoch reset to 0 |
+| `lint` completes, candidates promoted     | epoch + 1        |
+| MCP / resolver / rollback writes          | epoch + 1        |
+| server restart                            | epoch = saved + 1 |
+| `cache clear`                             | epoch unchanged (cached rows deleted) |
 
 Because the epoch is part of the cache key, any structural change to the wiki automatically invalidates all cached query answers — there is no explicit expiry TTL. Answers cached before an ingest are never served after it.
 
 **`--no-cache` flag:** bypasses `cache.get()` and `cache.set()` for the current call. The existing cache entry (if any) is left intact; it will be served on subsequent calls without `--no-cache`.
 
-**`synthadoc cache clear`:** deletes all entries from `cache.db`, including both ingest response cache and query answer cache. The epoch is reset to 0.
+**`synthadoc cache clear`:** deletes all entries from `cache.db`, including both ingest response cache and query answer cache. The epoch is **not** reset (v1.5.2): it is persisted in the `response_cache` table under a reserved key, which `clear()` preserves, and `Orchestrator.init()` restores it as `saved + 1` on every start. Epoch numbers therefore grow monotonically across restarts, so neither a restarted wiki nor a peer building a cross-wiki cache key can ever match an answer cached against different content.
+
+**`wiki_changed()` (v1.5.2):** every write path (ingest, lint, candidate promote, lifecycle + cascade archive, MCP write/lifecycle, resolver and rollback writes) calls the single `Orchestrator.wiki_changed()` helper, which bumps the epoch, persists it and invalidates the BM25 search index in one step. It replaces the scattered `_bump_epoch()` + `invalidate_index()` pairs so a new write path cannot forget either half. It is called *before* a job is marked complete, so a query that races the job-done notification gets a cache miss rather than a stale answer.
 
 ### QueryAgent integration
 
@@ -3148,6 +3157,8 @@ The audit trail records the same fields as a manual CLI transition — the MCP p
 | ------------- | -------------------------------------------------------------- |
 | `--mcp-only`  | Start only the MCP endpoint; suppress HTTP REST API and web UI |
 | `--http-only` | Start only the HTTP server; suppress the MCP mount             |
+| `--all`       | Start every registered wiki in the background, one at a time, within a memory limit (see *Starting many wikis*) |
+| `--max-memory <n>GB\|<n>MB` | With `--all`: most memory the started wikis may use in total; the unit is required. Default without it: keep the machine under ~60 % memory use |
 
 Default (no flag): both MCP and HTTP start together on the same port.
 
@@ -4389,7 +4400,7 @@ For how to create and manage the file, with a full annotated example, see [Step 
 |---|---|
 | `synthadoc query --cross-wiki "question"` | Fan-out query across all registered running wikis |
 | `synthadoc status --all` | Print running/stopped table for all registered wikis |
-| `synthadoc serve --all --background` | Start background servers for all wikis in the registry |
+| `synthadoc serve --all [--max-memory 6GB]` | Start background servers for registered wikis, one at a time, within a memory limit (see *Starting many wikis*) |
 | `synthadoc stop` | Stop the active wiki server |
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
@@ -4404,6 +4415,18 @@ The cross-wiki feature is accessible from the web chat UI (`synthadoc web`):
 - **Citation pills** — cross-wiki citations use the format `[[wiki-name::PageTitle]]`, rendered as a two-part pill: `[wiki-name]  Page Title`.
 - **Offline indicator** — when one or more target wikis were unreachable, the context bar updates to show which wikis were offline: `🌐 Searched: finance-wiki · legal-wiki  ·  ⚠ ops-wiki offline`.
 - **Operation detection** — if the query text matches an operation keyword (`run`, `lint`, `ingest`, `resolve`, `orphan`, `promote`, etc.) while cross-wiki is ON, a dim footnote appears before submission: "This looks like an operation — will run on `finance-wiki` only." Operations always execute on the active wiki; they are never cross-wiki fanned out. When the server detects this pattern, `cross_wiki_skipped: true` is set in the response.
+- **Blocked operations (v1.5.2)** - when cross-wiki mode is ON and the question is classified as *any* synthadoc operation (lint, ingest, lifecycle, resolvers), nothing is dispatched: the coordinator returns a distinct "action required" box telling the user to deselect the globe icon, and the hint chips and typed question are kept so it can be re-sent. Classification uses `ActionAgent.classify()` (LLM extraction without dispatch), so regex false positives such as "how do I roll back a Kubernetes deployment?" fall through to normal cross-wiki search; a provider error in `classify()` also falls through instead of returning a 500.
+
+### Knowledge-gap detection across wikis (v1.5.2)
+
+Single-wiki queries have always flagged knowledge gaps; the cross-wiki coordinator now applies an equivalent, wiki-agnostic check after synthesis in `cross_wiki_query_agent.py`:
+
+1. **Explicit gap** - the synthesis prompt allows the LLM to start the answer with `[GAP]`; the marker is stripped and `knowledge_gap=true` is set.
+2. **Negative admission** - `_NEGATIVE_ADMISSION_RE` matches phrases such as "does not contain", "no information about", "not mentioned". It only sets the gap when the cited pages also fail to cover part of the question (or nothing is cited).
+3. **Per-part coverage** - the question is split into sub-questions (decomposition output, else conjunction/`;`/`?` splitting). `_extract_meaningful_terms()` extracts non-stopword, non-generic terms and cheap stems (`-ing`, `-ment`, `-tion`); a part is *uncovered* when none of its terms occur in the title, slug or body of the pages the answer actually cites.
+4. **Score threshold** - when the best fused retrieval score is below `gap_score_threshold` (default 2.0) and the citations do not cover every part, the gap is raised, subject to the shared `_guard_c_suppress()` so confident answers are not flagged.
+
+On a gap the coordinator calls `SearchDecomposeAgent` (given each peer wiki's purpose summary as `domain_context`) to propose `suggested_searches`, restricted to the uncovered parts when only some parts are missing. Citations are kept only for pages the answer actually references. A failure in `SearchDecomposeAgent` or in the synthesis call degrades to a non-cacheable, gap-flagged result with `routing_warning` rather than an HTTP 500.
 
 ### API Reference — `POST /retrieve`
 
@@ -4536,6 +4559,45 @@ Results are written to cache only when:
 
 The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
 
+### Starting many wikis — `serve --all` {#serve-all}
+
+`synthadoc serve --all` starts one detached server per registered wiki. Each idle server costs several hundred MB (an empty wiki measures roughly 140 MB resident / 340 MB committed; wikis with pages and embeddings are larger), so starting ten at once can exhaust a machine.
+
+**Behavior**
+
+1. Validate `--max-memory` first; nothing starts if it is invalid.
+2. Wikis start **sequentially**. After each is healthy (`GET /health`, up to 60 s), its real resident memory is measured and the next wiki is only started if it still fits. The next wiki's cost is estimated from the wikis already started (500 MB before the first measurement).
+3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
+4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
+5. Output is compact: one line per wiki while starting, then a single **Summary**, produced by one shared function so the default and `--max-memory` runs have the same layout: **Running (N)** (name, port, domain truncated to 28 characters, measured memory; wikis that were already running are included and marked), a total in human-readable form (`1.5 GB`), and **Skipped (M)** with the exact `synthadoc serve -w <name> --background` command for each (an empty section prints `none`), plus a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
+6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading). Memory is only read when at least one wiki has to be started; if every wiki is already running, the command prints the summary and exits 0 without reading memory, so an unreadable memory source cannot make it fail.
+
+```
+$ synthadoc serve --all --max-memory 1GB
+Starting wikis one at a time. Limit: --max-memory budget 1.0 GB for the wikis started by this command
+  my-op-supply-docker: started (160 MB)
+  ...
+Summary
+  Running (5):
+    my-op-supply-docker       port 7070  General   160 MB
+    ...
+  Started 5 wiki(s) using about 800 MB in total.
+  Skipped (3):
+    synthadoc serve -w pc-fin-invest --background
+    ...
+
+Not started because of the memory limit. To start them too: synthadoc serve --all --max-memory 2GB
+To stop all running wikis: synthadoc stop --all
+```
+
+**Units are mandatory.** `--max-memory 6GB` and `--max-memory 6000MB` are valid (case-insensitive, decimals allowed, 1 GB = 1024 MB). A bare `6000`, `6KB`, `6G`, zero or a negative value is rejected before anything starts, with the message *Memory size needs a unit: GB or MB*. `--max-memory` without `--all` is an error.
+
+**Memory readers** (`synthadoc/cli/_memory.py`) use no extra dependency: `GlobalMemoryStatusEx` / `GetProcessMemoryInfo` via `ctypes` on Windows, `/proc/meminfo` and `/proc/<pid>/status` on Linux, `vm_stat` / `ps` on macOS. If system memory cannot be read and no `--max-memory` is given, the command stops with `ERR-SRV-005` and asks for an explicit limit.
+
+**Cross-platform testing.** The readers are split into thin I/O wrappers and pure parsers (`_parse_meminfo`, `_parse_proc_status_rss`, `_parse_macos_memory`, `_parse_ps_rss`). `tests/cli/test_memory.py` feeds the parsers recorded Linux `/proc` and macOS `vm_stat` samples (including 4 KB and 16 KB page sizes and old kernels without `MemAvailable`), so those code paths run on every platform. It also contains smoke tests that run the *real* readers on whatever OS runs the suite; CI (`ci.yml`) runs the full suite on ubuntu, windows and macos, so each real reader is exercised natively on every push.
+
+**Child processes.** Each wiki is launched as `serve -w <wiki>` (forwarding only `--provider`, `--host` and `--verbose`). Earlier versions forwarded the parent's own arguments, which included `--all`, so every child re-ran `--all` and spawned children of its own without end. The spawn arguments are now explicit and covered by tests that fake process creation.
+
 ### Graceful Degradation
 
 | Scenario | Behaviour |
@@ -4644,6 +4706,39 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.3 (in development)
+
+- **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
+
+### v1.5.2
+
+**Main features**
+
+- **Cross-wiki knowledge-gap detection** - federated queries now tell the user when the combined wikis cannot answer, with per-sub-question coverage analysis, negative-admission detection, score thresholds, and wiki-aware `suggested_searches` (contributed by rayulumukku; see section 41). Operations typed in cross-wiki mode are blocked with a clear message instead of silently dispatching or being misrouted.
+- **Trustworthy maintenance workflows** - resolver confirm gates are keyed on a per-run `run_id` (no more collisions between runs on one session), "List recent fixes" is answered from real `last_fix_record` data (including the orphan each fix resolved), a "List recent fixes" hint follows every resolver fix, rollback of a pruned snapshot is an explicit error instead of silently restoring a different snapshot, and the content-health resolver preserves dismissals across lint re-scans.
+
+**Cache coherence**
+
+- Persistent, monotonic wiki epoch; `wiki_changed()` consolidates epoch bump + search-index invalidation across ingest, lint, promote, MCP, resolver and rollback paths (see *Epoch-Based Query Result Cache*). `synthadoc cache clear` no longer resets the epoch.
+
+**Docker**
+
+- `synthadoc serve` logs the expected `-p <port>:<port>` mapping when it detects a container; the not-installed hint shows the wiki's real path/port as valid JSON; the doubled `/wikis/<name>/<name>` path is guarded; `docker-deploy.md` documents all of this.
+
+**Providers and dependencies**
+
+- Kimi is routed through the shared rate-limit/5xx retry and daily-quota detection; the Qwen to DashScope routing regex accepts digit-led model suffixes; `pypdf>=7.0.0` and `certifi>=2026.10.23` (security-advisory upgrades).
+
+**Fixes**
+
+- Search: `synthadoc_search` exposes `rank_score`/`similarity`; embeddings sync inline; index invalidated after lint demotion, MCP write and MCP lifecycle.
+- Query: "list recent fixes"/rollback-history questions no longer raise false knowledge-gap alarms; the rollback arm of `MATCH_RE` no longer mis-routes unrelated natural-language queries.
+- Lint: archived pages excluded from broken-citation reports; `contradicted` status preserved during stale detection; a manual contradiction clears a stale `last_fix_record`.
+- Resolvers: absolute source paths fall back by basename after restore; `no_applicable_blocks` AttributeError fixed; `duplicate_section` issues can no longer be written via `write_content_health_fix`; orphan resolver `--slug` mode no longer lists non-orphan slugs and no longer offers hub pages as link candidates; all-blocks-rejected auto-skip shared between resolvers.
+- Web UI: inline `[[wiki::Title]]` citations render as links; the cross-wiki action-blocked message renders (as markdown) in its own box; hint chips are preserved when blocked.
+- Display tools use POSIX paths and date-only `stale_since`.
+
 
 ### v1.5.1
 

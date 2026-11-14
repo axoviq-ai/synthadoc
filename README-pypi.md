@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.5.1
+    Community Edition  v1.5.2
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -33,10 +33,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
 <a href="https://hub.docker.com/r/chenp/synthadoc"><img src="https://img.shields.io/docker/pulls/chenp/synthadoc?label=Docker+pulls" alt="Docker pulls"/></a>
 <a href="https://pepy.tech/projects/synthadoc"><img src="https://static.pepy.tech/personalized-badge/synthadoc?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=PyPI+downloads" alt="PyPI downloads"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.1-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.2-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.5.1**
+**Document version: v1.5.2**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -195,7 +195,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Semantic search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-search)** — on by default for new wikis when installed (`pip install "synthadoc[vectors]"`, built into the Docker image): BM25 fused with local embeddings (`BAAI/bge-small-en-v1.5`); Chinese/Japanese/Korean text stays on keyword search; finds pages asked about in your own words, keeps exact-name precision ([benchmark](https://github.com/axoviq-ai/synthadoc/blob/main/benchmarks/retrieval/README.md))| **Yes** (optional) | Varies      | No         | No        |
 | **[Streaming output + query cache](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change                                        | **Yes**            | Partial     | Partial    | Partial   |
 | **[Proportional context budget](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap                         | **Yes**            | No          | No         | No        |
-| **[Cross-wiki federation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-l--cross-wiki-queries)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; `[[wiki-name::PageTitle]]` citation pills; amber offline banner when a target wiki is unreachable; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
+| **[Cross-wiki federation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-l--cross-wiki-queries)** — `synthadoc query --cross-wiki` fans out a single query across all registered running wikis; LLM auto-routes to relevant wikis; knowledge-gap detection with wiki-aware suggested searches across the federation (v1.5.2); `[[wiki-name::PageTitle]]` citation pills; amber offline banner when a target wiki is unreachable; graceful degradation when wikis are offline | **Yes**            | No          | No         | No        |
 
 ### Interfaces & Integration
 
@@ -230,7 +230,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Resumable job queue + retry](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash                                                                                                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations                                                                                                                                                                                                                                                                                                                                                | **Yes**   | Limited                  | No                     | No                                                                                                  |
 | **[Per-source truncation flag](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                                         | **Yes**   | No                       | No                     | No                                                                                                  |
-| **[Docker deployment](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md)** — official `chenp/synthadoc` image (amd64 + arm64); one container per wiki with HTTP API, Web UI, and MCP on one port; Compose recipes for multi-wiki cross-wiki queries and an Ollama sidecar; non-root, secrets via `--env-file` only | **Yes**   | Varies — usually DIY       | No                     | No                                                                                                  |
+| **[Docker deployment](https://github.com/axoviq-ai/synthadoc/blob/main/docs/docker-deploy.md)** — official `chenp/synthadoc` image (amd64 + arm64); one container per wiki with HTTP API, Web UI, and MCP on one port; Compose recipes for multi-wiki cross-wiki queries and an Ollama sidecar; non-root, secrets via `--env-file` only; startup log names the exact `-p` port mapping the container needs | **Yes**   | Varies — usually DIY       | No                     | No                                                                                                  |
 | **[Multi-wiki isolation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use`                                                                                                                                                                                                                                                                                                                                                                                                                         | **Yes**   | No                       | Partial                | No                                                                                                  |
 | **[Agentic maintenance workflows](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows)** — nine conversational workflows (stale-page re-ingest, broken wikilinks fix, lint report, scaffold regeneration, **contradiction resolver**, **orphan resolver**, **[broken citation resolver](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#demo--broken-citation-resolver)**, **[content health resolver](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#demo--content-health-resolver)**) via web UI or `synthadoc workflow` CLI; confirm-before-act gate on all writes; graph sidebar chips trigger workflows with one click                                                                                                    | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Sensitive Data Retract](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-27--scan-and-retract-sensitive-data)** — scan all wiki pages for API keys, emails, SSNs, credit cards, and custom patterns; apply `[REDACTED]` in place; background scan is incremental (only pages modified since the last cycle are checked); server auto-scans ingested pages immediately after each ingest job completes; `--changed-only` CLI flag for incremental manual runs; `synthadoc retract status` captures the full retraction audit trail (slug, pattern names, counts — never the sensitive values themselves) | **Yes**   | No                       | No                     | No                                                                                                  |
@@ -289,25 +289,22 @@ The Obsidian plugin is bundled inside the package. New wikis created with `synth
 
 For server deployments, team wikis, CI/CD pipelines, and isolated personal use, Synthadoc ships an OCI image, [`chenp/synthadoc`](https://hub.docker.com/r/chenp/synthadoc), for `linux/amd64` and `linux/arm64`. It works with Docker Engine and Docker Desktop, the Apple `container` tool (macOS 26+ Apple Silicon), and WSL Containers (`wslc`, Windows 11). One container serves one wiki. The HTTP API, Web UI (`/app`), and MCP over HTTP (`/mcp`) all share the wiki's port, and the wiki files stay on the host so Obsidian keeps working unchanged.
 
-Commands are shown for **Linux / macOS**. On Windows, expand the **Windows (Command Prompt)** block for single-line `cmd.exe` versions: `\` line continuation and `~` in `-v` paths don't work there. (In PowerShell, replace `%USERPROFILE%` with `$env:USERPROFILE`.)
+Commands are shown **Windows first**, then **Linux / macOS**. Notes on Windows: `~` in `-v` paths and `\` line continuation don't work in `cmd.exe`, so Windows commands use `"%USERPROFILE%\wikis\…"` and are single-line.
 
-**1. Create the wiki** in a one-off container. It lands in `~/wikis/history-of-computing`; note the port it prints, e.g. `7070`. `docker run` downloads the image on first use. Run `docker pull chenp/synthadoc:latest` later to update a cached image.
+**1. Create the wiki** in a one-off container. It lands in `%USERPROFILE%\wikis\history-of-computing` (Windows) or `~/wikis/history-of-computing` (Linux/macOS); note the port it prints, e.g. `7070`. `docker run` downloads the image on first use. Run `docker pull chenp/synthadoc:latest` later to update a cached image.
 
-```bash
-mkdir -p ~/wikis
-docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
-  synthadoc install history-of-computing --target /wikis --demo
-```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
+**Windows:**
 ```bat
 if not exist "%USERPROFILE%\wikis" mkdir "%USERPROFILE%\wikis"
 docker run --rm -v "%USERPROFILE%\wikis:/wikis" chenp/synthadoc:latest synthadoc install history-of-computing --target /wikis --demo
 ```
 
-</details>
+**Linux / macOS:**
+```bash
+mkdir -p ~/wikis
+docker run --rm -v ~/wikis:/wikis chenp/synthadoc:latest \
+  synthadoc install history-of-computing --target /wikis --demo
+```
 
 **2. Put your LLM API key in `~/wikis/.env`**, never on the command line. Create it with any text editor (Windows: `notepad "%USERPROFILE%\wikis\.env"`). For example, to use MiniMax:
 
@@ -329,6 +326,12 @@ default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
 
 **3. Run the server in a container**, using the same port on both sides of `-p`:
 
+**Windows:**
+```bat
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
+```
+
+**Linux / macOS:**
 ```bash
 docker run -d --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
@@ -336,15 +339,6 @@ docker run -d --name history-of-computing \
   --env-file ~/wikis/.env \
   chenp/synthadoc:latest
 ```
-
-<details>
-<summary>Windows (Command Prompt)</summary>
-
-```bat
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:latest
-```
-
-</details>
 
 **4. Use it.** Open the Web UI at `http://localhost:7070/app`, or run the CLI inside the container (same on every platform):
 
@@ -459,12 +453,14 @@ Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `syn
 
 A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
 
+```bat
+REM Windows
+synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
+```
+
 ```bash
 # Linux / macOS
 synthadoc install history-of-computing --target ~/wikis --demo
-
-# Windows (cmd.exe)
-synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
 Then start the engine:
@@ -748,8 +744,16 @@ synthadoc serve -w my-wiki --host 0.0.0.0
 # Verbose debug logging to console
 synthadoc serve -w my-wiki --verbose
 
-# Start servers for all registered wikis in the background (cross-wiki queries)
-synthadoc serve --all --background
+# Start servers for all registered wikis in the background (cross-wiki queries).
+# Wikis start one at a time and stop before the machine passes ~60% memory use;
+# skipped wikis are listed with the command to start them.
+synthadoc serve --all
+
+# Same, but cap the total memory the started wikis may use (a unit is required: GB or MB)
+synthadoc serve --all --max-memory 6GB
+
+# Also show each server's PID and log path (hidden by default; only useful when debugging)
+synthadoc serve --all --verbose
 
 # Stop the active wiki server
 synthadoc stop

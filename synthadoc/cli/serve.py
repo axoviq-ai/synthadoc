@@ -17,6 +17,11 @@ from synthadoc.cli._wiki import (
     resolve_wiki_path, read_registry_all, _REGISTRY,
 )
 from synthadoc import errors as E
+from synthadoc.cli._memory import (
+    DEFAULT_WIKI_ESTIMATE_MB, MemoryGate, format_memory_display, format_memory_size,
+    parse_memory_size,
+    process_memory_mb, suggest_budget_mb, system_memory_mb,
+)
 from synthadoc.config import Provider
 
 # Internal env var set on the detached child to suppress duplicate banner output.
@@ -185,10 +190,19 @@ def _check_api_key(cfg, agent_name: str = "ingest") -> None:
 
 
 def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
-                       banner_kwargs: dict | None = None) -> None:
-    """Detach the server as a background process and return to the shell."""
-    # Strip --background / -b from the forwarded args.
-    server_args = [a for a in sys.argv[1:] if a not in ("--background", "-b")]
+                       banner_kwargs: dict | None = None,
+                       server_args: list[str] | None = None,
+                       quiet: bool = False) -> int:
+    """Detach the server as a background process and return its PID.
+
+    ``server_args`` is the argument list for the child (everything after the
+    program name). By default the parent's own arguments are forwarded minus
+    --background, which is right for ``serve -w X --background``. ``serve --all``
+    MUST pass explicit args: forwarding its own ``--all`` would make every child
+    re-run ``--all`` and spawn children of its own without end.
+    """
+    if server_args is None:
+        server_args = [a for a in sys.argv[1:] if a not in ("--background", "-b")]
 
     shared_env = {**os.environ, _NO_BANNER_ENV: "1"}
     if sys.platform == "win32":
@@ -234,27 +248,207 @@ def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
             f"Check logs: {log_path}",
         )
 
-    typer.echo(
-        f"\nServer running in background\n"
-        f"  PID   {proc.pid}\n"
-        f"  Port  {effective_port}\n"
-        f"  Logs  {log_path}\n"
-        f"\nTo stop: kill {proc.pid}"
-        + (f"  (or: taskkill /PID {proc.pid} /F)" if sys.platform == "win32" else "")
-    )
+    if not quiet:
+        typer.echo(
+            f"\nServer running in background\n"
+            f"  PID   {proc.pid}\n"
+            f"  Port  {effective_port}\n"
+            f"  Logs  {log_path}\n"
+            f"\nTo stop: kill {proc.pid}"
+            + (f"  (or: taskkill /PID {proc.pid} /F)" if sys.platform == "win32" else "")
+        )
+    return proc.pid
 
 
-def _spawn_background_for_path(wiki_path: Path, wiki_name: str) -> None:
-    """Start a single wiki in background from its path. Used by --all."""
+def _spawn_background_for_path(
+    wiki_path: Path,
+    wiki_name: str,
+    extra_args: list[str] | None = None,
+    quiet: bool = False,
+) -> tuple[int, int] | None:
+    """Start one wiki's server in the background. Used by --all.
+
+    The child runs ``serve -w <wiki>`` (plus any forwarded --provider/--host/-v),
+    never ``--all``. Returns ``(pid, port)``, or ``None`` if the config is invalid.
+    """
     from synthadoc.config import load_config
     try:
         cfg = load_config(project_config=wiki_path / ".synthadoc" / "config.toml")
     except Exception as exc:
         typer.echo(f"  {wiki_name}: config error — {exc}", err=True)
-        return
+        return None
     port = cfg.server.port
     log_path = wiki_path / ".synthadoc" / "logs" / "synthadoc.log"
-    _spawn_background(wiki_path, port, log_path)
+    child_args = ["serve", "-w", wiki_name] + list(extra_args or [])
+    pid = _spawn_background(wiki_path, port, log_path, server_args=child_args, quiet=quiet)
+    return pid, port
+
+
+def _wiki_domain(wiki_path: Path) -> str:
+    """The wiki's ``[wiki] domain`` from its config.toml, or ``-`` if unreadable."""
+    try:
+        from synthadoc.config import load_config
+        return load_config(project_config=wiki_path / ".synthadoc" / "config.toml").wiki.domain
+    except Exception:
+        return "-"
+
+
+_HEALTH_WAIT_SECONDS = 60.0
+
+
+def _wait_for_health(port: int, timeout: float = _HEALTH_WAIT_SECONDS) -> bool:
+    """Poll the server's /health until it answers or ``timeout`` elapses."""
+    from synthadoc.cli._wiki import probe_port
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if probe_port(port):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def _serve_all(
+    max_memory: str | None,
+    provider_override: str | None,
+    host: str | None,
+    verbose: bool,
+) -> None:
+    """Start every registered wiki in the background, one at a time, within a memory limit.
+
+    Wikis are started sequentially. After each one is healthy its real memory use
+    is measured, and the next is only started if it still fits:
+      * default: the machine as a whole stays under ~60% of physical memory;
+      * ``--max-memory``: the wikis started here use at most that much in total.
+    The first wiki is always started. Wikis that do not fit are listed with the
+    exact command to start them.
+    """
+    from synthadoc.cli._wiki import probe_port as _probe_port
+
+    # Validate the flag before anything is started.
+    budget_mb: float | None = None
+    if max_memory is not None:
+        try:
+            budget_mb = parse_memory_size(max_memory)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--max-memory")
+
+    extra_args: list[str] = []
+    if provider_override:
+        extra_args += ["--provider", provider_override]
+    if host:
+        extra_args += ["--host", host]
+    if verbose:
+        extra_args += ["--verbose"]
+
+    registry = read_registry_all()
+    already_running = {
+        n for n, e in registry.items() if e.get("port") and _probe_port(e["port"])
+    }
+
+    # Memory is only read when something has to be started: if every wiki is
+    # already running there is nothing to limit, and an unreadable memory source
+    # must not make `serve --all` fail.
+    gate: MemoryGate | None = None
+    if len(already_running) < len(registry):
+        snapshot = system_memory_mb()
+        if snapshot is None:
+            if budget_mb is None:
+                E.cli_error(
+                    E.SRV_MEMORY_UNREADABLE,
+                    "Cannot read this machine's memory use, so --all cannot limit how many wikis start.",
+                    "Pass an explicit limit, for example: synthadoc serve --all --max-memory 6GB",
+                )
+            snapshot = (0.0, 0.0)
+        gate = MemoryGate(total_mb=snapshot[0], used_mb=snapshot[1], budget_mb=budget_mb)
+        typer.echo(f"Starting wikis one at a time. Limit: {gate.describe()}")
+    else:
+        typer.echo("All registered wikis are already running.")
+    running: list[tuple[str, int, str, str]] = []   # (name, port, domain, memory text)
+    measured: list[float] = []
+    skipped: list[str] = []
+
+    for name, entry in registry.items():
+        port_val = entry.get("port")
+        wiki_path = Path(entry["path"])
+        if name in already_running:
+            typer.echo(f"  {name}: already running on port {port_val}")
+            running.append((name, port_val, _wiki_domain(wiki_path), "already running"))
+            continue
+        if skipped:                       # the limit was already hit; the rest wait
+            skipped.append(name)
+            continue
+        next_cost = max(sum(measured) / len(measured), DEFAULT_WIKI_ESTIMATE_MB * 0.6) \
+            if measured else DEFAULT_WIKI_ESTIMATE_MB
+        assert gate is not None           # a wiki that needs starting implies the gate exists
+        if not gate.allows_next(started=len(measured), next_cost_mb=next_cost):
+            skipped.append(name)
+            continue
+
+        # Per-wiki PID/log details are only useful when debugging: shown with --verbose.
+        spawned = _spawn_background_for_path(wiki_path, name, extra_args, quiet=not verbose)
+        if spawned is None:
+            continue
+        pid, port = spawned
+        if not _wait_for_health(port):
+            typer.echo(f"  {name}: did not answer on port {port} within "
+                       f"{int(_HEALTH_WAIT_SECONDS)}s, continuing", err=True)
+        rss = process_memory_mb(pid)
+        used_by_wiki = rss if rss else DEFAULT_WIKI_ESTIMATE_MB
+        measured.append(used_by_wiki)
+        gate.add_started(used_by_wiki)
+        latest = system_memory_mb()
+        if latest is not None:
+            gate.update_used(latest[1])
+        running.append((name, port, _wiki_domain(wiki_path), f"{used_by_wiki:.0f} MB"))
+        typer.echo(f"  {name}: started ({used_by_wiki:.0f} MB)")
+
+    _print_serve_all_summary(running, skipped, measured)
+
+
+_DOMAIN_COLUMN_MAX = 28
+
+
+def _short(text: str, width: int = _DOMAIN_COLUMN_MAX) -> str:
+    """Truncate with ``...`` so one long domain cannot push the table out of line."""
+    return text if len(text) <= width else text[: width - 3].rstrip() + "..."
+
+
+def _print_serve_all_summary(
+    running: list[tuple[str, int, str, str]],
+    skipped: list[str],
+    measured: list[float],
+) -> None:
+    """One summary, identical in layout for every limit mode.
+
+    Both sections are always shown (an empty one says ``none``), so the default
+    and ``--max-memory`` runs read the same.
+    """
+    typer.echo("\nSummary")
+    typer.echo(f"  Running ({len(running)}):")
+    if running:
+        rows = [(n, p, _short(d), m) for n, p, d, m in running]
+        w_name = max(len(r[0]) for r in rows)
+        w_dom = max(len(r[2]) for r in rows)
+        for name, port, domain, mem in rows:
+            typer.echo(f"    {name:<{w_name}}  port {port}  {domain:<{w_dom}}  {mem}")
+    else:
+        typer.echo("    none")
+    if measured:
+        typer.echo(f"  Started {len(measured)} wiki(s) using about "
+                   f"{format_memory_display(sum(measured))} in total.")
+
+    typer.echo(f"  Skipped ({len(skipped)}):")
+    if skipped:
+        for name in skipped:
+            typer.echo(f"    synthadoc serve -w {name} --background")
+        per_wiki = (sum(measured) / len(measured)) if measured else DEFAULT_WIKI_ESTIMATE_MB
+        suggestion = format_memory_size(
+            suggest_budget_mb(sum(measured), per_wiki, len(skipped)))
+        typer.echo(f"\nNot started because of the memory limit. "
+                   f"To start them too: synthadoc serve --all --max-memory {suggestion}")
+    else:
+        typer.echo("    none")
+    typer.echo("To stop all running wikis: synthadoc stop --all")
 
 
 def _apply_provider_override(cfg, provider_name: str) -> None:
@@ -296,7 +490,13 @@ def serve_cmd(
              "Defaults to [server] host in config (127.0.0.1).",
     ),
     all_wikis: bool = typer.Option(False, "--all",
-        help="Start all registered wikis in background."),
+        help="Start all registered wikis in background, one at a time, within a memory limit."),
+    max_memory: Optional[str] = typer.Option(
+        None, "--max-memory",
+        help="With --all: most memory the started wikis may use in total, with a unit "
+             "(e.g. 6GB or 6000MB). Without it, --all stops before the machine passes "
+             "about 60%% memory use.",
+    ),
 ):
     """Start MCP + HTTP API servers (localhost only).
 
@@ -308,17 +508,11 @@ def serve_cmd(
     Run one server per wiki on its own port, then set the matching
     Server URL in the Obsidian plugin settings for each vault.
     """
+    if max_memory is not None and not all_wikis:
+        raise typer.BadParameter("--max-memory only applies together with --all.",
+                                 param_hint="--max-memory")
     if all_wikis:
-        registry = read_registry_all()
-        for name, entry in registry.items():
-            port_val = entry.get("port")
-            path = Path(entry["path"])
-            from synthadoc.cli._wiki import probe_port as _probe_port
-            if port_val and _probe_port(port_val):
-                typer.echo(f"  {name}: already running on port {port_val}")
-                continue
-            _spawn_background_for_path(path, name)
-            typer.echo(f"  {name}: started in background")
+        _serve_all(max_memory, provider_override, host, verbose)
         return
 
     from synthadoc.cli._wiki import resolve_wiki

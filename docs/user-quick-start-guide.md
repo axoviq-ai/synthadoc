@@ -1,6 +1,6 @@
 # Synthadoc User Quick-Start Guide
 
-**Version: v1.5.1 (Community Edition)**
+**Version: v1.5.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2706,6 +2706,8 @@ The query cache lives in the same `cache.db` as the ingest response cache. Clear
 synthadoc cache clear -w history-of-computing
 ```
 
+> **Restart-safe (v1.5.2):** the cache is invalidated by a persistent, ever-increasing wiki epoch, so answers cached before a server restart, lint run, candidate promotion or MCP write are never served stale. `cache clear` is only needed to force fresh LLM calls.
+
 > **Note:** The query cache is separate from the ingest cache layers. Clearing the cache removes both query answers and LLM responses cached during ingest — the next lint run and the next ingest of any source will re-run LLM calls.
 
 <a name="knowledge-graph"></a>
@@ -4618,13 +4620,18 @@ synthadoc install legal-wiki   --target ~/wikis --template legal/compliance
 Start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to running wikis, so starting a subset is a valid way to scope the results:
 
 ```bash
-# Start all registered wikis
-synthadoc serve --all --background
+# Start all registered wikis (one at a time; stops before the machine passes ~60% memory use)
+synthadoc serve --all
+
+# Or set the total memory the started wikis may use. A unit is required: GB or MB
+synthadoc serve --all --max-memory 6GB
 
 # Or start only the wikis you need (e.g. 2 of 5 registered)
 synthadoc serve -w finance-wiki --background
 synthadoc serve -w legal-wiki --background
 ```
+
+Each running wiki uses a few hundred MB of memory, so `--all` starts wikis one at a time and measures real memory use. It finishes with a summary of the wikis that are running (port, domain, memory) and, if not every wiki fit, the ones it skipped with the exact `synthadoc serve -w <name> --background` command to start them, plus a suggested `--max-memory` value that fits them all. Add `--verbose` to also see each server's PID and log path. Stop everything with `synthadoc stop --all`. The number must always include its unit (`GB` or `MB`); `--max-memory 6000` is rejected.
 
 Each server starts on its registered port. `--all` skips any wiki whose port is already responding.
 
@@ -4654,6 +4661,8 @@ synthadoc query --cross-wiki "What are our M&A covenants and deployment runbooks
 The `-w` flag identifies the coordinator wiki (any registered wiki will do). The `--cross-wiki` flag fans the question out across all running registered wikis.
 
 ![Cross-wiki query — fan-out across multiple wiki domains](png/cross-wiki-queries.png)
+
+**Knowledge gaps across wikis (v1.5.2).** If the combined wikis cannot answer the whole question, the answer carries a Knowledge Gap callout and `suggested_searches` tailored to the missing part of the question and to the domains of the wikis searched (for example, a two-part question where only one part is covered suggests searches for the uncovered part only). Typing an operation such as "run lint" while the globe toggle is on does nothing; the chat explains that cross-wiki search must be turned off first.
 
 ### Step 4 — Understanding citation format
 
