@@ -51,6 +51,7 @@ class AgentConfig:
     model: str
     base_url: str = ""
     thinking: str = ""  # "disabled" | "enabled" | "adaptive" | "" (provider default)
+    effort: str = ""    # "low" | "medium" | "high" | "xhigh" | "max" | "" (provider default)
 
     @property
     def is_local(self) -> bool:
@@ -91,6 +92,7 @@ class AgentsConfig:
             model=override.model,
             base_url=override.base_url,
             thinking=override.thinking,
+            effort=override.effort,
         )
 
 
@@ -292,6 +294,7 @@ class Config:
 
 
 _VALID_THINKING_VALUES = frozenset({"", "disabled", "enabled", "adaptive"})
+_VALID_EFFORT_VALUES = frozenset({"", "low", "medium", "high", "xhigh", "max"})
 
 
 def _parse_agent(raw: dict) -> AgentConfig:
@@ -301,11 +304,18 @@ def _parse_agent(raw: dict) -> AgentConfig:
             f"Invalid thinking value '{thinking}'. "
             f"Must be one of: disabled, enabled, adaptive (or omit for provider default)."
         )
+    effort = raw.get("effort", "")
+    if effort not in _VALID_EFFORT_VALUES:
+        raise ValueError(
+            f"Invalid effort value '{effort}'. "
+            f"Must be one of: low, medium, high, xhigh, max (or omit for provider default)."
+        )
     return AgentConfig(
         provider=raw["provider"],
         model=raw.get("model", ""),
         base_url=raw.get("base_url", ""),
         thinking=thinking,
+        effort=effort,
     )
 
 
@@ -424,6 +434,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
                 "model": default_agent.model,
                 "base_url": default_agent.base_url,
                 "thinking": default_agent.thinking,
+                "effort": default_agent.effort,
             }
             base_vals.update(a[name])
             parsed = _parse_agent(base_vals)
