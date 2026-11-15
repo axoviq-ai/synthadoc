@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
+from synthadoc.core.domain_guard import load_blocked_domains
 from synthadoc.core.graph_views import cluster_detail, cluster_overview, enrich_graph
 from synthadoc.utils import load_yaml
 from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES
@@ -551,17 +552,6 @@ async def _cw_cache_write(key: str, orch, result) -> None:
     except Exception:
         pass  # non-fatal
 
-
-def _load_blocked_domains(wiki_root: Path) -> set[str]:
-    """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
-    import json as _json_mod
-    p = wiki_root / ".synthadoc" / "blocked_domains.json"
-    if not p.exists():
-        return set()
-    try:
-        return set(_json_mod.loads(p.read_text(encoding="utf-8")))
-    except Exception:
-        return set()
 
 
 _SUGGESTION_URL_RE = re.compile(r"^https?://([^/]+)", re.IGNORECASE)

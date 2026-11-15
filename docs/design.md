@@ -1791,6 +1791,22 @@ With the default base of 30 s: attempt 1 waits 30 s, attempt 2 waits 60 s, attem
 
 **Persistence:** Jobs survive server restarts. `in_progress` jobs at shutdown are reset to `pending` on startup.
 
+### Auto-blocked domains
+
+When a URL fetch returns HTTP 401, 403, or 429, Synthadoc raises `DomainBlockedException` and immediately writes the offending hostname to `.synthadoc/blocked_domains.json` (a JSON array of domain strings). This file acts as a persistent skip-list that prevents wasted retries on domains that have consistently refused access.
+
+**What is guarded:**
+
+| Path | Behaviour |
+| ---- | --------- |
+| URL ingest (direct CLI, WebUI, Obsidian, resolver tool calls) | Pre-flight check in `_run_ingest` skips the job before any network call; job status becomes `skipped`. |
+| Web-search result fan-out | URLs whose domain appears in the blocked list are stripped from child-source candidates before they are enqueued. |
+| Query knowledge-gap suggestions | Blocked domains are removed from `suggested_searches` before the SSE `gap` event is sent to the client. |
+
+**Shared implementation:** `synthadoc/core/domain_guard.py` exports `load_blocked_domains(root)` and `is_domain_blocked(url, root)`. All three paths above import from this single module so the logic stays in one place.
+
+**Re-enabling a domain:** The blocked list is append-only by design — Synthadoc never removes entries automatically. If a domain was blocked due to a transient error (e.g. a temporary 429 rate-limit that has since lifted), you can re-enable it by editing `.synthadoc/blocked_domains.json` and removing the domain string, then retrying the ingest.
+
 ---
 
 ## 15. Observability and Logging
