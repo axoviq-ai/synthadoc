@@ -571,6 +571,16 @@ class ActionAgent(BaseAgent):
             getattr(_agents_cfg, "workflow_max_tokens", 16384) or 16384
         )
 
+        # Use agents.workflow provider override when explicitly configured.
+        # Falls back to the session provider so existing behaviour is unchanged.
+        _workflow_provider: LLMProvider = self._provider
+        if _cfg is not None and getattr(getattr(_cfg, "agents", None), "workflow", None) is not None:
+            try:
+                from synthadoc.providers import make_provider as _mp
+                _workflow_provider = _mp("workflow", _cfg)
+            except Exception:
+                pass  # Missing API key surfaces at workflow run time
+
         # ── Provider compatibility guard ──────────────────────────────────────
         # Coding-tool CLI providers (claude-code, opencode) are themselves full
         # agents with their own identity, tool-calling mechanism, and safety
@@ -608,7 +618,7 @@ class ActionAgent(BaseAgent):
             # normal tool-call loop so SSE events reach the client promptly.
             async def _run_cli() -> None:
                 try:
-                    async for evt in wf.run_for_cli_provider(ctx, question, self._provider):
+                    async for evt in wf.run_for_cli_provider(ctx, question, _workflow_provider):
                         await sse_queue.put(evt)
                 finally:
                     await sse_queue.put(_SENTINEL)
@@ -627,7 +637,7 @@ class ActionAgent(BaseAgent):
                         system_prompt=system_prompt,
                         initial_message=wf.build_initial_message(question),
                         tool_fns=tool_fns,
-                        provider=self._provider,
+                        provider=_workflow_provider,
                         ctx=ctx,
                         budget=budget,
                         max_tokens=_workflow_max_tokens,

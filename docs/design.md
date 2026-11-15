@@ -1368,6 +1368,39 @@ Required environment variables per provider:
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
+### Cost-optimised workflow config
+
+Agentic maintenance workflows (contradiction resolver, orphan resolver, content-health resolver) run a structured tool-call loop where the model follows a fixed protocol rather than exercising broad editorial judgement. Fast, inexpensive models produce equivalent results at a fraction of the cost of premium models:
+
+| Model | Provider | Approximate cost vs. Sonnet 5.5 |
+|---|---|---|
+| `claude-haiku-5-5` | `anthropic` | ~10× cheaper |
+| `deepseek-chat` | `deepseek` | ~15× cheaper |
+| `MiniMax-M3` (thinking disabled) | `minimax` | ~8× cheaper |
+| `qwen3.8-flash` (thinking disabled) | `qwen` | ~20× cheaper |
+
+Set `agents.workflow` to override the model used only for workflow loops while keeping a higher-quality model for ingest and query:
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { model = "claude-haiku-5-5" }   # resolvers use Haiku — same quality, 10× cheaper
+```
+
+For DeepSeek or MiniMax (must disable thinking — it causes timeouts on tool-call loops):
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { provider = "deepseek", model = "deepseek-chat", thinking = "disabled" }
+```
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
+```
+
 ### Coding tool CLI providers — no API key needed
 
 If you have an active **Claude Code** subscription, or want to use the free **Opencode Zen** tier, you can use either as the LLM provider with no separate API key.
@@ -1409,9 +1442,10 @@ synthadoc serve -w <wiki-name> --provider claude-code
 port = 7070
 
 [agents]
-default = { provider = "anthropic", model = "claude-opus-4-8" }
-lint    = { model = "claude-haiku-4-5-20251001" }
-skill   = { model = "claude-haiku-4-5-20251001" }
+default  = { provider = "anthropic", model = "claude-opus-4-8" }
+lint     = { model = "claude-haiku-4-5-20251001" }
+skill    = { model = "claude-haiku-4-5-20251001" }
+# workflow = { model = "claude-haiku-5-5" }  # 5-10× cheaper than Opus/Sonnet; sufficient for all workflow tool-call loops
 # llm_timeout_seconds = 90  # set for reasoning models to fail fast instead of silent empty response
 
 [queue]
@@ -1484,6 +1518,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.lint.model`                      | str   | (inherits default)   | Model ID for the lint agent override.                                                                                                                                                                                                                                      |
 | `agents.adversarial.provider`            | str   | (inherits default)   | Dedicated LLM provider for adversarial lint review. Falls back to`agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently.                                                              |
 | `agents.adversarial.model`               | str   | (inherits default)   | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model.                                                                                                                                             |
+| `agents.workflow.provider`               | str   | (inherits default)   | Override provider/model for agentic workflow tool-call loops (contradiction resolver, orphan resolver, content-health resolver, etc.). **Recommended:** use a fast, cheap model such as `claude-haiku-5-5`, `deepseek/deepseek-chat` with `thinking = "disabled"`, or `minimax/MiniMax-M3` with `thinking = "disabled"`. These models are 5–10× cheaper than premium models and produce equivalent results for structured tool-call workflows. |
+| `agents.workflow.model`                  | str   | (inherits default)   | Model ID for the workflow override.                                                                                                                                                                                                                                        |
 | `agents.llm_timeout_seconds`             | int   | `0`                  | Per-call LLM timeout in seconds;`0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M3 with thinking enabled, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required.                                                   |
 | `agents.scaffold_max_tokens`             | int   | `32768`              | Max output tokens for the scaffold (page generation) agent. Increase to`65536`+ when using reasoning models on large wikis where the default budget is exhausted.                                                                                                          |
 | `agents.query_max_tokens`                | int   | `8192`               | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer.                                                                                                                                                     |

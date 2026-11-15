@@ -71,6 +71,7 @@ class AgentsConfig:
     lint: Optional[AgentConfig] = None
     adversarial: Optional[AgentConfig] = None
     skill: Optional[AgentConfig] = None
+    workflow: Optional[AgentConfig] = None  # override for agentic workflow tool-call loops
     llm_timeout_seconds: int = 0      # 0 = no limit (provider default)
     scaffold_max_tokens: int = 32768   # increase for reasoning models on large wikis
     query_max_tokens: int = 8192       # increase if reasoning model exhausts budget before answer
