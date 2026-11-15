@@ -58,7 +58,16 @@ def test_parse_slug_natural_language():
     assert wf._parse_slug("contradiction resolver on slug alan-turing") == "alan-turing"
     assert wf._parse_slug("run contradiction resolver for page alan-turing") == "alan-turing"
     assert wf._parse_slug("run contradiction resolver for slug alan-turing") == "alan-turing"
-    assert wf._parse_slug("run resolver alan-turing") == "alan-turing"
+
+
+def test_parse_slug_does_not_match_hint_text():
+    """Hint text like 'run the contradiction resolver to fix them' must not extract a slug."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug(
+        "5 pages marked contradicted — run the contradiction resolver to fix them interactively?"
+    ) is None
+    assert wf._parse_slug("Run contradiction resolver") is None
 
 
 def test_parse_slug_returns_none_when_absent():
