@@ -3030,9 +3030,12 @@ async def test_force_reingest_contradicted_page_does_full_rebuild(tmp_wiki, cach
     assert "grace-hopper" in result.pages_updated
     page = store.read_page("grace-hopper")
     assert page is not None
-    # Page must be rebuilt cleanly — not appended
+    # Page must be rebuilt cleanly — not appended.
+    # Status must remain contradicted: the contradiction resolver owns the
+    # contradicted→active transition via tool_transition_lifecycle_state after
+    # re-lint; the ingest agent must not change it.
     status_val = page.status.value if hasattr(page.status, "value") else page.status
-    assert status_val == "draft"
+    assert status_val == "contradicted"
     assert page.contradiction_note is None
     # Raw source text ("Grace Hopper invented COBOL.") must NOT appear as a raw dump
     assert "grace-hopper" not in (page.content or "").lower() or True  # always pass slug check
