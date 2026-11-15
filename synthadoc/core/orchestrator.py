@@ -12,7 +12,7 @@ from synthadoc.config import Config, load_config
 from synthadoc.utils import atomic_write_text
 from synthadoc.errors import DomainBlockedException
 from synthadoc.core.cache import CacheManager
-from synthadoc.core.domain_guard import load_blocked_domains
+from synthadoc.core.domain_guard import load_blocked_domains, is_domain_blocked
 from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
 from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
@@ -236,9 +236,9 @@ class Orchestrator:
         # Covers every ingest entry point: CLI, WebUI, Obsidian, and resolver tool calls.
         # To re-enable a domain, remove it from .synthadoc/blocked_domains.json.
         if source.startswith(("http://", "https://")):
-            from urllib.parse import urlparse as _urlparse
-            _host = _urlparse(source).hostname or ""
-            if _host and _host in load_blocked_domains(self._root):
+            if is_domain_blocked(source, self._root):
+                from urllib.parse import urlparse as _urlparse
+                _host = _urlparse(source).hostname or source
                 await self._queue.skip(
                     job_id,
                     f"Domain '{_host}' is in blocked_domains.json — skipping ingest. "
