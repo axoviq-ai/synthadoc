@@ -788,7 +788,8 @@ async def test_verify_orphan_resolved_slug_not_in_active_pages():
     store = _make_wiki_store({"active-page": ("active", "Some content.")})
     ctx, _ = _make_ctx(store=store)
     result = await tool_verify_orphan_resolved(ctx, "ghost")
-    assert result == {"resolved": False, "linked_by": []}
+    assert result["resolved"] is False and result["linked_by"] == []
+    assert result["not_active"] is True and result["reason"] == "not_found"
 
 
 async def test_build_page_text_dicts_skips_none_page():
@@ -1291,3 +1292,87 @@ def test_get_tool_fns_includes_rollback_tools():
     tools = OrphanResolverWorkflow().get_tool_fns(ctx)
     assert "tool_rollback_orphan_fix" in tools
     assert "tool_list_recent_fixes" in tools
+
+
+# ---------------------------------------------------------------------------
+# --slug must name an active page: a slug that does not exist (or is archived /
+# contradicted) is not an orphan and must not be estimated as "1 page".
+# ---------------------------------------------------------------------------
+
+_SLUG_PAGES = {
+    "computing-history": ("active", "See [[eniac]]."),
+    "eniac": ("active", "ENIAC."),
+    "lonely": ("active", "No links at all."),
+    "old-page": ("archived", "Archived."),
+    "disputed": ("contradicted", "Contradicted."),
+}
+
+
+@pytest.mark.parametrize("slug, reason", [
+    ("quantum-computing-history", "not_found"),
+    ("old-page", "archived"),
+    ("disputed", "contradicted"),
+])
+async def test_verify_orphan_resolved_reports_why_a_slug_is_not_active(slug, reason):
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_verify_orphan_resolved
+    ctx, _ = _make_ctx(store=_make_wiki_store(_SLUG_PAGES))
+    result = await tool_verify_orphan_resolved(ctx, slug)
+    assert result == {"resolved": False, "linked_by": [], "not_active": True, "reason": reason}
+
+
+@pytest.mark.parametrize("slug, resolved", [("lonely", False), ("eniac", True)])
+async def test_verify_orphan_resolved_active_pages_have_no_not_active_flag(slug, resolved):
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_verify_orphan_resolved
+    ctx, _ = _make_ctx(store=_make_wiki_store(_SLUG_PAGES))
+    result = await tool_verify_orphan_resolved(ctx, slug)
+    assert result["resolved"] is resolved
+    assert "not_active" not in result
+
+
+async def _run_cli_with_slug(slug):
+    """Run the CLI-provider path for ``--slug`` with the LLM and confirm gate stubbed."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    ctx, _ = _make_ctx(store=_make_wiki_store(_SLUG_PAGES))
+    estimate = AsyncMock(return_value={"confirmed": False})
+
+    class _NoLLM:
+        async def complete(self, *a, **kw):
+            raise AssertionError("the model must not be called")
+
+    with patch("synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm", new=estimate):
+        events = [e async for e in OrphanResolverWorkflow().run_for_cli_provider(
+            ctx, question=f"resolve orphan --slug {slug}", provider=_NoLLM())]
+    return estimate, events[-1]["data"]["text"]
+
+
+@pytest.mark.parametrize("slug, expected_words", [
+    ("quantum-computing-history", ["quantum-computing-history", "does not exist"]),
+    ("old-page", ["old-page", "archived"]),
+    ("disputed", ["disputed", "contradicted"]),
+])
+async def test_cli_slug_that_is_not_an_active_page_is_rejected_without_an_estimate(slug, expected_words):
+    estimate, text = await _run_cli_with_slug(slug)
+    estimate.assert_not_called()
+    for word in expected_words:
+        assert word in text, text
+    assert "cancelled" not in text.lower()
+
+
+async def test_cli_slug_that_is_a_real_orphan_still_gets_an_estimate_of_one():
+    estimate, _ = await _run_cli_with_slug("lonely")
+    estimate.assert_called_once()
+    assert estimate.call_args.kwargs["orphan_count"] == 1
+
+
+async def test_cli_slug_that_already_has_inbound_links_is_unchanged():
+    estimate, text = await _run_cli_with_slug("eniac")
+    estimate.assert_not_called()
+    assert "not an active orphan page" in text and "computing-history" in text
+
+
+async def test_system_prompt_tells_the_model_what_to_do_when_the_slug_is_not_active():
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    prompt = await OrphanResolverWorkflow().build_system_prompt()
+    step1 = prompt[prompt.index("STEP 1"):prompt.index("STEP 2")]
+    assert "not_active" in step1
+    assert "reason" in step1

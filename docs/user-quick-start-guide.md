@@ -1129,6 +1129,8 @@ synthadoc workflow run --name orphan-resolver
 synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 ```
 
+`--slug` must name an active page that has no inbound links. If the page does not exist, is archived or contradicted, or is already linked, the resolver says so and stops before any cost estimate; nothing is changed.
+
 The CLI renders the same approval prompts and diff previews as the web UI.
 
 **Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to restore the page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
