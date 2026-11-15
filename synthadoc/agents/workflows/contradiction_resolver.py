@@ -330,9 +330,43 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         r"|\bresolv.{0,30}\bcontradict"
         r"|\bfix\s+contradicted\b"
         r"|\brun\s+contradiction.{0,10}resolver\b"
-        r"|\bcontradiction\s+resolver\b",
+        r"|\bcontradiction\s+resolver\b"
+        # Natural-language slug variants:  "resolver on page X", "resolver on slug X"
+        r"|\bresolver\s+on\s+(?:page|slug)\b"
+        # CLI shorthand: "resolve --slug X"
+        r"|\bresolve\s+--slug\b",
         re.IGNORECASE,
     )
+
+    @staticmethod
+    def _parse_slug(text: str) -> str | None:
+        """Extract a page slug from *text*.
+
+        Accepts both the CLI flag (``--slug SLUG``) and common natural-language
+        forms:
+
+        * ``--slug alan-turing``
+        * ``on page alan-turing`` / ``on slug alan-turing``
+        * ``for page alan-turing`` / ``for slug alan-turing``
+        * ``resolver alan-turing`` (bare slug after the keyword)
+        """
+        # CLI flag first — most specific
+        m = re.search(r"--slug\s+(\S+)", text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # "on page X" / "on slug X"
+        m = re.search(r"\bon\s+(?:page|slug)\s+([\w-]+)", text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # "for page X" / "for slug X"
+        m = re.search(r"\bfor\s+(?:page|slug)\s+([\w-]+)", text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # bare slug after "resolver" keyword: "resolver alan-turing"
+        m = re.search(r"\bresolver\s+([\w-]+)\b", text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        return None
 
     # CLI providers (claude-code, opencode) cannot follow the JSON wire-format
     # tool-call loop.  This workflow opts into a Python-driven alternative:
@@ -413,14 +447,13 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                 "which page to roll back."
             )
 
-        slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
         type_match = re.search(
             r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
             user_input,
             re.IGNORECASE,
         )
 
-        slug = slug_match.group(1) if slug_match else None
+        slug = self._parse_slug(user_input)
         raw_type = type_match.group(1).lower() if type_match else "all"
         scope = self._TYPE_REMAP.get(raw_type, raw_type)
 
@@ -496,13 +529,12 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             return
 
         # ── 1. Parse flags (same logic as build_initial_message) ──────────────
-        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
         type_match = re.search(
             r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
             question,
             re.IGNORECASE,
         )
-        page_slug = slug_match.group(1) if slug_match else None
+        page_slug = self._parse_slug(question)
         raw_type = (type_match.group(1).lower() if type_match else "all")
         scope = self._TYPE_REMAP.get(raw_type, raw_type)
 
