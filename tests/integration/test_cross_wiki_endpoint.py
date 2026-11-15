@@ -525,3 +525,26 @@ def test_cross_wiki_stream_filters_blocked_domains(tmp_wiki):
     assert "https://allowed.example.com/docs" in suggestions
     assert "https://blocked.example.com/bad" not in suggestions
     assert "https://blocked.example.com/bad" not in resp.text
+
+
+def test_cross_wiki_stream_error_does_not_leak_exception_details(tmp_wiki, caplog):
+    """GitHub code-scanning py/stack-trace-exposure: an exception raised while
+    answering a cross-wiki query must not have its message text streamed to
+    the external client — internal exception text can carry implementation
+    details (file paths, internal hostnames, library internals) useful to an
+    attacker. The client gets a generic message; the real detail is logged
+    server-side only.
+    """
+    sensitive = "Connection to internal-db-host-7.corp.internal:5432 failed: /etc/secrets/db.conf not found"
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=RuntimeError(sensitive))
+    with patch("synthadoc.integration.http_server._make_cross_wiki_agent", return_value=mock_agent):
+        with patch("synthadoc.cli._wiki.read_registry_all", return_value={"wiki-a": {}}):
+            app = _make_app(tmp_wiki)
+            with TestClient(app) as client:
+                resp = client.get("/cross-wiki/query/stream", params={"q": "what is leverage?"})
+
+    assert resp.status_code == 200
+    assert sensitive not in resp.text
+    assert "internal-db-host-7" not in resp.text
+    assert "event: error" in resp.text
