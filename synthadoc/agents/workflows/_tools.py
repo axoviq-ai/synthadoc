@@ -1527,7 +1527,23 @@ async def tool_propose_and_apply_blocks(
                     f"({result.applied_count} block(s) applied, "
                     f"{result.rejected_count} rejected)"},
     )
-    return {"applied": True, "diff_preview": diff_preview}
+    ret: dict = {"applied": True, "diff_preview": diff_preview}
+    if result.rejected_count > 0:
+        ret["rejected_blocks"] = [
+            {
+                "index": br.index + 1,
+                "reason": br.rejection_reason or "no_match",
+                "old_text_snippet": (br.old_text[:120] + "…") if len(br.old_text) > 120 else br.old_text,
+            }
+            for br in result.blocks
+            if br.status == "rejected"
+        ]
+        ret["note"] = (
+            f"{result.rejected_count} block(s) could not be applied — "
+            "do not re-propose the same old_text values on retry; "
+            "they do not appear verbatim in the current page content."
+        )
+    return ret
 
 
 async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:

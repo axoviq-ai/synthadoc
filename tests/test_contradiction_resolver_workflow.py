@@ -375,6 +375,55 @@ async def test_propose_and_apply_blocks_auto_skips_full_page_when_all_rejected()
 
 
 @pytest.mark.asyncio
+async def test_propose_and_apply_blocks_includes_rejected_detail_on_partial_apply():
+    """When some blocks apply and some are rejected, the return value must include
+    rejected_blocks and a note so the LLM does not re-propose the same unmatched
+    old_text on retry."""
+    from synthadoc.agents.workflows._tools import tool_propose_and_apply_blocks
+
+    page = MagicMock()
+    page.content = "The claim is wrong. Other content here."
+    page.last_fix_record = None
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.store.read_page.return_value = page
+    ctx.store.write_page = MagicMock()
+    ctx.session_id = "s1"
+    ctx.confirm_registry = {}
+    ctx.confirm_result_registry = {}
+    ctx.send_sse_event = AsyncMock()
+    ctx.audit_db = AsyncMock()
+    ctx.audit_db.snapshot_if_changed = AsyncMock()
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"id": "snap1"}])
+    ctx.bump_epoch = None
+    ctx.wiki_root = None
+
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body, **_kw):
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
+
+    with patch("synthadoc.agents.workflows._tools.tool_scoped_confirm",
+               side_effect=fake_scoped_confirm):
+        result = await tool_propose_and_apply_blocks(
+            ctx,
+            slug="some-page",
+            blocks=[
+                {"old_text": "The claim is wrong.", "new_text": "The claim is hedged."},
+                {"old_text": "text not present in the page at all", "new_text": "x"},
+            ],
+            strategy_name="Strategy 1 — Content rewrite",
+            rationale="Hedge the claim.",
+        )
+
+    assert result["applied"] is True
+    assert "rejected_blocks" in result, "partial rejection must be reported to the LLM"
+    assert len(result["rejected_blocks"]) == 1
+    assert result["rejected_blocks"][0]["reason"] == "no_match"
+    assert "text not present" in result["rejected_blocks"][0]["old_text_snippet"]
+    assert "do not re-propose" in result["note"]
+
+
+@pytest.mark.asyncio
 async def test_contradiction_resolver_prompt_uses_block_tool():
     from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
     wf = ContradictionResolverWorkflow()
