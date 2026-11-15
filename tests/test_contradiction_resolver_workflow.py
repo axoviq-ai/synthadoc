@@ -34,6 +34,40 @@ def test_match_re_does_not_match_unrelated():
     assert not re_pattern.search("what pages are stale?")
 
 
+def test_match_re_matches_natural_language_slug_forms():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    re_pattern = ContradictionResolverWorkflow.MATCH_RE
+    # CLI shorthand
+    assert re_pattern.search("resolve --slug alan-turing")
+    # Natural-language "resolver on page/slug"
+    assert re_pattern.search("run contradiction resolver on page alan-turing")
+    assert re_pattern.search("contradiction resolver on slug alan-turing")
+
+
+def test_parse_slug_flag():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("resolve --slug alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver --slug my-page") == "my-page"
+
+
+def test_parse_slug_natural_language():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("run contradiction resolver on page alan-turing") == "alan-turing"
+    assert wf._parse_slug("contradiction resolver on slug alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver for page alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver for slug alan-turing") == "alan-turing"
+    assert wf._parse_slug("run resolver alan-turing") == "alan-turing"
+
+
+def test_parse_slug_returns_none_when_absent():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("run contradiction resolver") is None
+    assert wf._parse_slug("fix contradicted pages") is None
+
+
 @pytest.mark.asyncio
 async def test_build_system_prompt_is_non_empty():
     from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
