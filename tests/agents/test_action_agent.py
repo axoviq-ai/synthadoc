@@ -1285,6 +1285,9 @@ async def test_contradiction_resolver_cli_path_resolves_page(tmp_path):
             "lint_warnings": ["claim X is unsupported"], "contradiction_note": None,
         }),
     ), patch(
+        "synthadoc.agents.workflows.contradiction_resolver.tool_deduplicate_page",
+        new=_AsyncMock(return_value={"status": "no_duplicates"}),
+    ), patch(
         "synthadoc.agents.workflows.contradiction_resolver.tool_propose_and_apply",
         new=_AsyncMock(return_value={"applied": True, "diff_preview": "..."}),
     ), patch(
