@@ -32,6 +32,13 @@ _MAX_BRACE_REPAIR = 5
 # Native tool-call markup some models emit instead of the JSON wire format,
 # e.g. MiniMax: ']<]minimax[>[<tool_call> ]<]minimax[>[name": "x", "input": {...}}'
 _NATIVE_MARKUP_RE = re.compile(r"\]<\]minimax\[>\[|</?(?:minimax:)?tool_call>", re.IGNORECASE)
+
+# Anthropic XML tool-call format (Claude 2 / legacy):
+#   <invoke name="tool_name"><parameter name="k">v</parameter></invoke>
+# Claude Sonnet 5.5 reverts to this format when it recognises tool descriptions in
+# the system prompt but the caller is not using the native function-calling API.
+_INVOKE_RE = re.compile(r'<invoke\s+name="([^"]+)">(.*?)</invoke>', re.DOTALL | re.IGNORECASE)
+_INVOKE_PARAM_RE = re.compile(r'<parameter\s+name="([^"]+)">(.*?)</parameter>', re.DOTALL | re.IGNORECASE)
 # A bare call inside native markup: "name": "<tool>", "input"|"arguments": {...}
 # (the opening '{"' is often lost in the markup, so the leading quote is optional).
 _BARE_CALL_RE = re.compile(
@@ -169,6 +176,32 @@ def _parse_native_calls(text: str) -> list[tuple[str, dict]]:
         tool_input = _decode_input(raw)
         if tool_input is not None:
             results.append((match.group(1), tool_input))
+    return results
+
+
+def _parse_invoke_calls(text: str) -> list[tuple[str, dict]]:
+    """Recover tool calls from Anthropic <invoke name="..."> XML format (Claude 2 / legacy).
+
+    Claude Sonnet 5.5 reverts to this format when it detects tool descriptions in the
+    system prompt but the native function-calling API is not being used.  Recovered
+    calls are usable; the loop should also inject a one-shot correction message so the
+    model switches to JSON for the rest of the session.
+    """
+    if "<invoke name=" not in text.lower():
+        return []
+    results: list[tuple[str, dict]] = []
+    for invoke_m in _INVOKE_RE.finditer(text):
+        tool_name = invoke_m.group(1)
+        body = invoke_m.group(2)
+        tool_input: dict = {}
+        for param_m in _INVOKE_PARAM_RE.finditer(body):
+            key = param_m.group(1)
+            raw_val = param_m.group(2).strip()
+            try:
+                tool_input[key] = json.loads(raw_val)
+            except (json.JSONDecodeError, ValueError):
+                tool_input[key] = raw_val
+        results.append((tool_name, tool_input))
     return results
 
 
@@ -315,12 +348,22 @@ async def run_tool_call_loop(
         text = response.text.strip()
 
         all_calls = _parse_wire_calls(text)
+        _invoke_recovered = False
         if not all_calls:
             all_calls = _parse_native_calls(text)
             if all_calls:
                 _log.warning(
                     "workflow tool-call format drift: %s used %s; recovered %d call(s): %s",
                     model, _tag_format(text), len(all_calls),
+                    ", ".join(name for name, _ in all_calls),
+                )
+        if not all_calls:
+            all_calls = _parse_invoke_calls(text)
+            if all_calls:
+                _invoke_recovered = True
+                _log.warning(
+                    "workflow tool-call format drift: %s used <invoke> XML; recovered %d call(s): %s",
+                    model, len(all_calls),
                     ", ".join(name for name, _ in all_calls),
                 )
 
@@ -451,7 +494,19 @@ async def run_tool_call_loop(
             messages.append(Message(role="assistant", content=text))
             # Labelled result(s) as standard JSON (json.dumps, not str()), followed
             # by a one-line reminder of the reply format.
-            messages.append(Message(role="user", content=_tool_result_message(combined)))
+            tool_result_msg = _tool_result_message(combined)
+            if _invoke_recovered:
+                # Prepend a one-shot correction so the model switches to JSON for
+                # the rest of the session.  The tool results follow immediately so
+                # the model has the data it needs on the same turn.
+                tool_result_msg = (
+                    "FORMAT CORRECTION: You used <invoke name=\"...\"> XML syntax. "
+                    "This workflow requires the JSON wire format for every tool call:\n"
+                    '{"tool_call": {"name": "<tool>", "input": {<kwargs>}}}\n'
+                    "Your XML call was recovered and executed. Use JSON from now on.\n\n"
+                    + tool_result_msg
+                )
+            messages.append(Message(role="user", content=tool_result_msg))
 
         else:
             # Retries exhausted — if this still looks like a failed tool call,
