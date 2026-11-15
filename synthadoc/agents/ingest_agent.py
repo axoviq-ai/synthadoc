@@ -1315,12 +1315,29 @@ class IngestAgent(BaseAgent):
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
+                        # Force re-ingest of a contradicted page: fully regenerate the page
+                        # body from the source rather than appending sections.  Appending
+                        # causes corruption because _merge_section_into_page falls back to
+                        # an append when the dropped-sentences check fails (contradiction
+                        # notes were added after the original ingest).
+                        _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
+                        if _force_rebuild:
+                            page.status = LifecycleState.DRAFT
+                            page.contradiction_note = None
+                            page.unresolved_note = None
+                            page.content = ""
+                            page.sources = []
                         if force:
                             _purge_dead_sources(page, self._wiki_root)
                         _backfill_okf_fields(page, analysis, source)
                         page.updated = date.today().isoformat()
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
+                        elif _force_rebuild:
+                            # Full page body — use LLM-generated page_content when available
+                            section = (_strip_leading_frontmatter(page_content)
+                                       if page_content.strip()
+                                       else f"# {title}\n\n{text[:4000]}")
                         elif update_content:
                             section = update_content
                         else:
@@ -1379,12 +1396,24 @@ class IngestAgent(BaseAgent):
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
+                            # Force re-ingest of a contradicted page: fully regenerate
+                            _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
+                            if _force_rebuild:
+                                page.status = LifecycleState.DRAFT
+                                page.contradiction_note = None
+                                page.unresolved_note = None
+                                page.content = ""
+                                page.sources = []
                             if force:
                                 _purge_dead_sources(page, self._wiki_root)
                             _backfill_okf_fields(page, analysis, source)
                             page.updated = date.today().isoformat()
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
+                            elif _force_rebuild:
+                                section = (_strip_leading_frontmatter(page_content)
+                                           if page_content.strip()
+                                           else f"# {title}\n\n{text[:4000]}")
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
                             # Pass 0: append Key Data section for deterministic numerical preservation
