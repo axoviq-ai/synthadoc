@@ -1375,7 +1375,7 @@ Agentic maintenance workflows (contradiction resolver, orphan resolver, content-
 | Model | Provider | Approximate cost vs. Sonnet 5.5 |
 |---|---|---|
 | `claude-haiku-5-5` | `anthropic` | ~10× cheaper |
-| `deepseek-flash` | `deepseek` | ~15× cheaper |
+| `deepseek-flash` | `deepseek` (thinking disabled) | ~15× cheaper |
 | `MiniMax-M3` (thinking disabled) | `minimax` | ~8× cheaper |
 | `qwen3.8-flash` (thinking disabled) | `qwen` | ~20× cheaper |
 
