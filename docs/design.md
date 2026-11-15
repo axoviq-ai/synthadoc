@@ -1375,7 +1375,7 @@ Agentic maintenance workflows (contradiction resolver, orphan resolver, content-
 | Model | Provider | Approximate cost vs. Sonnet 5.5 |
 |---|---|---|
 | `claude-haiku-5-5` | `anthropic` | ~10× cheaper |
-| `deepseek-chat` | `deepseek` | ~15× cheaper |
+| `deepseek-flash` | `deepseek` | ~15× cheaper |
 | `MiniMax-M3` (thinking disabled) | `minimax` | ~8× cheaper |
 | `qwen3.8-flash` (thinking disabled) | `qwen` | ~20× cheaper |
 
@@ -1392,7 +1392,7 @@ For DeepSeek or MiniMax (must disable thinking — it causes timeouts on tool-ca
 ```toml
 [agents]
 default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
-workflow = { provider = "deepseek", model = "deepseek-chat", thinking = "disabled" }
+workflow = { provider = "deepseek", model = "deepseek-flash", thinking = "disabled" }
 ```
 
 ```toml
