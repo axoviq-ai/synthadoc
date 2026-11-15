@@ -348,7 +348,6 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         * ``--slug alan-turing``
         * ``on page alan-turing`` / ``on slug alan-turing``
         * ``for page alan-turing`` / ``for slug alan-turing``
-        * ``resolver alan-turing`` (bare slug after the keyword)
         """
         # CLI flag first — most specific
         m = re.search(r"--slug\s+(\S+)", text, re.IGNORECASE)
@@ -360,10 +359,6 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             return m.group(1)
         # "for page X" / "for slug X"
         m = re.search(r"\bfor\s+(?:page|slug)\s+([\w-]+)", text, re.IGNORECASE)
-        if m:
-            return m.group(1)
-        # bare slug after "resolver" keyword: "resolver alan-turing"
-        m = re.search(r"\bresolver\s+([\w-]+)\b", text, re.IGNORECASE)
         if m:
             return m.group(1)
         return None
