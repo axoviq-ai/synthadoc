@@ -1316,7 +1316,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     yield f"event: citations\ndata: {_json.dumps({'citations': _cached['citations']})}\n\n"
                 if _cached.get("knowledge_gap"):
                     _raw = _cached.get("suggested_searches", [])
-                    _filtered = _filter_blocked_suggestions(_raw, _load_blocked_domains(_orch._root))
+                    _filtered = _filter_blocked_suggestions(_raw, load_blocked_domains(_orch._root))
                     yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': _filtered})}\n\n"
                 if session_id and _cached.get("answer"):
                     try:
@@ -1389,7 +1389,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 yield f"event: citations\ndata: {_json.dumps({'citations': result.citations})}\n\n"
             if result.knowledge_gap:
                 _raw = result.suggested_searches or []
-                _filtered = _filter_blocked_suggestions(_raw, _load_blocked_domains(_orch._root))
+                _filtered = _filter_blocked_suggestions(_raw, load_blocked_domains(_orch._root))
                 yield f"event: gap\ndata: {_json.dumps({'gap': True, 'suggested_searches': _filtered})}\n\n"
             # Persist before done so the client's sidebar refresh sees fresh data
             if session_id and result.answer:
@@ -1481,7 +1481,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
                     if cached.get("knowledge_gap") and cached.get("suggested_searches"):
                         _filtered_cached = _filter_blocked_suggestions(
-                            cached["suggested_searches"], _load_blocked_domains(orch._root))
+                            cached["suggested_searches"], load_blocked_domains(orch._root))
                         if _filtered_cached:
                             events.append({"event": "gap", "data": {"suggested_searches": _filtered_cached}})
                     from synthadoc.agents.hint_engine import HintEngine
@@ -1574,7 +1574,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             _knowledge_gap = True
                             _raw = evt["data"].get("suggested_searches", [])
                             _suggested_searches = _filter_blocked_suggestions(
-                                _raw, _load_blocked_domains(orch._root))
+                                _raw, load_blocked_domains(orch._root))
                             evt["data"]["suggested_searches"] = _suggested_searches
                         elif evt["event"] == "done":
                             _is_cacheable = evt["data"].get("cacheable", True)
