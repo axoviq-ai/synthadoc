@@ -2325,3 +2325,45 @@ async def test_deduplicate_page_missing_slug_returns_error(tmp_path):
     result = await tool_deduplicate_page(ctx, slug="no-such-page")
 
     assert "error" in result
+
+
+# ── tool_ingest_source: blocked-domain guard ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_source_skips_blocked_domain(tmp_path):
+    """tool_ingest_source returns status=skipped when the URL's domain is blocked."""
+    from synthadoc.agents.workflows._tools import tool_ingest_source
+
+    wiki_root = tmp_path / "wiki"
+    wiki_root.mkdir()
+    # Write .synthadoc/blocked_domains.json that blocks wikipedia.org
+    synthadoc_dir = wiki_root / ".synthadoc"
+    synthadoc_dir.mkdir()
+    (synthadoc_dir / "blocked_domains.json").write_text('["wikipedia.org"]', encoding="utf-8")
+
+    sse_events: list[tuple[str, dict]] = []
+
+    async def _send(event, data):
+        sse_events.append((event, data))
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=wiki_root,
+        queue=None,
+        store=None,
+        audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+
+    result = await tool_ingest_source(ctx, source_path="https://en.wikipedia.org/wiki/AI_winter")
+
+    assert result["status"] == "skipped"
+    assert "blocked" in result["message"].lower()
+    # SSE progress event must carry "blocked" in the message
+    blocked_events = [
+        (ev, d) for ev, d in sse_events
+        if ev == "tool_progress" and "blocked" in d.get("message", "").lower()
+    ]
+    assert blocked_events, "Expected a 'domain blocked' SSE tool_progress event"
