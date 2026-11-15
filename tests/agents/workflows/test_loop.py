@@ -562,9 +562,8 @@ async def test_loop_stub_response_exhausted_emits_stub_error():
 
 
 @pytest.mark.asyncio
-async def test_loop_invoke_xml_format_exhausted_emits_tag_error():
-    """After _MAX_PARSE_RETRIES of <invoke name=...> responses the loop emits
-    the tag-format terminal error (covering lines 295-296, 311)."""
+async def test_loop_unrecoverable_tag_format_emits_error():
+    """[TOOL_CALL] format is not recoverable and must emit the terminal tag-format error."""
     ctx, _ = _make_ctx()
     call_count = 0
 
@@ -572,7 +571,7 @@ async def test_loop_invoke_xml_format_exhausted_emits_tag_error():
         nonlocal call_count
         call_count += 1
         return CompletionResponse(
-            text='<invoke name="tool_read_page_content"><arg name="slug">test</arg></invoke>',
+            text='[TOOL_CALL] {"name": "tool_read_page_content", "input": {"slug": "test"}}',
             input_tokens=5,
             output_tokens=5,
         )
@@ -594,10 +593,57 @@ async def test_loop_invoke_xml_format_exhausted_emits_tag_error():
     token_events = [e for e in results if e["event"] == "token"]
     assert len(final_events) == 1
     full_text = "".join(e["data"]["text"] for e in token_events) + final_events[0]["data"]["text"]
-    assert "<invoke>" in full_text or "invoke" in full_text.lower()
     assert "unsupported" in full_text.lower() or "tag" in full_text.lower()
-    # Consumed initial + 2 retries + 1 exhausted = 4 calls total
     assert call_count <= 4
+
+
+@pytest.mark.asyncio
+async def test_loop_invoke_xml_format_recovered():
+    """<invoke name="..."><parameter name="k">v</parameter></invoke> XML is recovered,
+    a FORMAT CORRECTION message is injected, and the loop continues normally."""
+    ctx, _ = _make_ctx()
+    call_count = 0
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # Model uses <invoke> XML on the first turn.
+            return CompletionResponse(
+                text='<invoke name="my_tool"><parameter name="slug">test-page</parameter></invoke>',
+                input_tokens=5,
+                output_tokens=5,
+            )
+        # After the correction message the model returns plain text — workflow ends.
+        return CompletionResponse(text="All done.", input_tokens=5, output_tokens=5)
+
+    executed: list[dict] = []
+
+    async def my_tool(slug: str) -> dict:
+        executed.append({"slug": slug})
+        return {"ok": True}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="do something",
+        tool_fns={"my_tool": my_tool},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # Tool was actually called with the recovered argument.
+    assert executed == [{"slug": "test-page"}]
+    # Loop completed normally (no error event, one final_text).
+    final_events = [e for e in results if e["event"] == "final_text"]
+    assert len(final_events) == 1
+    assert final_events[0]["data"]["text"] == "All done."
+    # Correction message should have been injected (visible in the second LLM call).
+    assert call_count == 2
 
 
 async def test_loop_mandatory_next_tool_exhausted_after_one_retry():
