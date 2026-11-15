@@ -19,6 +19,7 @@ from synthadoc.storage.wiki import LifecycleState
 from synthadoc.agents.workflows._tools import (
     format_recent_fix_line,
     tool_confirm,
+    tool_deduplicate_page,
     tool_ingest_source,
     tool_list_recent_fixes,
     tool_notify,
@@ -82,6 +83,9 @@ When you have a final message for the user, respond with plain text only (no JSO
 ━━━ TOOL INVENTORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 tool_get_contradicted_pages(scope)     → list contradicted pages (scope: all/gate/conflict)
 tool_read_page_content(slug)           → current content + lint_warnings + contradiction_note
+tool_deduplicate_page(slug)            → collapse repeated headings; returns
+                                         {status: "deduplicated", sections_merged, skipped}
+                                         or {status: "no_duplicates"}
 tool_read_source_content(slug)         → source text (layered fallback: raw → extracted → note)
 tool_propose_and_apply(slug, new_content, strategy_name, rationale)
                                        → shows diff to user, applies if approved
@@ -149,6 +153,22 @@ STEP 4 — Per-page resolution loop
     4b. Read page: call tool_read_page_content(slug).
         If conflict or both: also call tool_read_source_content(slug).
 
+    4b'. Deduplicate: call tool_deduplicate_page(slug).
+         Duplicate sections from repeated ingest are the most common reason
+         lint keeps finding new warnings after a Strategy 1 rewrite — always
+         run this before the first Strategy 1 attempt.
+
+         If status is "deduplicated":
+           Immediately call tool_run_scoped_lint(slug) on the now-deduplicated page.
+           • Lint PASS → call tool_transition_lifecycle_state(slug, to_state="active",
+               reason="resolved by contradiction-resolver — strategy: Strategy 0 — Deduplication")
+             Add slug to your internal "fixed" list and continue to step 4j.
+           • Lint FAIL → continue to step 4c with the now-deduplicated (cleaner) page.
+             Strategy 1 rewrites now target only the remaining disputed claims,
+             not duplicated content.
+
+         If status is "no_duplicates": proceed directly to step 4c.
+
     4c. Select Strategy 1 (content rewrite) as the first attempt.
         $$STRATEGY_1$$
 
@@ -156,6 +176,7 @@ STEP 4 — Per-page resolution loop
         where blocks is a list of {"old_text": ..., "new_text": ...} dicts.
         For all other strategies: call tool_propose_and_apply(slug, new_content, strategy_name, rationale).
         strategy_name should be one of:
+          "Strategy 0 — Deduplication"
           "Strategy 1 — Content rewrite"
           "Strategy 2 — Web ingest for better grounding"
           "Strategy 3 — Force source re-ingest"
@@ -418,6 +439,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_cost_estimate":              p(tool_cost_estimate, ctx),
             # Generic framework tools (from _tools.py)
             "tool_read_page_content":          p(tool_read_page_content, ctx),
+            "tool_deduplicate_page":           p(tool_deduplicate_page, ctx),
             "tool_run_scoped_lint":            p(tool_run_scoped_lint, ctx),
             "tool_propose_and_apply":          p(tool_propose_and_apply, ctx),
             "tool_propose_and_apply_blocks":   p(tool_propose_and_apply_blocks, ctx),
@@ -553,7 +575,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                 # inferred-conflict that failed lint: page_type stays CONFLICT,
                 # falls through to rewrite attempt
 
-            if page_type != PT.UNKNOWN or slug not in fixed:
+            _already_fixed = any(f["slug"] == slug for f in fixed)
+            if page_type != PT.UNKNOWN or not _already_fixed:
                 # 4b. Read page content (and source for conflict/both types)
                 page_content = await tool_read_page_content(ctx, slug=slug)
                 source_text: str | None = None
@@ -561,19 +584,48 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                     source_result = await tool_read_source_content(ctx, slug=slug)
                     source_text = source_result.get("source_text") or None
 
-                # 4c. Single LLM rewrite call
-                rewrite = await self._cli_rewrite_page(
-                    provider, slug, page_content, source_text, page_type
-                )
+                # 4b'. Dedup — collapse repeated headings before any LLM rewrite.
+                #      Duplicate sections are the main reason lint keeps finding new
+                #      warnings after rewrites: fixing one copy leaves unhedged
+                #      duplicates that the linter flags on the next pass.
+                _dedup_fixed = False
+                dedup_result = await tool_deduplicate_page(ctx, slug=slug)
+                if dedup_result.get("status") == "deduplicated":
+                    lint_result = await tool_run_scoped_lint(ctx, slug=slug)
+                    if lint_result.get("pass"):
+                        reason = (
+                            "resolved by contradiction-resolver — "
+                            "strategy: Strategy 0 — Deduplication"
+                        )
+                        await tool_transition_lifecycle_state(
+                            ctx, slug=slug, to_state=LifecycleState.ACTIVE, reason=reason,
+                        )
+                        fixed.append({
+                            "slug": slug,
+                            "note": "Deduplicated — lint passed after collapsing repeated sections",
+                        })
+                        _dedup_fixed = True
+                    else:
+                        # Dedup ran but lint still fails — refresh page_content so the
+                        # LLM rewrite targets the now-deduplicated (cleaner) content.
+                        page_content = await tool_read_page_content(ctx, slug=slug)
 
-                if rewrite is None:
+                if not _dedup_fixed:
+                    # 4c. Single LLM rewrite call
+                    rewrite = await self._cli_rewrite_page(
+                        provider, slug, page_content, source_text, page_type
+                    )
+                else:
+                    rewrite = None
+
+                if not _dedup_fixed and rewrite is None:
                     await tool_notify(
                         ctx,
                         message=f"⚠ {slug} — could not generate a rewrite; skipping",
                         level="warning",
                     )
                     unresolved.append({"slug": slug, "reason": "LLM rewrite failed"})
-                else:
+                elif not _dedup_fixed:
                     # 4d. Show diff and ask for approval (reuses propose_and_apply as-is)
                     apply_result = await tool_propose_and_apply(
                         ctx,

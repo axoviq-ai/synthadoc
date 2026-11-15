@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.content_health_fixes import heading_mismatch_error, text_loss_error
+from synthadoc.agents.content_health_fixes import (
+    heading_mismatch_error,
+    merge_duplicate_sections,
+    text_loss_error,
+)
 from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
@@ -1149,6 +1153,62 @@ async def tool_read_page_content(ctx: "WorkflowContext", slug: str) -> dict:
         "lint_warnings": page.lint_warnings or [],
         "contradiction_note": page.contradiction_note,
         "status": page.status if page.status else "unknown",
+    }
+
+
+async def tool_deduplicate_page(ctx: "WorkflowContext", slug: str) -> dict:
+    """Collapse repeated headings in a page using merge_duplicate_sections.
+
+    Silently writes the deduplicated content when duplicates are found.  A
+    snapshot is saved before the write so the change is rollback-safe.  Does
+    NOT alter the page's lifecycle state — the caller must run lint and
+    transition to active if the deduplication resolves all warnings.
+
+    Returns::
+
+        {"status": "deduplicated", "sections_merged": [...], "skipped": [...]}
+        {"status": "no_duplicates"}
+        {"error": str}  — page not found
+    """
+    store = getattr(ctx, "store", None)
+    if store is None:
+        return {"status": "no_duplicates"}
+    page = store.read_page(slug)
+    if page is None:
+        return {"error": f"Page not found: {slug!r}"}
+
+    content = page.content if isinstance(page.content, str) else ""
+    result = merge_duplicate_sections(content)
+    if not result.merged:
+        return {"status": "no_duplicates"}
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {
+            "tool": "deduplicate_page",
+            "message": (
+                f"Deduplicating {slug}: merging {len(result.merged)} section(s): "
+                + ", ".join(repr(h) for h in result.merged)
+            ),
+        },
+    )
+    if ctx.audit_db is not None:
+        await ctx.audit_db.snapshot_if_changed(  # type: ignore[union-attr]
+            slug, page.content, triggered_by="Strategy 0 — Deduplication",
+            reason="pre-dedup snapshot",
+        )
+    page.content = result.content
+    _rescan_content_health(page, slug)
+    with store.page_lock(slug):
+        store.write_page(slug, page)
+    if ctx.bump_epoch:
+        ctx.bump_epoch()
+    if ctx.invalidate_search:
+        ctx.invalidate_search()
+    return {
+        "status": "deduplicated",
+        "sections_merged": result.merged,
+        "skipped": result.skipped,
     }
 
 
