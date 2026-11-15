@@ -321,9 +321,13 @@ async def tool_poll_job(
                     "status": ToolStatus.SUCCESS,
                     "message": f"Job {job_id} completed successfully",
                 }
+            detail = (job.error or "").strip()
             return {
                 "status": "failed",
-                "message": f"Job {job_id} ended with status {job.status.value!r}",
+                "message": (
+                    f"Job {job_id} ended with status {job.status.value!r}"
+                    + (f": {detail}" if detail else "")
+                ),
             }
 
         progress_msg = (job.progress or {}).get("message") if job else None

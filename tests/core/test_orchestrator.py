@@ -434,6 +434,33 @@ async def test_ingest_skips_blocked_domain_without_network_call(tmp_wiki):
         assert "blocked-example.com" in (job.error or "")
 
 
+@pytest.mark.asyncio
+async def test_ingest_skips_subdomain_of_blocked_root_domain(tmp_wiki):
+    """blocked_domains.json entry 'example.com' must block subdomains like 'en.example.com'.
+
+    Motivation: auto-block stores the hostname that failed (e.g. 'en.wikipedia.org'), but
+    users may also manually add a root domain ('wikipedia.org') to block all subdomains at
+    once.  is_domain_blocked() handles subdomain matching; the pre-flight guard must use it.
+    """
+    import json as _json
+    from synthadoc.core.queue import JobStatus
+
+    blocked_path = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+    # Store only the root domain — the URL uses a subdomain
+    blocked_path.write_text(_json.dumps(["example.com"]), encoding="utf-8")
+
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue(
+            "ingest", {"source": "https://en.example.com/article", "force": False}
+        )
+        with patch("synthadoc.core.orchestrator.make_provider") as mock_provider:
+            await orch._run_ingest(job_id, "https://en.example.com/article", auto_confirm=True)
+            mock_provider.assert_not_called()
+
+        skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        assert any(j.id == job_id for j in skipped), "Subdomain of blocked root must be SKIPPED"
+
+
 # ── Epoch-change tests for lint and candidates promote ────────────────────────
 
 @pytest.mark.asyncio
