@@ -403,6 +403,37 @@ async def test_auto_block_domain_writes_unix_line_endings(tmp_wiki):
     assert b"\r\n" not in blocked_path.read_bytes()
 
 
+# ── Blocked-domain pre-flight guard ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_skips_blocked_domain_without_network_call(tmp_wiki):
+    """_run_ingest must skip a job immediately when the URL's domain is in blocked_domains.json.
+
+    The skip must happen before any HTTP request so no tokens or network round-trips are
+    wasted retrying a domain that was previously auto-blocked.
+    """
+    import json as _json
+    from synthadoc.core.queue import JobStatus
+
+    blocked_path = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+    blocked_path.write_text(_json.dumps(["blocked-example.com"]), encoding="utf-8")
+
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue(
+            "ingest", {"source": "https://blocked-example.com/article", "force": False}
+        )
+        # Call _run_ingest directly (same pattern as other orchestrator tests).
+        # make_provider must never be called because the guard fires before it.
+        with patch("synthadoc.core.orchestrator.make_provider") as mock_provider:
+            await orch._run_ingest(job_id, "https://blocked-example.com/article", auto_confirm=True)
+            mock_provider.assert_not_called()
+
+        skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        assert any(j.id == job_id for j in skipped), "Blocked-domain job must have SKIPPED status"
+        job = next(j for j in skipped if j.id == job_id)
+        assert "blocked-example.com" in (job.error or "")
+
+
 # ── Epoch-change tests for lint and candidates promote ────────────────────────
 
 @pytest.mark.asyncio
