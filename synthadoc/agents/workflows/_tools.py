@@ -36,6 +36,7 @@ from synthadoc.agents.lint_agent import (
     find_broken_wikilink_refs,
 )
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
+from synthadoc.core.domain_guard import is_domain_blocked
 from synthadoc.core.queue import JobStatus
 
 
@@ -229,6 +230,15 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     is_url = source_path.startswith(("http://", "https://"))
 
     if is_url:
+        if is_domain_blocked(source_path, ctx.wiki_root):
+            from urllib.parse import urlparse
+            host = urlparse(source_path).netloc
+            msg = f"Domain {host!r} is in the blocked-domains list — skipping re-ingest."
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "ingest_source", "message": f"SKIP {host}: domain blocked"},
+            )
+            return {"status": "skipped", "message": msg}
         label = source_path
     else:
         # Resolve relative paths (returned by find_stale_pages / find_page_source)
