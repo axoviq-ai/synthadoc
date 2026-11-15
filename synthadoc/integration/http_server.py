@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -1864,13 +1865,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/ingest")
     async def agent_ingest(request: Request, req: AgentIngestRequest):
-        # Validate path is within wiki_root before any filesystem access —
-        # an explicit boolean check (not exception-driven control flow) so
-        # the rejection is unambiguous. #CodeQL py/path-injection
-        src = Path(req.source_path).resolve()
-        wiki_root_resolved = wiki_root.resolve()
-        if not src.is_relative_to(wiki_root_resolved):
+        # Validate path is within wiki_root before any filesystem access,
+        # using os.path.realpath + a string-prefix check — the canonical
+        # path-injection sanitizer idiom. Two Path-based variants
+        # (resolve()+relative_to(), is_relative_to()) were tried first and
+        # both still got flagged by CodeQL's py/path-injection query.
+        real_src = os.path.realpath(req.source_path)
+        real_root = os.path.realpath(str(wiki_root))
+        if real_src != real_root and not real_src.startswith(real_root + os.sep):
             raise HTTPException(status_code=403, detail="source_path is outside wiki root")
+        src = Path(real_src)
         if not src.exists():
             raise HTTPException(status_code=404, detail=f"File not found: {req.source_path}")
         try:
