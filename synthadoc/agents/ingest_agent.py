@@ -1320,9 +1320,11 @@ class IngestAgent(BaseAgent):
                         # causes corruption because _merge_section_into_page falls back to
                         # an append when the dropped-sentences check fails (contradiction
                         # notes were added after the original ingest).
+                        # Do NOT change the lifecycle state here — the caller (contradiction
+                        # resolver) owns the contradicted→active transition via
+                        # tool_transition_lifecycle_state after re-lint.
                         _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
                         if _force_rebuild:
-                            page.status = LifecycleState.DRAFT
                             page.contradiction_note = None
                             page.unresolved_note = None
                             page.content = ""
@@ -1399,7 +1401,6 @@ class IngestAgent(BaseAgent):
                             # Force re-ingest of a contradicted page: fully regenerate
                             _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
                             if _force_rebuild:
-                                page.status = LifecycleState.DRAFT
                                 page.contradiction_note = None
                                 page.unresolved_note = None
                                 page.content = ""
