@@ -132,3 +132,28 @@ async def test_complete_reports_truncation_from_stop_reason(stop_reason, truncat
     resp = await provider.complete([Message(role="user", content="hi")])
     assert resp.text == "Hello world"
     assert resp.truncated is truncated
+
+
+@pytest.mark.asyncio
+async def test_complete_sends_output_config_effort_low_by_default():
+    """effort="" in AgentConfig → output_config={"effort": "low"} on the wire."""
+    provider, requests = _provider("claude-sonnet-5-5", [None])
+    await provider.complete([Message(role="user", content="hi")])
+    assert requests[0].get("output_config") == {"effort": "low"}
+
+
+@pytest.mark.asyncio
+async def test_complete_sends_output_config_with_explicit_effort():
+    """effort="medium" in AgentConfig → output_config={"effort": "medium"} on the wire."""
+    provider, requests = _provider("claude-sonnet-5-5", [None])
+    provider._config = AgentConfig(provider="anthropic", model="claude-sonnet-5-5", effort="medium")
+    await provider.complete([Message(role="user", content="hi")])
+    assert requests[0].get("output_config") == {"effort": "medium"}
+
+
+@pytest.mark.asyncio
+async def test_complete_stream_sends_output_config_effort():
+    """complete_stream also sends output_config with the configured effort."""
+    provider, requests = _provider("claude-haiku-5-5", [None])
+    _ = [t async for t in provider.complete_stream([Message(role="user", content="hi")])]
+    assert requests[0].get("output_config") == {"effort": "low"}
