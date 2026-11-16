@@ -3,7 +3,7 @@
 
 import { memo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownPlugins } from "../markdownPlugins";
 import type { Message } from "../useQueryStream";
 import { JOB, ENRICH, ENRICH_LABEL, type EnrichState } from "../jobStatus";
 
@@ -395,7 +395,7 @@ function BlockedBubble({ content }: { content: string }) {
         <div className="blocked-bubble">
             <span className="blocked-bubble-icon" aria-hidden="true">⚠</span>
             <div className="blocked-bubble-text">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={markdownPlugins}>{content}</ReactMarkdown>
             </div>
         </div>
     );
@@ -434,7 +434,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                         </div>
                     )
                     : <div className="bubble-md">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
+                        <ReactMarkdown remarkPlugins={markdownPlugins} components={{ pre: PreBlock }}>
                             {obsidianCitationsToGfm(wikilinksToGfm(escapePlaceholders(localizeISOTimestamps(msg.text))))}
                         </ReactMarkdown>
                       </div>

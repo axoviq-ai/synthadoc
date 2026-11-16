@@ -19,6 +19,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
+    "remark-cjk-friendly": "2.3.3",
     "remark-gfm": "^4.0.1"
   },
   "overrides": {
