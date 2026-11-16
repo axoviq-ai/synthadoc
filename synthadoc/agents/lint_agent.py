@@ -865,6 +865,21 @@ class LintAgent(BaseAgent):
         # Fresh pages: update warnings, write, run gate, update cache.
         for (slug, page), (warnings, tokens) in zip(fresh_pairs, fresh_results):
             total_tokens += tokens
+            # Rate-limit sentinel: a single entry with claim=None and "rate limit"
+            # in the concern.  Writing it would pollute page.lint_warnings with a
+            # transient infrastructure error and cause downstream lint checks (e.g.
+            # the contradiction resolver's stale-metadata check) to fail
+            # unnecessarily.  Skip the write so the page keeps its existing warnings;
+            # leave the cache entry absent so the page gets a fresh adversarial pass
+            # on the next lint run once rate limits recover.
+            if (len(warnings) == 1
+                    and warnings[0].get("claim") is None
+                    and "rate limit" in (warnings[0].get("concern") or "").lower()):
+                _log.warning(
+                    "[adversarial] rate-limited for slug=%s — skipping page update; "
+                    "will retry on next lint run", slug,
+                )
+                continue
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
             if await self._apply_adversarial_gate(slug, page, warnings):
