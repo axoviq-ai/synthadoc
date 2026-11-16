@@ -431,7 +431,7 @@ async def test_ingest_skips_blocked_domain_without_network_call(tmp_wiki):
         skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
         assert any(j.id == job_id for j in skipped), "Blocked-domain job must have SKIPPED status"
         job = next(j for j in skipped if j.id == job_id)
-        assert "blocked-example.com" in (job.error or "")
+        assert "'blocked-example.com'" in (job.error or "")
 
 
 @pytest.mark.asyncio
