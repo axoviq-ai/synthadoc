@@ -102,6 +102,13 @@ def _extract_meaningful_terms(text: str) -> set[str]:
 
 
 _MIN_QUESTION_PART_WORDS = 4
+_WHITESPACE_RE = re.compile(r"\s+")
+# Single literal spaces, not \s+, flanking the alternation — two unbounded
+# quantifiers around an alternation that can fail caused O(n^2) backtracking
+# on a long run of whitespace with no "and"/"as well as" match (CodeQL
+# py/polynomial-redos; a chat question is attacker-controlled input).
+# Safe because the question is whitespace-normalized to single spaces first.
+_QUESTION_SPLIT_RE = re.compile(r" (?:and|as well as) |[;?]+", re.IGNORECASE)
 
 
 def _get_question_parts(question: str, sub_questions: list[str] | None = None) -> list[str]:
@@ -117,7 +124,8 @@ def _get_question_parts(question: str, sub_questions: list[str] | None = None) -
     """
     if sub_questions and len(sub_questions) > 1:
         return sub_questions
-    parts = re.split(r"\s+(?:and|as well as)\s+|[;?]+", question, flags=re.IGNORECASE)
+    normalized = _WHITESPACE_RE.sub(" ", question).strip()
+    parts = _QUESTION_SPLIT_RE.split(normalized)
     parts = [p.strip() for p in parts if p.strip()]
     valid_parts = [p for p in parts if len(p.split()) >= _MIN_QUESTION_PART_WORDS]
     return valid_parts if len(valid_parts) > 1 else [question]

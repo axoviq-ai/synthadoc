@@ -113,12 +113,22 @@ _REPEAT_RE = re.compile(
 
 # Short affirmatives that mean "yes, do what you just asked" in a multi-turn
 # workflow session — matched only when recent history contains a RERUN_HINT.
+# No \s+/\s* quantifiers here: two of them flanking a failing alternation
+# caused O(n^2) backtracking on a long run of whitespace with no match
+# (CodeQL py/polynomial-redos; a chat message is attacker-controlled input).
+# _is_affirmative() normalizes whitespace to single spaces before matching.
 _AFFIRMATIVE_RE = re.compile(
-    r"^\s*(?:yes|yeah|yep|yup|sure|ok|okay|continue|proceed|go\s+ahead|do\s+it|"
-    r"sounds\s+good|let(?:'s|\s+us)\s+(?:do\s+it|continue|proceed)|"
-    r"yes\s+(?:please|continue|proceed|do\s+it))\s*[.!]?\s*$",
+    r"^(?:yes|yeah|yep|yup|sure|ok|okay|continue|proceed|go ahead|do it|"
+    r"sounds good|let(?:'s| us) (?:do it|continue|proceed)|"
+    r"yes (?:please|continue|proceed|do it))[.!]?$",
     re.IGNORECASE,
 )
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _is_affirmative(question: str) -> bool:
+    """True if *question* is a short affirmative reply ("yes", "go ahead", ...)."""
+    return bool(_AFFIRMATIVE_RE.match(_WHITESPACE_RE.sub(" ", question).strip()))
 
 def _find_rerun_hint_in_history(
     history: list[dict],
@@ -317,7 +327,7 @@ class ActionAgent(BaseAgent):
             # "run it again" / "repeat" / "again" — route to action agent so the
             # LLM can look at history and re-run the previous action.
             return True
-        if history and _AFFIRMATIVE_RE.match(question):
+        if history and _is_affirmative(question):
             if _find_rerun_hint_in_history(history) is not None:
                 return True
         if history:
@@ -407,7 +417,7 @@ class ActionAgent(BaseAgent):
         (``_run_orchestrate`` defaults to IngestLintWorkflow when workflow=None).
         """
         # 1. Short affirmative + recent RERUN_HINT in history → re-trigger that workflow.
-        if history and _AFFIRMATIVE_RE.match(question):
+        if history and _is_affirmative(question):
             match = _find_rerun_hint_in_history(history)
             if match is not None:
                 wf_cls, hint = match

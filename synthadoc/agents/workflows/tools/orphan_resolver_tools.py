@@ -88,6 +88,11 @@ async def tool_verify_orphan_resolved(
     to confirm resolution.
 
     Returns: {"resolved": bool, "linked_by": [slugs that now reference orphan_slug]}
+
+    When orphan_slug is not an active page the result also carries
+    ``"not_active": True`` and ``"reason"`` (``"not_found"``, ``"archived"`` or
+    ``"contradicted"``). That is NOT an unresolved orphan: callers must not treat
+    resolved=False as "this page is an orphan" when not_active is set.
     """
     if ctx.store is None:
         return {"resolved": False, "linked_by": []}
@@ -99,7 +104,15 @@ async def tool_verify_orphan_resolved(
     # would cause a false resolved=True.  Return False so callers can distinguish
     # "genuinely resolved" from "never tracked".
     if orphan_slug not in page_texts:
-        return {"resolved": False, "linked_by": []}
+        # Say WHY it is not tracked. Callers must not read resolved=False here as
+        # "this is an unresolved orphan": a slug that does not exist (or is
+        # archived / contradicted) is not an orphan at all.
+        try:
+            page = ctx.store.read_page(orphan_slug)
+        except Exception:
+            page = None
+        reason = "not_found" if page is None else str(page.status)
+        return {"resolved": False, "linked_by": [], "not_active": True, "reason": reason}
 
     remaining_orphans = find_orphan_slugs(page_texts, link_texts=all_page_texts)
 

@@ -3455,3 +3455,18 @@ def test_yes_after_workflow_question_routes_back_to_that_workflow():
     assert _AFFIRMATIVE_RE.match("yes")
     match = _find_rerun_hint_in_history(history)
     assert match is not None and match[0] is ContentHealthResolverWorkflow
+
+
+def test_affirmative_re_many_spaces_does_not_hang():
+    """GitHub code-scanning py/polynomial-redos: the old pattern's \\s*/\\s+
+    quantifiers flanking a failing alternation caused O(n^2) backtracking on
+    a long run of whitespace that doesn't end in a clean match — a chat
+    message is attacker-controlled input, so this was a real DoS vector
+    (confirmed ~1.8s for 20,000 chars before the fix). Must stay fast.
+    """
+    import time
+    from synthadoc.agents.action_agent import _AFFIRMATIVE_RE
+    question = "yes" + (" " * 20_000) + "x"
+    start = time.monotonic()
+    _AFFIRMATIVE_RE.match(question)
+    assert time.monotonic() - start < 1.0
