@@ -4775,6 +4775,7 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 
 ### v1.5.3 (in development)
 
+- **Content-health notice no longer claims edits were applied before you approve them** - the notice sent just before the scoped-confirm card said "N block(s) applied" although `apply_blocks` is a dry run and nothing is written until approval. It now says "N edit(s) ready for your review, M rejected", matching the card header. The contradiction resolver already reported "applied" only after the write.
 - **Orphan resolver `--slug` validation** - a slug that does not exist, or is archived or contradicted, is no longer treated as an orphan and estimated as one page; the resolver stops with a message naming the reason, before any estimate or LLM call. `tool_verify_orphan_resolved` now returns `not_active` and `reason` for such slugs.
 
 - **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
