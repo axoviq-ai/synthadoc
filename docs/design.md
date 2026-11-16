@@ -4722,6 +4722,7 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 
 ### v1.5.3 (in development)
 
+- **Content-health dismissal card says what "roll back" does** - the confirm card for dismissing issues (page text unchanged) said "Say 'roll back <slug>' later to bring them back", which reads as restoring text. It now says the command only undoes the dismissal and the page text stays as it is. The phrase "roll back <slug>" is kept because it is the only wording the rollback intent parser recognises.
 - **Content-health notice no longer claims edits were applied before you approve them** - the notice sent just before the scoped-confirm card said "N block(s) applied" although `apply_blocks` is a dry run and nothing is written until approval. It now says "N edit(s) ready for your review, M rejected", matching the card header. The contradiction resolver already reported "applied" only after the write.
 - **Orphan resolver `--slug` validation** - a slug that does not exist, or is archived or contradicted, is no longer treated as an orphan and estimated as one page; the resolver stops with a message naming the reason, before any estimate or LLM call. `tool_verify_orphan_resolved` now returns `not_active` and `reason` for such slugs.
 
