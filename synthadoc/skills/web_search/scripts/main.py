@@ -64,12 +64,19 @@ _BLOCKED_DOMAINS = {
 
 
 def _load_dynamic_blocked() -> set[str]:
-    """Load domains auto-blocked at runtime (resolves path from SYNTHADOC_WIKI_ROOT)."""
-    from synthadoc.core.domain_guard import load_blocked_domains
+    """Load domains blocked at runtime from .synthadoc/blocked_domains.json."""
     wiki_root = os.environ.get("SYNTHADOC_WIKI_ROOT", "")
     if not wiki_root:
         return set()
-    return load_blocked_domains(Path(wiki_root))
+    path = Path(wiki_root) / ".synthadoc" / "blocked_domains.json"
+    if not path.exists():
+        return set()
+    try:
+        import json as _json
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        return {str(d).lower() for d in data if isinstance(d, str)}
+    except Exception:
+        return set()
 
 
 class WebSearchSkill(BaseSkill):
