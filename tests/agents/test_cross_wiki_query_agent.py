@@ -910,3 +910,16 @@ class TestGetQuestionParts:
             "What is the leverage ratio",
             "how do I deploy it",
         ]
+
+    def test_many_repeated_spaces_does_not_hang(self):
+        """GitHub code-scanning py/polynomial-redos: the old pattern's two
+        adjacent \\s+ quantifiers flanking a failing alternation caused O(n^2)
+        backtracking on a long run of whitespace with no "and"/"as well as"
+        match — 30,000 spaces took ~4s. A chat question is attacker-
+        controlled input, so this was a real DoS vector. Must stay fast.
+        """
+        import time
+        question = "what " + (" " * 30_000) + "foo"
+        start = time.monotonic()
+        _get_question_parts(question)
+        assert time.monotonic() - start < 1.0

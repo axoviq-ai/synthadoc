@@ -556,7 +556,11 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── ingest (analyse-only — writes no wiki pages) ──────────────────────────
     print("\n[14] ingest")
-    _src = pathlib.Path(tempfile.mktemp(suffix=".txt"))
+    # mkstemp (not mktemp) — atomically creates the file, avoiding the
+    # TOCTOU race a bare mktemp() name leaves open. #CodeQL py/insecure-temporary-file
+    _fd, _src_name = tempfile.mkstemp(suffix=".txt")
+    os.close(_fd)
+    _src = pathlib.Path(_src_name)
     _src.write_text(
         "The ENIAC was the first general-purpose electronic computer, completed in 1945.\n",
         encoding="utf-8",
