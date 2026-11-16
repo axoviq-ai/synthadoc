@@ -3,7 +3,7 @@
 
 import { memo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownPlugins } from "../markdownPlugins";
 import type { Message } from "../useQueryStream";
 import { JOB, ENRICH, ENRICH_LABEL, type EnrichState } from "../jobStatus";
 
@@ -284,6 +284,10 @@ const _SAME_WIKI_RE      = /\[\[([^\]]+?)\]\]/g;
 export function wikilinksToGfm(text: string): string {
     function transformChunk(chunk: string): string {
         return chunk
+            // Two citations written back to back ([[a]][[b]]) would become
+            // **a****b**, which markdown cannot split into two bold spans (it
+            // renders as a****b). Keep them apart with a space.
+            .replace(/\]\](?=\[\[)/g, "]] ")
             .replace(_CROSS_WIKI_RE, (_, wiki, title) => `**[${wiki}]** ${title}`)
             .replace(_SAME_WIKI_RE,  (_, title) => `**${title}**`);
     }
@@ -391,7 +395,7 @@ function BlockedBubble({ content }: { content: string }) {
         <div className="blocked-bubble">
             <span className="blocked-bubble-icon" aria-hidden="true">⚠</span>
             <div className="blocked-bubble-text">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={markdownPlugins}>{content}</ReactMarkdown>
             </div>
         </div>
     );
@@ -430,7 +434,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                         </div>
                     )
                     : <div className="bubble-md">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
+                        <ReactMarkdown remarkPlugins={markdownPlugins} components={{ pre: PreBlock }}>
                             {obsidianCitationsToGfm(wikilinksToGfm(escapePlaceholders(localizeISOTimestamps(msg.text))))}
                         </ReactMarkdown>
                       </div>
@@ -452,7 +456,16 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                                 </span>
                             );
                         }
-                        return <span key={c}>{`[[${c}]]`}{sep}</span>;
+                        // Same-wiki citation: show the page name like the inline text does,
+                        // not the raw [[page]] markup.
+                        return (
+                            <span key={c}>
+                                <span className="citation-pill">
+                                    <span className="citation-pill__page">{c}</span>
+                                </span>
+                                {sep}
+                            </span>
+                        );
                     })}
                 </p>
             )}

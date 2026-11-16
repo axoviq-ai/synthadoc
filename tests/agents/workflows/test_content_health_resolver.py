@@ -798,3 +798,30 @@ async def test_notice_before_the_approval_card_uses_the_cards_own_wording(tmp_pa
     before_card = await _notices_seen_when_the_approval_card_opens(tmp_path, monkeypatch, blocks)
     joined = " ".join(before_card)
     assert "1 edit(s) ready" in joined and "1 rejected" in joined, joined
+
+
+@pytest.mark.asyncio
+async def test_dismiss_card_explains_that_roll_back_only_undoes_the_dismissal(monkeypatch):
+    """A dismissal never edits the page, so 'roll back' there means "put the issues
+    back on the list", not "restore the text". The card must say so, while keeping
+    the 'roll back <slug>' phrase the intent parser actually recognises."""
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    from synthadoc.agents.workflows._rollback import parse_rollback_intent
+    confirm = AsyncMock(return_value={"confirmed": False})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    ctx = MagicMock()
+    ctx.store.read_page.return_value = MagicMock(content_health_issues=[
+        {"type": "empty_section", "location": "Key Figures"}])
+
+    await ContentHealthResolverWorkflow().get_tool_fns(ctx)["dismiss_content_health_issues"](
+        slug="ai", reason="needs new prose")
+
+    card = confirm.call_args.kwargs["message"]
+    assert "The page text is not changed" in card
+    tail = card.split("The page text is not changed", 1)[1]
+    assert "roll back ai" in tail                      # still actionable
+    assert "undoes the dismissal" in tail
+    assert "page text stays as it is" in tail
+    # the quoted command really is understood by the rollback intent parser
+    assert parse_rollback_intent("roll back ai") == (True, "ai")
