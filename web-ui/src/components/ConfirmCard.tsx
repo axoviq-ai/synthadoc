@@ -2,7 +2,7 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownPlugins } from "../markdownPlugins";
 
 interface Props {
     message: string;
@@ -115,7 +115,7 @@ export default function ConfirmCard({
         }}>
             {/* Render message as markdown so **bold**, `code`, etc. display correctly */}
             <div className="bubble-md" style={{ marginBottom: diff ? 0 : 10 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={markdownPlugins}>{message}</ReactMarkdown>
             </div>
 
             {/* Syntax-highlighted diff viewer — only shown for diff-review confirms */}

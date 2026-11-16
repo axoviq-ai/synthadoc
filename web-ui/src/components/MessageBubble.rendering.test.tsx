@@ -4,7 +4,8 @@
 //
 // Rendering regressions found while capturing the demos:
 //   1. the grey "Sources:" line showed raw [[page]] links;
-//   2. two citations with no space between them rendered as  a****b .
+//   2. two citations with no space between them rendered as  a****b ;
+//   3. **bold** next to full-width punctuation was not rendered.
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import { MessageBubble } from "./MessageBubble";
@@ -68,5 +69,35 @@ describe("adjacent citations", () => {
             <MessageBubble msg={assistant("See [[a]], [[b]] and [[c]].")} />,
         );
         expect(container.querySelector(".bubble-md")!.textContent).toBe("See a, b and c.");
+    });
+});
+
+describe("bold next to full-width (CJK) punctuation", () => {
+    const cases: [string, string[]][] = [
+        ["**重点（强调）**后续文字", ["重点（强调）"]],       // closing ** after （…） then CJK text
+        ["文字**（加粗）**文字", ["（加粗）"]],               // opening ** before （ after CJK text
+        ["**加粗**（说明）", ["加粗"]],                        // bold followed by （…）
+        ["（**加粗**）", ["加粗"]],                            // bold inside （…）
+        ["他说：**“你好”**然后离开了。", ["“你好”"]],           // curly quotes inside bold
+        ["**注意：**请先备份。", ["注意："]],                   // full-width colon at the end of bold
+    ];
+    for (const [text, expected] of cases) {
+        it(`renders ${JSON.stringify(text)}`, () => {
+            const { container } = render(<MessageBubble msg={assistant(text)} />);
+            expect(container.querySelector(".bubble-md")!.textContent).not.toContain("**");
+            expect(strongTexts(container)).toEqual(expected);
+        });
+    }
+
+    it("leaves ordinary English bold unchanged", () => {
+        const { container } = render(<MessageBubble msg={assistant("A **bold** word and **another**.")} />);
+        expect(strongTexts(container)).toEqual(["bold", "another"]);
+    });
+
+    it("does not touch ** inside code spans or fenced code", () => {
+        const { container } = render(<MessageBubble msg={assistant("Use `**x**` or:\n\n```\n**y**\n```\n")} />);
+        expect(strongTexts(container)).toEqual([]);
+        expect(container.querySelector(".bubble-md")!.textContent).toContain("**x**");
+        expect(container.querySelector(".bubble-md")!.textContent).toContain("**y**");
     });
 });
