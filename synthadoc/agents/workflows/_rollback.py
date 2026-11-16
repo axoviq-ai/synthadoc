@@ -122,7 +122,8 @@ async def restore_page_snapshot(
 
     restored_content = snapshot["content_snapshot"]
     page.content = restored_content
-    ctx.store.write_page(slug, page)
+    with ctx.store.page_lock(slug):
+        ctx.store.write_page(slug, page)
     # Invalidate the query cache and search index so the next query reflects
     # the restored content.  Both hooks are None in tests and CLI contexts
     # that don't wire up the orchestrator.
