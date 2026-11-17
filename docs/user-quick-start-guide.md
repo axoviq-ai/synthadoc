@@ -1129,6 +1129,8 @@ synthadoc workflow run --name orphan-resolver
 synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 ```
 
+`--slug` must name an active page that has no inbound links. If the page does not exist, is archived or contradicted, or is already linked, the resolver says so and stops before any cost estimate; nothing is changed.
+
 The CLI renders the same approval prompts and diff previews as the web UI.
 
 **Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to restore the page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
@@ -4620,13 +4622,18 @@ synthadoc install legal-wiki   --target ~/wikis --template legal/compliance
 Start all registered wikis at once, or only the ones relevant to your query — cross-wiki queries fan out only to running wikis, so starting a subset is a valid way to scope the results:
 
 ```bash
-# Start all registered wikis
-synthadoc serve --all --background
+# Start all registered wikis (one at a time; stops before the machine passes ~60% memory use)
+synthadoc serve --all
+
+# Or set the total memory the started wikis may use. A unit is required: GB or MB
+synthadoc serve --all --max-memory 6GB
 
 # Or start only the wikis you need (e.g. 2 of 5 registered)
 synthadoc serve -w finance-wiki --background
 synthadoc serve -w legal-wiki --background
 ```
+
+Each running wiki uses a few hundred MB of memory, so `--all` starts wikis one at a time and measures real memory use. It finishes with a summary of the wikis that are running (port, domain, memory) and, if not every wiki fit, the ones it skipped with the exact `synthadoc serve -w <name> --background` command to start them, plus a suggested `--max-memory` value that fits them all. Add `--verbose` to also see each server's PID and log path. Stop everything with `synthadoc stop --all`. The number must always include its unit (`GB` or `MB`); `--max-memory 6000` is rejected.
 
 Each server starts on its registered port. `--all` skips any wiki whose port is already responding.
 

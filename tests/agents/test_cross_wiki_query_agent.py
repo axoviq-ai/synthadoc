@@ -1,7 +1,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent
+from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent, _get_question_parts
 
 REGISTRY = {
     "coordinator": {"path": "/wikis/coord", "port": 7070, "purpose_summary": "Finance domain"},
@@ -826,3 +826,100 @@ async def test_cross_wiki_peer_wiki_negative_admission_does_not_trigger_gap():
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
     assert "target::deployment-runbook" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_cross_wiki_title_only_citation_still_covers_terms_no_gap():
+    """GitHub #545: a page cited only in "wiki::title" form (never "wiki::slug"
+    or a [[bracket]] form) must still count toward term coverage.
+
+    cited_page_objs had a dead branch comparing "wiki::title" against
+    matching_cited_pages — a list that only ever holds "wiki::slug" strings
+    (matching_cited_pages always stores the slug form regardless of which
+    citation style actually matched). That branch could never fire. This
+    pins the behavior the fix must preserve: a page that's only identifiable
+    via its title-qualified citation is still pulled into cited_text (via
+    matching_cited_pages's slug-based membership, and independently via the
+    bare-title check), so its content satisfies term coverage and no
+    knowledge gap is raised.
+    """
+    answer = "According to target::Quantum Thermostat Configuration Guide, this works great."
+    assert len(answer) < 300  # concise answer that would fail Guard C
+    provider = _make_provider(answer=answer)
+    agent = CrossWikiQueryAgent(provider=provider, registry=REGISTRY, own_wiki_name="coordinator")
+    retrieve_resp = {
+        "wiki_name": "target",
+        "pages": [{
+            "slug": "quantum-thermostat-guide",
+            "title": "Quantum Thermostat Configuration Guide",
+            "score": 0.5,
+            "content": "This guide explains how quantum thermostats are configured for optimal performance.",
+        }],
+        "purpose_summary": "Engineering domain",
+        "routing_warning": "",
+    }
+    with patch.object(agent, "_fetch_retrieve", AsyncMock(return_value=retrieve_resp)):
+        result = await agent.run("How are quantum thermostats configured?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+
+
+class TestGetQuestionParts:
+    """GitHub #544: splitting on "and" can orphan a grammatical-subject-less
+    fragment (e.g. "growth projections" from "...revenue figures and growth
+    projections?"), whose terms are unlikely to appear in cited_text — causing
+    a false knowledge-gap callout even when the answer is fully covered.
+    """
+
+    def test_short_trailing_fragment_falls_back_to_whole_question(self):
+        question = "What are the revenue figures and growth projections?"
+        # "growth projections" (2 words) is discarded as too short to carry
+        # its own grammatical subject, leaving only 1 valid part — below the
+        # 2-part minimum — so the whole original question is used instead of
+        # the orphaned fragment.
+        assert _get_question_parts(question) == [question]
+
+    def test_two_sufficiently_long_parts_still_split(self):
+        question = "What is the leverage ratio and how do I deploy the application?"
+        assert _get_question_parts(question) == [
+            "What is the leverage ratio",
+            "how do I deploy the application",
+        ]
+
+    def test_short_leading_fragment_also_falls_back(self):
+        question = "Costs and how does the revenue recognition process work?"
+        assert _get_question_parts(question) == [question]
+
+    def test_no_conjunction_returns_whole_question(self):
+        question = "What is the deployment process?"
+        assert _get_question_parts(question) == [question]
+
+    def test_sub_questions_bypass_conjunction_splitting(self):
+        sub_questions = ["revenue figures", "growth projections"]
+        assert _get_question_parts(
+            "What are the revenue figures and growth projections?", sub_questions
+        ) == sub_questions
+
+    def test_three_parts_two_valid_one_short_keeps_only_valid(self):
+        question = "What is the leverage ratio and how do I deploy it and costs?"
+        # "costs?" (1 word) is discarded; the other two parts (5+ words each)
+        # meet the minimum and 2 valid parts is enough to split rather than
+        # fall back.
+        assert _get_question_parts(question) == [
+            "What is the leverage ratio",
+            "how do I deploy it",
+        ]
+
+    def test_many_repeated_spaces_does_not_hang(self):
+        """GitHub code-scanning py/polynomial-redos: the old pattern's two
+        adjacent \\s+ quantifiers flanking a failing alternation caused O(n^2)
+        backtracking on a long run of whitespace with no "and"/"as well as"
+        match — 30,000 spaces took ~4s. A chat question is attacker-
+        controlled input, so this was a real DoS vector. Must stay fast.
+        """
+        import time
+        question = "what " + (" " * 30_000) + "foo"
+        start = time.monotonic()
+        _get_question_parts(question)
+        assert time.monotonic() - start < 1.0

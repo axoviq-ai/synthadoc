@@ -19,10 +19,12 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
+    "remark-cjk-friendly": "2.3.3",
     "remark-gfm": "^4.0.1"
   },
   "overrides": {
-    "postcss": ">=8.5.18"
+    "postcss": ">=8.5.18",
+    "minimatch": "^11.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -42,6 +44,6 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.3.5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

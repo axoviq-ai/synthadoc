@@ -101,13 +101,34 @@ def _extract_meaningful_terms(text: str) -> set[str]:
     return terms
 
 
+_MIN_QUESTION_PART_WORDS = 4
+_WHITESPACE_RE = re.compile(r"\s+")
+# Single literal spaces, not \s+, flanking the alternation — two unbounded
+# quantifiers around an alternation that can fail caused O(n^2) backtracking
+# on a long run of whitespace with no "and"/"as well as" match (CodeQL
+# py/polynomial-redos; a chat question is attacker-controlled input).
+# Safe because the question is whitespace-normalized to single spaces first.
+_QUESTION_SPLIT_RE = re.compile(r" (?:and|as well as) |[;?]+", re.IGNORECASE)
+
+
 def _get_question_parts(question: str, sub_questions: list[str] | None = None) -> list[str]:
-    """Return distinct question parts, using sub_questions if multi-element, else splitting on conjunctions."""
+    """Return distinct question parts, using sub_questions if multi-element, else splitting on conjunctions.
+
+    Splitting on "and" can orphan a grammatical-subject-less fragment — e.g.
+    "growth projections" from "What are the revenue figures and growth
+    projections?" — whose terms are unlikely to appear in cited_text, causing
+    a false knowledge-gap callout even when the answer is fully covered
+    (#544). Fragments shorter than _MIN_QUESTION_PART_WORDS words are
+    discarded; if fewer than 2 valid parts remain, the whole question is
+    used as a single part instead of the orphaned fragment(s).
+    """
     if sub_questions and len(sub_questions) > 1:
         return sub_questions
-    parts = re.split(r"\s+(?:and|as well as)\s+|[;?]+", question, flags=re.IGNORECASE)
+    normalized = _WHITESPACE_RE.sub(" ", question).strip()
+    parts = _QUESTION_SPLIT_RE.split(normalized)
     parts = [p.strip() for p in parts if p.strip()]
-    return parts if len(parts) > 1 else [question]
+    valid_parts = [p for p in parts if len(p.split()) >= _MIN_QUESTION_PART_WORDS]
+    return valid_parts if len(valid_parts) > 1 else [question]
 
 
 @dataclass
@@ -336,8 +357,13 @@ class CrossWikiQueryAgent(BaseAgent):
 
         cited_page_objs = [
             p for p in pages
+            # matching_cited_pages always stores the "wiki::slug" form
+            # regardless of which citation style matched it (slug, title, or
+            # bracket) — so this slug check alone already covers every page
+            # matching_cited_pages contains. A "wiki::title" variant of this
+            # check was dead code: comparing against a list that only ever
+            # holds "wiki::slug" strings. #545
             if f"{p['wiki_name']}::{p['slug']}" in matching_cited_pages
-            or (bool(p.get("title")) and f"{p['wiki_name']}::{p['title']}" in matching_cited_pages)
             or (bool(p.get("title")) and f"[[{p['title']}]]" in answer_text)
             or (bool(p.get("title")) and p["title"] in answer_text)
             or f"[[{p['slug']}]]" in answer_text

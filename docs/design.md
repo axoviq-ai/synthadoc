@@ -1047,8 +1047,9 @@ synthadoc
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
-├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all]
+├── serve [-w wiki] [--port N] [--host ADDR] [--background] [--mcp-only] [--http-only] [--verbose] [--all [--max-memory <n>GB|<n>MB]]
 │                                                    — --host 0.0.0.0 binds all interfaces (Docker / remote access; v1.4.2)
+│                                                    — --all starts every registered wiki one at a time within a memory limit (~60% of the machine, or --max-memory; unit required)
 ├── stop [-w wiki] [--all]                           — stop a running wiki server (sends /shutdown; falls back to PID file)
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N] [--cross-wiki]
@@ -1255,6 +1256,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-SRV-002`    | Port already bound by another process                     |
 | `ERR-SRV-003`    | Server returned a 4xx/5xx HTTP response                   |
 | `ERR-SRV-004`    | Background server process exited immediately              |
+| `ERR-SRV-005`    | `serve --all` cannot read system memory to limit how many wikis start (pass `--max-memory`) |
 | `ERR-WIKI-001`   | Wiki root directory does not exist                        |
 | `ERR-WIKI-002`   | Directory exists but missing`wiki/` subfolder             |
 | `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
@@ -3155,6 +3157,8 @@ The audit trail records the same fields as a manual CLI transition — the MCP p
 | ------------- | -------------------------------------------------------------- |
 | `--mcp-only`  | Start only the MCP endpoint; suppress HTTP REST API and web UI |
 | `--http-only` | Start only the HTTP server; suppress the MCP mount             |
+| `--all`       | Start every registered wiki in the background, one at a time, within a memory limit (see *Starting many wikis*) |
+| `--max-memory <n>GB\|<n>MB` | With `--all`: most memory the started wikis may use in total; the unit is required. Default without it: keep the machine under ~60 % memory use |
 
 Default (no flag): both MCP and HTTP start together on the same port.
 
@@ -4055,9 +4059,22 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace  # single page
 ```
 
 When `--slug` is passed the resolver first calls `tool_verify_orphan_resolved`
-to check whether the page is actually an orphan. If it already has inbound
-wikilinks the workflow exits immediately with a plain-text confirmation; no
-LLM calls or strategy attempts are made.
+to check whether the page is actually an orphan, and exits immediately with a
+plain-text message (no cost estimate, no LLM calls, no strategy attempts) unless
+it is one:
+
+| Slug | Result |
+|---|---|
+| Active page with no inbound wikilinks | Treated as the single orphan; cost estimate for 1 page, then the usual loop |
+| Active page that already has inbound wikilinks | "not an active orphan page - it already has inbound wikilinks from: ..." |
+| No such page | "Page '<slug>' does not exist in this wiki ..." |
+| Archived or contradicted page | "'<slug>' is archived (or contradicted), not active ..." |
+
+The tool distinguishes these cases: for a slug that is not an active page it returns
+`{"resolved": false, "linked_by": [], "not_active": true, "reason": "not_found" | "archived" | "contradicted"}`.
+Before v1.5.3, `resolved=false` for a nonexistent slug was read as "this page is an
+orphan", so a mistyped slug was estimated as one page and sent into the resolution loop.
+Both the CLI-provider path and the model's system prompt (STEP 1) use `not_active`.
 
 ### Cost model
 
@@ -4396,7 +4413,7 @@ For how to create and manage the file, with a full annotated example, see [Step 
 |---|---|
 | `synthadoc query --cross-wiki "question"` | Fan-out query across all registered running wikis |
 | `synthadoc status --all` | Print running/stopped table for all registered wikis |
-| `synthadoc serve --all --background` | Start background servers for all wikis in the registry |
+| `synthadoc serve --all [--max-memory 6GB]` | Start background servers for registered wikis, one at a time, within a memory limit (see *Starting many wikis*) |
 | `synthadoc stop` | Stop the active wiki server |
 | `synthadoc stop -w <wiki>` | Stop a named wiki server |
 | `synthadoc stop --all` | Stop all running wiki servers |
@@ -4555,6 +4572,45 @@ Results are written to cache only when:
 
 The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
 
+### Starting many wikis — `serve --all` {#serve-all}
+
+`synthadoc serve --all` starts one detached server per registered wiki. Each idle server costs several hundred MB (an empty wiki measures roughly 140 MB resident / 340 MB committed; wikis with pages and embeddings are larger), so starting ten at once can exhaust a machine.
+
+**Behavior**
+
+1. Validate `--max-memory` first; nothing starts if it is invalid.
+2. Wikis start **sequentially**. After each is healthy (`GET /health`, up to 60 s), its real resident memory is measured and the next wiki is only started if it still fits. The next wiki's cost is estimated from the wikis already started (500 MB before the first measurement).
+3. **Default limit** (no flag): keep whole-machine memory under **60 %** of physical memory, counting every program. **`--max-memory <n>GB|<n>MB`**: the wikis started by this command may use that much in total; other programs are ignored.
+4. The **first wiki is always started**, so `--all` never starts nothing on a busy machine.
+5. Output is compact: one line per wiki while starting, then a single **Summary**, produced by one shared function so the default and `--max-memory` runs have the same layout: **Running (N)** (name, port, domain truncated to 28 characters, measured memory; wikis that were already running are included and marked), a total in human-readable form (`1.5 GB`), and **Skipped (M)** with the exact `synthadoc serve -w <name> --background` command for each (an empty section prints `none`), plus a `--max-memory` suggestion computed from what was measured (started wikis plus the skipped ones at the measured average, +25 % headroom, rounded up to 100 MB below 1 GB and 0.5 GB above). The per-wiki PID / port / log block of `serve --background` is printed only with `--verbose`. The command exits 0.
+6. Wikis already running are not restarted (their memory counts toward the 60 % default through the system reading). Memory is only read when at least one wiki has to be started; if every wiki is already running, the command prints the summary and exits 0 without reading memory, so an unreadable memory source cannot make it fail.
+
+```
+$ synthadoc serve --all --max-memory 1GB
+Starting wikis one at a time. Limit: --max-memory budget 1.0 GB for the wikis started by this command
+  my-op-supply-docker: started (160 MB)
+  ...
+Summary
+  Running (5):
+    my-op-supply-docker       port 7070  General   160 MB
+    ...
+  Started 5 wiki(s) using about 800 MB in total.
+  Skipped (3):
+    synthadoc serve -w pc-fin-invest --background
+    ...
+
+Not started because of the memory limit. To start them too: synthadoc serve --all --max-memory 2GB
+To stop all running wikis: synthadoc stop --all
+```
+
+**Units are mandatory.** `--max-memory 6GB` and `--max-memory 6000MB` are valid (case-insensitive, decimals allowed, 1 GB = 1024 MB). A bare `6000`, `6KB`, `6G`, zero or a negative value is rejected before anything starts, with the message *Memory size needs a unit: GB or MB*. `--max-memory` without `--all` is an error.
+
+**Memory readers** (`synthadoc/cli/_memory.py`) use no extra dependency: `GlobalMemoryStatusEx` / `GetProcessMemoryInfo` via `ctypes` on Windows, `/proc/meminfo` and `/proc/<pid>/status` on Linux, `vm_stat` / `ps` on macOS. If system memory cannot be read and no `--max-memory` is given, the command stops with `ERR-SRV-005` and asks for an explicit limit.
+
+**Cross-platform testing.** The readers are split into thin I/O wrappers and pure parsers (`_parse_meminfo`, `_parse_proc_status_rss`, `_parse_macos_memory`, `_parse_ps_rss`). `tests/cli/test_memory.py` feeds the parsers recorded Linux `/proc` and macOS `vm_stat` samples (including 4 KB and 16 KB page sizes and old kernels without `MemAvailable`), so those code paths run on every platform. It also contains smoke tests that run the *real* readers on whatever OS runs the suite; CI (`ci.yml`) runs the full suite on ubuntu, windows and macos, so each real reader is exercised natively on every push.
+
+**Child processes.** Each wiki is launched as `serve -w <wiki>` (forwarding only `--provider`, `--host` and `--verbose`). Earlier versions forwarded the parent's own arguments, which included `--all`, so every child re-ran `--all` and spawned children of its own without end. The spawn arguments are now explicit and covered by tests that fake process creation.
+
 ### Graceful Degradation
 
 | Scenario | Behaviour |
@@ -4663,6 +4719,15 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.5.3 (in development)
+
+- **Web UI rendering fixes** - the grey "Sources:" line shows same-wiki citations as page names (same pill style as cross-wiki ones) instead of raw `[[page]]` markup; two citations written back to back (`[[a]][[b]]`) are kept apart instead of rendering as `a****b`; and `**bold**` next to full-width punctuation (`**重点（强调）**后续文字`) now renders, via the `remark-cjk-friendly` plugin (pinned 2.3.3), shared by all four `ReactMarkdown` call sites through `web-ui/src/markdownPlugins.ts`. The plugin adds five small packages to `package-lock.json` and bumps the transitive `mdast-util-to-markdown` to 2.2.3.
+- **Content-health dismissal card says what "roll back" does** - the confirm card for dismissing issues (page text unchanged) said "Say 'roll back <slug>' later to bring them back", which reads as restoring text. It now says the command only undoes the dismissal and the page text stays as it is. The phrase "roll back <slug>" is kept because it is the only wording the rollback intent parser recognises.
+- **Content-health notice no longer claims edits were applied before you approve them** - the notice sent just before the scoped-confirm card said "N block(s) applied" although `apply_blocks` is a dry run and nothing is written until approval. It now says "N edit(s) ready for your review, M rejected", matching the card header. The contradiction resolver already reported "applied" only after the write.
+- **Orphan resolver `--slug` validation** - a slug that does not exist, or is archived or contradicted, is no longer treated as an orphan and estimated as one page; the resolver stops with a message naming the reason, before any estimate or LLM call. `tool_verify_orphan_resolved` now returns `not_active` and `reason` for such slugs.
+
+- **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
 
 ### v1.5.2
 

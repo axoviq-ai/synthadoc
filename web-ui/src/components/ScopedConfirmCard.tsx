@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownPlugins } from "../markdownPlugins";
 import type { ScopedEditBlock } from "../api";
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorView as EditorViewType } from "@codemirror/view";
@@ -418,7 +418,7 @@ export default function ScopedConfirmCard({
                         overflow: "auto",
                     }}
                 >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{pageBody}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={markdownPlugins}>{pageBody}</ReactMarkdown>
                 </div>
             )}
 

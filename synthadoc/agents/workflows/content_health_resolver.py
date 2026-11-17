@@ -617,12 +617,15 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
             current_body = page.content or ""
             apply_result = apply_blocks(current_body, blocks, allow_heading_mutation=True)
             try:
+                # apply_blocks is a dry run: nothing is written until the user
+                # approves the scoped card below, so this must not say "applied".
+                # The wording matches the card header ("N edit(s) ready · M rejected").
                 await tool_notify(
                     ctx,
                     level="info",
                     message=(
-                        f"{slug}: {apply_result.applied_count} block(s) applied, "
-                        f"{apply_result.rejected_count} rejected"
+                        f"{slug}: {apply_result.applied_count} edit(s) ready for your "
+                        f"review, {apply_result.rejected_count} rejected"
                     ),
                 )
             except Exception:  # noqa: BLE001
@@ -700,8 +703,10 @@ class ContentHealthResolverWorkflow(AgenticWorkflow):
                 message=(
                     f"**{slug}** — dismiss {len(issues)} issue(s) for a human editor?\n\n"
                     f"{listed}\n\nReason: {reason}\n\n"
-                    "The page text is not changed; the issues stop being offered to this "
-                    f"workflow. Say 'roll back {slug}' later to bring them back."
+                    "The page text is not changed; the issues just stop being offered to "
+                    "this workflow. To put them back on the list later, say "
+                    f"'roll back {slug}' — that only undoes the dismissal; the page text "
+                    "stays as it is."
                 ),
                 yes_label="Dismiss", no_label="Keep flagged",
             )
