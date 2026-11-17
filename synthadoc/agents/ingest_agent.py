@@ -434,6 +434,14 @@ def _local_source_exists(file: str, wiki_root: "Path | None") -> bool:
     return p.exists()
 
 
+def _reset_for_force_rebuild(page: "WikiPage") -> None:
+    """Clear fields that must be regenerated when force-re-ingesting a contradicted page."""
+    page.contradiction_note = None
+    page.unresolved_note = None
+    page.content = ""
+    page.sources = []
+
+
 def _purge_dead_sources(page: "WikiPage", wiki_root: "Path | None") -> None:
     """Remove local-file source refs whose files no longer exist on disk.
 
@@ -1325,10 +1333,7 @@ class IngestAgent(BaseAgent):
                         # tool_transition_lifecycle_state after re-lint.
                         _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
                         if _force_rebuild:
-                            page.contradiction_note = None
-                            page.unresolved_note = None
-                            page.content = ""
-                            page.sources = []
+                            _reset_for_force_rebuild(page)
                         if force:
                             _purge_dead_sources(page, self._wiki_root)
                         _backfill_okf_fields(page, analysis, source)
@@ -1401,10 +1406,7 @@ class IngestAgent(BaseAgent):
                             # Force re-ingest of a contradicted page: fully regenerate
                             _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
                             if _force_rebuild:
-                                page.contradiction_note = None
-                                page.unresolved_note = None
-                                page.content = ""
-                                page.sources = []
+                                _reset_for_force_rebuild(page)
                             if force:
                                 _purge_dead_sources(page, self._wiki_root)
                             _backfill_okf_fields(page, analysis, source)
