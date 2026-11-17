@@ -551,6 +551,22 @@ def test_analyse_endpoint_empty_wiki(tmp_wiki):
     assert resp.json()["source"] == "empty.md"
 
 
+def test_analyse_endpoint_rejects_path_outside_wiki_root(tmp_wiki):
+    """POST /analyse with an absolute source path outside wiki_root is rejected with 403."""
+    from synthadoc.integration.http_server import create_app
+
+    app = create_app(wiki_root=tmp_wiki)
+    outside = tmp_wiki.parent / "outside" / "file.md"
+    outside.parent.mkdir()
+    outside.write_text("# Bad")
+
+    with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+        with TestClient(app) as client:
+            resp = client.post("/analyse", json={"source": str(outside)})
+
+    assert resp.status_code == 403
+
+
 def test_enqueue_lint_adversarial_param_forwarded(tmp_wiki):
     """POST /jobs/lint with adversarial: false enqueues payload with adversarial=False."""
     from synthadoc.integration.http_server import create_app
