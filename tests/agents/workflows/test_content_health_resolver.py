@@ -742,3 +742,86 @@ async def test_system_prompt_uses_block_format():
     assert '"blocks"' in prompt or "old_text" in prompt, (
         "System prompt must describe block format for write_content_health_fix"
     )
+
+
+# ---------------------------------------------------------------------------
+# The pre-approval notice must not claim edits were "applied": apply_blocks is a
+# dry run, and nothing is written until the user approves the scoped card.
+# ---------------------------------------------------------------------------
+
+async def _notices_seen_when_the_approval_card_opens(tmp_path, monkeypatch, blocks):
+    """Return (notices emitted before the card, the write tool's result)."""
+    from synthadoc.agents.workflows import content_health_resolver as mod
+
+    notices: list[str] = []
+    seen_at_card: list[list[str]] = []
+
+    async def fake_notify(ctx, level="info", message="", **_kw):
+        notices.append(message)
+
+    async def fake_scoped_confirm(ctx, slug, apply_result, current_body, **_kw):
+        seen_at_card.append(list(notices))          # what the user has been told so far
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
+
+    write_fix = AsyncMock(return_value={"status": "success", "slug": "page-a"})
+    monkeypatch.setattr(mod, "tool_notify", fake_notify)
+    monkeypatch.setattr(mod, "tool_scoped_confirm", fake_scoped_confirm)
+    monkeypatch.setattr(mod, "tool_write_content_health_fix", write_fix)
+
+    ctx = _wiki_with_stray_h1(tmp_path, ["page-a"])
+    wf = ContentHealthResolverWorkflow()
+    wf._prediscovered_slugs = ["page-a"]
+    tools = wf.build_guarded_tool_fns(ctx)
+    await tools["get_page_content"](slug="page-a")
+    await tools["write_content_health_fix"](
+        slug="page-a", blocks=blocks, issues_fixed=["orphaned_heading x1"])
+    assert seen_at_card, "the approval card was never requested"
+    return seen_at_card[0]
+
+
+@pytest.mark.asyncio
+async def test_notice_before_the_approval_card_does_not_say_applied(tmp_path, monkeypatch):
+    blocks = [{"old_text": "has one sentence.", "new_text": "has one sentence. See also."}]
+    before_card = await _notices_seen_when_the_approval_card_opens(tmp_path, monkeypatch, blocks)
+    assert before_card, "expected a notice describing the proposed edits"
+    for text in before_card:
+        assert "applied" not in text.lower(), text
+
+
+@pytest.mark.asyncio
+async def test_notice_before_the_approval_card_uses_the_cards_own_wording(tmp_path, monkeypatch):
+    """The card header says 'N edit(s) ready · M rejected'; the notice must agree."""
+    blocks = [
+        {"old_text": "has one sentence.", "new_text": "has one sentence. See also."},
+        {"old_text": "text that is not on the page", "new_text": "whatever"},
+    ]
+    before_card = await _notices_seen_when_the_approval_card_opens(tmp_path, monkeypatch, blocks)
+    joined = " ".join(before_card)
+    assert "1 edit(s) ready" in joined and "1 rejected" in joined, joined
+
+
+@pytest.mark.asyncio
+async def test_dismiss_card_explains_that_roll_back_only_undoes_the_dismissal(monkeypatch):
+    """A dismissal never edits the page, so 'roll back' there means "put the issues
+    back on the list", not "restore the text". The card must say so, while keeping
+    the 'roll back <slug>' phrase the intent parser actually recognises."""
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.workflows import content_health_resolver as mod
+    from synthadoc.agents.workflows._rollback import parse_rollback_intent
+    confirm = AsyncMock(return_value={"confirmed": False})
+    monkeypatch.setattr(mod, "tool_confirm", confirm)
+    ctx = MagicMock()
+    ctx.store.read_page.return_value = MagicMock(content_health_issues=[
+        {"type": "empty_section", "location": "Key Figures"}])
+
+    await ContentHealthResolverWorkflow().get_tool_fns(ctx)["dismiss_content_health_issues"](
+        slug="ai", reason="needs new prose")
+
+    card = confirm.call_args.kwargs["message"]
+    assert "The page text is not changed" in card
+    tail = card.split("The page text is not changed", 1)[1]
+    assert "roll back ai" in tail                      # still actionable
+    assert "undoes the dismissal" in tail
+    assert "page text stays as it is" in tail
+    # the quoted command really is understood by the rollback intent parser
+    assert parse_rollback_intent("roll back ai") == (True, "ai")
