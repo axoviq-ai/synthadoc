@@ -1442,7 +1442,7 @@ synthadoc serve -w <wiki-name> --provider claude-code
 ```toml
 [server]
 port = 7070
-# allow_external_paths = false   # set true only on a local-only instance not behind a proxy
+allow_external_paths = false  # set true only on a local-only instance not behind a proxy
 
 [agents]
 default  = { provider = "anthropic", model = "claude-opus-4-8" }
