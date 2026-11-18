@@ -1013,11 +1013,18 @@ class IngestAgent(BaseAgent):
                 try:
                     p.relative_to(root_resolved)
                 except ValueError:
+                    # Log the operator hint server-side only — the exception message
+                    # is stored in the job record and visible to API clients, so it
+                    # must not contain server-internal paths or config details.
+                    logger.warning(
+                        "External-path ingest blocked for %s (outside %s). "
+                        "Set [server] allow_external_paths = true in "
+                        ".synthadoc/config.toml to permit this.",
+                        p, root_resolved,
+                    )
                     raise PermissionError(
-                        f"Source {p} is outside wiki root {root_resolved}. "
-                        f"Set [server] allow_external_paths = true in "
-                        f".synthadoc/config.toml to allow ingesting files outside "
-                        f"the wiki root (e.g. ~/.claude session transcripts)."
+                        f"Source is outside the wiki root. "
+                        f"External-path ingestion is disabled on this server."
                     )
 
             # Dedup: hash + size (file sources only)
