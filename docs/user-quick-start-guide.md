@@ -3879,7 +3879,7 @@ Common reason to edit: switching from the Anthropic default to Gemini Flash (fre
 ```toml
 [server]
 port = 7071          # required if running more than one wiki simultaneously
-# allow_external_paths = false   # set true only on a local-only instance not reachable via a reverse proxy
+allow_external_paths = false  # set true only on a local-only instance not reachable via a reverse proxy
 
 [cost]
 soft_warn_usd = 0.50
