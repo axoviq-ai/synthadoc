@@ -522,8 +522,8 @@ async def test_confirm_tool_timeout():
 # ---------------------------------------------------------------------------
 
 async def test_ingest_source_allows_paths_outside_wiki_root(tmp_path):
-    """Paths outside wiki_root are allowed: the tool runs server-side and passes
-    allow_external_paths=True to the queue so the worker handles them correctly.
+    """Paths outside wiki_root are allowed when the server is configured with
+    allow_external_paths=true (a server-side deployment setting, not a per-request flag).
     A missing file still returns an error (file-not-found), not a path error.
     """
     wiki_root = tmp_path / "wiki"
@@ -653,7 +653,7 @@ async def test_ingest_source_enqueues_valid_file(tmp_path):
     result = await tool_ingest_source(ctx, str(source_file))
     assert result["status"] == "success"
     assert result["job_id"] == "job-xyz"
-    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file), "force": True, "bust_cache": False, "allow_external_paths": True})
+    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file), "force": True, "bust_cache": False})
     queue.get_job.assert_called_once_with("job-xyz")
 
 
