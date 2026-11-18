@@ -927,25 +927,51 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
 - Vault-relative path: `raw_sources/report.pdf` (resolved against `wiki_root`)
 - URL: `https://example.com/article`
 
-**External file paths** (outside the wiki root) are supported when the request comes from
-`127.0.0.1` or `::1` and the payload includes `"allow_external_paths": true`. The CLI sets
-this flag automatically for all local file sources. Remote clients cannot set this flag
-(the server ignores it for non-localhost connections) to prevent arbitrary file reads
-in server-exposed deployments.
+**External file paths** (outside the wiki root) are supported when the server is started
+with `allow_external_paths = true` in its `[server]` config block, or via the env var
+`SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`.  This is an operator-level deployment decision, not a
+per-request flag — no network caller can enable it, regardless of their source IP.  It
+defaults to `false`.
+
+Enable it only when the server is not reachable through any reverse proxy or loopback
+bridge that could relay remote requests as 127.0.0.1 — the typical case is a local
+`synthadoc serve` where only the CLI on the same machine talks to the server.
 
 This is required for ingesting files that live outside the wiki directory by design —
 for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.jsonl`.
 
 **Client behaviour summary:**
 
+| Client                          | Can ingest outside wiki root?                           |
+| ------------------------------- | ------------------------------------------------------- |
+| CLI (`synthadoc ingest <path>`) | Only when server has `allow_external_paths = true`      |
+| Obsidian plugin                 | No — only sends wiki-relative paths and URLs            |
+| Web UI                          | No — only sends wiki-relative paths and URLs            |
+| Lint / resolver re-ingest       | Only when server has `allow_external_paths = true`      |
+| Direct HTTP API (any client)    | Only when server config enables `allow_external_paths`  |
 
-| Client                          | Sends`allow_external_paths`                   | Can ingest outside wiki root?           |
-| ------------------------------- | --------------------------------------------- | --------------------------------------- |
-| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only)     | Yes — server is localhost              |
-| Obsidian plugin                 | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
-| Web UI                          | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
-| Direct HTTP API (localhost)     | Set manually in request body                  | Yes — if request from 127.0.0.1/::1    |
-| Direct HTTP API (remote)        | Ignored by server                             | No — server silently treats as`false`  |
+> **Important:** `allow_external_paths` is a server-wide flag — it applies to every
+> ingest path (CLI, lint workflow, contradiction resolver, direct API).  Obsidian and
+> the Web UI never submit external absolute paths themselves, but the flag does not
+> restrict them specifically.  If you enable it, enable it deliberately for the whole
+> deployment.
+>
+> **Permanent requirement:** if any page in a wiki was originally ingested from an
+> external path (e.g. a `~/.claude` session transcript), `allow_external_paths = true`
+> must remain set permanently.  The lint and contradiction-resolver workflows
+> automatically re-ingest pages from their recorded `source_path`.  Turning the flag
+> off after the fact silently breaks re-ingest for those pages.
+
+**Runtime reload behaviour:**
+
+| Method | Takes effect |
+| ------ | ------------ |
+| Edit `config.toml` | On the **next ingest job** — the worker reloads config from disk on every job, so no restart is needed. |
+| Set/change env var | Only at **process startup** — the server process inherits its environment when launched and never sees shell changes made afterwards. Changing the env var requires a restart. |
+
+The env var takes priority over `config.toml` *when the server was started with it set*.
+Use `config.toml` for runtime toggling; use the env var for immutable deployment-time
+enforcement (e.g. a Docker `ENV` line or a systemd `Environment=` directive).
 
 ### Background worker
 
@@ -1440,6 +1466,7 @@ synthadoc serve -w <wiki-name> --provider claude-code
 ```toml
 [server]
 port = 7070
+allow_external_paths = false  # set true only on a local-only instance not behind a proxy
 
 [agents]
 default  = { provider = "anthropic", model = "claude-opus-4-8" }

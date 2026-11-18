@@ -1407,3 +1407,23 @@ def test_filter_blocked_suggestions_keeps_unblocked_urls():
     assert "https://safe.com/page" in result
     assert "https://www.blocked.com/x" not in result
     assert "query" in result
+
+
+def test_ingest_endpoint_ignores_allow_external_paths_in_body(tmp_wiki):
+    """Sending allow_external_paths in the POST body must have no effect on the queued payload.
+
+    Before issue #565 the server would honour this flag for 127.0.0.1 clients,
+    making it trivially bypassable behind a reverse proxy.  It is now a
+    server-side config setting; the request body field is gone entirely.
+    """
+    from synthadoc.integration.http_server import create_app
+    with patch("synthadoc.core.queue.JobQueue.enqueue",
+               new=AsyncMock(return_value="job-sec")) as mock_enqueue:
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post(
+                "/jobs/ingest",
+                json={"source": "paper.pdf", "allow_external_paths": True},
+            )
+    assert resp.status_code == 200
+    queued_payload = mock_enqueue.call_args[0][1]
+    assert "allow_external_paths" not in queued_payload

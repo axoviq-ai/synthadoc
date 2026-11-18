@@ -1234,6 +1234,8 @@ The **Synthadoc Open Source Community Edition** does not yet include built-in au
 - Restrict the mapped port to a specific interface: `-p 127.0.0.1:7070:7070` binds only to localhost even if the container listens on `0.0.0.0`
 - On team servers, use a VPN or SSH tunnel rather than exposing the port directly
 
+**`allow_external_paths` and reverse proxies:** do **not** set `allow_external_paths = true` (or `SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`) on any instance reachable through a reverse proxy. When a proxy forwards requests to the container over loopback, every remote caller appears to come from `127.0.0.1`. That made the old IP-based guard ineffective; the flag is now a server-side config key precisely to prevent that. Leave it `false` (the default) on any proxy-fronted deployment. It is only safe to enable on a purely local `synthadoc serve` instance where no proxy or loopback bridge exists between the network and the server process.
+
 **API keys:** always use `--env-file ~/wikis/.env`, never `-e KEY=value` on the command line. Restrict who can read the `.env` file: `chmod 600 ~/wikis/.env` on Linux/macOS; on Windows, keep it under your user profile, which other standard users cannot read.
 
 ---

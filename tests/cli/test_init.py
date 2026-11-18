@@ -87,3 +87,10 @@ def test_init_wiki_agents_md_has_mcp_tools_table(tmp_path):
     assert "synthadoc_query" in content
     assert "synthadoc_ingest" in content
     assert "## MCP Tools" in content
+
+
+def test_init_wiki_config_contains_allow_external_paths_false(tmp_path):
+    """Generated config.toml must include allow_external_paths = false under [server]."""
+    init_wiki(tmp_path, domain="General")
+    config = (tmp_path / ".synthadoc" / "config.toml").read_text()
+    assert "allow_external_paths = false" in config
