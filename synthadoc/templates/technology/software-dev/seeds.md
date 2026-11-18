@@ -1,5 +1,20 @@
 # Getting Started — Software Development
 
+> **Running in Docker?** The commands below are written for the host CLI, which needs
+> `-w <wiki>`. For a Docker deployment, run them inside the container and leave `-w` out
+> (the image sets `SYNTHADOC_WIKI=/wiki`), for example:
+> `docker exec <container-name> synthadoc ingest raw_sources/<file>.md`
+> Paths are resolved *inside* the container, so use wiki-relative paths such as
+> `raw_sources/...` or URLs. Alternatively, skip the CLI and use the Obsidian plugin:
+> command palette > **"Synthadoc: Ingest..."**.
+>
+> **Sources outside the wiki folder.** The first ingests below read files that live outside
+> this wiki (your notes, repository, or session files). The server only reads files inside the
+> wiki root unless the request comes from the same machine (localhost). A host install using the
+> CLI is allowed automatically; Docker, or any server reached over the network, refuses external
+> paths, and a container cannot see your host folders anyway. In that case, copy the files or
+> highlights you want into this wiki's `raw_sources/` folder and ingest them from there.
+
 ## Recommended first ingests
 
 **Your repository README**
