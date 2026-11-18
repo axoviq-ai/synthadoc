@@ -927,25 +927,27 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
 - Vault-relative path: `raw_sources/report.pdf` (resolved against `wiki_root`)
 - URL: `https://example.com/article`
 
-**External file paths** (outside the wiki root) are supported when the request comes from
-`127.0.0.1` or `::1` and the payload includes `"allow_external_paths": true`. The CLI sets
-this flag automatically for all local file sources. Remote clients cannot set this flag
-(the server ignores it for non-localhost connections) to prevent arbitrary file reads
-in server-exposed deployments.
+**External file paths** (outside the wiki root) are supported when the server is started
+with `allow_external_paths = true` in its `[server]` config block, or via the env var
+`SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`.  This is an operator-level deployment decision, not a
+per-request flag — no network caller can enable it, regardless of their source IP.  It
+defaults to `false`.
+
+Enable it only when the server is not reachable through any reverse proxy or loopback
+bridge that could relay remote requests as 127.0.0.1 — the typical case is a local
+`synthadoc serve` where only the CLI on the same machine talks to the server.
 
 This is required for ingesting files that live outside the wiki directory by design —
 for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.jsonl`.
 
 **Client behaviour summary:**
 
-
-| Client                          | Sends`allow_external_paths`                   | Can ingest outside wiki root?           |
-| ------------------------------- | --------------------------------------------- | --------------------------------------- |
-| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only)     | Yes — server is localhost              |
-| Obsidian plugin                 | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
-| Web UI                          | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
-| Direct HTTP API (localhost)     | Set manually in request body                  | Yes — if request from 127.0.0.1/::1    |
-| Direct HTTP API (remote)        | Ignored by server                             | No — server silently treats as`false`  |
+| Client                          | Can ingest outside wiki root?                           |
+| ------------------------------- | ------------------------------------------------------- |
+| CLI (`synthadoc ingest <path>`) | Yes — when server has `allow_external_paths = true`     |
+| Obsidian plugin                 | No — wiki-relative paths and URLs only                  |
+| Web UI                          | No — wiki-relative paths and URLs only                  |
+| Direct HTTP API (any client)    | Only when server config enables `allow_external_paths`  |
 
 ### Background worker
 
@@ -1440,6 +1442,7 @@ synthadoc serve -w <wiki-name> --provider claude-code
 ```toml
 [server]
 port = 7070
+# allow_external_paths = false   # set true only on a local-only instance not behind a proxy
 
 [agents]
 default  = { provider = "anthropic", model = "claude-opus-4-8" }
