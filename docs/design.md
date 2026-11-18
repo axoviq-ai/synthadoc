@@ -944,10 +944,23 @@ for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.
 
 | Client                          | Can ingest outside wiki root?                           |
 | ------------------------------- | ------------------------------------------------------- |
-| CLI (`synthadoc ingest <path>`) | Yes — when server has `allow_external_paths = true`     |
-| Obsidian plugin                 | No — wiki-relative paths and URLs only                  |
-| Web UI                          | No — wiki-relative paths and URLs only                  |
+| CLI (`synthadoc ingest <path>`) | Only when server has `allow_external_paths = true`      |
+| Obsidian plugin                 | No — only sends wiki-relative paths and URLs            |
+| Web UI                          | No — only sends wiki-relative paths and URLs            |
+| Lint / resolver re-ingest       | Only when server has `allow_external_paths = true`      |
 | Direct HTTP API (any client)    | Only when server config enables `allow_external_paths`  |
+
+> **Important:** `allow_external_paths` is a server-wide flag — it applies to every
+> ingest path (CLI, lint workflow, contradiction resolver, direct API).  Obsidian and
+> the Web UI never submit external absolute paths themselves, but the flag does not
+> restrict them specifically.  If you enable it, enable it deliberately for the whole
+> deployment.
+>
+> **Permanent requirement:** if any page in a wiki was originally ingested from an
+> external path (e.g. a `~/.claude` session transcript), `allow_external_paths = true`
+> must remain set permanently.  The lint and contradiction-resolver workflows
+> automatically re-ingest pages from their recorded `source_path`.  Turning the flag
+> off after the fact silently breaks re-ingest for those pages.
 
 ### Background worker
 
