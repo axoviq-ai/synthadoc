@@ -9,11 +9,13 @@
 > command palette > **"Synthadoc: Ingest..."**.
 >
 > **Sources outside the wiki folder.** The first ingests below read files that live outside
-> this wiki (your notes, repository, or session files). The server only reads files inside the
-> wiki root unless the request comes from the same machine (localhost). A host install using the
-> CLI is allowed automatically; Docker, or any server reached over the network, refuses external
-> paths, and a container cannot see your host folders anyway. In that case, copy the files or
-> highlights you want into this wiki's `raw_sources/` folder and ingest them from there.
+> this wiki (your notes, repository, or session files). By default the server only reads files
+> inside the wiki root. Either copy the files or highlights you want into this wiki's
+> `raw_sources/` folder and ingest them from there (always works, and is the only option in
+> Docker, where host folders are not mounted), or, on a local-only `synthadoc serve` instance,
+> set `allow_external_paths = true` under `[server]` in `.synthadoc/config.toml` (or
+> `SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`). Do not enable it on a server reachable over the
+> network or through a reverse proxy.
 
 ## Recommended first ingests
 

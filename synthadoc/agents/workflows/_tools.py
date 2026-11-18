@@ -256,9 +256,6 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     # re-ingested.  bust_cache=False lets the analysis/citation caches be used
     # when the source content is unchanged — the cache key is a content hash, so
     # genuinely changed sources still trigger fresh LLM analysis regardless.
-    # allow_external_paths=True: the tool runs server-side (always localhost), so
-    # source files outside the wiki root are safe to re-ingest — they are paths
-    # already stored in the wiki metadata from the original ingest.
     last_error: str | None = None
     job_id: str | None = None
     for delay in [0] + _INGEST_RETRY_DELAYS:
@@ -267,8 +264,7 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
         try:
             assert ctx.queue is not None
             job_id = await ctx.queue.enqueue(
-                "ingest", {"source": source_path, "force": True, "bust_cache": False,
-                           "allow_external_paths": True}
+                "ingest", {"source": source_path, "force": True, "bust_cache": False}
             )
             break
         except Exception as exc:  # noqa: BLE001

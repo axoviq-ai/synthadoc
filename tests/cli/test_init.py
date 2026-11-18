@@ -104,3 +104,10 @@ def test_toml_escape_round_trips():
     from synthadoc.cli._init import _toml_escape
     value = 'we"ird' + chr(92) + 'path'
     assert tomllib.loads(f'k = "{_toml_escape(value)}"')["k"] == value
+
+
+def test_init_wiki_config_contains_allow_external_paths_false(tmp_path):
+    """Generated config.toml must include allow_external_paths = false under [server]."""
+    init_wiki(tmp_path, domain="General")
+    config = (tmp_path / ".synthadoc" / "config.toml").read_text()
+    assert "allow_external_paths = false" in config

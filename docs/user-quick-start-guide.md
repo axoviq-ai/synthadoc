@@ -2885,8 +2885,11 @@ ls ~/.claude/projects/-Users-yourname-workspace-myproject/
 ### Ingest a session file
 
 Pass the `.jsonl` path directly — no need to copy the file into the wiki directory first.
-Synthadoc's CLI automatically signals the server that the file may be outside the wiki root,
-and the server accepts this for local (127.0.0.1) connections:
+The server accepts files outside the wiki root only when explicitly enabled by the
+operator. Set `allow_external_paths = true` in the `[server]` section of
+`.synthadoc/config.toml`, or export the env var `SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`
+before starting the server. The default is `false` — external-path ingestion is
+forbidden unless you opt in:
 
 ```bash
 synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-myproject/4f8c2a1b-3e9d-4a6b-8c1f-2d7e0a3b5f9c.jsonl
@@ -2895,6 +2898,12 @@ synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-myproject/4f8c2a1b
 Synthadoc detects the `.jsonl` extension, routes to the session skill, and creates a
 wiki page. The page slug is auto-derived from the session date and the first substantive
 user message — for example `session-2026-07-15-how-do-i-implement-sliding`.
+
+> **Keep the flag set permanently.** If you ingest any files from outside the wiki
+> root (session transcripts, shared drives, etc.), `allow_external_paths = true` must
+> stay on for the life of that wiki.  The lint workflow and the contradiction resolver
+> re-ingest pages from their recorded source path — if the flag is turned off later,
+> those workflows silently fail to update any page whose source is external.
 
 Watch progress:
 
@@ -3876,6 +3885,7 @@ Common reason to edit: switching from the Anthropic default to Gemini Flash (fre
 ```toml
 [server]
 port = 7071          # required if running more than one wiki simultaneously
+allow_external_paths = false  # set true only on a local-only instance not reachable via a reverse proxy
 
 [cost]
 soft_warn_usd = 0.50

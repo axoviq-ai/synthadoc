@@ -323,9 +323,6 @@ class IngestRequest(BaseModel):
     force: bool = False
     max_results: int | None = None
     max_source_chars: int | None = None   # overrides [ingest] max_source_chars for this run
-    # Allows ingesting files outside the wiki root (e.g. ~/.claude session files).
-    # Honoured only for requests from 127.0.0.1 / ::1 to prevent remote file reads.
-    allow_external_paths: bool = False
 
     @field_validator("source")
     @classmethod
@@ -675,12 +672,10 @@ async def _worker_loop(orch, session_state: dict, audit_db) -> None:
                     bust_cache = job.payload.get("bust_cache", force)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
-                    allow_external_paths = job.payload.get("allow_external_paths", False)
                     job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
                                                 bust_cache=bust_cache,
                                                 max_results=max_results,
-                                                max_source_chars=max_source_chars,
-                                                allow_external_paths=allow_external_paths)
+                                                max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     slug = job.payload.get("slug")
@@ -1809,8 +1804,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         analysis.pop("_tokens", None)
         return {"source": req.source, "analysis": analysis}
 
-    _LOCALHOST_ADDRS = frozenset(("127.0.0.1", "::1", "localhost"))
-
     @app.post("/jobs/ingest")
     async def enqueue_ingest(request: Request, req: IngestRequest):
         from pathlib import Path as _Path
@@ -1849,10 +1842,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             payload["max_results"] = req.max_results
         if req.max_source_chars is not None:
             payload["max_source_chars"] = req.max_source_chars
-        # allow_external_paths is only trusted from localhost to prevent remote file reads.
-        client_host = (request.client.host if request.client else "") or ""
-        if req.allow_external_paths and client_host in _LOCALHOST_ADDRS:
-            payload["allow_external_paths"] = True
         job_id = await app.state.orch.queue.enqueue("ingest", payload)
         return {"job_id": job_id}
 

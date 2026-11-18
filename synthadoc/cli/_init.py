@@ -227,6 +227,7 @@ display_name = "{display_name}"
 [server]
 port = {port}  # change this if running multiple wikis simultaneously
 # host = "0.0.0.0"  # bind to all interfaces — no built-in auth, restrict via firewall
+allow_external_paths = false  # set true only on a local-only instance not reachable via a reverse proxy
 job_timeout_seconds = 600  # max seconds a single job runs before being killed
 # CLI → server HTTP timeouts (seconds).  Raise when using slow LLM providers
 # (e.g. opencode, local models, or heavily loaded cloud APIs).

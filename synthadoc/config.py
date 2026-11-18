@@ -8,6 +8,7 @@ merges them (project wins), and validates the result.
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -176,6 +177,12 @@ class ServerConfig:
     client_timeout_seconds: int = 60        # simple requests (status, job enqueue, …)
     client_llm_timeout_seconds: int = 180   # LLM-driven endpoints (/analyse, /context/build)
     client_stream_timeout_seconds: int = 120  # SSE streaming (/query/stream)
+
+    # Permit ingesting files whose absolute path falls outside the wiki root.
+    # Set true only when this instance is never reachable through a reverse proxy
+    # or loopback bridge that could relay remote requests as 127.0.0.1.
+    # This is an operator-level deployment decision, not a per-request flag.
+    allow_external_paths: bool = False
 
 
 @dataclass
@@ -385,6 +392,23 @@ def _build_default_agents_config() -> AgentsConfig:
 # ---------------------------------------------------------------------------
 
 
+def _parse_allow_external_paths(sv: dict) -> bool:
+    """Resolve the allow_external_paths server setting with correct precedence.
+
+    Resolution order (later wins):
+      1. TOML value (bool or quoted string — "true"/"false" accepted)
+      2. SYNTHADOC_ALLOW_EXTERNAL_PATHS env var — authoritative in BOTH directions
+         when present; "1"/"true"/"yes" → True, any other non-empty value → False.
+    """
+    env_val = os.environ.get("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "")
+    if env_val:
+        return env_val.lower() in ("1", "true", "yes")
+    raw = sv.get("allow_external_paths", False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() in ("1", "true", "yes")
+
+
 def _merge(base_raw: dict, override_raw: dict) -> dict:
     """Deep-merge *override_raw* on top of *base_raw* (override wins).
 
@@ -507,6 +531,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         client_timeout_seconds=int(sv.get("client_timeout_seconds", 60)),
         client_llm_timeout_seconds=int(sv.get("client_llm_timeout_seconds", 180)),
         client_stream_timeout_seconds=int(sv.get("client_stream_timeout_seconds", 120)),
+        allow_external_paths=_parse_allow_external_paths(sv),
     )
 
     # --- cache ---
