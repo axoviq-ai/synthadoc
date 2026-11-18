@@ -588,3 +588,38 @@ def test_agent_effort_propagates_through_resolve(tmp_path):
     cfg = load_config(project_config=cfg_file)
     resolved = cfg.agents.resolve("query")
     assert resolved.effort == "low"
+
+
+# ---------------------------------------------------------------------------
+# allow_external_paths — server-side security setting (issue #565)
+# ---------------------------------------------------------------------------
+
+def test_server_allow_external_paths_default_false(tmp_path):
+    """allow_external_paths must default to False when absent from config."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.server.allow_external_paths is False
+
+
+def test_server_allow_external_paths_toml_true(tmp_path):
+    """allow_external_paths = true in [server] section must be parsed as True."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[server]\nallow_external_paths = true\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.server.allow_external_paths is True
+
+
+def test_server_allow_external_paths_env_var_overrides_toml(tmp_path, monkeypatch):
+    """SYNTHADOC_ALLOW_EXTERNAL_PATHS=1 must override a false value in config.toml."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[server]\nallow_external_paths = false\n'
+    )
+    monkeypatch.setenv("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "1")
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.server.allow_external_paths is True
