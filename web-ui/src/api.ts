@@ -8,6 +8,7 @@ export interface SessionInfo {
     mode: string;
     initial_hints: string[];
     wiki_name?: string;
+    display_name?: string;
 }
 
 export interface ClarifyData {

@@ -306,6 +306,33 @@ http://localhost:7070/app
 
 ---
 
+## Naming the Wiki in the Web UI
+
+The web UI shows the wiki name at the bottom of the left sidebar. In Docker every
+wiki is mounted at `/wiki`, so it would always read "wiki". Set `SYNTHADOC_WIKI_NAME`
+to show a meaningful label instead:
+
+```yaml
+services:
+  synthadoc:
+    environment:
+      - SYNTHADOC_WIKI_NAME=personal-learning
+```
+
+or with `docker run`: `-e SYNTHADOC_WIKI_NAME=personal-learning`.
+
+Resolution order: `SYNTHADOC_WIKI_NAME` env var, then `display_name` under `[wiki]` in
+`.synthadoc/config.toml`, then the wiki folder name. The setting is display-only; CLI
+commands and the wiki registry keep using the folder name. Host deployments can use
+the config key:
+
+```toml
+[wiki]
+display_name = "Personal Learning"
+```
+
+---
+
 ## Running CLI Commands Inside the Container
 
 Any `synthadoc` CLI command can be run inside the container. Two things are

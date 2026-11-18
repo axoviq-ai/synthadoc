@@ -4759,6 +4759,10 @@ Sequencing after PyPI guarantees that the image never references an unpublished 
 
 The workflow can also be started manually (**Actions → Publish Docker Image → Run workflow**, input `tag`, e.g. `1.4.2`). It builds the selected branch's `Dockerfile` against that already-released PyPI version and re-pushes `:<tag>` and `:latest`. Use it for image-only fixes (for example, Dockerfile changes) without cutting a new PyPI release.
 
+### Wiki display name
+
+The web UI sidebar label comes from `POST /sessions` → `display_name`, resolved by `resolve_display_name()` in `http_server.py`: `SYNTHADOC_WIKI_NAME` env var → `[wiki] display_name` in `config.toml` → `wiki_root.name`. This exists because the container mounts every wiki at `/wiki`, and a container cannot discover its own name (`container_name` is not exposed; the hostname is the container ID). `wiki_name` in the same response is unchanged and remains the CLI/registry identity used in generated `-w` hints.
+
 ### Upgrading a container deployment
 
 Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
