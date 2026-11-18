@@ -613,8 +613,8 @@ def test_server_allow_external_paths_toml_true(tmp_path):
     assert cfg.server.allow_external_paths is True
 
 
-def test_server_allow_external_paths_env_var_overrides_toml(tmp_path, monkeypatch):
-    """SYNTHADOC_ALLOW_EXTERNAL_PATHS=1 must override a false value in config.toml."""
+def test_server_allow_external_paths_env_var_enables_over_toml(tmp_path, monkeypatch):
+    """SYNTHADOC_ALLOW_EXTERNAL_PATHS=1 must override allow_external_paths = false in config.toml."""
     cfg_file = tmp_path / "config.toml"
     cfg_file.write_text(
         '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
@@ -623,3 +623,34 @@ def test_server_allow_external_paths_env_var_overrides_toml(tmp_path, monkeypatc
     monkeypatch.setenv("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "1")
     cfg = load_config(project_config=cfg_file)
     assert cfg.server.allow_external_paths is True
+
+
+def test_server_allow_external_paths_env_var_disables_over_toml(tmp_path, monkeypatch):
+    """SYNTHADOC_ALLOW_EXTERNAL_PATHS=0 must override allow_external_paths = true in config.toml.
+
+    The env var is authoritative in BOTH directions so an operator can use it as a
+    safety override even when the TOML has the flag enabled.
+    """
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[server]\nallow_external_paths = true\n'
+    )
+    monkeypatch.setenv("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "0")
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.server.allow_external_paths is False
+
+
+def test_server_allow_external_paths_toml_string_false_is_false(tmp_path):
+    """A quoted TOML string "false" must be treated as False, not truthy.
+
+    Protects against config.toml hand-edits that write allow_external_paths = "false"
+    with quotes, which would otherwise be a truthy Python string.
+    """
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[server]\nallow_external_paths = "false"\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.server.allow_external_paths is False
