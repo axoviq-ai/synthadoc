@@ -1003,17 +1003,21 @@ class IngestAgent(BaseAgent):
             if p.stat().st_size == 0:
                 raise ValueError(f"Source file is empty: {source}")
 
-            # Security: reject sources outside wiki_root unless the caller explicitly
-            # set allow_external_paths (e.g. CLI ingesting ~/.claude session files).
-            # allow_external_paths is only honoured for localhost requests in the HTTP
-            # handler, so remote callers cannot use it to read arbitrary system files.
+            # Security: reject sources outside wiki_root unless the operator has set
+            # [server] allow_external_paths = true in config.toml (or the env var
+            # SYNTHADOC_ALLOW_EXTERNAL_PATHS=1).  This flag must remain enabled for any
+            # wiki that has pages originally ingested from external paths — lint and
+            # resolver workflows re-ingest those pages from their recorded source_path.
             if self._wiki_root is not None and not self._allow_external_paths:
                 root_resolved = self._wiki_root.resolve()
                 try:
                     p.relative_to(root_resolved)
                 except ValueError:
                     raise PermissionError(
-                        f"Source {p} is outside wiki root {root_resolved}"
+                        f"Source {p} is outside wiki root {root_resolved}. "
+                        f"Set [server] allow_external_paths = true in "
+                        f".synthadoc/config.toml to allow ingesting files outside "
+                        f"the wiki root (e.g. ~/.claude session transcripts)."
                     )
 
             # Dedup: hash + size (file sources only)

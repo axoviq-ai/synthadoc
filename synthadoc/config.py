@@ -388,6 +388,23 @@ def _build_default_agents_config() -> AgentsConfig:
 # ---------------------------------------------------------------------------
 
 
+def _parse_allow_external_paths(sv: dict) -> bool:
+    """Resolve the allow_external_paths server setting with correct precedence.
+
+    Resolution order (later wins):
+      1. TOML value (bool or quoted string — "true"/"false" accepted)
+      2. SYNTHADOC_ALLOW_EXTERNAL_PATHS env var — authoritative in BOTH directions
+         when present; "1"/"true"/"yes" → True, any other non-empty value → False.
+    """
+    env_val = os.environ.get("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "")
+    if env_val:
+        return env_val.lower() in ("1", "true", "yes")
+    raw = sv.get("allow_external_paths", False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() in ("1", "true", "yes")
+
+
 def _merge(base_raw: dict, override_raw: dict) -> dict:
     """Deep-merge *override_raw* on top of *base_raw* (override wins).
 
@@ -510,10 +527,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         client_timeout_seconds=int(sv.get("client_timeout_seconds", 60)),
         client_llm_timeout_seconds=int(sv.get("client_llm_timeout_seconds", 180)),
         client_stream_timeout_seconds=int(sv.get("client_stream_timeout_seconds", 120)),
-        allow_external_paths=bool(
-            os.environ.get("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "").lower() in ("1", "true", "yes")
-            or sv.get("allow_external_paths", False)
-        ),
+        allow_external_paths=_parse_allow_external_paths(sv),
     )
 
     # --- cache ---

@@ -660,8 +660,7 @@ async def _worker_loop(orch, session_state: dict, audit_db) -> None:
                     job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
                                                 bust_cache=bust_cache,
                                                 max_results=max_results,
-                                                max_source_chars=max_source_chars,
-                                                allow_external_paths=orch._cfg.server.allow_external_paths)
+                                                max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     slug = job.payload.get("slug")

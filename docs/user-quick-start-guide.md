@@ -2899,6 +2899,12 @@ Synthadoc detects the `.jsonl` extension, routes to the session skill, and creat
 wiki page. The page slug is auto-derived from the session date and the first substantive
 user message — for example `session-2026-07-15-how-do-i-implement-sliding`.
 
+> **Keep the flag set permanently.** If you ingest any files from outside the wiki
+> root (session transcripts, shared drives, etc.), `allow_external_paths = true` must
+> stay on for the life of that wiki.  The lint workflow and the contradiction resolver
+> re-ingest pages from their recorded source path — if the flag is turned off later,
+> those workflows silently fail to update any page whose source is external.
+
 Watch progress:
 
 ```bash
