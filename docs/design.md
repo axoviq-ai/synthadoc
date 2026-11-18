@@ -4761,7 +4761,7 @@ The workflow can also be started manually (**Actions → Publish Docker Image �
 
 ### Wiki display name
 
-The web UI sidebar label comes from `POST /sessions` → `display_name`, resolved by `resolve_display_name()` in `http_server.py`: `SYNTHADOC_WIKI_NAME` env var → `[wiki] display_name` in `config.toml` → `wiki_root.name`. This exists because the container mounts every wiki at `/wiki`, and a container cannot discover its own name (`container_name` is not exposed; the hostname is the container ID). `wiki_name` in the same response is unchanged and remains the CLI/registry identity used in generated `-w` hints.
+The web UI sidebar label comes from `POST /sessions` → `display_name`, resolved by `resolve_display_name()` in `http_server.py`: `SYNTHADOC_WIKI_NAME` env var → `[wiki] display_name` in `config.toml` → `wiki_root.name`. This exists because the container mounts every wiki at `/wiki`, and a container cannot discover its own name (`container_name` is not exposed; the hostname is the container ID). `install`/`init` seed `display_name` with the wiki folder name (`_CONFIG_TOML` in `cli/_init.py`), and `rewrite_config` updates it on a renamed restore, so Docker deployments show the real name with no extra setup; wikis created earlier fall back to the env var or folder name. `wiki_name` in the same response is unchanged and remains the CLI/registry identity used in generated `-w` hints.
 
 ### Upgrading a container deployment
 

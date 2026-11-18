@@ -124,7 +124,7 @@ def _sanitize_domain(domain: str, max_len: int = _DOMAIN_MAX_LEN) -> str:
 
 from synthadoc.cli.main import app  # noqa: E402
 from synthadoc.cli._init import (  # noqa: E402
-    init_wiki, _CONFIG_TOML, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
+    init_wiki, _CONFIG_TOML, _toml_escape, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
 )
 from synthadoc.core.template_engine import (  # noqa: E402
     apply_template, get_template_guidelines,
@@ -256,7 +256,8 @@ def install_cmd(
         # Write config.toml - .synthadoc/ is git-ignored so it can't be bundled
         # in the demo template; generate it here the same way init_wiki does.
         (dest / ".synthadoc" / "config.toml").write_text(
-            _CONFIG_TOML.format(domain=domain, port=effective_port),
+            _CONFIG_TOML.format(domain=domain, port=effective_port,
+                                display_name=_toml_escape(dest.name)),
             encoding="utf-8", newline="\n",
         )
     else:

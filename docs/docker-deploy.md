@@ -321,15 +321,23 @@ services:
 
 or with `docker run`: `-e SYNTHADOC_WIKI_NAME=personal-learning`.
 
+You usually don't need to set anything. `synthadoc install` and `init` write
+`display_name = "<wiki name>"` under `[wiki]` in `.synthadoc/config.toml`, and that file
+lives on the host volume you mount at `/wiki`, so the container shows the real wiki name
+by default. `synthadoc backup restore --name` keeps it in step when you rename.
+
 Resolution order: `SYNTHADOC_WIKI_NAME` env var, then `display_name` under `[wiki]` in
 `.synthadoc/config.toml`, then the wiki folder name. The setting is display-only; CLI
-commands and the wiki registry keep using the folder name. Host deployments can use
-the config key:
+commands and the wiki registry keep using the folder name. To change the label, edit the
+config key (restart the container to apply):
 
 ```toml
 [wiki]
 display_name = "Personal Learning"
 ```
+
+Wikis created before this setting existed have no `display_name`; add the line above, or
+set the environment variable.
 
 ---
 

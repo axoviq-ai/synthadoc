@@ -210,11 +210,19 @@ _AGENTS_MD = "# AGENTS.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
 _CLAUDE_MD = "# CLAUDE.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
 _GEMINI_MD = "# GEMINI.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
 
+def _toml_escape(value: str) -> str:
+    """Escape a value for use inside a TOML basic string."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 _CONFIG_TOML = """\
 # synthadoc per-project configuration
 
 [wiki]
 domain = "{domain}"
+# Label shown in the web UI sidebar. Defaults to the wiki name; edit freely.
+# The SYNTHADOC_WIKI_NAME environment variable overrides it.
+display_name = "{display_name}"
 
 [server]
 port = {port}  # change this if running multiple wikis simultaneously
@@ -481,6 +489,7 @@ def init_wiki(root: Path, domain: str = "General", port: int = 7070) -> None:
     (root / "log.md").write_text(
         "# Activity Log\n\n", encoding="utf-8", newline="\n")
     (root / ".synthadoc" / "config.toml").write_text(
-        _CONFIG_TOML.format(domain=domain, port=port),
+        _CONFIG_TOML.format(domain=domain, port=port,
+                            display_name=_toml_escape(root.name)),
         encoding="utf-8", newline="\n")
     (root / ".gitignore").write_text(_GITIGNORE, encoding="utf-8", newline="\n")

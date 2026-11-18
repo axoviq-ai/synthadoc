@@ -500,3 +500,22 @@ def test_count_pages_returns_zero_when_no_wiki_dir(tmp_path):
     """_count_pages returns 0 when the wiki/ subdirectory does not exist."""
     from synthadoc.core.backup_engine import _count_pages
     assert _count_pages(tmp_path) == 0
+
+
+def test_rewrite_config_renames_display_name_with_domain(tmp_path):
+    from synthadoc.core.backup_engine import rewrite_config
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[wiki]\ndomain = "old"\ndisplay_name = "old"\n[server]\nport = 7070\n',
+                   encoding="utf-8")
+    rewrite_config(cfg, 7071, "new")
+    text = cfg.read_text(encoding="utf-8")
+    assert 'domain = "new"' in text and 'display_name = "new"' in text
+
+
+def test_rewrite_config_without_rename_keeps_display_name(tmp_path):
+    from synthadoc.core.backup_engine import rewrite_config
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[wiki]\ndomain = "d"\ndisplay_name = "Custom"\n[server]\nport = 7070\n',
+                   encoding="utf-8")
+    rewrite_config(cfg, 7072)
+    assert 'display_name = "Custom"' in cfg.read_text(encoding="utf-8")
