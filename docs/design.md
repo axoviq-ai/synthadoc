@@ -962,6 +962,17 @@ for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.
 > automatically re-ingest pages from their recorded `source_path`.  Turning the flag
 > off after the fact silently breaks re-ingest for those pages.
 
+**Runtime reload behaviour:**
+
+| Method | Takes effect |
+| ------ | ------------ |
+| Edit `config.toml` | On the **next ingest job** — the worker reloads config from disk on every job, so no restart is needed. |
+| Set/change env var | Only at **process startup** — the server process inherits its environment when launched and never sees shell changes made afterwards. Changing the env var requires a restart. |
+
+The env var takes priority over `config.toml` *when the server was started with it set*.
+Use `config.toml` for runtime toggling; use the env var for immutable deployment-time
+enforcement (e.g. a Docker `ENV` line or a systemd `Environment=` directive).
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
