@@ -2202,3 +2202,168 @@ class TestRollbackRestoresLifecycleFlags:
         assert page.status == "contradicted"
         assert page.contradiction_note == "Sources disagree on the inventor."
         assert page.last_fix_record is None
+
+
+# ---------------------------------------------------------------------------
+# tool_deduplicate_page
+# ---------------------------------------------------------------------------
+
+_DUP_CONTENT = """\
+# My Page
+
+## Background
+
+First background paragraph.
+
+## History
+
+History paragraph one.
+
+## Background
+
+Second background paragraph — different wording.
+
+## Conclusion
+
+Final notes.
+"""
+
+_NO_DUP_CONTENT = """\
+# My Page
+
+## Background
+
+Only background paragraph.
+
+## History
+
+Only history paragraph.
+"""
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_page_merges_duplicate_headings(tmp_path):
+    """tool_deduplicate_page must collapse repeated headings and write the result."""
+    from synthadoc.agents.workflows._tools import tool_deduplicate_page
+    from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("test-page", WikiPage(
+        title="My Page", tags=[], content=_DUP_CONTENT, status="contradicted",
+        confidence="", sources=[], contradiction_note=None,
+    ))
+    ctx, events = _make_ctx(store=store)
+
+    result = await tool_deduplicate_page(ctx, slug="test-page")
+
+    assert result["status"] == "deduplicated"
+    assert "Background" in " ".join(result["sections_merged"])
+
+    page = store.read_page("test-page")
+    headings = [line for line in page.content.splitlines() if line.startswith("## ")]
+    heading_names = [h.lstrip("# ") for h in headings]
+    assert heading_names.count("Background") == 1, (
+        "Duplicate Background heading must be collapsed to one"
+    )
+    assert "Second background paragraph" in page.content, (
+        "Non-duplicate body from the later copy must be preserved"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_page_reports_no_duplicates_when_clean(tmp_path):
+    """tool_deduplicate_page returns no_duplicates when all headings are unique."""
+    from synthadoc.agents.workflows._tools import tool_deduplicate_page
+    from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("clean-page", WikiPage(
+        title="My Page", tags=[], content=_NO_DUP_CONTENT, status="contradicted",
+        confidence="", sources=[], contradiction_note=None,
+    ))
+    ctx, events = _make_ctx(store=store)
+
+    result = await tool_deduplicate_page(ctx, slug="clean-page")
+
+    assert result["status"] == "no_duplicates"
+    # Page content must be unchanged
+    page = store.read_page("clean-page")
+    assert page.content == _NO_DUP_CONTENT
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_page_saves_snapshot_before_write(tmp_path):
+    """tool_deduplicate_page must save a pre-dedup snapshot so the change is rollback-safe."""
+    from synthadoc.agents.workflows._tools import tool_deduplicate_page
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    store.write_page("snap-page", WikiPage(
+        title="My Page", tags=[], content=_DUP_CONTENT, status="contradicted",
+        confidence="", sources=[], contradiction_note=None,
+    ))
+    audit_db = AuditDB(tmp_path / "audit.db")
+    await audit_db.init()
+    ctx, _events = _make_ctx(store=store, audit_db=audit_db)
+
+    await tool_deduplicate_page(ctx, slug="snap-page")
+
+    snapshots = await audit_db.list_page_snapshots("snap-page")
+    assert snapshots, "A snapshot must be saved before deduplication writes the page"
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_page_missing_slug_returns_error(tmp_path):
+    """tool_deduplicate_page returns an error dict when the page does not exist."""
+    from synthadoc.agents.workflows._tools import tool_deduplicate_page
+    from synthadoc.storage.wiki import WikiStorage
+
+    store = WikiStorage(tmp_path / "wiki")
+    ctx, _events = _make_ctx(store=store)
+
+    result = await tool_deduplicate_page(ctx, slug="no-such-page")
+
+    assert "error" in result
+
+
+# ── tool_ingest_source: blocked-domain guard ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_source_skips_blocked_domain(tmp_path):
+    """tool_ingest_source returns status=skipped when the URL's domain is blocked."""
+    from synthadoc.agents.workflows._tools import tool_ingest_source
+
+    wiki_root = tmp_path / "wiki"
+    wiki_root.mkdir()
+    # Write .synthadoc/blocked_domains.json that blocks wikipedia.org
+    synthadoc_dir = wiki_root / ".synthadoc"
+    synthadoc_dir.mkdir()
+    (synthadoc_dir / "blocked_domains.json").write_text('["wikipedia.org"]', encoding="utf-8")
+
+    sse_events: list[tuple[str, dict]] = []
+
+    async def _send(event, data):
+        sse_events.append((event, data))
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=wiki_root,
+        queue=None,
+        store=None,
+        audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+
+    result = await tool_ingest_source(ctx, source_path="https://en.wikipedia.org/wiki/AI_winter")
+
+    assert result["status"] == "skipped"
+    assert "blocked" in result["message"].lower()
+    # SSE progress event must carry "blocked" in the message
+    blocked_events = [
+        (ev, d) for ev, d in sse_events
+        if ev == "tool_progress" and "blocked" in d.get("message", "").lower()
+    ]
+    assert blocked_events, "Expected a 'domain blocked' SSE tool_progress event"

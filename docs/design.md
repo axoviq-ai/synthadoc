@@ -1368,6 +1368,39 @@ Required environment variables per provider:
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
+### Cost-optimised workflow config
+
+Agentic maintenance workflows (contradiction resolver, orphan resolver, content-health resolver) run a structured tool-call loop where the model follows a fixed protocol rather than exercising broad editorial judgement. Fast, inexpensive models produce equivalent results at a fraction of the cost of premium models:
+
+| Model | Provider | Approximate cost vs. Sonnet 5.5 |
+|---|---|---|
+| `claude-haiku-5-5` | `anthropic` | ~10× cheaper |
+| `deepseek-flash` | `deepseek` (thinking disabled) | ~15× cheaper |
+| `MiniMax-M3` (thinking disabled) | `minimax` | ~8× cheaper |
+| `qwen3.8-flash` (thinking disabled) | `qwen` | ~20× cheaper |
+
+Set `agents.workflow` to override the model used only for workflow loops while keeping a higher-quality model for ingest and query:
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { model = "claude-haiku-5-5" }   # resolvers use Haiku — same quality, 10× cheaper
+```
+
+For DeepSeek or MiniMax (must disable thinking — it causes timeouts on tool-call loops):
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { provider = "deepseek", model = "deepseek-flash", thinking = "disabled" }
+```
+
+```toml
+[agents]
+default  = { provider = "anthropic", model = "claude-sonnet-5-5" }
+workflow = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }
+```
+
 ### Coding tool CLI providers — no API key needed
 
 If you have an active **Claude Code** subscription, or want to use the free **Opencode Zen** tier, you can use either as the LLM provider with no separate API key.
@@ -1409,9 +1442,10 @@ synthadoc serve -w <wiki-name> --provider claude-code
 port = 7070
 
 [agents]
-default = { provider = "anthropic", model = "claude-opus-4-8" }
-lint    = { model = "claude-haiku-4-5-20251001" }
-skill   = { model = "claude-haiku-4-5-20251001" }
+default  = { provider = "anthropic", model = "claude-opus-4-8" }
+lint     = { model = "claude-haiku-4-5-20251001" }
+skill    = { model = "claude-haiku-4-5-20251001" }
+# workflow = { model = "claude-haiku-5-5" }  # 5-10× cheaper than Opus/Sonnet; sufficient for all workflow tool-call loops
 # llm_timeout_seconds = 90  # set for reasoning models to fail fast instead of silent empty response
 
 [queue]
@@ -1475,6 +1509,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.default.model`                   | str   | `"gemini-2.5-flash"` | Model ID passed to the provider API                                                                                                                                                                                                                                        |
 | `agents.default.base_url`                | str   | `""`                 | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment).                                                                                                                       |
 | `agents.default.thinking`                | str   | `""`                 | Reasoning mode:`"disabled"` turns off chain-of-thought. **Required for all Qwen DashScope models** — thinking is ON by default and causes timeouts on large wiki contexts; always set `thinking = "disabled"` for `qwen`. Also supported on MiniMax M3 (faster, cheaper) and DeepSeek (optional). `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
+| `agents.default.effort`                  | str   | `""`                 | Anthropic thinking depth:`"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"`. Applies only to the `anthropic` provider (Sonnet 5.5, Opus 5.5); ignored by all other providers. Empty string defaults to `"low"` — Synthadoc sets this internally so Sonnet and Opus do not engage heavy extended thinking on routine ingest, lint, and query tasks. Raise to `"medium"` or `"high"` if you need deeper reasoning on complex queries. |
 | `agents.ingest.provider`                 | str   | (inherits default)   | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries.                                                                                                                             |
 | `agents.ingest.model`                    | str   | (inherits default)   | Model ID for the ingest agent override.                                                                                                                                                                                                                                    |
 | `agents.query.provider`                  | str   | (inherits default)   | Override provider/model for query answering only.                                                                                                                                                                                                                          |
@@ -1483,6 +1518,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.lint.model`                      | str   | (inherits default)   | Model ID for the lint agent override.                                                                                                                                                                                                                                      |
 | `agents.adversarial.provider`            | str   | (inherits default)   | Dedicated LLM provider for adversarial lint review. Falls back to`agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently.                                                              |
 | `agents.adversarial.model`               | str   | (inherits default)   | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model.                                                                                                                                             |
+| `agents.workflow.provider`               | str   | (inherits default)   | Override provider/model for agentic workflow tool-call loops (contradiction resolver, orphan resolver, content-health resolver, etc.). **Recommended:** use a fast, cheap model such as `claude-haiku-5-5`, `deepseek/deepseek-chat` with `thinking = "disabled"`, or `minimax/MiniMax-M3` with `thinking = "disabled"`. These models are 5–10× cheaper than premium models and produce equivalent results for structured tool-call workflows. |
+| `agents.workflow.model`                  | str   | (inherits default)   | Model ID for the workflow override.                                                                                                                                                                                                                                        |
 | `agents.llm_timeout_seconds`             | int   | `0`                  | Per-call LLM timeout in seconds;`0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M3 with thinking enabled, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required.                                                   |
 | `agents.scaffold_max_tokens`             | int   | `32768`              | Max output tokens for the scaffold (page generation) agent. Increase to`65536`+ when using reasoning models on large wikis where the default budget is exhausted.                                                                                                          |
 | `agents.query_max_tokens`                | int   | `8192`               | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer.                                                                                                                                                     |
@@ -1789,6 +1826,22 @@ in_progress → skipped      (system-initiated skip; e.g. auto-blocked domain)
 With the default base of 30 s: attempt 1 waits 30 s, attempt 2 waits 60 s, attempt 3 waits 120 s (all capped at 300 s). The `retry_after` timestamp is stored in the jobs table; `dequeue()` skips any job whose `retry_after` is still in the future. Applied only to transient errors (network timeouts, connection failures, 5xx responses).
 
 **Persistence:** Jobs survive server restarts. `in_progress` jobs at shutdown are reset to `pending` on startup.
+
+### Auto-blocked domains
+
+When a URL fetch returns HTTP 401, 403, or 429, Synthadoc raises `DomainBlockedException` and immediately writes the offending hostname to `.synthadoc/blocked_domains.json` (a JSON array of domain strings). This file acts as a persistent skip-list that prevents wasted retries on domains that have consistently refused access.
+
+**What is guarded:**
+
+| Path | Behaviour |
+| ---- | --------- |
+| URL ingest (direct CLI, WebUI, Obsidian, resolver tool calls) | Pre-flight check in `_run_ingest` skips the job before any network call; job status becomes `skipped`. |
+| Web-search result fan-out | URLs whose domain appears in the blocked list are stripped from child-source candidates before they are enqueued. |
+| Query knowledge-gap suggestions | Blocked domains are removed from `suggested_searches` before the SSE `gap` event is sent to the client. |
+
+**Shared implementation:** `synthadoc/core/domain_guard.py` exports `load_blocked_domains(root)` and `is_domain_blocked(url, root)`. All three paths above import from this single module so the logic stays in one place.
+
+**Re-enabling a domain:** The blocked list is append-only by design — Synthadoc never removes entries automatically. If a domain was blocked due to a transient error (e.g. a temporary 429 rate-limit that has since lifted), you can re-enable it by editing `.synthadoc/blocked_domains.json` and removing the domain string, then retrying the ingest.
 
 ---
 

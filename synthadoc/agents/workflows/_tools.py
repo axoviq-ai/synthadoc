@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.content_health_fixes import heading_mismatch_error, text_loss_error
+from synthadoc.agents.content_health_fixes import (
+    heading_mismatch_error,
+    merge_duplicate_sections,
+    text_loss_error,
+)
 from synthadoc.agents.workflows._rollback import restore_page_snapshot
 from synthadoc.agents.lint_agent import (
     _citation_source_names,
@@ -32,6 +36,7 @@ from synthadoc.agents.lint_agent import (
     find_broken_wikilink_refs,
 )
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
+from synthadoc.core.domain_guard import is_domain_blocked
 from synthadoc.core.queue import JobStatus
 
 
@@ -225,6 +230,15 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     is_url = source_path.startswith(("http://", "https://"))
 
     if is_url:
+        if is_domain_blocked(source_path, ctx.wiki_root):
+            from urllib.parse import urlparse
+            host = urlparse(source_path).netloc
+            msg = f"Domain {host!r} is in the blocked-domains list — skipping re-ingest."
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "ingest_source", "message": f"SKIP {host}: domain blocked"},
+            )
+            return {"status": "skipped", "message": msg}
         label = source_path
     else:
         # Resolve relative paths (returned by find_stale_pages / find_page_source)
@@ -321,9 +335,13 @@ async def tool_poll_job(
                     "status": ToolStatus.SUCCESS,
                     "message": f"Job {job_id} completed successfully",
                 }
+            detail = (job.error or "").strip()
             return {
                 "status": "failed",
-                "message": f"Job {job_id} ended with status {job.status.value!r}",
+                "message": (
+                    f"Job {job_id} ended with status {job.status.value!r}"
+                    + (f": {detail}" if detail else "")
+                ),
             }
 
         progress_msg = (job.progress or {}).get("message") if job else None
@@ -1148,6 +1166,62 @@ async def tool_read_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     }
 
 
+async def tool_deduplicate_page(ctx: "WorkflowContext", slug: str) -> dict:
+    """Collapse repeated headings in a page using merge_duplicate_sections.
+
+    Silently writes the deduplicated content when duplicates are found.  A
+    snapshot is saved before the write so the change is rollback-safe.  Does
+    NOT alter the page's lifecycle state — the caller must run lint and
+    transition to active if the deduplication resolves all warnings.
+
+    Returns::
+
+        {"status": "deduplicated", "sections_merged": [...], "skipped": [...]}
+        {"status": "no_duplicates"}
+        {"error": str}  — page not found
+    """
+    store = getattr(ctx, "store", None)
+    if store is None:
+        return {"status": "no_duplicates"}
+    page = store.read_page(slug)
+    if page is None:
+        return {"error": f"Page not found: {slug!r}"}
+
+    content = page.content if isinstance(page.content, str) else ""
+    result = merge_duplicate_sections(content)
+    if not result.merged:
+        return {"status": "no_duplicates"}
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {
+            "tool": "deduplicate_page",
+            "message": (
+                f"Deduplicating {slug}: merging {len(result.merged)} section(s): "
+                + ", ".join(repr(h) for h in result.merged)
+            ),
+        },
+    )
+    if ctx.audit_db is not None:
+        await ctx.audit_db.snapshot_if_changed(  # type: ignore[union-attr]
+            slug, page.content, triggered_by="Strategy 0 — Deduplication",
+            reason="pre-dedup snapshot",
+        )
+    page.content = result.content
+    _rescan_content_health(page, slug)
+    with store.page_lock(slug):
+        store.write_page(slug, page)
+    if ctx.bump_epoch:
+        ctx.bump_epoch()
+    if ctx.invalidate_search:
+        ctx.invalidate_search()
+    return {
+        "status": "deduplicated",
+        "sections_merged": result.merged,
+        "skipped": result.skipped,
+    }
+
+
 def _load_gate_threshold(wiki_root: Path) -> "int | None":
     """Load adversarial_gate_threshold from config.toml; return None if unavailable."""
     try:
@@ -1527,7 +1601,23 @@ async def tool_propose_and_apply_blocks(
                     f"({result.applied_count} block(s) applied, "
                     f"{result.rejected_count} rejected)"},
     )
-    return {"applied": True, "diff_preview": diff_preview}
+    ret: dict = {"applied": True, "diff_preview": diff_preview}
+    if result.rejected_count > 0:
+        ret["rejected_blocks"] = [
+            {
+                "index": br.index + 1,
+                "reason": br.rejection_reason or "no_match",
+                "old_text_snippet": (br.old_text[:120] + "…") if len(br.old_text) > 120 else br.old_text,
+            }
+            for br in result.blocks
+            if br.status == "rejected"
+        ]
+        ret["note"] = (
+            f"{result.rejected_count} block(s) could not be applied — "
+            "do not re-propose the same old_text values on retry; "
+            "they do not appear verbatim in the current page content."
+        )
+    return ret
 
 
 async def tool_rollback_last_fix(ctx: "WorkflowContext", slug: str) -> dict:

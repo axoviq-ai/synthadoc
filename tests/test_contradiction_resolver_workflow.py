@@ -34,6 +34,49 @@ def test_match_re_does_not_match_unrelated():
     assert not re_pattern.search("what pages are stale?")
 
 
+def test_match_re_matches_natural_language_slug_forms():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    re_pattern = ContradictionResolverWorkflow.MATCH_RE
+    # CLI shorthand
+    assert re_pattern.search("resolve --slug alan-turing")
+    # Natural-language "resolver on page/slug"
+    assert re_pattern.search("run contradiction resolver on page alan-turing")
+    assert re_pattern.search("contradiction resolver on slug alan-turing")
+
+
+def test_parse_slug_flag():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("resolve --slug alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver --slug my-page") == "my-page"
+
+
+def test_parse_slug_natural_language():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("run contradiction resolver on page alan-turing") == "alan-turing"
+    assert wf._parse_slug("contradiction resolver on slug alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver for page alan-turing") == "alan-turing"
+    assert wf._parse_slug("run contradiction resolver for slug alan-turing") == "alan-turing"
+
+
+def test_parse_slug_does_not_match_hint_text():
+    """Hint text like 'run the contradiction resolver to fix them' must not extract a slug."""
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug(
+        "5 pages marked contradicted — run the contradiction resolver to fix them interactively?"
+    ) is None
+    assert wf._parse_slug("Run contradiction resolver") is None
+
+
+def test_parse_slug_returns_none_when_absent():
+    from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
+    wf = ContradictionResolverWorkflow()
+    assert wf._parse_slug("run contradiction resolver") is None
+    assert wf._parse_slug("fix contradicted pages") is None
+
+
 @pytest.mark.asyncio
 async def test_build_system_prompt_is_non_empty():
     from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
@@ -372,6 +415,55 @@ async def test_propose_and_apply_blocks_auto_skips_full_page_when_all_rejected()
     assert result["applied"] is False
     assert "Strategy 2" in result["message"]
     scoped_confirm.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_propose_and_apply_blocks_includes_rejected_detail_on_partial_apply():
+    """When some blocks apply and some are rejected, the return value must include
+    rejected_blocks and a note so the LLM does not re-propose the same unmatched
+    old_text on retry."""
+    from synthadoc.agents.workflows._tools import tool_propose_and_apply_blocks
+
+    page = MagicMock()
+    page.content = "The claim is wrong. Other content here."
+    page.last_fix_record = None
+
+    ctx = MagicMock()
+    ctx.store = MagicMock()
+    ctx.store.read_page.return_value = page
+    ctx.store.write_page = MagicMock()
+    ctx.session_id = "s1"
+    ctx.confirm_registry = {}
+    ctx.confirm_result_registry = {}
+    ctx.send_sse_event = AsyncMock()
+    ctx.audit_db = AsyncMock()
+    ctx.audit_db.snapshot_if_changed = AsyncMock()
+    ctx.audit_db.list_page_snapshots = AsyncMock(return_value=[{"id": "snap1"}])
+    ctx.bump_epoch = None
+    ctx.wiki_root = None
+
+    async def fake_scoped_confirm(ctx_, slug, apply_result, current_body, **_kw):
+        return {"confirmed": True, "final_body": apply_result.accumulated_body}
+
+    with patch("synthadoc.agents.workflows._tools.tool_scoped_confirm",
+               side_effect=fake_scoped_confirm):
+        result = await tool_propose_and_apply_blocks(
+            ctx,
+            slug="some-page",
+            blocks=[
+                {"old_text": "The claim is wrong.", "new_text": "The claim is hedged."},
+                {"old_text": "text not present in the page at all", "new_text": "x"},
+            ],
+            strategy_name="Strategy 1 — Content rewrite",
+            rationale="Hedge the claim.",
+        )
+
+    assert result["applied"] is True
+    assert "rejected_blocks" in result, "partial rejection must be reported to the LLM"
+    assert len(result["rejected_blocks"]) == 1
+    assert result["rejected_blocks"][0]["reason"] == "no_match"
+    assert "text not present" in result["rejected_blocks"][0]["old_text_snippet"]
+    assert "do not re-propose" in result["note"]
 
 
 @pytest.mark.asyncio

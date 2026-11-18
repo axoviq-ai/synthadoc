@@ -434,6 +434,14 @@ def _local_source_exists(file: str, wiki_root: "Path | None") -> bool:
     return p.exists()
 
 
+def _reset_for_force_rebuild(page: "WikiPage") -> None:
+    """Clear fields that must be regenerated when force-re-ingesting a contradicted page."""
+    page.contradiction_note = None
+    page.unresolved_note = None
+    page.content = ""
+    page.sources = []
+
+
 def _purge_dead_sources(page: "WikiPage", wiki_root: "Path | None") -> None:
     """Remove local-file source refs whose files no longer exist on disk.
 
@@ -1315,12 +1323,28 @@ class IngestAgent(BaseAgent):
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
+                        # Force re-ingest of a contradicted page: fully regenerate the page
+                        # body from the source rather than appending sections.  Appending
+                        # causes corruption because _merge_section_into_page falls back to
+                        # an append when the dropped-sentences check fails (contradiction
+                        # notes were added after the original ingest).
+                        # Do NOT change the lifecycle state here — the caller (contradiction
+                        # resolver) owns the contradicted→active transition via
+                        # tool_transition_lifecycle_state after re-lint.
+                        _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
+                        if _force_rebuild:
+                            _reset_for_force_rebuild(page)
                         if force:
                             _purge_dead_sources(page, self._wiki_root)
                         _backfill_okf_fields(page, analysis, source)
                         page.updated = date.today().isoformat()
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
+                        elif _force_rebuild:
+                            # Full page body — use LLM-generated page_content when available
+                            section = (_strip_leading_frontmatter(page_content)
+                                       if page_content.strip()
+                                       else f"# {title}\n\n{text[:4000]}")
                         elif update_content:
                             section = update_content
                         else:
@@ -1379,12 +1403,20 @@ class IngestAgent(BaseAgent):
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
+                            # Force re-ingest of a contradicted page: fully regenerate
+                            _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
+                            if _force_rebuild:
+                                _reset_for_force_rebuild(page)
                             if force:
                                 _purge_dead_sources(page, self._wiki_root)
                             _backfill_okf_fields(page, analysis, source)
                             page.updated = date.today().isoformat()
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
+                            elif _force_rebuild:
+                                section = (_strip_leading_frontmatter(page_content)
+                                           if page_content.strip()
+                                           else f"# {title}\n\n{text[:4000]}")
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
                             # Pass 0: append Key Data section for deterministic numerical preservation

@@ -64,15 +64,17 @@ _BLOCKED_DOMAINS = {
 
 
 def _load_dynamic_blocked() -> set[str]:
-    """Load domains auto-blocked at runtime from .synthadoc/blocked_domains.json."""
+    """Load domains blocked at runtime from .synthadoc/blocked_domains.json."""
     wiki_root = os.environ.get("SYNTHADOC_WIKI_ROOT", "")
     if not wiki_root:
         return set()
-    blocked_path = Path(wiki_root) / ".synthadoc" / "blocked_domains.json"
-    if not blocked_path.exists():
+    path = Path(wiki_root) / ".synthadoc" / "blocked_domains.json"
+    if not path.exists():
         return set()
     try:
-        return set(json.loads(blocked_path.read_text(encoding="utf-8")))
+        import json as _json
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        return {str(d).lower() for d in data if isinstance(d, str)}
     except Exception:
         return set()
 

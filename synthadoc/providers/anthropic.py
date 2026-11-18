@@ -13,6 +13,11 @@ from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 # the API default; the ``temperature`` argument stays in the signatures only because
 # it is part of the shared LLMProvider interface.
 
+# effort defaults to "low" so Synthadoc workflows avoid heavy extended-thinking overhead
+# on Sonnet and Opus (which both enable adaptive thinking by default). Users can raise
+# this in config.toml: agents.default.effort = "medium" (or "high" / "xhigh" / "max").
+_DEFAULT_EFFORT = "low"
+
 # RateLimitError (429) is not retried — quota exhaustion needs a provider switch or wait.
 # InternalServerError covers transient 500/529 overload; retry with backoff.
 _RETRYABLE = (anthropic_lib.InternalServerError,)
@@ -35,10 +40,12 @@ class AnthropicProvider(LLMProvider):
 
     async def complete(self, messages: list[Message], system: Optional[str] = None,
                        temperature: float = 0.0, max_tokens: int = 4096) -> CompletionResponse:
+        effort = self._config.effort or _DEFAULT_EFFORT
         kwargs: dict = {
             "model": self._config.model,
             "max_tokens": max_tokens,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "output_config": {"effort": effort},
         }
         if system:
             kwargs["system"] = _system_block(system)
@@ -90,10 +97,12 @@ class AnthropicProvider(LLMProvider):
         self, messages: list[Message], system: Optional[str] = None,
         temperature: float = 0.0, max_tokens: int = 4096
     ) -> AsyncGenerator[str, None]:
+        effort = self._config.effort or _DEFAULT_EFFORT
         kwargs: dict = {
             "model": self._config.model,
             "max_tokens": max_tokens,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "output_config": {"effort": effort},
         }
         if system:
             kwargs["system"] = _system_block(system)

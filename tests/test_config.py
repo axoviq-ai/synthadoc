@@ -551,3 +551,40 @@ def test_load_config_raises_config_error_on_invalid_toml(tmp_path):
     with pytest.raises(ConfigError) as exc_info:
         load_config(project_config=cfg_file)
     assert exc_info.value.code == CFG_INVALID_TOML
+
+
+def test_agent_effort_defaults_to_empty(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents]\ndefault = { provider = "anthropic", model = "claude-sonnet-5-5" }\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.effort == ""
+
+
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+def test_agent_effort_valid_values_parsed(tmp_path, effort):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        f'[agents]\ndefault = {{ provider = "anthropic", model = "claude-sonnet-5-5", effort = "{effort}" }}\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.effort == effort
+
+
+def test_agent_effort_invalid_value_raises(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-sonnet-5-5", effort = "fast" }\n'
+    )
+    with pytest.raises(ValueError, match="Invalid effort value"):
+        load_config(project_config=cfg_file)
+
+
+def test_agent_effort_propagates_through_resolve(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-sonnet-5-5", effort = "low" }\n'
+        'query = { model = "claude-haiku-5-5" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    resolved = cfg.agents.resolve("query")
+    assert resolved.effort == "low"

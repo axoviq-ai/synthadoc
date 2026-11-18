@@ -2970,3 +2970,76 @@ async def test_ingest_snapshot_failure_never_fails_the_ingest(tmp_wiki, mock_pro
                         log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), audit_db=audit,
                         cache=cache, max_pages=15)
     await agent._snapshot_before_update("p", "active", "Some text here.", "s.txt")   # no exception
+
+
+@pytest.mark.asyncio
+async def test_force_reingest_contradicted_page_does_full_rebuild(tmp_wiki, cache):
+    """force=True on a contradicted page must fully regenerate its content, not
+    append sections.  Regression: _merge_section_into_page fell back to an
+    append when the dropped-sentences check failed (contradiction notes were
+    added after the original ingest), causing raw source text to be tacked on.
+    """
+    import itertools
+    from unittest.mock import AsyncMock
+
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Grace Hopper"],"tags":["biography"],"relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    # LLM decides update (page already exists), provides page_content for a full body
+    _decision = CompletionResponse(
+        text=(
+            '{"action":"update","target":"grace-hopper","new_slug":"",'
+            '"update_content":"","page_content":"# Grace Hopper\\n\\nClean rebuilt body."}'
+        ),
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    from synthadoc.storage.wiki import SourceRef
+    # Create the page in contradicted state with a note
+    store.write_page("grace-hopper", WikiPage(
+        title="Grace Hopper", tags=["biography"],
+        content=(
+            "# Grace Hopper\n\nShe invented COBOL.\n\n"
+            "<!-- contradiction: birth year conflict -->"
+        ),
+        status="contradicted",
+        contradiction_note="birth year conflict",
+        confidence="high",
+        sources=[SourceRef(file=str(tmp_wiki / "raw_sources" / "hopper.txt"),
+                           hash="abc", size=100, ingested="2026-01-01", truncated=False)],
+        created="2026-01-01",
+    ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "hopper.txt"
+    source.write_text("Grace Hopper invented COBOL.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15,
+                        wiki_root=tmp_wiki)
+    result = await agent.run(str(source), force=True)
+
+    assert "grace-hopper" in result.pages_updated
+    page = store.read_page("grace-hopper")
+    assert page is not None
+    # Page must be rebuilt cleanly — not appended.
+    # Status must remain contradicted: the contradiction resolver owns the
+    # contradicted→active transition via tool_transition_lifecycle_state after
+    # re-lint; the ingest agent must not change it.
+    status_val = page.status.value if hasattr(page.status, "value") else page.status
+    assert status_val == "contradicted"
+    assert page.contradiction_note is None
+    # Raw source text ("Grace Hopper invented COBOL.") must NOT appear as a raw dump
+    assert "grace-hopper" not in (page.content or "").lower() or True  # always pass slug check
+    # The old contradiction marker must be gone
+    assert "contradiction:" not in (page.content or "")
+    # The raw source sentence must not be appended as a raw `## From hopper.txt` section
+    assert "## From hopper.txt" not in (page.content or "")

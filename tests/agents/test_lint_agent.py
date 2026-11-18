@@ -574,6 +574,10 @@ async def test_adversarial_pass_rate_limit_is_non_fatal(tmp_wiki):
         adversarial_provider=adv_provider,
     )
     report = await agent.run(adversarial=True)
+    # Rate-limited page: sentinel is dropped — existing lint_warnings kept (empty).
+    # The other page gets its real warning written normally.
+    # list_pages() order is filesystem-dependent (inode order on macOS), so assert
+    # on the union of all warnings rather than per-slug assignment.
     all_warnings = [
         w
         for slug in ["p1", "p2"]
@@ -581,11 +585,36 @@ async def test_adversarial_pass_rate_limit_is_non_fatal(tmp_wiki):
         for w in (p.lint_warnings or [])
     ]
     claims = {w["claim"] for w in all_warnings}
-    # list_pages() order is filesystem-dependent (inode order on macOS), so assert
-    # on the set of outcomes rather than which slug got which call.
-    assert None in claims
-    assert any("rate limit" in (w["concern"] or "") for w in all_warnings)
+    # Sentinel must NOT be persisted — writing it would cause downstream lint
+    # checks (e.g. contradiction resolver stale-metadata check) to fail.
+    assert None not in claims
+    assert not any("rate limit" in (w["concern"] or "") for w in all_warnings)
+    # The page that was NOT rate-limited still gets its warning.
     assert "Claim two." in claims
+
+
+@pytest.mark.asyncio
+async def test_adversarial_rate_limit_preserves_existing_warnings(tmp_wiki):
+    """Rate-limited page keeps its existing lint_warnings; cache entry left absent."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    existing = [{"claim": "Old claim", "concern": "Pre-existing warning"}]
+    store.write_page("p1", WikiPage(
+        title="P1", tags=[], content="Claim one.",
+        status="contradicted", confidence="high", sources=[],
+        lint_warnings=existing,
+    ))
+    adv_provider = AsyncMock()
+    adv_provider.complete.side_effect = Exception("429 Too Many Requests")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(
+        provider=AsyncMock(), store=store, log_writer=log,
+        adversarial_provider=adv_provider,
+    )
+    await agent.run(adversarial=True)
+    page = store.read_page("p1")
+    assert page is not None
+    # Existing warnings must be preserved, not overwritten with the rate-limit sentinel.
+    assert page.lint_warnings == existing
 
 
 @pytest.mark.asyncio
