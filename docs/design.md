@@ -4652,7 +4652,9 @@ Results are written to cache only when:
 
 The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
 
-### Starting many wikis — `serve --all` {#serve-all}
+<a name="serve-all"></a>
+
+### Starting many wikis — `serve --all`
 
 `synthadoc serve --all` starts one detached server per registered wiki. Each idle server costs several hundred MB (an empty wiki measures roughly 140 MB resident / 340 MB committed; wikis with pages and embeddings are larger), so starting ten at once can exhaust a machine.
 
