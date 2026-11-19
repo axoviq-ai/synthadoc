@@ -1107,7 +1107,7 @@ synthadoc jobs purge --older-than 30 -w my-wiki
 
 ```bash
 # Preview how a source will be analysed without writing pages
-synthadoc ingest report.pdf --analyse-only -w my-wiki
+synthadoc ingest report.pdf --analyse-only -w my-wiki   # file must be inside the wiki unless [server] allow_external_paths = true
 # → {"entities": [...], "tags": [...], "summary": "..."}
 ```
 
