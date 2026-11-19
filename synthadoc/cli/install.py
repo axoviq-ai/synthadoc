@@ -43,13 +43,20 @@ def _write_registry(data: dict) -> None:
     _REGISTRY.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
 
 
-def _write_origin(wiki_root: Path, *, demo: Optional[str], template: Optional[str]) -> None:
+def _write_origin(wiki_root: Path, *, demo: Optional[str], template: Optional[str],
+                  wiki_name: Optional[str] = None) -> None:
     """Write .synthadoc/origin.json recording how this wiki was installed.
 
     Used by ``templates sync`` and ``plugin upgrade`` in Docker where the
     host registry (~/.synthadoc/wikis.json) is not available.
+
+    ``wiki_name`` is the registry name. Inside a container the wiki folder is always
+    ``/wiki``, so ``templates sync`` reads the name back from here to fill the ``<wiki>``
+    placeholder in seeds.md instead of writing ``-w wiki``.
     """
     origin: dict[str, str] = {"installed": date.today().isoformat()}
+    if wiki_name:
+        origin["wiki_name"] = wiki_name
     if demo:
         origin.update({"type": "demo", "name": demo})
     elif template:
@@ -124,7 +131,7 @@ def _sanitize_domain(domain: str, max_len: int = _DOMAIN_MAX_LEN) -> str:
 
 from synthadoc.cli.main import app  # noqa: E402
 from synthadoc.cli._init import (  # noqa: E402
-    init_wiki, _CONFIG_TOML, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
+    init_wiki, _CONFIG_TOML, _toml_escape, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
 )
 from synthadoc.core.template_engine import (  # noqa: E402
     apply_template, get_template_guidelines,
@@ -256,7 +263,8 @@ def install_cmd(
         # Write config.toml - .synthadoc/ is git-ignored so it can't be bundled
         # in the demo template; generate it here the same way init_wiki does.
         (dest / ".synthadoc" / "config.toml").write_text(
-            _CONFIG_TOML.format(domain=domain, port=effective_port),
+            _CONFIG_TOML.format(domain=domain, port=effective_port,
+                                display_name=_toml_escape(dest.name)),
             encoding="utf-8", newline="\n",
         )
     else:
@@ -307,7 +315,7 @@ def install_cmd(
            if template else {}),
     }
     _write_registry(registry)
-    _write_origin(dest, demo=name if demo else None, template=template)
+    _write_origin(dest, demo=name if demo else None, template=template, wiki_name=name)
 
     # -- Obsidian plugin -------------------------------------------------------
     _plugin_ok = False

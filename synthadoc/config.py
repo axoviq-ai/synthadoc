@@ -205,6 +205,10 @@ class WebSearchConfig:
 @dataclass
 class WikiConfig:
     domain: str = "General"
+    # Optional label for the web UI sidebar. Empty = fall back to the wiki folder name.
+    # The SYNTHADOC_WIKI_NAME env var takes precedence (useful for Docker, where the
+    # mounted folder is always "wiki").
+    display_name: str = ""
 
 
 @dataclass
@@ -552,7 +556,8 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
 
     # --- wiki ---
     wk = raw.get("wiki", {})
-    wiki = WikiConfig(domain=wk.get("domain", "General"))
+    wiki = WikiConfig(domain=wk.get("domain", "General"),
+                      display_name=str(wk.get("display_name", "") or ""))
 
     # --- wikis ---
     wikis = raw.get("wikis", {})

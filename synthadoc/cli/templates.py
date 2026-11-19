@@ -223,7 +223,9 @@ def _do_sync_from_origin(wiki_root: Path, force: bool) -> None:
                 err=True,
             )
             raise typer.Exit(1)
-        wiki_name = wiki_root.name
+        # Inside Docker the folder is always "wiki"; prefer the registry name recorded
+        # at install time so seeds.md keeps "-w <real-name>".
+        wiki_name = origin.get("wiki_name") or wiki_root.name
         updated = _sync_template_wiki(
             wiki_root=wiki_root,
             template_ref=ref,
@@ -458,6 +460,11 @@ def set_origin_cmd(
             "(e.g. history-of-computing)."
         )
     ),
+    wiki_name: Optional[str] = typer.Option(
+        None, "--wiki-name",
+        help="Registry name of this wiki, used to fill <wiki> in seeds.md on sync. "
+             "Keeps the existing recorded name when omitted.",
+    ),
 ) -> None:
     """Record which template or demo this wiki was installed from.
 
@@ -480,6 +487,7 @@ def set_origin_cmd(
             err=True,
         )
         raise typer.Exit(1)
+    wiki_name = wiki_name or _read_origin(wiki_root).get("wiki_name")
 
     if "/" in ref:
         # Template ref
@@ -493,7 +501,7 @@ def set_origin_cmd(
             )
             raise typer.Exit(1)
         label = f"template '{ref}'"
-        _write_origin(wiki_root, demo=None, template=ref)
+        _write_origin(wiki_root, demo=None, template=ref, wiki_name=wiki_name)
     else:
         # Demo name
         if ref not in _DEMOS:
@@ -504,7 +512,7 @@ def set_origin_cmd(
             )
             raise typer.Exit(1)
         label = f"demo '{ref}'"
-        _write_origin(wiki_root, demo=ref, template=None)
+        _write_origin(wiki_root, demo=ref, template=None, wiki_name=wiki_name)
 
     origin_file = wiki_root / ".synthadoc" / "origin.json"
     typer.echo(f"Origin set to {label} in {origin_file}")
