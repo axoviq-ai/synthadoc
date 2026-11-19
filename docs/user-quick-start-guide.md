@@ -1,6 +1,6 @@
 # Synthadoc User Quick-Start Guide
 
-**Version: v1.5.2 (Community Edition)**
+**Version: v1.5.3 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -3007,6 +3007,14 @@ Nine workflows are available, listed in the order the web UI will pre-prompt the
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                                                                                                                                                                          |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                                                                                                                                                                      |
 
+### Resolver behaviour worth knowing (v1.5.3)
+
+- **Duplicate sections are collapsed first.** Most unresolved contradictions came from pages that had accumulated repeated sections over several ingests, which kept re-triggering lint warnings after each rewrite. The contradiction resolver now runs a *Strategy 0* de-duplication (rollback-safe: a snapshot is taken first) before it tries to rewrite.
+- **Target one page.** Say `resolve --slug alan-turing` or "run the resolver on page alan-turing". The orphan resolver rejects a slug that does not exist, or is archived or contradicted, with the reason, instead of estimating it as one orphan.
+- **Re-ingest of a contradicted page is a clean rebuild.** The page body and stale notes are replaced and the page stays `contradicted` until lint passes and the resolver promotes it to `active`.
+- **Blocked domains are skipped up front.** URLs on `.synthadoc/blocked_domains.json` (hostnames that refused access with HTTP 401/403/429), subdomains included, are skipped before any network or LLM call, and the resolver is told why. To retry a domain, delete its entry from that file.
+- **Run the resolvers on a small model.** See the `workflow` override in [Appendix C](#appendix-c--switching-llm-providers).
+
 ### Demo — resolve contradicted pages
 
 **Prerequisites:** At least one page in `contradicted` state. Complete Step 9
@@ -3818,6 +3826,9 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Qwen cloud (DashScope):** Set `QWEN_API_KEY` or `DASHSCOPE_API_KEY` (both accepted; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). **Free-tier models:** `qwen3.8-flash` ($0.15/$0.47 per 1M in/out after free quota) and `qwen3.8-max` ($2/$6 per 1M, flagship MoE). Paid models: `qwen-plus`, `qwen-max`. **Always add `thinking = "disabled"`** to your config — thinking is ON by default for all DashScope models and causes timeouts on large wiki contexts (188K chars times out at 120 s without it).
 > - **Kimi (DashScope):** Set `KIMI_API_KEY` (your DashScope API key also works via `QWEN_API_KEY`; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Models: `kimi-k3` (1M-token context, strong reasoning, $3/$15/1M), `kimi-k2.6` (256K ctx, general purpose, $0.95/$4/1M), `kimi-k2.7-code` (coding specialist). **Always add `thinking = "disabled"`** — kimi-k3 has extended thinking ON by default and will time out on large contexts without it.
 > - **DeepSeek:** Very affordable cloud API, cheapest outside peak hours (01:00–04:00 and 06:00–10:00 UTC on weekdays). Use `deepseek-flash` (DeepSeek V4.1 Flash) for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning. The older names `deepseek-v4-flash`, `deepseek-chat`, and `deepseek-reasoner` are legacy aliases; switch to `deepseek-flash`. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
+> - **Model size:** A small model is enough for every Synthadoc task: ingest, query, lint, and the agentic maintenance resolvers. **Claude Haiku 5.5** (smaller model), or **DeepSeek** (`deepseek-flash`, non-thinking) and **MiniMax M3** with `thinking = "disabled"`, covered the whole History of Computing demo in our testing; Sonnet or Opus are optional. Measured with Haiku 5.5: batch ingest of 17 pages about 4 cents, one lint run about 1 cent, the contradiction resolver on 2 pages about 2 cents, the orphan resolver on 5 pages about 7 cents.
+> - **Anthropic `effort`:** Sonnet 5.5 and Opus 5.5 default to `effort = "low"` (less adaptive-thinking overhead); raise it to `"medium"` or `"high"` only if you need deeper reasoning. Haiku does not use extended thinking.
+> - **Cheaper model for maintenance workflows:** the contradiction, orphan and content-health resolvers follow a fixed tool-call protocol, so add a second line `workflow = { provider = "anthropic", model = "claude-haiku-5-5" }` under `[agents]` to run them on a small model while ingest and query keep your main model. Without it they use `default`.
 
 ---
 
