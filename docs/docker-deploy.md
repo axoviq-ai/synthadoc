@@ -233,6 +233,8 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # ...
 ```
 
+**Which model do you need?** A small model is enough for every Synthadoc task: ingest, query, lint, and the agentic maintenance resolvers. **Claude Haiku 5.5** (smaller model), or **DeepSeek** (`deepseek-flash`, non-thinking) and **MiniMax M3** with `thinking = "disabled"`, covered the whole History of Computing demo in our testing; Sonnet or Opus are optional. Measured with Haiku 5.5: batch ingest of 17 pages about 4 cents, one lint run about 1 cent, the contradiction resolver on 2 pages about 2 cents, the orphan resolver on 5 pages about 7 cents. The Anthropic `effort = "low"` setting trims thinking overhead on Sonnet and Opus. A `workflow = { ... }` line under `[agents]` runs the maintenance resolvers on a small model.
+
 To switch providers: **comment out the active line** and **uncomment the one you want**. For example, to switch to MiniMax:
 
 ```toml
@@ -350,6 +352,12 @@ pre-configured so commands work without extra flags:
 - **`WORKDIR /wiki`** is set in the image — relative paths like `raw_sources/report.pdf`
   resolve to `/wiki/raw_sources/report.pdf` automatically. Use the absolute path
   `/wiki/raw_sources/report.pdf` if you prefer to be explicit.
+
+> **Sources outside the wiki folder.** A container can only read what is mounted into it, and the
+> server refuses file paths outside the wiki root unless `allow_external_paths` is on (it is **off by
+> default** and is a server-side setting, not something a client can switch on; see
+> [Security](#f-security)). In Docker, copy the files into the wiki's `raw_sources/` folder on the
+> host (it is the mounted volume) and ingest them as `raw_sources/<file>`.
 
 > **Why `--wait` matters in `docker exec`**
 >
@@ -636,19 +644,19 @@ curl http://localhost:7070/health
 
 **Windows:**
 ```bat
-docker pull chenp/synthadoc:1.5.2
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.2
+docker pull chenp/synthadoc:1.5.3
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.3
 ```
 
 **Linux / macOS:**
 ```bash
-docker pull chenp/synthadoc:1.5.2
+docker pull chenp/synthadoc:1.5.3
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file ~/wikis/.env \
-  chenp/synthadoc:1.5.2
+  chenp/synthadoc:1.5.3
 ```
 
 ### Viewing logs
