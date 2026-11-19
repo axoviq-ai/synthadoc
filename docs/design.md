@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.5.2
+**Version:** 1.5.3
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4652,7 +4652,9 @@ Results are written to cache only when:
 
 The coordinator's own `_wiki_epoch` is passed to `CacheManager.set_query` for the periodic cleanup sweep (entries older than 5 coordinator epochs or 7 days are evicted).
 
-### Starting many wikis — `serve --all` {#serve-all}
+<a name="serve-all"></a>
+
+### Starting many wikis — `serve --all`
 
 `synthadoc serve --all` starts one detached server per registered wiki. Each idle server costs several hundred MB (an empty wiki measures roughly 140 MB resident / 340 MB committed; wikis with pages and embeddings are larger), so starting ten at once can exhaust a machine.
 
@@ -4792,7 +4794,7 @@ The web UI sidebar label comes from `POST /sessions` → `display_name`, resolve
 
 ### Upgrading a container deployment
 
-Pull the new image and re-create the container; wiki data lives on the host. `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
+Pull the new image and re-create the container; wiki data lives on the host (for a wiki installed before v1.5.3, run `templates set-origin <ref> --wiki-name <name>` once so `templates sync` keeps `-w <name>` in `seeds.md`). `docker exec <container> synthadoc plugin install` refreshes the vault's Obsidian plugin (it resolves the wiki via `SYNTHADOC_WIKI=/wiki`). `synthadoc plugin upgrade` and `synthadoc templates sync` also work correctly inside a running container (v1.4.3+): both commands detect the wiki root via `SYNTHADOC_WIKI` and apply the upgrade without needing the host registry.
 
 ### Container-related fixes shipped with Docker support
 
@@ -4804,13 +4806,25 @@ Pull the new image and re-create the container; wiki data lives on the host. `do
 
 ## Appendix A — Release Feature Index
 
-### v1.5.3 (in development)
+### v1.5.3
+
+**Main features**
+
+- **Docker: your wiki's real name in the Web UI** - the sidebar label no longer reads "wiki" for every container. `POST /sessions` returns `display_name`, resolved by `resolve_display_name()` as `SYNTHADOC_WIKI_NAME` env var, then `[wiki] display_name` in `config.toml`, then the folder name. `install`/`init` seed `display_name` with the wiki name, `backup restore --name` keeps it in step, and `wiki_name` stays the CLI/registry identity. See *Wiki display name*.
+- **Docker: `templates sync` keeps the wiki name in `seeds.md`** - inside a container the folder is always `/wiki`, so the `<wiki>` placeholder used to become `-w wiki`. `install` now records `wiki_name` in `.synthadoc/origin.json`, the Docker sync path reads it back, and `templates set-origin --wiki-name` records it for older wikis. Every `seeds.md` template also gets a note on the Docker form of its commands (`docker exec <container> synthadoc ...`, no `-w`) and on ingesting sources from outside the wiki folder.
+- **Security hardening** - `allow_external_paths` is now a server-side setting (`[server]` in `config.toml`, or `SYNTHADOC_ALLOW_EXTERNAL_PATHS`; default off; the environment variable wins in both directions) instead of a per-request flag trusted by client IP, which a reverse proxy defeated (issue #565). `/ingest` and `/analyse` confine sources to the wiki root with `os.path.realpath` plus a prefix check, and `/analyse` honours the same server-side `allow_external_paths` opt-in as ingest so `ingest <file> --analyse-only` accepts exactly the files `ingest <file>` does (the `/analyse` fix is from an external report, PR #564); job errors no longer leak server paths or stack traces; wiki page slugs reject embedded path separators; two ReDoS-prone regexes (cross-wiki question splitting, affirmative-reply matching) now normalise whitespace before matching; GitHub Actions tokens are least-privilege; Dependabot advisories (vitest, minimatch) are resolved; CodeQL scanning and `SECURITY.md` (private vulnerability reporting) were added.
+- **Anthropic `effort` and a separate model for maintenance workflows** - `agents.default.effort` (`low` default for Anthropic) trims adaptive-thinking cost on Sonnet and Opus, and `agents.workflow` runs the contradiction, orphan and content-health resolvers on a small model (5-20x cheaper) while ingest and query keep the main model. A small model (Haiku 5.5, DeepSeek, or MiniMax with thinking disabled) is sufficient for every use case; see *Cost-optimised workflow config*.
+- **More reliable contradiction and orphan resolvers** - *Strategy 0* de-duplicates repeated sections (with a rollback snapshot) before any rewrite, removing the main cause of endless rewrite loops; force re-ingest of a contradicted page is a full rebuild that keeps the `contradicted` state until lint passes; `resolve --slug <slug>` and natural-language slugs target one page; rejected edit blocks are reported back to the model so it stops re-proposing them; `<invoke>` XML tool calls from Claude Sonnet 5.5 are recovered with a format-correction message; the lint rate-limit sentinel is no longer written as a page warning; `restore_page_snapshot` holds the page lock.
+- **Blocked-domain guard** - URL ingest jobs for hostnames in `.synthadoc/blocked_domains.json` (subdomains included) are skipped before any network or LLM call, through one shared `synthadoc/core/domain_guard.py`; the resolver tools skip them and report the reason. See *Auto-blocked domains*.
+- **`serve --all` memory limit and spawn fix** - see Fixes below.
+- **`uninstall` finds Docker-installed wikis** - a wiki created by a one-off `docker run --rm` is not in the host registry; `synthadoc uninstall <name>` now finds it under `~/wikis/<name>` and deletes it after the usual double confirmation.
+
+**Fixes**
 
 - **Web UI rendering fixes** - the grey "Sources:" line shows same-wiki citations as page names (same pill style as cross-wiki ones) instead of raw `[[page]]` markup; two citations written back to back (`[[a]][[b]]`) are kept apart instead of rendering as `a****b`; and `**bold**` next to full-width punctuation (`**重点（强调）**后续文字`) now renders, via the `remark-cjk-friendly` plugin (pinned 2.3.3), shared by all four `ReactMarkdown` call sites through `web-ui/src/markdownPlugins.ts`. The plugin adds five small packages to `package-lock.json` and bumps the transitive `mdast-util-to-markdown` to 2.2.3.
 - **Content-health dismissal card says what "roll back" does** - the confirm card for dismissing issues (page text unchanged) said "Say 'roll back <slug>' later to bring them back", which reads as restoring text. It now says the command only undoes the dismissal and the page text stays as it is. The phrase "roll back <slug>" is kept because it is the only wording the rollback intent parser recognises.
 - **Content-health notice no longer claims edits were applied before you approve them** - the notice sent just before the scoped-confirm card said "N block(s) applied" although `apply_blocks` is a dry run and nothing is written until approval. It now says "N edit(s) ready for your review, M rejected", matching the card header. The contradiction resolver already reported "applied" only after the write.
 - **Orphan resolver `--slug` validation** - a slug that does not exist, or is archived or contradicted, is no longer treated as an orphan and estimated as one page; the resolver stops with a message naming the reason, before any estimate or LLM call. `tool_verify_orphan_resolved` now returns `not_active` and `reason` for such slugs.
-
 - **`serve --all` memory limit and spawn fix** - wikis start one at a time and stop before the machine passes about 60 % memory use, or within `--max-memory <n>GB|MB` (unit required); skipped wikis are listed with the command to start them. Children now run `serve -w <wiki>` instead of re-running `--all`, which could spawn processes without end. New error code `ERR-SRV-005`. See *Starting many wikis*.
 
 ### v1.5.2

@@ -567,6 +567,47 @@ def test_analyse_endpoint_rejects_path_outside_wiki_root(tmp_wiki):
     assert resp.status_code == 403
 
 
+def test_analyse_endpoint_allows_outside_path_when_server_opts_in(tmp_wiki):
+    """With the server-side allow_external_paths opt-in, /analyse accepts the same
+    outside-root files that `ingest` accepts (CLI `ingest <file> --analyse-only`)."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.skills.base import ExtractedContent
+
+    (tmp_wiki / ".synthadoc" / "config.toml").write_text(
+        "[server]\nallow_external_paths = true\n", encoding="utf-8")
+    app = create_app(wiki_root=tmp_wiki)
+    outside = tmp_wiki.parent / "outside2" / "file.md"
+    outside.parent.mkdir()
+    outside.write_text("# Ok")
+    extracted = ExtractedContent(text="ok", source_path=str(outside), metadata={})  # type: ignore
+
+    with patch("synthadoc.agents.skill_agent.SkillAgent.extract",
+               new=AsyncMock(return_value=extracted)),          patch("synthadoc.agents.ingest_agent.IngestAgent._analyse",
+               new=AsyncMock(return_value={"entities": [], "tags": [], "summary": "s", "relevant": True})),          patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+        with TestClient(app) as client:
+            resp = client.post("/analyse", json={"source": str(outside)})
+
+    assert resp.status_code == 200
+
+
+def test_analyse_endpoint_ignores_client_supplied_allow_flag(tmp_wiki, monkeypatch):
+    """A request body cannot enable external paths; only server config can."""
+    from synthadoc.integration.http_server import create_app
+
+    monkeypatch.delenv("SYNTHADOC_ALLOW_EXTERNAL_PATHS", raising=False)
+    app = create_app(wiki_root=tmp_wiki)
+    outside = tmp_wiki.parent / "outside3" / "file.md"
+    outside.parent.mkdir()
+    outside.write_text("# Bad")
+
+    with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+        with TestClient(app) as client:
+            resp = client.post("/analyse",
+                               json={"source": str(outside), "allow_external_paths": True})
+
+    assert resp.status_code == 403
+
+
 def test_enqueue_lint_adversarial_param_forwarded(tmp_wiki):
     """POST /jobs/lint with adversarial: false enqueues payload with adversarial=False."""
     from synthadoc.integration.http_server import create_app

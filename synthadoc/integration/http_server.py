@@ -1794,8 +1794,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         skill = SkillAgent()
         # Security: restrict local file sources to within the wiki root so this
         # endpoint cannot be used to read arbitrary server files. Mirrors the
-        # containment enforced by /ingest and IngestAgent; URL and search-query
-        # sources are routed to their skills unchanged.
+        # containment enforced by /ingest and IngestAgent, including the
+        # server-side [server] allow_external_paths opt-in (never a request
+        # flag), so `ingest <file> --analyse-only` accepts exactly the files that
+        # `ingest <file>` accepts. URL and search-query sources are routed to
+        # their skills unchanged.
         source_arg = req.source
         if skill.needs_path_resolution(req.source):
             p = Path(req.source)
@@ -1807,7 +1810,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             # the same idiom.
             real_p = os.path.realpath(str(p))
             real_root = os.path.realpath(str(wiki_root))
-            if real_p != real_root and not real_p.startswith(real_root + os.sep):
+            inside_root = real_p == real_root or real_p.startswith(real_root + os.sep)
+            if not inside_root and not orch._cfg.server.allow_external_paths:
                 raise HTTPException(status_code=403, detail="source is outside wiki root")
             source_arg = real_p
         try:
