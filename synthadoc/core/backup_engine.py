@@ -226,4 +226,11 @@ def rewrite_config(config_path: Path, new_port: int, new_domain: Optional[str] =
             text,
             flags=re.MULTILINE,
         )
+        # The sidebar label defaults to the wiki name, so keep it in step on rename.
+        text = re.sub(
+            r'^(display_name\s*=\s*)"[^"]*"',
+            lambda m: f'{m.group(1)}"{new_domain}"',
+            text,
+            flags=re.MULTILINE,
+        )
     config_path.write_text(text, encoding="utf-8", newline="\n")

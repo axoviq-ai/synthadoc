@@ -403,7 +403,7 @@ import os
 class TestDockerFallback:
     """templates sync falls back to SYNTHADOC_WIKI when the registry is absent."""
 
-    def _make_docker_wiki(self, tmp_path, *, template_ref=None, demo_name=None):
+    def _make_docker_wiki(self, tmp_path, *, template_ref=None, demo_name=None, wiki_name=None):
         """Minimal wiki with optional origin.json — simulates a Docker volume mount."""
         wiki_root = tmp_path / "wiki"
         wiki_dir = wiki_root / "wiki"
@@ -427,6 +427,8 @@ class TestDockerFallback:
         if template_ref is not None or demo_name is not None:
             if template_ref:
                 origin = {"type": "template", "ref": template_ref, "installed": "2026-01-01"}
+                if wiki_name:
+                    origin["wiki_name"] = wiki_name
             else:
                 origin = {"type": "demo", "name": demo_name, "installed": "2026-01-01"}
             (dot_sd / "origin.json").write_text(
@@ -459,6 +461,32 @@ class TestDockerFallback:
             result = runner.invoke(app, ["templates", "sync"])
         assert result.exit_code == 0, result.output
         assert "SEC EDGAR" in (wiki_root / "seeds.md").read_text(encoding="utf-8")
+
+    def _portfolio_text(self, wiki_root):
+        return (wiki_root / "raw_sources" / "portfolios" / "template-portfolio.md").read_text(encoding="utf-8")
+
+    def test_wiki_placeholder_uses_registry_name_from_origin(
+        self, fake_template_root, tmp_path, monkeypatch
+    ):
+        """In Docker the folder is always 'wiki'; <wiki> must come from origin.json."""
+        wiki_root = self._make_docker_wiki(
+            tmp_path, template_ref="finance/investment", wiki_name="pc-finance")
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki_root))
+        with patch("synthadoc.cli.install._read_registry", return_value={}),              patch("synthadoc.cli.install._DEMOS", {}):
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code == 0, result.output
+        text = self._portfolio_text(wiki_root)
+        assert "pc-finance" in text and "<wiki>" not in text
+
+    def test_wiki_placeholder_falls_back_to_folder_name_without_origin_name(
+        self, fake_template_root, tmp_path, monkeypatch
+    ):
+        wiki_root = self._make_docker_wiki(tmp_path, template_ref="finance/investment")
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki_root))
+        with patch("synthadoc.cli.install._read_registry", return_value={}),              patch("synthadoc.cli.install._DEMOS", {}):
+            result = runner.invoke(app, ["templates", "sync"])
+        assert result.exit_code == 0, result.output
+        assert "**Wiki:** wiki" in self._portfolio_text(wiki_root)
 
     def test_invalid_ref_in_origin_gives_clear_error(
         self, tmp_path, monkeypatch
@@ -498,6 +526,18 @@ class TestSetOrigin:
         origin = _json.loads((wiki_root / ".synthadoc" / "origin.json").read_text())
         assert origin["type"] == "template"
         assert origin["ref"] == "finance/investment"
+
+    def test_set_origin_records_and_preserves_wiki_name(self, fake_template_root, tmp_path, monkeypatch):
+        wiki_root = tmp_path / "wiki"
+        (wiki_root / ".synthadoc").mkdir(parents=True)
+        monkeypatch.setenv("SYNTHADOC_WIKI", str(wiki_root))
+        with patch("synthadoc.cli.install._read_registry", return_value={}):
+            r1 = runner.invoke(app, ["templates", "set-origin", "finance/investment",
+                                     "--wiki-name", "pc-finance"])
+            r2 = runner.invoke(app, ["templates", "set-origin", "finance/investment"])
+        assert r1.exit_code == 0 and r2.exit_code == 0, r1.output + r2.output
+        origin = _json.loads((wiki_root / ".synthadoc" / "origin.json").read_text())
+        assert origin["wiki_name"] == "pc-finance"  # kept when --wiki-name omitted
 
     def test_set_origin_rejects_unknown_template(self, tmp_path, monkeypatch):
         wiki_root = tmp_path / "wiki"
@@ -562,7 +602,7 @@ class TestReadOrigin:
 class TestDockerFallbackEdgeCases:
     """Boundary cases around _fallback_wiki_root and _do_sync_from_origin."""
 
-    def _make_docker_wiki(self, tmp_path, *, template_ref=None, demo_name=None):
+    def _make_docker_wiki(self, tmp_path, *, template_ref=None, demo_name=None, wiki_name=None):
         wiki_root = tmp_path / "wiki"
         (wiki_root / "wiki").mkdir(parents=True)
         dot_sd = wiki_root / ".synthadoc"

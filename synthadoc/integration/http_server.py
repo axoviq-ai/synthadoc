@@ -453,6 +453,21 @@ class CrossWikiQueryRequest(BaseModel):
     no_cache: bool = False
 
 
+def resolve_display_name(cfg, wiki_root: Path) -> str:
+    """Label shown in the web UI sidebar.
+
+    Precedence: SYNTHADOC_WIKI_NAME env var, then ``[wiki] display_name`` in
+    config.toml, then the wiki folder name. Docker mounts every wiki at /wiki,
+    so the folder name alone cannot tell deployments apart. Display only —
+    CLI/registry identity stays ``wiki_root.name``.
+    """
+    env = os.environ.get("SYNTHADOC_WIKI_NAME", "").strip()
+    if env:
+        return env
+    cfg_name = (getattr(getattr(cfg, "wiki", None), "display_name", "") or "").strip()
+    return cfg_name or wiki_root.name
+
+
 def _make_cross_wiki_agent(app: FastAPI) -> "CrossWikiQueryAgent":
     """Construct a CrossWikiQueryAgent from the app's live state."""
     from synthadoc.agents.cross_wiki_query_agent import CrossWikiQueryAgent
@@ -1684,6 +1699,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "mode": mode,
             "initial_hints": HintEngine.initial_hints(mode, context=summary),
             "wiki_name": wiki_root.name,
+            "display_name": resolve_display_name(orch._cfg, wiki_root),
         }
 
     @app.get("/sessions")

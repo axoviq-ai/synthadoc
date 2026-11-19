@@ -72,6 +72,39 @@ def test_post_sessions_returns_session_id_and_mode(tmp_wiki):
     assert re.match(r"[0-9a-f-]{36}", data["session_id"])
 
 
+def test_post_sessions_display_name_defaults_to_folder_name(tmp_wiki, monkeypatch):
+    from fastapi.testclient import TestClient
+    monkeypatch.delenv("SYNTHADOC_WIKI_NAME", raising=False)
+    with TestClient(_make_app(tmp_wiki)) as client:
+        data = client.post("/sessions").json()
+    assert data["wiki_name"] == tmp_wiki.name
+    assert data["display_name"] == tmp_wiki.name
+
+
+def test_post_sessions_display_name_from_env(tmp_wiki, monkeypatch):
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("SYNTHADOC_WIKI_NAME", "personal-learning")
+    with TestClient(_make_app(tmp_wiki)) as client:
+        data = client.post("/sessions").json()
+    assert data["display_name"] == "personal-learning"
+    assert data["wiki_name"] == tmp_wiki.name  # CLI identity unchanged
+
+
+def test_resolve_display_name_precedence(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from synthadoc.integration.http_server import resolve_display_name
+    root = tmp_path / "wiki"
+    cfg = SimpleNamespace(wiki=SimpleNamespace(display_name="From Config"))
+    monkeypatch.delenv("SYNTHADOC_WIKI_NAME", raising=False)
+    assert resolve_display_name(cfg, root) == "From Config"
+    monkeypatch.setenv("SYNTHADOC_WIKI_NAME", "  From Env  ")
+    assert resolve_display_name(cfg, root) == "From Env"
+    monkeypatch.setenv("SYNTHADOC_WIKI_NAME", "   ")
+    assert resolve_display_name(cfg, root) == "From Config"
+    cfg.wiki.display_name = ""
+    assert resolve_display_name(cfg, root) == "wiki"
+
+
 def _make_wiki_pages(wiki_dir, count=5, stale_index=None):
     """Create count wiki pages; if stale_index is set, that page gets status: stale.
 

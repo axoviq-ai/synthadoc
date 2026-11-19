@@ -180,7 +180,7 @@ export default function App() {
     return (
         <div className="app-layout">
             <Sidebar
-                wikiName={session?.wiki_name ?? ""}
+                wikiName={session?.display_name || session?.wiki_name || ""}
                 connected={!!session}
                 sessions={sessions}
                 activeSessionId={activeSessionId}
