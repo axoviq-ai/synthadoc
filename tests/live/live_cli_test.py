@@ -556,9 +556,11 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── ingest (analyse-only — writes no wiki pages) ──────────────────────────
     print("\n[14] ingest")
+    # The file must live inside the wiki: /analyse (like ingest) refuses sources
+    # outside the wiki root unless the server opts in with allow_external_paths.
     # mkstemp (not mktemp) — atomically creates the file, avoiding the
     # TOCTOU race a bare mktemp() name leaves open. #CodeQL py/insecure-temporary-file
-    _fd, _src_name = tempfile.mkstemp(suffix=".txt")
+    _fd, _src_name = tempfile.mkstemp(suffix=".txt", dir=str(wiki_root / "raw_sources"))
     os.close(_fd)
     _src = pathlib.Path(_src_name)
     _src.write_text(
