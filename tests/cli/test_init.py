@@ -89,6 +89,23 @@ def test_init_wiki_agents_md_has_mcp_tools_table(tmp_path):
     assert "## MCP Tools" in content
 
 
+def test_init_wiki_writes_display_name_defaulting_to_folder_name(tmp_path):
+    """config.toml must carry [wiki] display_name = <folder name> so Docker (mounted at
+    /wiki) still shows the real wiki name in the web UI."""
+    import tomllib
+    root = tmp_path / "pc-education-learning"
+    init_wiki(root, domain="Learning")
+    cfg = tomllib.loads((root / ".synthadoc" / "config.toml").read_text(encoding="utf-8"))
+    assert cfg["wiki"]["display_name"] == "pc-education-learning"
+
+
+def test_toml_escape_round_trips():
+    import tomllib
+    from synthadoc.cli._init import _toml_escape
+    value = 'we"ird' + chr(92) + 'path'
+    assert tomllib.loads(f'k = "{_toml_escape(value)}"')["k"] == value
+
+
 def test_init_wiki_config_contains_allow_external_paths_false(tmp_path):
     """Generated config.toml must include allow_external_paths = false under [server]."""
     init_wiki(tmp_path, domain="General")

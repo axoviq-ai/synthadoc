@@ -35,6 +35,7 @@ export function useSession() {
             mode,
             initial_hints: [],
             wiki_name: prev?.wiki_name ?? "",
+            display_name: prev?.display_name ?? "",
         }));
         setHints([]);
     }, []);

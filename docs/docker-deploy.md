@@ -306,6 +306,41 @@ http://localhost:7070/app
 
 ---
 
+## Naming the Wiki in the Web UI
+
+The web UI shows the wiki name at the bottom of the left sidebar. In Docker every
+wiki is mounted at `/wiki`, so it would always read "wiki". Set `SYNTHADOC_WIKI_NAME`
+to show a meaningful label instead:
+
+```yaml
+services:
+  synthadoc:
+    environment:
+      - SYNTHADOC_WIKI_NAME=personal-learning
+```
+
+or with `docker run`: `-e SYNTHADOC_WIKI_NAME=personal-learning`.
+
+You usually don't need to set anything. `synthadoc install` and `init` write
+`display_name = "<wiki name>"` under `[wiki]` in `.synthadoc/config.toml`, and that file
+lives on the host volume you mount at `/wiki`, so the container shows the real wiki name
+by default. `synthadoc backup restore --name` keeps it in step when you rename.
+
+Resolution order: `SYNTHADOC_WIKI_NAME` env var, then `display_name` under `[wiki]` in
+`.synthadoc/config.toml`, then the wiki folder name. The setting is display-only; CLI
+commands and the wiki registry keep using the folder name. To change the label, edit the
+config key (restart the container to apply):
+
+```toml
+[wiki]
+display_name = "Personal Learning"
+```
+
+Wikis created before this setting existed have no `display_name`; add the line above, or
+set the environment variable.
+
+---
+
 ## Running CLI Commands Inside the Container
 
 Any `synthadoc` CLI command can be run inside the container. Two things are
@@ -680,6 +715,12 @@ docker exec history-of-computing synthadoc templates set-origin ai-research/main
 
 # Restore origin for a demo-based wiki (e.g. history-of-computing)
 docker exec history-of-computing synthadoc templates set-origin history-of-computing
+```
+
+`origin.json` also records the wiki's registry name (`wiki_name`). `templates sync` uses it to fill the `<wiki>` placeholder in `seeds.md`, so the commands there keep `-w <your-wiki-name>` instead of becoming `-w wiki` (inside the container the folder is always `/wiki`). Wikis installed before this field existed fall back to `wiki`; record the name once with:
+
+```bash
+docker exec history-of-computing synthadoc templates set-origin ai-research/main --wiki-name my-wiki-name
 ```
 
 ### Several wikis on one host
