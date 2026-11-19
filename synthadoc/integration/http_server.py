@@ -1792,8 +1792,26 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             fetch_timeout=orch._cfg.ingest.fetch_timeout_seconds,
         )
         skill = SkillAgent()
+        # Security: restrict local file sources to within the wiki root so this
+        # endpoint cannot be used to read arbitrary server files. Mirrors the
+        # containment enforced by /ingest and IngestAgent; URL and search-query
+        # sources are routed to their skills unchanged.
+        source_arg = req.source
+        if skill.needs_path_resolution(req.source):
+            p = Path(req.source)
+            if not p.is_absolute():
+                p = wiki_root / p
+            # os.path.realpath + string-prefix check, not resolve()+relative_to() —
+            # the latter isn't on CodeQL's py/path-injection recognized-sanitizer
+            # list for this query. See 3347c5d for the /ingest endpoint fix using
+            # the same idiom.
+            real_p = os.path.realpath(str(p))
+            real_root = os.path.realpath(str(wiki_root))
+            if real_p != real_root and not real_p.startswith(real_root + os.sep):
+                raise HTTPException(status_code=403, detail="source is outside wiki root")
+            source_arg = real_p
         try:
-            extracted = await skill.extract(req.source)
+            extracted = await skill.extract(source_arg)
         except SkillNotFoundError:
             raise HTTPException(
                 status_code=422,
