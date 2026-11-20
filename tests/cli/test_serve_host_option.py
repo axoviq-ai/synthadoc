@@ -158,3 +158,26 @@ def test_serve_error_shows_absolute_path_when_wiki_on_disk():
     assert "<port>" not in output, f"Placeholder <port> must not appear, got: {output}"
     assert "synthadoc install" not in output, \
         f"install suggestion must not appear when wiki exists on disk, got: {output}"
+
+
+def test_serve_error_mentions_path_escape_hatch_when_wiki_on_disk():
+    """ERR-WIKI-006 hint must mention that a path can be passed instead of
+    registering the name — B-7 follow-up (v1.5.0-code-review.md)."""
+    cfg = _make_cfg()
+    abs_path = MagicMock()
+    abs_path.__str__ = lambda self: "/home/user/wikis/my-wiki"  # type: ignore
+    config_toml = MagicMock(**{"exists.return_value": True})  # type: ignore
+    abs_path.__truediv__ = lambda self, other: config_toml
+
+    fake_root = MagicMock()
+    fake_root.resolve.return_value = abs_path
+
+    with patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"), \
+         patch("synthadoc.cli.serve.resolve_wiki_path", return_value=fake_root), \
+         patch("synthadoc.config.load_config", return_value=cfg), \
+         patch("synthadoc.cli.serve.read_registry_all", return_value={}):
+        result = runner.invoke(app, ["serve", "-w", "my-wiki", "--http-only"])
+    assert result.exit_code != 0
+    output = result.output or ""
+    assert "-w /home/user/wikis/my-wiki" in output, \
+        f"Expected the path escape-hatch option in the hint, got: {output}"
