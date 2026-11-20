@@ -407,7 +407,20 @@ def test_slug_filter_targets_single():
         )
 
         # _ORPHAN_SLUG must appear somewhere in the event stream (targeted).
-        event_text = json.dumps(events)
+        # Join all "token" events' text fragments into one contiguous string
+        # before checking — a bare json.dumps(events) lets the LLM's streaming
+        # chunk boundaries split the slug across two separate token events
+        # (e.g. "...Add `[[_live-test-or" / "phan-resolver-orphan]]`..."),
+        # which breaks contiguity of the substring in the raw JSON dump even
+        # though the slug is plainly present once the stream is reassembled.
+        # Non-token events (confirm_request, tool_progress, notice, …) are
+        # still covered via their own JSON dump, preserving the original
+        # check's broader scope.
+        final_text = "".join(
+            e["data"].get("text", "") for e in events if e["event"] == "token"
+        )
+        _non_token_dump = json.dumps([e for e in events if e["event"] != "token"])
+        event_text = final_text + _non_token_dump
         assert _ORPHAN_SLUG in event_text, (
             f"Targeted slug {_ORPHAN_SLUG!r} not found in events"
         )
@@ -421,9 +434,6 @@ def test_slug_filter_targets_single():
         # plausible link-candidate host — that is expected and correct; the test only
         # checks it was not *processed as an orphan* (i.e. listed under a section header).
         import re as _re
-        final_text = "".join(
-            e["data"].get("text", "") for e in events if e["event"] == "token"
-        )
         # A section's content is only its header line, "- " bullet lines, and
         # blank lines in between. Any other non-blank line — e.g. the model's
         # trailing prose explaining why no edit was proposed — ends the
