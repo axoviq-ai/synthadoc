@@ -86,15 +86,19 @@ def _docker_wiki_hint(wiki_name: str, *, known_root: Path | None = None,
     this is also what lets the "exists on disk" branch below omit the
     misleading `synthadoc install` suggestion (which would fail with
     WIKI_ALREADY_EXISTS) and add the path escape-hatch option instead.
+    A caller passing *known_root* has already confirmed the wiki is not
+    registered, so this skips the registry-existence/membership guards
+    below — those only apply to the auto-detection path, where a missing
+    host registry genuinely means "nothing to go on" (e.g. inside a
+    container with no host registry visible at all).
     """
-    if not _REGISTRY.exists():
-        return ""
-    if wiki_name in _read_registry():
-        return ""
-
     root = known_root
     port = known_port
     if root is None:
+        if not _REGISTRY.exists():
+            return ""
+        if wiki_name in _read_registry():
+            return ""
         # Try to read the actual path and port from the wiki in CWD (or the
         # SYNTHADOC_WIKI env var root) so the hint shows real values.
         # Only trust the fallback root when its directory name matches the
@@ -158,8 +162,11 @@ def _raise_wiki_not_registered(wiki_name: str, fallback_hint: str = "", *,
 
     *known_root*/*known_port* are forwarded to `_docker_wiki_hint` — pass them
     when the caller already resolved and loaded the wiki (see its docstring).
+    Passing *known_root* means the caller has already confirmed the wiki is
+    not registered, so that case always takes the rich-hint branch below,
+    regardless of whether the host registry file itself exists yet.
     """
-    if _REGISTRY.exists() and wiki_name not in _read_registry():
+    if known_root is not None or (_REGISTRY.exists() and wiki_name not in _read_registry()):
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
             f"Wiki '{wiki_name}' is not registered on this host.",
