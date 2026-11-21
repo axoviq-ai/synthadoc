@@ -72,59 +72,105 @@ def probe_port(port: int, timeout: float = 1.0) -> bool:
         return False
 
 
-def _docker_wiki_hint(wiki_name: str) -> str:
-    """Return a hint string when the wiki may have been installed in a Docker container.
+def _docker_wiki_hint(wiki_name: str, *, known_root: Path | None = None,
+                       known_port: int | None = None) -> str:
+    """Return the most actionable ERR-WIKI-006 hint for the context.
 
     Call just before raising ERR-WIKI-006.  Returns an empty string when the
     host registry does not exist (we may already be inside a container) or
-    when the wiki IS registered (not a Docker case).
+    when the wiki IS registered.
+
+    *known_root*/*known_port* let a caller that has already resolved and
+    loaded the wiki's config (e.g. serve, after load_config succeeded) pass
+    the real values directly instead of re-detecting them from CWD/env —
+    this is also what lets the "exists on disk" branch below omit the
+    misleading `synthadoc install` suggestion (which would fail with
+    WIKI_ALREADY_EXISTS) and add the path escape-hatch option instead.
+    A caller passing *known_root* has already confirmed the wiki is not
+    registered, so this skips the registry-existence/membership guards
+    below — those only apply to the auto-detection path, where a missing
+    host registry genuinely means "nothing to go on" (e.g. inside a
+    container with no host registry visible at all).
     """
-    if not _REGISTRY.exists():
-        return ""
-    if wiki_name in _read_registry():
-        return ""
-    # Try to read the actual path and port from the wiki in CWD (or the
-    # SYNTHADOC_WIKI env var root) so the hint shows real values.
-    # Only trust the fallback root when its directory name matches the requested
-    # wiki name to avoid showing another wiki's path.
-    fallback_root = _fallback_wiki_root()
-    if fallback_root is not None and fallback_root.name == wiki_name:
-        wiki_path = str(fallback_root.resolve())
-        try:
-            import tomllib  # Python 3.11+
-        except ImportError:
-            import tomli as tomllib  # type: ignore[no-redef]
-        try:
-            cfg_text = (fallback_root / ".synthadoc" / "config.toml").read_text(encoding="utf-8")
-            wiki_port = tomllib.loads(cfg_text).get("server", {}).get("port", 7070)
-        except Exception:
-            wiki_port = 7070
-    else:
+    root = known_root
+    port = known_port
+    if root is None:
+        if not _REGISTRY.exists():
+            return ""
+        if wiki_name in _read_registry():
+            return ""
+        # Try to read the actual path and port from the wiki in CWD (or the
+        # SYNTHADOC_WIKI env var root) so the hint shows real values.
+        # Only trust the fallback root when its directory name matches the
+        # requested wiki name to avoid showing another wiki's path.
+        fallback_root = _fallback_wiki_root()
+        if fallback_root is not None and fallback_root.name == wiki_name:
+            root = fallback_root.resolve()
+            try:
+                import tomllib  # Python 3.11+
+            except ImportError:
+                import tomli as tomllib  # type: ignore[no-redef]
+            try:
+                cfg_text = (root / ".synthadoc" / "config.toml").read_text(encoding="utf-8")
+                port = tomllib.loads(cfg_text).get("server", {}).get("port", 7070)
+            except Exception:
+                port = 7070
+
+    if root is None:
+        # Nothing locatable on this host at all — most likely installed inside
+        # a Docker container, whose registry entry lives only in that container.
         wiki_path = f"/absolute/path/to/{wiki_name}"
-        wiki_port = 7070
-    # json.dumps produces a quoted, backslash-escaped string safe on Windows paths.
-    _entry_json = json.dumps({wiki_name: {"path": wiki_path, "port": wiki_port}})
+        _entry_json = json.dumps({wiki_name: {"path": wiki_path, "port": 7070}})
+        return (
+            f"This wiki may have been installed inside a Docker container — its\n"
+            f"  registry entry lives only inside that container.\n"
+            f"  To use it from the host, add its entry manually to:\n"
+            f"    {_REGISTRY}\n"
+            f"  Example entry: {_entry_json}\n"
+            f"  Or re-install it on the host: synthadoc install {wiki_name} --target <dir>"
+        )
+
+    # A real root is known — this is a plain "not yet registered" case, not
+    # necessarily Docker, so drop the Docker framing and give exact, correct
+    # options for what's actually on disk.
+    if (root / ".synthadoc" / "config.toml").exists():
+        _entry_json = json.dumps({wiki_name: {"path": str(root), "port": port if port is not None else 7070}})
+        return (
+            f"The wiki exists on disk but is not registered.\n"
+            f"  Add it manually to {_REGISTRY}:\n"
+            f"    {_entry_json}\n"
+            f"  Or skip the registry entirely by passing the path instead of the name:\n"
+            f"    -w {root}"
+        )
+    _entry_json = json.dumps({wiki_name: {"path": str(root), "port": "<port>"}})
     return (
-        f"This wiki may have been installed inside a Docker container — its\n"
-        f"  registry entry lives only inside that container.\n"
-        f"  To use it from the host, add its entry manually to:\n"
-        f"    {_REGISTRY}\n"
-        f"  Example entry: {_entry_json}\n"
-        f"  Or re-install it on the host: synthadoc install {wiki_name} --target <dir>"
+        f"Register it by running from the parent directory:\n"
+        f"  synthadoc install {wiki_name} --target {root.parent}\n"
+        f"Or, if the wiki already exists on disk, add it manually to {_REGISTRY}:\n"
+        f"  {_entry_json}\n"
+        f"Then retry the same command."
     )
 
 
-def _raise_wiki_not_registered(wiki_name: str, fallback_hint: str = "") -> NoReturn:
+def _raise_wiki_not_registered(wiki_name: str, fallback_hint: str = "", *,
+                                known_root: Path | None = None,
+                                known_port: int | None = None) -> NoReturn:
     """Raise ERR-WIKI-006 with the most actionable message for the context.
 
     When the host registry exists but the wiki is absent, the Docker hint fires.
     Otherwise falls back to *fallback_hint* (or a generic install hint).
+
+    *known_root*/*known_port* are forwarded to `_docker_wiki_hint` — pass them
+    when the caller already resolved and loaded the wiki (see its docstring).
+    Passing *known_root* means the caller has already confirmed the wiki is
+    not registered, so that case always takes the rich-hint branch below,
+    regardless of whether the host registry file itself exists yet.
     """
-    if _REGISTRY.exists() and wiki_name not in _read_registry():
+    if known_root is not None or (_REGISTRY.exists() and wiki_name not in _read_registry()):
         E.cli_error(
             E.WIKI_NOT_REGISTERED,
             f"Wiki '{wiki_name}' is not registered on this host.",
-            _docker_wiki_hint(wiki_name),
+            _docker_wiki_hint(wiki_name, known_root=known_root, known_port=known_port),
         )
     else:
         E.cli_error(
