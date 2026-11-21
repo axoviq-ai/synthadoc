@@ -990,7 +990,7 @@ class LintAgent(BaseAgent):
             try:
                 from youtube_transcript_api import YouTubeTranscriptApi
                 from youtube_transcript_api._errors import VideoUnavailable
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(
                     None,
                     lambda: YouTubeTranscriptApi.get_transcript(m.group(1))  # type: ignore[attr-defined]
