@@ -206,6 +206,21 @@ def test_missing_agents_default_raises(tmp_path):
         load_config(global_config=cfg_file)
 
 
+def test_all_providers_commented_out_raises_config_error_via_global_config(tmp_path):
+    """B-10 (v1.5.0-code-review.md): the generic ValueError below must not
+    shadow CFG_NO_PROVIDER when the commented-out-default file is passed as
+    global_config rather than project_config — same condition, better error."""
+    from synthadoc.errors import ConfigError, CFG_NO_PROVIDER
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        "[agents]\n"
+        "# default = { provider = \"gemini\", model = \"gemini-2.5-flash-lite\" }\n"
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(global_config=cfg_file)
+    assert exc_info.value.code == CFG_NO_PROVIDER
+
+
 def test_invalid_provider_name_raises(tmp_path):
     cfg_file = tmp_path / "config.toml"
     cfg_file.write_text('[agents]\ndefault = { provider = "notareal", model = "x" }\n')
