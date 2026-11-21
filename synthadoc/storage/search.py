@@ -552,6 +552,14 @@ class HybridSearch:
             self._remember_query(query, query_vec)
         else:
             self._query_vecs.move_to_end(query)
+        if self._matrix is None:
+            # A concurrent schedule_embedding_sync() can finish during the
+            # await above and find the embeddable page set now empty, which
+            # nulls the matrix (_load_matrix) — re-check before using it, since
+            # _vector_ranking does self._matrix @ query_vec with no guard of
+            # its own. Degrade to BM25-only like the check at the top of this
+            # function, reusing the keyword ranking already computed above.
+            return keyword[:top_n]
         semantic = self._vector_ranking(query_vec, scoped_slugs, pool)
         return self._fuse(keyword, semantic, top_n)
 
