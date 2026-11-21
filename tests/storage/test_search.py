@@ -409,6 +409,26 @@ async def test_hybrid_search_is_bm25_only_until_the_first_sync_and_schedules_it(
     assert search._matrix is not None and not search._vectors_dirty
 
 
+async def test_hybrid_search_degrades_to_bm25_when_matrix_nulled_during_embed_await(tmp_wiki):
+    """B-12 (v1.5.0-code-review.md): a concurrent schedule_embedding_sync()
+    can finish and null self._matrix while hybrid_search is awaiting the
+    query's own embedding — _vector_ranking has no guard of its own
+    (self._matrix @ query_vec), so hybrid_search must re-check and degrade
+    to BM25-only instead of raising."""
+    search = await _vector_search(tmp_wiki)
+    await search.sync_embeddings()
+
+    def _embed_then_null_matrix(texts):
+        vecs = _fake_embed(texts)
+        search._matrix = None  # simulate a concurrent sync finding an empty embeddable set
+        return vecs
+    search._embed_texts = _embed_then_null_matrix
+
+    # A query not already in _query_vecs forces the pending/await branch.
+    results = await search.hybrid_search(["rlhf"], top_n=3)
+    assert [r.slug for r in results] == ["rlhf"]  # same BM25 ranking as a direct bm25_search
+
+
 async def test_invalidate_index_schedules_a_resync_on_the_next_search(tmp_wiki):
     search = await _vector_search(tmp_wiki)
     await search.sync_embeddings()
