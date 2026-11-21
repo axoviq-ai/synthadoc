@@ -704,14 +704,6 @@ def load_config(
             search=SearchConfig(),
         )
 
-    # A global_config was provided — it must define agents.default.
-    if global_config is not None and Path(global_config).exists():
-        a = raw.get("agents", {})
-        if "default" not in a:
-            raise ValueError(
-                "agents.default is required but missing from the configuration."
-            )
-
     # An [agents] section was written (by either file) but every "default ="
     # line under it is commented out. Almost certainly the user forgot to
     # activate a choice, not a "no agents needed" file — that case is
@@ -719,6 +711,12 @@ def load_config(
     # handled by the silent default just below. Silently falling back to
     # gemini here would start the server on a provider the user never
     # chose and never see why, so this must be a loud, specific error.
+    #
+    # Checked before the global_config check just below: both can trigger on
+    # "agents present, default missing" when global_config is supplied, and
+    # this one gives the more useful error (real file path + remediation
+    # hint) — it must run first or the generic ValueError below always wins
+    # and this never fires for that overlapping case.
     if "agents" in raw and "default" not in raw["agents"]:
         from synthadoc.errors import ConfigError, CFG_NO_PROVIDER, _short_wiki_path
         source = project_config if (project_config is not None and Path(project_config).exists()) \
@@ -731,6 +729,16 @@ def load_config(
             "Uncomment exactly one 'default = { provider = ..., model = ... }' "
             "line under [agents] and restart the server.",
         )
+
+    # A global_config was provided — it must define agents.default. Only
+    # reached now for the remaining case the check above doesn't cover: no
+    # [agents] section at all (not merely a commented-out default).
+    if global_config is not None and Path(global_config).exists():
+        a = raw.get("agents", {})
+        if "default" not in a:
+            raise ValueError(
+                "agents.default is required but missing from the configuration."
+            )
 
     # If agents section is absent (e.g. project_config with only [wikis]),
     # inject built-in defaults so the rest of the build succeeds.
