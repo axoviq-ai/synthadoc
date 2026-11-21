@@ -107,7 +107,6 @@ For the capability-by-capability comparison with typical RAG, NotebookLM and Not
 
 ## Table of Contents
 
-- [What Sets Synthadoc Apart](#what-sets-synthadoc-apart)
 - [Who Is It For?](#who-is-it-for)
 - [Inspiration and Vision](#inspiration-and-vision)
 - [Problems Addressed](#problems-addressed)
