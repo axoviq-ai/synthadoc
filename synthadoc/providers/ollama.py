@@ -62,6 +62,15 @@ class OllamaProvider(LLMProvider):
         self._base_url = base_url
         self._timeout = timeout if timeout > 0 else _DEFAULT_TIMEOUT
         self._max_num_ctx = max_num_ctx
+        # One provider instance is reused for every LLM call within a single
+        # query (decompose, routing/translation, synthesis — see query_agent.py),
+        # each with very different prompt sizes. Never requesting a smaller
+        # num_ctx than already used this instance avoids Ollama reloading the
+        # whole model (and its KV cache) *down* between calls, only to reload
+        # it back *up* moments later for the next bigger call — reproduced
+        # live: a small decompose call right after a huge synthesis call
+        # triggered a reload that stalled for minutes under CPU contention.
+        self._num_ctx_high_water = 0
         logger.warning(
             "Local Ollama model '%s' selected. GPU acceleration is required for "
             "interactive use — CPU-only inference is typically 10-50× slower and "
@@ -77,7 +86,9 @@ class OllamaProvider(LLMProvider):
     def _num_ctx_kwarg(self, msgs: list[dict], max_tokens: int) -> dict:
         input_tokens, _ = _estimate_tokens_from_chars(msgs, 0)
         needed = input_tokens + max_tokens + _NUM_CTX_BUFFER_TOKENS
-        return {"options": {"num_ctx": _pick_num_ctx(needed, self._max_num_ctx)}}
+        num_ctx = max(_pick_num_ctx(needed, self._max_num_ctx), self._num_ctx_high_water)
+        self._num_ctx_high_water = num_ctx
+        return {"options": {"num_ctx": num_ctx}}
 
     async def complete(self, messages: list[Message], system: Optional[str] = None,
                        temperature: float = 0.0, max_tokens: int = 4096) -> CompletionResponse:
