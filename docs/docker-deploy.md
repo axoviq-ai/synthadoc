@@ -228,7 +228,7 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "anthropic", model = "claude-sonnet-4-6", effort = "low" }
 # default = { provider = "anthropic", model = "claude-opus-4-8",   effort = "low" }
 # default = { provider = "deepseek",  model = "deepseek-flash" }
-# default = { provider = "ollama",    model = "llama3.2" }
+# default = { provider = "ollama",    model = "qwen3.5", thinking = "disabled" }  # see §Ollama sidecar below for thinking/timeout notes
 # NOTE: opencode / claude-code providers require a local binary — not supported in Docker
 # ...
 ```
@@ -1063,19 +1063,21 @@ curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/syntha
 docker compose -f with-ollama.yml up -d
 
 # Pull a model into Ollama
-docker compose -f with-ollama.yml exec ollama ollama pull llama3.2
+docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5
 ```
 
 Then point the wiki at Ollama: in `config.toml`, comment out the active `default =` line under `[agents]` and add this one (don't add a separate `[agents.default]` table, which would duplicate `default`). Restart the stack afterwards:
 
 ```toml
 [agents]
-default = { provider = "ollama", model = "llama3.2", base_url = "http://ollama:11434" }
+default = { provider = "ollama", model = "qwen3.5", thinking = "disabled", base_url = "http://ollama:11434" }
 ```
 
 ```bash
 docker compose -f with-ollama.yml restart sd-server
 ```
+
+**thinking and --timeout:** local models default to extended thinking, which can turn a one-sentence answer into a multi-minute one for no quality benefit — `thinking = "disabled"` above avoids that. Even with it disabled, CPU-only inference (no GPU passed through to the container) is slow enough that a real query against your wiki's retrieved context commonly needs `synthadoc query ... --timeout 300` or higher from outside the container.
 
 ---
 

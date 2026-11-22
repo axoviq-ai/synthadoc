@@ -1394,6 +1394,8 @@ Required environment variables per provider:
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
+**Ollama on CPU-only hardware:** set `thinking = "disabled"` on the `agents.default` line — Ollama models default to extended chain-of-thought, which inflates response time for no quality benefit on Synthadoc's tasks (measured: a one-sentence answer dropped from 141s to 9s on a CPU-only MacBook, same throughput either way). Even with thinking disabled, a real query's retrieved wiki context still needs 80s+ of prompt processing before any answer starts on CPU — pass `--timeout 300` (or higher) to `synthadoc query` rather than relying on the default.
+
 ### Cost-optimised workflow config
 
 Agentic maintenance workflows (contradiction resolver, orphan resolver, content-health resolver) run a structured tool-call loop where the model follows a fixed protocol rather than exercising broad editorial judgement. Fast, inexpensive models produce equivalent results at a fraction of the cost of premium models:
