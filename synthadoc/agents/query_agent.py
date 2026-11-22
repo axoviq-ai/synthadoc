@@ -1073,12 +1073,48 @@ class QueryAgent(BaseAgent):
             # and the domain-B acronym has doc_freq=0 in those pages.
             scoped_weak = max_score < self._gap_score_threshold * 1.5
             if scoped_weak:
-                # Routing-scoped results are below threshold — fall back to full corpus.
+                # Before trusting "weak", check whether the scoped search's own
+                # #1 pick is ALSO the full-corpus search's #1 pick. BM25's IDF
+                # term is computed relative to whatever corpus is being
+                # searched: narrowing to a small, topically-coherent routing
+                # branch (pages that share vocabulary, e.g. several biography
+                # pages) makes query terms *less* rare within that scope, which
+                # *lowers* the absolute score for a correct match — a routing
+                # branch doing its job well can score identically, by raw
+                # magnitude, to routing having picked the wrong branch entirely.
+                # Confirmed live: "alan-turing" scored 1.96 scoped to its own
+                # 3-page branch vs. 9.41 for the identical query unscoped,
+                # despite being the correct top match either way.
+                #
+                # This must be an exact top-1 match, not "appears somewhere in
+                # the top few" of both: a page that is a genuine (if weaker)
+                # secondary match in the full corpus can still rank inside a
+                # loose top-N on both sides even when routing picked the wrong
+                # branch and the full corpus's actual best page is a
+                # completely different, out-of-scope one. Top-1-vs-top-1 is
+                # the conservative, scale-invariant question "do both searches
+                # agree on THE best answer," not just "do their result sets
+                # overlap at all" — a false negative here only costs the
+                # latency/cost of the fallback this code already did before
+                # this check existed; a false positive would wrongly suppress
+                # a fallback that was actually needed.
                 full_per_sub = await asyncio.gather(
                     *[_search_one(q, None) for q in search_queries]
                 )
                 full_candidates = merge_results(full_per_sub, _CANDIDATE_POOL_SIZE)
-                if full_candidates:
+                routing_confirmed = (
+                    bool(candidates) and bool(full_candidates)
+                    and candidates[0].slug == full_candidates[0].slug
+                )
+                if routing_confirmed:
+                    logger.info(
+                        "routing scope scored low (max_score=%.2f) but its top pick "
+                        "%r is also the full-corpus search's top pick — trusting the "
+                        "scoped result rather than falling back (low score here "
+                        "reflects BM25's corpus-relative IDF, not a wrong scope)",
+                        max_score, candidates[0].slug,
+                    )
+                elif full_candidates:
                     candidates = full_candidates
                     routing_warning = (
                         "ROUTING.md may be incomplete or stale — search scope was expanded "
