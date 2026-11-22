@@ -439,6 +439,20 @@ def test_make_provider_ollama_requires_no_key(monkeypatch):
     assert isinstance(provider, OllamaProvider)
 
 
+def test_make_provider_ollama_forwards_base_url():
+    """agents.default.base_url must reach OllamaProvider — needed for the
+    documented Docker sidecar setup (base_url = "http://ollama:11434"),
+    which was silently ignored (always hit localhost:11434 instead)."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(
+        provider="ollama", model="qwen3.5", base_url="http://ollama:11434")))
+    provider = make_provider("query", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._base_url == "http://ollama:11434"
+
+
 def test_make_provider_ollama_forwards_timeout(monkeypatch):
     """llm_timeout_seconds must be forwarded to OllamaProvider so --timeout on CLI works."""
     from synthadoc.providers import make_provider
