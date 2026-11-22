@@ -8,10 +8,10 @@
 #   .env: WIKI_PATH=<absolute path to the wiki>   (Windows: C:/Users/... with forward slashes)
 #   docker compose -f with-ollama.yml up -d
 #   # Pull a model into Ollama first:
-#   docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5
+#   docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5:4b
 #
 # Then, in your wiki's config.toml, replace the active `default =` line under [agents] with:
-#   default = { provider = "ollama", model = "qwen3.5", thinking = "disabled", base_url = "http://ollama:11434" }
+#   default = { provider = "ollama", model = "qwen3.5:4b", thinking = "disabled", base_url = "http://ollama:11434" }
 #
 # thinking = "disabled" matters: local models default to extended thinking,
 # which inflates response time for no quality benefit on Synthadoc's tasks.

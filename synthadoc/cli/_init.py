@@ -258,7 +258,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 #       thinking disabled, a CPU-only machine (no CUDA/Metal GPU) commonly needs
 #       `synthadoc query ... --timeout 300` or higher — retrieved wiki context
 #       alone can take 80s+ to process before the model produces anything.
-# default = {{ provider = "ollama",    model = "qwen3.5", thinking = "disabled" }}  # fully local, no API key; GPU recommended, CPU works but is slow — see NOTE above
+# default = {{ provider = "ollama",    model = "qwen3.5:4b", thinking = "disabled" }}  # fully local, no API key; GPU recommended, CPU works but is slow — see NOTE above
 # NOTE: all Qwen DashScope models have thinking ON by default; always use thinking="disabled"
 #       for synthadoc — thinking mode causes timeouts on large wiki contexts (tested 2026-10-17).
 # default = {{ provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }}      # free tier + $0.15/$0.47 per 1M — set QWEN_API_KEY (recommended)

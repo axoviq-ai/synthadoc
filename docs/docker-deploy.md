@@ -228,7 +228,7 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "anthropic", model = "claude-sonnet-4-6", effort = "low" }
 # default = { provider = "anthropic", model = "claude-opus-4-8",   effort = "low" }
 # default = { provider = "deepseek",  model = "deepseek-flash" }
-# default = { provider = "ollama",    model = "qwen3.5", thinking = "disabled" }  # see §Ollama sidecar below for thinking/timeout notes
+# default = { provider = "ollama",    model = "qwen3.5:4b", thinking = "disabled" }  # see §Ollama sidecar below for thinking/timeout notes
 # NOTE: opencode / claude-code providers require a local binary — not supported in Docker
 # ...
 ```
@@ -1063,14 +1063,14 @@ curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/syntha
 docker compose -f with-ollama.yml up -d
 
 # Pull a model into Ollama
-docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5
+docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5:4b
 ```
 
 Then point the wiki at Ollama: in `config.toml`, comment out the active `default =` line under `[agents]` and add this one (don't add a separate `[agents.default]` table, which would duplicate `default`). Restart the stack afterwards:
 
 ```toml
 [agents]
-default = { provider = "ollama", model = "qwen3.5", thinking = "disabled", base_url = "http://ollama:11434" }
+default = { provider = "ollama", model = "qwen3.5:4b", thinking = "disabled", base_url = "http://ollama:11434" }
 ```
 
 ```bash
