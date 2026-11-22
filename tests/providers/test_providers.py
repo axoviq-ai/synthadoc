@@ -1238,6 +1238,109 @@ async def test_ollama_provider_uses_eval_count_for_output_tokens():
     assert result.total_tokens == 19
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thinking,expected_think", [
+    ("disabled", False),
+    ("enabled", True),
+    ("adaptive", True),
+])
+async def test_ollama_provider_forwards_think_kwarg(thinking, expected_think):
+    """thinking="disabled" must send think: false to Ollama's native /api/chat —
+    qwen3.5's default (extended thinking) inflates a one-sentence answer from
+    ~40 to ~640 tokens and ~9s to ~140s on CPU-only inference (measured
+    directly against a local Ollama instance); config.thinking was
+    previously read by every other provider but silently ignored here."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="qwen3.5", thinking=thinking)
+    provider = OllamaProvider(config=cfg)
+    fake_response = {"message": {"content": "ok"}, "prompt_eval_count": 1, "eval_count": 1}
+
+    mock_post = AsyncMock(return_value=MagicMock(
+        status_code=200, raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))
+    with patch("httpx.AsyncClient.post", new=mock_post):
+        await provider.complete(messages=[Message(role="user", content="hi")])
+
+    sent_json = mock_post.call_args.kwargs["json"]
+    assert sent_json["think"] is expected_think
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_omits_think_kwarg_when_unset():
+    """thinking="" (unset, the default) must not send a think key at all,
+    so the model's own default behavior applies unchanged."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="qwen3.5")
+    provider = OllamaProvider(config=cfg)
+    fake_response = {"message": {"content": "ok"}, "prompt_eval_count": 1, "eval_count": 1}
+
+    mock_post = AsyncMock(return_value=MagicMock(
+        status_code=200, raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))
+    with patch("httpx.AsyncClient.post", new=mock_post):
+        await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert "think" not in mock_post.call_args.kwargs["json"]
+
+
+def test_pick_num_ctx_buckets_up_and_caps_at_max():
+    """_pick_num_ctx must round up to the smallest covering bucket, and never
+    exceed max_num_ctx even if every bucket is smaller than needed_tokens."""
+    from synthadoc.providers.ollama import _pick_num_ctx
+    assert _pick_num_ctx(100, max_num_ctx=65536) == 4096
+    assert _pick_num_ctx(5000, max_num_ctx=65536) == 8192
+    assert _pick_num_ctx(60000, max_num_ctx=65536) == 65536
+    assert _pick_num_ctx(1_000_000, max_num_ctx=65536) == 65536   # capped, not unbounded
+    assert _pick_num_ctx(5000, max_num_ctx=4096) == 4096            # cap below the natural bucket
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_sends_num_ctx_sized_to_the_actual_prompt():
+    """Without an explicit options.num_ctx, Ollama silently truncates any
+    prompt beyond its default 4096-token window — confirmed live: a ~55K-token
+    retrieved-context query got answered from unrelated pages that happened to
+    survive the truncation. complete() must size num_ctx from the real
+    message content, not always request the smallest bucket."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="qwen3.5")
+    provider = OllamaProvider(config=cfg)
+    fake_response = {"message": {"content": "ok"}, "prompt_eval_count": 1, "eval_count": 1}
+    mock_post = AsyncMock(return_value=MagicMock(
+        status_code=200, raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))
+
+    # ~40,000 characters ≈ ~11,400 tokens at the project's 3.5 chars/token
+    # estimate — too big for the 4096 or 8192 buckets, must pick 16384.
+    big_context = "x " * 20_000
+    with patch("httpx.AsyncClient.post", new=mock_post):
+        await provider.complete(messages=[Message(role="user", content=big_context)])
+
+    assert mock_post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_respects_max_num_ctx_override():
+    """A caller with less RAM to spare must be able to lower the cap below
+    the 65536 default."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="qwen3.5")
+    provider = OllamaProvider(config=cfg, max_num_ctx=8192)
+    fake_response = {"message": {"content": "ok"}, "prompt_eval_count": 1, "eval_count": 1}
+    mock_post = AsyncMock(return_value=MagicMock(
+        status_code=200, raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))
+
+    big_context = "x " * 20_000  # would need the 16384 bucket without the override
+    with patch("httpx.AsyncClient.post", new=mock_post):
+        await provider.complete(messages=[Message(role="user", content=big_context)])
+
+    assert mock_post.call_args.kwargs["json"]["options"]["num_ctx"] == 8192
+
+
 # ── _extract_last_json unit tests ─────────────────────────────────────────────
 
 def test_extract_last_json_finds_object():
