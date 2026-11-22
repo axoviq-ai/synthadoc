@@ -61,6 +61,43 @@ def test_agent_thinking_propagates_through_resolve(tmp_path):
     assert resolved.thinking == "disabled"
 
 
+def test_agent_max_num_ctx_parsed(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "ollama", model = "qwen3.5:4b", max_num_ctx = 16384 }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.max_num_ctx == 16384
+
+
+def test_agent_max_num_ctx_defaults_to_zero(tmp_path):
+    """0 means 'use the provider's own default' (OllamaProvider: 65536)."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents]\ndefault = { provider = "ollama", model = "qwen3.5:4b" }\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.max_num_ctx == 0
+
+
+def test_agent_max_num_ctx_negative_raises(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "ollama", model = "qwen3.5:4b", max_num_ctx = -1 }\n'
+    )
+    with pytest.raises(Exception, match="Invalid max_num_ctx value"):
+        load_config(project_config=cfg_file)
+
+
+def test_agent_max_num_ctx_propagates_through_resolve(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "ollama", model = "qwen3.5:4b", max_num_ctx = 8192 }\n'
+        'query = { model = "qwen3.5:4b" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    resolved = cfg.agents.resolve("query")
+    assert resolved.max_num_ctx == 8192
+
+
 def test_build_default_agents_config_returns_none():
     """_build_default_agents_config is a sentinel that returns None (line 278)."""
     from synthadoc.config import _build_default_agents_config
