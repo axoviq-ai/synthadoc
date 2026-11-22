@@ -1394,7 +1394,7 @@ Required environment variables per provider:
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
 | `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
-**Ollama on CPU-only hardware:** set `thinking = "disabled"` on the `agents.default` line — Ollama models default to extended chain-of-thought, which inflates response time for no quality benefit on Synthadoc's tasks (measured: a one-sentence answer dropped from 141s to 9s on a CPU-only MacBook, same throughput either way). Even with thinking disabled, a real query's retrieved wiki context still needs 80s+ of prompt processing before any answer starts on CPU — pass `--timeout 300` (or higher) to `synthadoc query` rather than relying on the default.
+**Ollama requires a GPU** — CPU-only inference is impractically slow for real wiki queries. With a GPU, also set `thinking = "disabled"` on the `agents.default` line: Ollama models default to extended chain-of-thought, which inflates response time for no quality benefit on Synthadoc's tasks. `agents.default.max_num_ctx` caps the KV-cache context window (default 65536); lower it if your GPU's VRAM is limited — the default is sized for system RAM, not VRAM.
 
 ### Cost-optimised workflow config
 
