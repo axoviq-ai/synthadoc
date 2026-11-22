@@ -1,7 +1,16 @@
 # docker/compose/with-ollama.yml
 # Synthadoc + Ollama for fully local LLM — no cloud API keys required.
 #
-# Requirements: Docker host with a GPU, or CPU-only Ollama (slower).
+# Requirements: GPU required — CPU-only inference is impractically slow for
+# real wiki queries.
+#   - Linux host with an NVIDIA GPU: install the nvidia-container-toolkit,
+#     then uncomment the `deploy:` block in the ollama service below.
+#   - macOS: Docker Desktop CANNOT pass a Metal GPU through to a Linux
+#     container — this is a platform limitation, not something this Compose
+#     file can configure around. Run `ollama serve` natively on the host
+#     instead (it gets full Metal acceleration there) and point synthadoc at
+#     it with base_url = "http://host.docker.internal:11434" rather than
+#     using this file's ollama sidecar service.
 #
 # Usage (run in the folder that holds your .env, e.g. ~/wikis):
 #   curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/synthadoc/main/docker/compose/with-ollama.yml   (Windows PowerShell: curl.exe)
@@ -14,9 +23,9 @@
 #   default = { provider = "ollama", model = "qwen3.5:4b", thinking = "disabled", base_url = "http://ollama:11434" }
 #
 # thinking = "disabled" matters: local models default to extended thinking,
-# which inflates response time for no quality benefit on Synthadoc's tasks.
-# Even disabled, CPU-only inference (no GPU passed through) is slow enough
-# that `synthadoc query ... --timeout 300` (or higher) is commonly needed.
+# which adds latency for no quality benefit on Synthadoc's tasks. If your
+# GPU's VRAM is limited, also add max_num_ctx = <N> to the default = line —
+# the provider's own default (65536) is sized for system RAM, not VRAM.
 
 services:
   sd-server:
@@ -42,6 +51,17 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
+    # Linux host with an NVIDIA GPU: uncomment this block (requires the
+    # nvidia-container-toolkit installed on the host). Without it, Ollama
+    # runs CPU-only inside this container, which is impractically slow for
+    # real wiki queries. Not applicable on macOS — see the GPU note above.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:11434/api/version"]
       interval: 30s

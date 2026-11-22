@@ -1077,7 +1077,7 @@ default = { provider = "ollama", model = "qwen3.5:4b", thinking = "disabled", ba
 docker compose -f with-ollama.yml restart sd-server
 ```
 
-**thinking and --timeout:** local models default to extended thinking, which can turn a one-sentence answer into a multi-minute one for no quality benefit — `thinking = "disabled"` above avoids that. Even with it disabled, CPU-only inference (no GPU passed through to the container) is slow enough that a real query against your wiki's retrieved context commonly needs `synthadoc query ... --timeout 300` or higher from outside the container.
+**GPU required** — CPU-only inference is impractically slow for real wiki queries. On a Linux host with an NVIDIA GPU, uncomment the `deploy:` GPU reservation block in `with-ollama.yml`'s `ollama` service (requires the `nvidia-container-toolkit`). **On macOS, Docker Desktop cannot pass a Metal GPU through to a Linux container at all** — run `ollama serve` natively on the host instead (it gets full Metal acceleration there) and point `base_url` at `http://host.docker.internal:11434` rather than using the Compose file's `ollama` sidecar service. `thinking = "disabled"` above also matters: local models default to extended chain-of-thought that adds latency for no quality benefit. If your GPU's VRAM is limited, add `max_num_ctx = <N>` to the `default =` line too — the provider's own default (65536) is sized for system RAM, not VRAM.
 
 ---
 
