@@ -140,9 +140,13 @@ def make_provider(agent_name: str, config: Config, min_timeout: int | None = Non
             )
         else:
             from synthadoc.providers.ollama import OllamaProvider
+            if agent_cfg.base_url:
+                return OllamaProvider(config=agent_cfg, base_url=agent_cfg.base_url, timeout=timeout)
             return OllamaProvider(config=agent_cfg, timeout=timeout)
     if name == Provider.OLLAMA:
         from synthadoc.providers.ollama import OllamaProvider
+        if agent_cfg.base_url:
+            return OllamaProvider(config=agent_cfg, base_url=agent_cfg.base_url, timeout=timeout)
         return OllamaProvider(config=agent_cfg, timeout=timeout)
     if name == Provider.CLAUDE_CODE:
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
