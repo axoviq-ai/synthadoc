@@ -1383,6 +1383,37 @@ async def test_ollama_provider_respects_max_num_ctx_override():
     assert mock_post.call_args.kwargs["json"]["options"]["num_ctx"] == 8192
 
 
+@pytest.mark.asyncio
+async def test_ollama_provider_never_shrinks_num_ctx_within_one_instance():
+    """A small call (e.g. query decomposition) made after a large one (e.g.
+    synthesis) on the SAME provider instance must not request a smaller
+    num_ctx than already used — Ollama reloads the whole model whenever the
+    requested num_ctx changes, so shrinking it for one small call only to
+    grow it again for the next big one wastes a reload in both directions.
+    One provider instance is reused for every LLM call within a single query
+    (query_agent.py: decompose, routing, synthesis all share self._provider),
+    so this reload-thrash is a same-query, not just cross-query, risk."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="qwen3.5")
+    provider = OllamaProvider(config=cfg)
+    fake_response = {"message": {"content": "ok"}, "prompt_eval_count": 1, "eval_count": 1}
+    mock_post = AsyncMock(return_value=MagicMock(
+        status_code=200, raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))
+
+    big_context = "x " * 20_000   # needs the 16384 bucket
+    small_prompt = "hi"           # would need only the 8192 bucket on its own
+
+    with patch("httpx.AsyncClient.post", new=mock_post):
+        await provider.complete(messages=[Message(role="user", content=big_context)])
+        assert mock_post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384
+
+        await provider.complete(messages=[Message(role="user", content=small_prompt)])
+        assert mock_post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384, \
+            "num_ctx must not shrink for a smaller call on the same provider instance"
+
+
 # ── _extract_last_json unit tests ─────────────────────────────────────────────
 
 def test_extract_last_json_finds_object():
