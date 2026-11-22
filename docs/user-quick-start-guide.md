@@ -3815,7 +3815,7 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 #       Even with thinking disabled, CPU-only inference (no CUDA/Metal GPU) commonly
 #       needs `synthadoc query ... --timeout 300` or higher — a real wiki query's
 #       retrieved context alone can take 80s+ to process before any answer starts.
-# default = { provider = "ollama",    model = "qwen3.5", thinking = "disabled" }     # Ollama (fully local, no API key; GPU recommended — see NOTE above)
+# default = { provider = "ollama",    model = "qwen3.5:4b", thinking = "disabled" }  # Ollama (fully local, no API key; GPU recommended — see NOTE above)
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
 # default = { provider = "opencode", model = "opencode/big-pickle" }                # Opencode Zen (free; connect first: opencode → /connect → select Zen)
 ```
