@@ -550,7 +550,12 @@ class Orchestrator:
     async def query(self, question: str, timeout_seconds: int = 60):
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
-        _provider = make_provider("query", self._cfg)
+        # +30s so the provider's own HTTP client timeout never fires before
+        # the asyncio.wait_for deadline below — otherwise a slow provider
+        # (e.g. local Ollama on CPU) raises a raw httpx.ReadTimeout instead
+        # of the clean "Query timed out" path.
+        _min_timeout = timeout_seconds + 30 if timeout_seconds > 0 else None
+        _provider = make_provider("query", self._cfg, min_timeout=_min_timeout)
         _query_cfg = self._cfg.agents.resolve("query")
         result = await asyncio.wait_for(
             QueryAgent(
@@ -591,10 +596,18 @@ class Orchestrator:
         self, question: str, session_id: str | None = None,
         session_mode: str = "POWER_USER",
         history: list[dict] | None = None,
+        timeout_seconds: int = 0,
     ):
-        """Async generator yielding SSE event dicts for streaming query response."""
+        """Async generator yielding SSE event dicts for streaming query response.
+
+        *timeout_seconds* is the caller's own outer deadline (e.g.
+        http_server's asyncio.timeout_at around this whole generator) — see
+        make_provider's min_timeout docstring for why the provider's HTTP
+        client timeout must be raised to match it.
+        """
         from synthadoc.agents.query_agent import QueryAgent
-        _provider = make_provider("query", self._cfg)
+        _min_timeout = timeout_seconds + 30 if timeout_seconds > 0 else None
+        _provider = make_provider("query", self._cfg, min_timeout=_min_timeout)
         _routing_path = self._root / "ROUTING.md"
         _model = self._cfg.agents.resolve("query").model
         agent = QueryAgent(
