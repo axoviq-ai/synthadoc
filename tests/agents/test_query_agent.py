@@ -3166,6 +3166,129 @@ async def test_run_search_fallback_to_full_corpus_when_routing_weak(tmp_wiki):
     assert "ROUTING.md" in routing_warning
 
 
+@pytest.mark.asyncio
+async def test_run_search_trusts_scoped_result_when_it_agrees_with_full_corpus(tmp_wiki):
+    """A correctly-routed, topically-coherent branch can legitimately score
+    below the weak-score threshold on raw BM25 magnitude alone — IDF is
+    computed relative to whatever corpus is searched, so narrowing to a small
+    scope where candidate pages share vocabulary (e.g. several biography
+    pages) makes shared query terms *less* rare there, lowering the score for
+    a correct match even though routing picked exactly the right branch. This
+    must not be mistaken for routing having picked the wrong branch: when the
+    scoped top pick also ranks at the top of the full-corpus search,
+    _run_search must keep the narrower scoped result rather than needlessly
+    expanding to the full wiki. Reproduced live on a real wiki: 'alan-turing'
+    scored 1.96 scoped to its 3-page branch vs. 9.41 for the identical query
+    unscoped — same top match, very different raw magnitude. This fix lives
+    entirely in the provider-agnostic retrieval layer (no LLM call involved
+    in the scoring decision itself), so it applies identically regardless of
+    which provider (cloud, API, or local) processes the result afterward."""
+    from synthadoc.core.routing import RoutingIndex
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Three pages sharing vocabulary (pioneer biographies) — makes "turing",
+    # "contribution", "computing" common WITHIN this scope, lowering their
+    # scoped IDF even though "turing" is rare across the whole wiki.
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=[], status="active", confidence="high",
+        content="Alan Turing made a major contribution to computing as a pioneer of computer science theory.",
+        sources=[]))
+    store.write_page("grace-hopper", WikiPage(
+        title="Grace Hopper", tags=[], status="active", confidence="high",
+        content="Grace Hopper made a major contribution to computing as a pioneer of programming languages.",
+        sources=[]))
+    store.write_page("konrad-zuse", WikiPage(
+        title="Konrad Zuse", tags=[], status="active", confidence="high",
+        content="Konrad Zuse made a major contribution to computing as a pioneer of early computer hardware.",
+        sources=[]))
+    # Unrelated pages outside the branch — none share "turing"/"contribution",
+    # so those terms stay rare across the FULL corpus, giving alan-turing a
+    # much higher score when searched unscoped than when scoped to its own
+    # vocabulary-sharing branch.
+    for i in range(5):
+        store.write_page(f"unrelated-{i}", WikiPage(
+            title=f"Unrelated Topic {i}", tags=[], status="active", confidence="high",
+            content=f"This page discusses topic {i}, which has nothing to do with early computing pioneers.",
+            sources=[]))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    routing_path = tmp_wiki / "ROUTING.md"
+    ri = RoutingIndex({"Pioneers": ["alan-turing", "grace-hopper", "konrad-zuse"]})
+    ri.save(routing_path)
+
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What is Turing\'s major contribution?"]', input_tokens=10, output_tokens=5),
+        CompletionResponse(text='["Pioneers"]', input_tokens=10, output_tokens=5),
+    ]
+    agent = QueryAgent(
+        provider=provider, store=store, search=search, routing_path=routing_path,
+        gap_score_threshold=2.0,
+    )
+
+    sub_qs, candidates, routing_warning = await agent._run_search(
+        "What is Turing's major contribution?"
+    )
+
+    # Must trust the scoped (3-page) result, not expand to the 8-page full corpus.
+    assert routing_warning == "", f"Expected no fallback, got warning: {routing_warning!r}"
+    slugs = [c.slug for c in candidates]
+    assert "alan-turing" in slugs
+    assert all(not s.startswith("unrelated-") for s in slugs), (
+        f"Expected only the routed branch's pages, got {slugs}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_search_still_falls_back_when_routing_genuinely_wrong(tmp_wiki):
+    """The rank-agreement check must not suppress fallback for an actually
+    wrong routing branch — only for a correct branch that scores low due to
+    corpus-relative IDF. Here the scoped page has a nonzero (not empty) BM25
+    score, so it exercises the agreement check itself (not the zero-candidate
+    shortcut the existing stale-slug test covers), but it genuinely isn't the
+    best match, and doesn't rank in the full-corpus top result."""
+    from synthadoc.core.routing import RoutingIndex
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("wrong-branch-page", WikiPage(
+        title="Cooking", tags=[], status="active", confidence="high",
+        content="This recipe is a major contribution to modern cuisine, loved by chefs everywhere.",
+        sources=[]))
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=[], status="active", confidence="high",
+        content="Alan Turing made a major contribution to computing theory, founding computer science as Turing.",
+        sources=[]))
+    for i in range(5):
+        store.write_page(f"unrelated-{i}", WikiPage(
+            title=f"Unrelated Topic {i}", tags=[], status="active", confidence="high",
+            content=f"This page discusses topic {i} in a generic way with no special terms.",
+            sources=[]))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    routing_path = tmp_wiki / "ROUTING.md"
+    ri = RoutingIndex({"Cooking": ["wrong-branch-page"]})
+    ri.save(routing_path)
+
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What is Turing\'s major contribution?"]', input_tokens=10, output_tokens=5),
+        CompletionResponse(text='["Cooking"]', input_tokens=10, output_tokens=5),
+    ]
+    agent = QueryAgent(
+        provider=provider, store=store, search=search, routing_path=routing_path,
+        gap_score_threshold=2.0,
+    )
+
+    sub_qs, candidates, routing_warning = await agent._run_search(
+        "What is Turing's major contribution?"
+    )
+
+    assert routing_warning, "Expected fallback for a genuinely wrong routing branch"
+    assert "alan-turing" in [c.slug for c in candidates]
+
+
 # ---------------------------------------------------------------------------
 # _select_live_data_question unit tests
 # ---------------------------------------------------------------------------
