@@ -252,7 +252,13 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "anthropic", model = "claude-opus-4-8",   effort = "low" }}  # paid, previous generation ($5/$25)
 # default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "disabled" }}                             # paid, very cheap ($0.30/M in at peak, $0.15 off-peak); text-only, no vision
 # default = {{ provider = "deepseek",  model = "deepseek-flash", thinking = "enabled" }}      # thinking/reasoning mode
-# default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
+# NOTE: local Ollama models default to extended thinking; thinking="disabled" is
+#       strongly recommended — it cut a measured one-sentence CPU response from
+#       141s to 9s, same tokens/sec either way (tested 2026-11-22). Even with
+#       thinking disabled, a CPU-only machine (no CUDA/Metal GPU) commonly needs
+#       `synthadoc query ... --timeout 300` or higher — retrieved wiki context
+#       alone can take 80s+ to process before the model produces anything.
+# default = {{ provider = "ollama",    model = "qwen3.5", thinking = "disabled" }}  # fully local, no API key; GPU recommended, CPU works but is slow — see NOTE above
 # NOTE: all Qwen DashScope models have thinking ON by default; always use thinking="disabled"
 #       for synthadoc — thinking mode causes timeouts on large wiki contexts (tested 2026-10-17).
 # default = {{ provider = "qwen",      model = "qwen3.8-flash", thinking = "disabled" }}      # free tier + $0.15/$0.47 per 1M — set QWEN_API_KEY (recommended)
