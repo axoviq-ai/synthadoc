@@ -25,7 +25,7 @@ def test_query_stream_loads_history_when_session_id_present(tmp_wiki):
     app = _make_app(tmp_wiki)
 
     async def _fake_stream(question, session_id=None, session_mode="POWER_USER",
-                           history=None):
+                           history=None, **_kw):
         yield {"event": "token", "data": {"text": "hello"}}
         yield {"event": "done", "data": {"cacheable": False}}
 
@@ -64,7 +64,7 @@ def test_query_stream_no_history_when_turns_zero(tmp_wiki):
         return cfg
 
     async def _fake_stream(question, session_id=None, session_mode="POWER_USER",
-                           history=None):
+                           history=None, **_kw):
         yield {"event": "token", "data": {"text": "hello"}}
         yield {"event": "done", "data": {"cacheable": False}}
 
@@ -93,7 +93,7 @@ def test_query_stream_clarify_event_forwarded(tmp_wiki):
     app = _make_app(tmp_wiki)
 
     async def _fake_stream_with_clarify(question, session_id=None,
-                                         session_mode="POWER_USER", history=None):
+                                         session_mode="POWER_USER", history=None, **_kw):
         yield {"event": "clarify", "data": {"question": "Did you mean X or Y?",
                                              "options": ["X", "Y"]}}
         yield {"event": "done", "data": {"cacheable": False}}
@@ -129,7 +129,7 @@ def test_query_stream_notice_emitted_on_first_overflow(tmp_wiki):
     ]
 
     async def _fake_stream(question, session_id=None, session_mode="POWER_USER",
-                           history=None):
+                           history=None, **_kw):
         yield {"event": "token", "data": {"text": "answer"}}
         yield {"event": "done", "data": {"cacheable": False}}
 
@@ -168,7 +168,7 @@ def test_query_stream_timeout_emits_error_event(tmp_wiki):
     app = _make_app(tmp_wiki)
 
     async def _slow_stream(question, session_id=None, session_mode="POWER_USER",
-                           history=None):
+                           history=None, **_kw):
         raise TimeoutError("simulated timeout")
         yield  # makes it an async generator
 
@@ -192,7 +192,7 @@ def test_query_stream_passes_timeout_seconds_to_server(tmp_wiki):
     app = _make_app(tmp_wiki)
 
     async def _ok_stream(question, session_id=None, session_mode="POWER_USER",
-                         history=None):
+                         history=None, **_kw):
         yield {"event": "token", "data": {"text": "ok"}}
         yield {"event": "done", "data": {"cacheable": False}}
 

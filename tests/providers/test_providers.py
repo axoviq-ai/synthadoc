@@ -462,6 +462,34 @@ def test_make_provider_qwen_ollama_forwards_timeout(monkeypatch):
     assert provider._timeout == 240
 
 
+def test_make_provider_min_timeout_raises_a_lower_llm_timeout_seconds():
+    """A caller enforcing its own outer deadline (CLI --timeout) must be able
+    to raise the provider's HTTP client timeout to match it — otherwise the
+    provider's own (shorter) timeout fires first with a raw exception
+    instead of the caller's clean 'Query timed out' message. Reproduced
+    live: llm_timeout_seconds defaults to 0 (-> Ollama's hardcoded 300s),
+    and a CLI --timeout 500 query still died at 300s with httpx.ReadTimeout."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = _make_cfg("ollama", "qwen3.5")
+    assert cfg.agents.llm_timeout_seconds == 0
+    provider = make_provider("query", cfg, min_timeout=530)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 530
+
+
+def test_make_provider_min_timeout_never_lowers_an_explicit_llm_timeout_seconds():
+    """min_timeout must only ever raise the floor, never override an explicit,
+    larger llm_timeout_seconds the operator configured."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = _make_cfg("ollama", "qwen3.5")
+    cfg.agents.llm_timeout_seconds = 600
+    provider = make_provider("query", cfg, min_timeout=90)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 600
+
+
 def test_make_provider_missing_gemini_key_exits(monkeypatch):
     from synthadoc.providers import make_provider
     from synthadoc.errors import MissingApiKeyError

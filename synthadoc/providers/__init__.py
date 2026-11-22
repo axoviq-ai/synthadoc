@@ -14,9 +14,21 @@ def _require_env(var: str, provider: str, url: str, config_path=None) -> str:
     return value
 
 
-def make_provider(agent_name: str, config: Config) -> LLMProvider:
+def make_provider(agent_name: str, config: Config, min_timeout: int | None = None) -> LLMProvider:
+    """*min_timeout* raises the provider's own HTTP client timeout floor.
+
+    A caller that also enforces its own outer deadline (e.g. the CLI's
+    --timeout, via asyncio.timeout_at around the whole query) must pass that
+    deadline here too — otherwise a provider's inner HTTP client can time out
+    first with a raw exception (httpx.ReadTimeout) instead of letting the
+    outer mechanism produce the clean "Query timed out after Ns" message.
+    Only ever raises the timeout, never lowers it below llm_timeout_seconds
+    or the provider's own default.
+    """
     agent_cfg = config.agents.resolve(agent_name)
     timeout = config.agents.llm_timeout_seconds
+    if min_timeout is not None and min_timeout > timeout:
+        timeout = min_timeout
     cfg_path = config.config_path
     name = agent_cfg.provider
     if name == Provider.ANTHROPIC:
