@@ -14,6 +14,19 @@ def _require_env(var: str, provider: str, url: str, config_path=None) -> str:
     return value
 
 
+def _make_ollama_provider(agent_cfg: AgentConfig, timeout: int) -> LLMProvider:
+    """Build an OllamaProvider, forwarding base_url/max_num_ctx only when set
+    so OllamaProvider's own defaults apply otherwise (base_url=localhost,
+    max_num_ctx=65536)."""
+    from synthadoc.providers.ollama import OllamaProvider
+    kwargs: dict = {"config": agent_cfg, "timeout": timeout}
+    if agent_cfg.base_url:
+        kwargs["base_url"] = agent_cfg.base_url
+    if agent_cfg.max_num_ctx > 0:
+        kwargs["max_num_ctx"] = agent_cfg.max_num_ctx
+    return OllamaProvider(**kwargs)
+
+
 def make_provider(agent_name: str, config: Config, min_timeout: int | None = None) -> LLMProvider:
     """*min_timeout* raises the provider's own HTTP client timeout floor.
 
@@ -139,15 +152,9 @@ def make_provider(agent_name: str, config: Config, min_timeout: int | None = Non
                 "https://bailian.console.aliyun.com/", config_path=cfg_path,
             )
         else:
-            from synthadoc.providers.ollama import OllamaProvider
-            if agent_cfg.base_url:
-                return OllamaProvider(config=agent_cfg, base_url=agent_cfg.base_url, timeout=timeout)
-            return OllamaProvider(config=agent_cfg, timeout=timeout)
+            return _make_ollama_provider(agent_cfg, timeout)
     if name == Provider.OLLAMA:
-        from synthadoc.providers.ollama import OllamaProvider
-        if agent_cfg.base_url:
-            return OllamaProvider(config=agent_cfg, base_url=agent_cfg.base_url, timeout=timeout)
-        return OllamaProvider(config=agent_cfg, timeout=timeout)
+        return _make_ollama_provider(agent_cfg, timeout)
     if name == Provider.CLAUDE_CODE:
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         return ClaudeCodeCLIProvider(

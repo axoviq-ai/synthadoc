@@ -453,6 +453,32 @@ def test_make_provider_ollama_forwards_base_url():
     assert provider._base_url == "http://ollama:11434"
 
 
+def test_make_provider_ollama_forwards_max_num_ctx():
+    """agents.default.max_num_ctx must reach OllamaProvider — the escape
+    hatch for GPU setups with less VRAM than the 65536 default assumes
+    (calibrated against CPU/system-RAM; VRAM is often smaller)."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(
+        provider="ollama", model="qwen3.5:4b", max_num_ctx=8192)))
+    provider = make_provider("query", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._max_num_ctx == 8192
+
+
+def test_make_provider_ollama_uses_default_max_num_ctx_when_unset():
+    """max_num_ctx=0 (unset) must not override OllamaProvider's own default."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    cfg = Config(agents=AgentsConfig(default=AgentConfig(
+        provider="ollama", model="qwen3.5:4b")))
+    provider = make_provider("query", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._max_num_ctx == 65536
+
+
 def test_make_provider_ollama_forwards_timeout(monkeypatch):
     """llm_timeout_seconds must be forwarded to OllamaProvider so --timeout on CLI works."""
     from synthadoc.providers import make_provider
