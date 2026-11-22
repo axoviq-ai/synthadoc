@@ -442,6 +442,8 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 
 > **Which model do you need?** A small model is enough for every Synthadoc task: ingest, query, lint, and the agentic maintenance resolvers. **Claude Haiku 5.5** (smaller model), or **DeepSeek** (`deepseek-flash`, non-thinking) and **MiniMax M3** with `thinking = "disabled"`, covered the whole History of Computing demo in our testing; Sonnet or Opus are optional. Measured with Haiku 5.5: batch ingest of 17 pages about 4 cents, one lint run about 1 cent, the contradiction resolver on 2 pages about 2 cents, the orphan resolver on 5 pages about 7 cents. Details: [Appendix C](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers).
 
+> **Going local with Ollama? GPU required.** CPU-only inference is impractically slow for real wiki queries — use a GPU, or switch to a free cloud provider (Gemini 2.5 Flash Lite) instead. Also add `thinking = "disabled"` to your `agents.default` line — local models default to extended chain-of-thought that adds latency for no quality benefit. If VRAM is limited, lower `max_num_ctx` too (default 65536 is sized for system RAM on CPU, not VRAM). Details: [Appendix C](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers).
+
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
 export GEMINI_API_KEY=AIza…          # default — free tier, 1M tokens/day
