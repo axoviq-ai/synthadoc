@@ -74,3 +74,21 @@ async def test_private_urls_are_checked_when_the_server_opts_in(tmp_path):
     agent = _agent(tmp_path, cfg=_Cfg(allow_private_urls=True))
     assert await agent._is_url_unavailable("http://127.0.0.1:8331/doc") is True
     assert route.called
+
+
+async def test_policy_is_built_off_the_event_loop(tmp_path, monkeypatch):
+    """Building the policy can resolve registry host names (blocking), so it must run in a
+    worker thread, not on the event loop."""
+    import threading
+    import synthadoc.core.url_policy as url_policy_module
+
+    real = url_policy_module.url_policy_from_config
+    threads = []
+
+    def recording(cfg, **kwargs):
+        threads.append(threading.current_thread())
+        return real(cfg, **kwargs)
+
+    monkeypatch.setattr(url_policy_module, "url_policy_from_config", recording)
+    assert await _agent(tmp_path)._is_url_unavailable("http://169.254.169.254/x") is False
+    assert threads and threads[0] is not threading.main_thread()
