@@ -111,3 +111,21 @@ def test_init_wiki_config_contains_allow_external_paths_false(tmp_path):
     init_wiki(tmp_path, domain="General")
     config = (tmp_path / ".synthadoc" / "config.toml").read_text()
     assert "allow_external_paths = false" in config
+
+
+def test_init_wiki_config_contains_url_guard_settings(tmp_path):
+    """New installs state the URL fetch guard settings explicitly (all off / default)."""
+    init_wiki(tmp_path, domain="General")
+    config = (tmp_path / ".synthadoc" / "config.toml").read_text()
+    assert "allow_private_urls = false" in config
+    assert "trust_proxy_env = false" in config
+    assert "max_download_bytes = 26214400" in config
+
+
+def test_init_wiki_generated_config_loads_with_the_url_guard_defaults(tmp_path):
+    from synthadoc.config import load_config
+    init_wiki(tmp_path, domain="General")
+    cfg = load_config(project_config=tmp_path / ".synthadoc" / "config.toml")
+    assert cfg.server.allow_private_urls is False
+    assert cfg.server.trust_proxy_env is False
+    assert cfg.ingest.max_download_bytes == 25 * 1024 * 1024
