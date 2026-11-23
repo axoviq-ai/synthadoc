@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.5.3
+    Community Edition  v1.5.4
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -33,10 +33,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
 <a href="https://hub.docker.com/r/chenp/synthadoc"><img src="https://img.shields.io/docker/pulls/chenp/synthadoc?label=Docker+pulls" alt="Docker pulls"/></a>
 <a href="https://pepy.tech/projects/synthadoc"><img src="https://static.pepy.tech/personalized-badge/synthadoc?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=PyPI+downloads" alt="PyPI downloads"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.3-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.4-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.5.3**
+**Document version: v1.5.4**
 
 **An LLM wiki you can trust and operate: compiled at ingest, cited to the source line, governed by an audit trail and spend limits, and kept accurate by agentic maintenance. Built for solo users and enterprises alike.**
 
