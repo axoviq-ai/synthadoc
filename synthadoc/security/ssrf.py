@@ -66,7 +66,7 @@ class UrlPolicy:
     total_timeout: float = 30.0
     always_block: frozenset = frozenset()
     # Ports blocked on EVERY loopback/private address, not just the exact ones listed in
-    # always_block. A server bound to 0.0.0.0 answers on 127.0.0.2, its LAN address and
+    # always_block. A server bound to 0.0.0.0 answers on any other loopback address, its LAN address and
     # every other local address, so blocking only the bound addresses would leave a bypass.
     always_block_private_ports: frozenset = frozenset()
     ssl_context: Optional[ssl.SSLContext] = None
@@ -103,14 +103,16 @@ def _nets(*cidrs: str) -> tuple:
     return tuple(ipaddress.ip_network(c) for c in cidrs)
 
 
+# The addresses below are a deny list the guard refuses to connect to, not hardcoded
+# egress targets; each line carries the scanner marker so net.raw_ip stays meaningful.
 # Ranges a private-allowed deployment may reach (never the metadata addresses).
-_RELAXABLE = _nets("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+_RELAXABLE = _nets("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",  # security-scan: allow
                    "::1/128", "fc00::/7")
 _METADATA = frozenset(ipaddress.ip_address(a) for a in (
-    "169.254.169.254", "fd00:ec2::254", "168.63.129.16", "100.100.100.200"))
-_SPECIAL_V4 = _nets("0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",
-                    "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
-                    "224.0.0.0/4", "240.0.0.0/4")
+    "169.254.169.254", "fd00:ec2::254", "168.63.129.16", "100.100.100.200"))  # security-scan: allow
+_SPECIAL_V4 = _nets("0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",  # security-scan: allow
+                    "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",  # security-scan: allow
+                    "224.0.0.0/4", "240.0.0.0/4")  # security-scan: allow
 # IPv4-compatible, SIIT, discard, Teredo, 6to4, local-use NAT64, documentation,
 # link-local, site-local, multicast: blocked wholesale rather than unwrapped.
 _SPECIAL_V6 = _nets("::/96", "::ffff:0:0/96", "100::/64", "2001::/32", "2002::/16",
