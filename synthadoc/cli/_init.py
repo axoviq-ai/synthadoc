@@ -228,6 +228,8 @@ display_name = "{display_name}"
 port = {port}  # change this if running multiple wikis simultaneously
 # host = "0.0.0.0"  # bind to all interfaces — no built-in auth, restrict via firewall
 allow_external_paths = false  # set true only on a local-only instance not reachable via a reverse proxy
+allow_private_urls = false  # set true to let URL ingest reach private/loopback addresses (intranet wikis, http://localhost docs); cloud-metadata addresses and local wiki ports stay blocked
+trust_proxy_env = false  # set true to honour HTTP(S)_PROXY for URL fetches; connections then cannot be pinned to the validated address
 job_timeout_seconds = 600  # max seconds a single job runs before being killed
 # CLI → server HTTP timeouts (seconds).  Raise when using slow LLM providers
 # (e.g. opencode, local models, or heavily loaded cloud APIs).
@@ -301,6 +303,7 @@ max_pages_per_ingest = 15
 #                           Increase if you raise citation_source_lines and have long wiki sections.
 citation_source_lines = 400
 citation_max_tokens = 8192
+max_download_bytes = 26214400  # cap on a URL response body (decoded bytes, 25 MiB)
 
 [cost]
 soft_warn_usd = 0.50

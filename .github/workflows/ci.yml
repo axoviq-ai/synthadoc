@@ -42,6 +42,53 @@ jobs:
       - run: python scripts/update_badges.py --check
       - run: pytest --cov=synthadoc --cov-report=term-missing -v
 
+  # The shared security package is a leaf: stdlib, httpx and filelock only. Its tests run
+  # on every supported Python version in a LEAN environment on purpose. Installing the
+  # full dev extras would pull heavy optional dependencies (embedding runtime) that may
+  # have no wheels on the newest Python, and would hide an accidental import of
+  # synthadoc.core, agents or config from the package. cryptography is only for the
+  # real-TLS pinning test; pytest-timeout stops a runaway regex from hanging the job.
+  security-package:
+    name: security package (Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install httpx filelock cryptography pytest pytest-asyncio pytest-timeout
+      - run: python -m pytest tests/security/package -v
+
+  # The skills promise (v0.9.3) to work without a Synthadoc wiki or server. This installs
+  # ONLY the skills' own requirements plus the Synthadoc wheel WITHOUT its dependencies, then
+  # runs every skill from that installed wheel. It fails if a skill needs core, agents,
+  # config or any other non-skill module, or if a file a skill needs is missing from the wheel.
+  skills-standalone:
+    name: skills standalone (Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install only the skills' own requirements
+        run: |
+          cat synthadoc/skills/*/requirements.txt | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sort -u > "$RUNNER_TEMP/skill-requirements.txt"
+          cat "$RUNNER_TEMP/skill-requirements.txt"
+          pip install -r "$RUNNER_TEMP/skill-requirements.txt"
+      - name: Install the Synthadoc wheel without its dependencies
+        run: pip install --no-deps .
+      - name: Run every skill from the installed wheel
+        run: cd "$RUNNER_TEMP" && python -E "$GITHUB_WORKSPACE/scripts/check_standalone_skills.py"
+
   coverage-badge:
     needs: test
     runs-on: ubuntu-latest

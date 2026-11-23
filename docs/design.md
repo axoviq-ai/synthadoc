@@ -973,6 +973,35 @@ The env var takes priority over `config.toml` *when the server was started with 
 Use `config.toml` for runtime toggling; use the env var for immutable deployment-time
 enforcement (e.g. a Docker `ENV` line or a systemd `Environment=` directive).
 
+### URL fetching and the SSRF guard
+
+Every server-side fetch of a user-supplied URL (`ingest`, `ingest --analyse-only`, pages found by web search, and the lint URL-availability check) goes through one guard:
+
+- only `http` and `https` are allowed, and URLs that carry credentials (`user:pass@host`) are refused;
+- the host name is resolved and **every** resolved address is checked. Loopback, private (RFC 1918 and IPv6 unique-local), link-local, carrier-grade NAT, multicast, reserved and cloud-metadata addresses are refused, including IPv4 addresses wrapped in IPv6 and odd notations such as `2130706433` or `0x7f.1`;
+- the connection goes to the address that was validated while certificate checks stay on the original host name, so a DNS answer that changes between the check and the connect cannot redirect the request;
+- at most 5 redirects are followed, each one re-checked, and `Authorization`/`Cookie` headers are dropped when a redirect leaves the host or downgrades to http;
+- reading stops at `[ingest] max_download_bytes` (25 MiB), counted after decompression, so a small compressed file cannot expand into memory;
+- `HTTP_PROXY`/`HTTPS_PROXY` are ignored unless the operator opts in.
+
+A refused URL fails the job at once with the generic message *URL is not permitted.* (HTTP 403 on `/analyse`, 413 for an oversized body); the address and the rule that matched appear only in the server log.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `[server] allow_private_urls`, env `SYNTHADOC_ALLOW_PRIVATE_URLS` | `false` | Lets URL fetches reach private and loopback addresses (intranet wikis, `http://localhost` documentation). Cloud-metadata addresses stay blocked, and so do this server's own port and the port of every registered wiki on **every** loopback and private address (a server bound to `0.0.0.0` also answers on `127.0.0.2` and its LAN address), because those servers answer unauthenticated `GET` requests such as `/query`. Carrier-grade NAT addresses (`100.64.0.0/10`, as used by Tailscale) are not treated as private and stay blocked. |
+| `[server] trust_proxy_env`, env `SYNTHADOC_TRUST_PROXY_ENV` | `false` | Honour the proxy environment variables. The proxy resolves names itself, so the connection cannot be pinned; the address check becomes a best-effort pre-check and a warning is logged. |
+| `[ingest] max_download_bytes` | `26214400` | Largest URL response body accepted. |
+
+Both flags are operator decisions, never per-request, and follow the same rules as `allow_external_paths`: the environment variable is authoritative in both directions, edits to `config.toml` apply to the next job without a restart, and an environment change needs a restart.
+
+**Known limitation.** A secret embedded in the query string of a source URL (a token or a presigned link) is stored as written in page frontmatter, the audit database and the extracted text, and therefore also in backups. Logs, job errors and API output are redacted. Prefer URLs that do not embed secrets.
+
+### Secret redaction
+
+Secrets are masked wherever text leaves the server: the console and file logs (message and exception text), job errors before they are stored and again when jobs are returned by the API, the output and errors of scheduled runs before they are recorded, and the audit history, cost, query and event endpoints. Masked values include authorization and cookie headers, bearer tokens, common provider API keys, JWTs, credentials embedded in URLs (`user:password@host`), and secret-looking URL parameters such as `token`, `api_key` and `X-Amz-Signature`.
+
+Redaction is a safety net, not a substitute for keeping secrets out of logs. It is applied at output boundaries and does **not** rewrite stored data: the audit database keeps source paths exactly as ingested because they are used as lookup keys. Log and API masking uses a deliberately broad list of parameter names (over-masking a log line is harmless), so a URL like `...?code=US` shows as `?code=[REDACTED]` in logs and API output while the stored URL is unchanged. See the known limitation under *URL fetching and the SSRF guard*.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
@@ -1469,6 +1498,8 @@ synthadoc serve -w <wiki-name> --provider claude-code
 [server]
 port = 7070
 allow_external_paths = false  # set true only on a local-only instance not behind a proxy
+allow_private_urls = false    # set true to let URL ingest reach private/loopback addresses (see URL fetching)
+trust_proxy_env = false       # set true to honour HTTP(S)_PROXY for URL fetches (weaker guarantee)
 
 [agents]
 default  = { provider = "anthropic", model = "claude-opus-4-8" }
@@ -1492,6 +1523,7 @@ max_pages_per_ingest  = 15
 chunk_size            = 1500
 chunk_overlap         = 150
 fetch_timeout_seconds = 30   # seconds to wait for a URL response before retrying
+max_download_bytes    = 26214400  # cap on a URL response body, counted after decompression (25 MiB)
 # Citation pass (Pass 4) tuning — these two settings work together:
 #   citation_source_lines — how many lines of the source the LLM sees when placing ^[...] markers.
 #                           Increase if lint reports out_of_range on long sources (transcripts, PDFs).
@@ -1556,6 +1588,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `lint.adversarial_max_per_page`          | int   | `3`                  | Maximum adversarial warnings flagged per page. Must be ≥`adversarial_gate_threshold` for the gate to fire. Raise to 4–5 for a thorough audit; lower to 1–2 to reduce noise on large wikis.                                                                              |
 | `lint.check_url_availability`            | bool  | `false`              | When`true`, lint performs an HTTP HEAD check on every URL source and flags unreachable URLs. Adds network calls to each lint run; opt-in only.                                                                                                                             |
 | `server.host`                            | str   | `"127.0.0.1"`        | Bind address. Change to`"0.0.0.0"` to expose the server on all interfaces (e.g. for LAN access). No built-in auth — restrict via firewall when exposing.                                                                                                                  |
+| `server.allow_private_urls`              | bool  | `false`              | Let URL fetches reach private and loopback addresses. Cloud-metadata addresses and every local wiki server port stay blocked. Env `SYNTHADOC_ALLOW_PRIVATE_URLS`. See *URL fetching and the SSRF guard*. |
+| `server.trust_proxy_env`                 | bool  | `false`              | Honour `HTTP_PROXY`/`HTTPS_PROXY` for URL fetches. The proxy resolves names itself, so connections cannot be pinned to the validated address. Env `SYNTHADOC_TRUST_PROXY_ENV`. |
 | `server.port`                            | int   | `7070`               | HTTP listen port. Change when running multiple wikis simultaneously.                                                                                                                                                                                                       |
 | `ingest.max_pages_per_ingest`            | int   | `15`                 | Max pages one ingest job may create or update.                                                                                                                                                                                                                             |
 | `ingest.chunk_size`                      | int   | `1500`               | Text chunk size in characters for BM25 indexing.                                                                                                                                                                                                                           |

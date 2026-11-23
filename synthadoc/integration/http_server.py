@@ -16,6 +16,7 @@ from synthadoc.core.graph_views import cluster_detail, cluster_overview, enrich_
 from synthadoc.utils import load_yaml
 from synthadoc.agents.content_health_scanner import REPORT_ONLY_ISSUE_TYPES
 from synthadoc.core.queue import JobStatus
+from synthadoc.security.redact import redact_obj
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
@@ -601,8 +602,12 @@ async def _get_job_or_404(queue: "JobQueue", job_id: str) -> "Job":
 
 
 def _job_to_dict(j: "Job") -> dict:
-    """Serialize a Job to the standard API response shape."""
-    return {
+    """Serialize a Job to the standard API response shape.
+
+    Redacted at the output boundary so jobs stored before redaction existed (raw
+    errors, source URLs carrying tokens) never reach a client unmasked.
+    """
+    return redact_obj({
         "id": j.id,
         "status": j.status,
         "operation": j.operation,
@@ -611,7 +616,7 @@ def _job_to_dict(j: "Job") -> dict:
         "error": j.error,
         "result": j.result,
         "progress": j.progress,
-    }
+    })
 
 
 def _assert_job_retryable(job: "Job") -> "str | None":
@@ -1792,7 +1797,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             cache_version=orch._cfg.cache.version,
             fetch_timeout=orch._cfg.ingest.fetch_timeout_seconds,
         )
-        skill = SkillAgent()
+        # URL sources go through the SSRF guard with the freshly loaded config, so
+        # allow_private_urls matches what `ingest` does and hot-reloads like other settings.
+        from synthadoc.core.url_policy import url_policy_from_config
+        from synthadoc.security.ssrf import ResponseTooLarge, SsrfBlocked, make_fetcher
+        runtime_cfg = orch.runtime_config()
+        skill = SkillAgent(skill_kwargs={"url": {
+            "fetch_timeout": runtime_cfg.ingest.fetch_timeout_seconds,
+            # May resolve registry host names (blocking), so keep it off the event loop.
+            "fetcher": make_fetcher(await asyncio.to_thread(url_policy_from_config, runtime_cfg)),
+        }})
         # Security: restrict local file sources to within the wiki root so this
         # endpoint cannot be used to read arbitrary server files. Mirrors the
         # containment enforced by /ingest and IngestAgent, including the
@@ -1822,6 +1836,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 status_code=422,
                 detail="No matching source type for the given input. Provide a URL, file path, or search query.",
             )
+        except SsrfBlocked as exc:
+            raise HTTPException(status_code=403, detail=exc.public_message)
+        except ResponseTooLarge as exc:
+            raise HTTPException(status_code=413, detail=exc.public_message)
         text = extracted.text[:8000]
         analysis = await agent._analyse(text, bust_cache=False)
         analysis.pop("_tokens", None)
@@ -2080,9 +2098,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status {status!r}. Valid values: {[s.value for s in JobStatus]}")
         jobs = await app.state.orch.queue.list_jobs(status=job_status, sort_by=sort, order=order)
-        return [{"id": j.id, "status": j.status, "operation": j.operation,
-                 "created_at": str(j.created_at), "payload": j.payload,
-                 "error": j.error, "result": j.result, "progress": j.progress} for j in jobs]
+        return [_job_to_dict(j) for j in jobs]
 
     @app.get("/jobs/{job_id}")
     async def get_job(job_id: str):
@@ -2127,11 +2143,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         offset: int = Query(default=0, ge=0),
     ):
         records, total = await app.state.orch._audit.list_ingests(limit=limit, offset=offset)
-        return {"records": records, "total": total, "limit": limit, "offset": offset}
+        return redact_obj({"records": records, "total": total, "limit": limit, "offset": offset})
 
     @app.get("/audit/costs")
     async def audit_costs(days: int = 30):
-        return await app.state.orch._audit.cost_summary(days=days)
+        return redact_obj(await app.state.orch._audit.cost_summary(days=days))
 
     @app.get("/audit/queries")
     async def audit_queries(
@@ -2139,7 +2155,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         offset: int = Query(default=0, ge=0),
     ):
         records, total = await app.state.orch._audit.list_queries(limit=limit, offset=offset)
-        return {"records": records, "total": total, "limit": limit, "offset": offset}
+        return redact_obj({"records": records, "total": total, "limit": limit, "offset": offset})
 
     @app.get("/audit/events")
     async def audit_events(
@@ -2147,7 +2163,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         offset: int = Query(default=0, ge=0),
     ):
         records, total = await app.state.orch._audit.list_events(limit=limit, offset=offset)
-        return {"records": records, "total": total, "limit": limit, "offset": offset}
+        return redact_obj({"records": records, "total": total, "limit": limit, "offset": offset})
 
     @app.post("/context/build")
     async def context_build(req: ContextBuildRequest):

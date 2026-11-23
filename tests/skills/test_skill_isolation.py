@@ -28,6 +28,7 @@ _BLOCKED_PREFIXES = (
     "synthadoc.integration",
     "synthadoc.observability",
     "synthadoc.demos",
+    "synthadoc.security",
 )
 
 
@@ -43,18 +44,16 @@ def _skills_only():
     saved = {k: sys.modules.pop(k) for k in blocked_keys}
 
     class _BlockingFinder:
+        # find_spec is the only finder API Python 3.12+ calls; the old find_module/load_module
+        # pair is ignored there, which silently turned this whole test into a no-op.
         @staticmethod
-        def find_module(name, path=None):
+        def find_spec(name, path=None, target=None):
             if any(name == p or name.startswith(p + ".") for p in _BLOCKED_PREFIXES):
-                return _BlockingFinder
+                raise ImportError(
+                    f"Isolation violation: skill imported '{name}' which is outside synthadoc/skills/. "
+                    f"Move the dependency into skills/base.py or make it a lazy import."
+                )
             return None
-
-        @staticmethod
-        def load_module(name):
-            raise ImportError(
-                f"Isolation violation: skill imported '{name}' which is outside synthadoc/skills/. "
-                f"Move the dependency into skills/base.py or make it a lazy import."
-            )
 
     sys.meta_path.insert(0, _BlockingFinder)
     try:

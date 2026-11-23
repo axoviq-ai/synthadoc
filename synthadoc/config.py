@@ -127,6 +127,7 @@ class IngestConfig:
     max_source_chars: int = 32000         # chars read from a source before truncation (~8k tokens)
     citation_source_lines: int = 400      # lines of source text shown to the citation LLM (Pass 4)
     citation_max_tokens: int = 8192       # output token budget for the citation LLM response
+    max_download_bytes: int = 25 * 1024 * 1024  # cap on a URL response body, counted after decoding
 
 
 @dataclass
@@ -189,6 +190,14 @@ class ServerConfig:
     # or loopback bridge that could relay remote requests as 127.0.0.1.
     # This is an operator-level deployment decision, not a per-request flag.
     allow_external_paths: bool = False
+
+    # Permit URL ingest and lint URL checks to reach private and loopback addresses
+    # (intranet wikis, http://localhost docs). Cloud-metadata addresses and every local
+    # wiki server port stay blocked even when this is on. Operator-level, never per request.
+    allow_private_urls: bool = False
+    # Honour HTTP(S)_PROXY for URL fetches. The proxy resolves names itself, so the
+    # connection cannot be pinned to the validated address (best-effort pre-check only).
+    trust_proxy_env: bool = False
 
 
 @dataclass
@@ -405,18 +414,18 @@ def _build_default_agents_config() -> AgentsConfig:
 # ---------------------------------------------------------------------------
 
 
-def _parse_allow_external_paths(sv: dict) -> bool:
-    """Resolve the allow_external_paths server setting with correct precedence.
+def _parse_server_flag(sv: dict, key: str, env_var: str) -> bool:
+    """Resolve a boolean [server] security flag with correct precedence.
 
     Resolution order (later wins):
       1. TOML value (bool or quoted string — "true"/"false" accepted)
-      2. SYNTHADOC_ALLOW_EXTERNAL_PATHS env var — authoritative in BOTH directions
-         when present; "1"/"true"/"yes" → True, any other non-empty value → False.
+      2. ``env_var`` — authoritative in BOTH directions when present;
+         "1"/"true"/"yes" → True, any other non-empty value → False.
     """
-    env_val = os.environ.get("SYNTHADOC_ALLOW_EXTERNAL_PATHS", "")
+    env_val = os.environ.get(env_var, "")
     if env_val:
         return env_val.lower() in ("1", "true", "yes")
-    raw = sv.get("allow_external_paths", False)
+    raw = sv.get(key, False)
     if isinstance(raw, bool):
         return raw
     return str(raw).lower() in ("1", "true", "yes")
@@ -504,6 +513,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         max_source_chars=int(ig.get("max_source_chars", 32000)),
         citation_source_lines=int(ig.get("citation_source_lines", 400)),
         citation_max_tokens=int(ig.get("citation_max_tokens", 8192)),
+        max_download_bytes=int(ig.get("max_download_bytes", 25 * 1024 * 1024)),
     )
     _validate_ingest_staging(ingest.staging_policy, ingest.staging_confidence_min)
 
@@ -545,7 +555,12 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         client_timeout_seconds=int(sv.get("client_timeout_seconds", 60)),
         client_llm_timeout_seconds=int(sv.get("client_llm_timeout_seconds", 180)),
         client_stream_timeout_seconds=int(sv.get("client_stream_timeout_seconds", 120)),
-        allow_external_paths=_parse_allow_external_paths(sv),
+        allow_external_paths=_parse_server_flag(
+            sv, "allow_external_paths", "SYNTHADOC_ALLOW_EXTERNAL_PATHS"),
+        allow_private_urls=_parse_server_flag(
+            sv, "allow_private_urls", "SYNTHADOC_ALLOW_PRIVATE_URLS"),
+        trust_proxy_env=_parse_server_flag(
+            sv, "trust_proxy_env", "SYNTHADOC_TRUST_PROXY_ENV"),
     )
 
     # --- cache ---
