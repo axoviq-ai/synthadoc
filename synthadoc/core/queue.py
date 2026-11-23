@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional
 import aiosqlite
 
+from synthadoc.security.redact import redact_text
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -178,6 +180,7 @@ class JobQueue:
             await db.commit()
 
     async def fail(self, job_id: str, error: str) -> None:
+        error = redact_text(error)
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT retries FROM jobs WHERE id=?", (job_id,)) as cur:
@@ -213,7 +216,7 @@ class JobQueue:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "UPDATE jobs SET status='pending', error=? WHERE id=?",
-                (error or None, job_id),
+                (redact_text(error) or None, job_id),
             )
             await db.commit()
 
@@ -222,7 +225,7 @@ class JobQueue:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "UPDATE jobs SET status='dead',error=? WHERE id=?",
-                (error, job_id),
+                (redact_text(error), job_id),
             )
             await db.commit()
 
@@ -231,7 +234,7 @@ class JobQueue:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "UPDATE jobs SET status='skipped',error=? WHERE id=?",
-                (reason, job_id),
+                (redact_text(reason), job_id),
             )
             await db.commit()
 

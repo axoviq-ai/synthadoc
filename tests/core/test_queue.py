@@ -594,3 +594,33 @@ async def test_job_queue_uses_wal_journal_mode(tmp_wiki):
         async with conn.execute("PRAGMA journal_mode") as cur:
             row = await cur.fetchone()
     assert row[0] == "wal"
+
+
+# ---- error redaction at the write boundary (v1.5.4) ------------------------
+
+_LEAKY = "upstream said: Authorization: Bearer abcdefgh12345678 and token=hunter2value"
+
+
+async def _fresh_job(tmp_wiki):
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "x"})
+    await q.dequeue()
+    return q, job_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["fail", "fail_permanent", "skip", "requeue"])
+async def test_stored_job_error_never_contains_secrets(tmp_wiki, method):
+    q, job_id = await _fresh_job(tmp_wiki)
+    await getattr(q, method)(job_id, _LEAKY)
+    stored = (await q.get_job(job_id)).error
+    assert stored and "abcdefgh12345678" not in stored and "hunter2value" not in stored
+    assert "upstream said" in stored            # the useful part survives
+
+
+@pytest.mark.asyncio
+async def test_fail_keeps_a_clean_error_unchanged(tmp_wiki):
+    q, job_id = await _fresh_job(tmp_wiki)
+    await q.fail_permanent(job_id, "Source not found: /bad/path")
+    assert (await q.get_job(job_id)).error == "Source not found: /bad/path"
