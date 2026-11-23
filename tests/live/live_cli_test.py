@@ -54,6 +54,10 @@ No mocks.  This script is run manually, not by CI.
 ────────────────────────────────────────────────────────────────────────────────
   • job backoff: one ingest job is enqueued to a URL that returns 503; it runs
                 through all 3 retries (~3 min total) and is deleted on completion.
+                The URL is on loopback, which the SSRF guard refuses by default, so
+                the test first checks that refusal, then sets allow_private_urls =
+                true in the wiki's config.toml for the backoff run and restores the
+                file afterwards (also on abnormal exit).
   • backup:     zip written to a temp dir, deleted after tests.
   • restore:    two wikis registered under '_live-test-restore' and
                 '_live-test-restore-dflt'; directories deleted and registry
@@ -169,6 +173,22 @@ def _wait_job_terminal(job_id: str, label: str, max_wait: int = _JOB_TIMEOUT) ->
             pass
         time.sleep(5)
     warn(label, f"job {job_id} still running after {max_wait}s — continuing")
+
+
+def _enable_private_urls(text: str) -> str:
+    """Return config.toml text with [server] allow_private_urls = true (other lines kept)."""
+    out: list[str] = []
+    done = False
+    for line in text.splitlines():
+        if line.strip().startswith("allow_private_urls"):
+            continue
+        out.append(line)
+        if not done and line.strip() == "[server]":
+            out.append("allow_private_urls = true")
+            done = True
+    if not done:
+        out += ["", "[server]", "allow_private_urls = true"]
+    return "\n".join(out) + "\n"
 
 
 # ── CLI runner ────────────────────────────────────────────────────────────────
@@ -816,6 +836,56 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     _backoff_base = SYNTHADOC_URL.rstrip("/")
     _backoff_jid  = ""
 
+    # URL guard (v1.5.4): a loopback URL is refused immediately, with no retry and a
+    # generic message, unless the operator opts in. The config is hot-reloaded per job.
+    _cfg_path   = wiki_root / ".synthadoc" / "config.toml"
+    _cfg_before = _cfg_path.read_bytes() if _cfg_path.exists() else None
+
+    def _restore_cfg() -> None:
+        if _cfg_before is None:
+            _cfg_path.unlink(missing_ok=True)
+        else:
+            _cfg_path.write_bytes(_cfg_before)
+
+    import atexit as _atexit
+    _atexit.register(_restore_cfg)
+
+    def _enqueue_ingest(src: str) -> str:
+        _rq = urllib.request.Request(
+            f"{_backoff_base}/jobs/ingest",
+            data=json.dumps({"source": src}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(_rq, timeout=10) as _resp:
+            return json.loads(_resp.read().decode()).get("job_id", "")
+
+    try:
+        _guard_jid = _enqueue_ingest(_BACKOFF_URL)
+        _guard_body: dict = {}
+        _guard_deadline = time.monotonic() + 60
+        while time.monotonic() < _guard_deadline:
+            time.sleep(2)
+            with urllib.request.urlopen(f"{_backoff_base}/jobs/{_guard_jid}", timeout=10) as _gr:
+                _guard_body = json.loads(_gr.read().decode())
+            if _guard_body.get("status") in _TERMINAL:
+                break
+        _guard_err = str(_guard_body.get("error") or "")
+        if _guard_body.get("status") == "dead" and "URL is not permitted" in _guard_err                 and "127.0.0.1" not in _guard_err:
+            ok("url guard — loopback URL refused without retry", _guard_err)
+        else:
+            fail("url guard — loopback URL refused without retry",
+                 f"status={_guard_body.get('status')!r} error={_guard_err!r}")
+        run(["jobs", "delete", _guard_jid] + w)
+    except Exception as _e:
+        fail("url guard — loopback URL refused without retry", str(_e))
+
+    _cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    _cfg_path.write_text(
+        _enable_private_urls(_cfg_before.decode("utf-8") if _cfg_before is not None else ""),
+        encoding="utf-8")
+    info("allow_private_urls = true set for the backoff run (restored afterwards)")
+
     try:
         _req = urllib.request.Request(
             f"{_backoff_base}/jobs/ingest",
@@ -902,6 +972,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         run(["jobs", "delete", _backoff_jid] + w)
         ok("job backoff — cleanup", f"job {_backoff_jid} deleted")
     _mock_srv.shutdown()
+    _restore_cfg()
 
     # ── logging ───────────────────────────────────────────────────────────────
     print("\n[25] logging")
