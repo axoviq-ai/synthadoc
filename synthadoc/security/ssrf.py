@@ -313,10 +313,7 @@ class GuardedClient:
             except SsrfBlocked as exc:
                 logger.warning("guarded fetch blocked: %s", exc.detail)
                 raise
-            pinned_url, send_headers, extensions = self._pin(target, headers)
-            request = self._client.build_request(
-                method, pinned_url, headers=send_headers, extensions=extensions)
-            response = await self._client.send(request, stream=True, follow_redirects=False)
+            request, response = await self._send_to_any_address(method, target, headers)
             try:
                 location = response.headers.get("location")
                 if response.status_code in _REDIRECT_STATUSES and location:
@@ -333,7 +330,28 @@ class GuardedClient:
             finally:
                 await response.aclose()
 
-    def _pin(self, target: ResolvedTarget, headers: dict) -> tuple:
+    async def _send_to_any_address(self, method: str, target: ResolvedTarget, headers: dict) -> tuple:
+        """Send to the first reachable validated address (every address already passed).
+
+        A dual-stack host whose first address is a dead route must not fail outright, so a
+        connect failure moves on to the next address. Read errors are never retried.
+        """
+        assert self._client is not None
+        attempts = (None,) if self._policy.trust_proxy_env else target.addresses
+        last_error: Optional[Exception] = None
+        for address in attempts:
+            pinned_url, send_headers, extensions = self._pin(target, headers, address)
+            request = self._client.build_request(
+                method, pinned_url, headers=send_headers, extensions=extensions)
+            try:
+                return request, await self._client.send(request, stream=True, follow_redirects=False)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                last_error = exc
+                logger.debug("guarded fetch: connect failed, trying the next validated address")
+        assert last_error is not None
+        raise last_error
+
+    def _pin(self, target: ResolvedTarget, headers: dict, address: Optional[str] = None) -> tuple:
         try:
             ascii_host = target.host.encode("idna").decode("ascii")
         except UnicodeError:
@@ -343,7 +361,7 @@ class GuardedClient:
             return target.url, send, {}
         default_port = _DEFAULT_PORTS.get(target.scheme)
         host_header = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
-        ip = target.addresses[0]
+        ip = address or target.addresses[0]
         ip_host = f"[{ip}]" if ":" in ip else ip
         netloc = ip_host
         if target.port != default_port:

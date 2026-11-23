@@ -283,3 +283,98 @@ async def test_proxy_environment_is_honoured_only_when_opted_in(monkeypatch):
     async with _client(Recorder(_ok()), policy=UrlPolicy(trust_proxy_env=True)):
         pass
     assert seen["trust_env"] is True
+
+
+# ---- fall back to the next validated address (dual-stack hosts) ---------------
+
+DUAL_STACK = _resolver({"dual.example": ["2606:4700:4700::1111", "93.184.216.34"]})
+V6 = "2606:4700:4700::1111"
+
+
+async def test_connect_error_falls_back_to_the_next_validated_address():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        if request.url.host == V6:
+            raise httpx.ConnectError("no route to host", request=request)
+        return httpx.Response(200, text="ok")
+
+    async with _client(handler, resolver=DUAL_STACK) as client:
+        resp = await client.get("https://dual.example/p")
+    assert hosts == [V6, "93.184.216.34"]
+    assert resp.text == "ok"
+
+
+async def test_fallback_attempt_keeps_the_hostname_for_host_header_and_sni():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.host == V6:
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return httpx.Response(200)
+
+    async with _client(handler, resolver=DUAL_STACK) as client:
+        await client.get("https://dual.example/")
+    second = seen[1]
+    assert second.headers["host"] == "dual.example"
+    assert second.extensions["sni_hostname"] == "dual.example"
+
+
+async def test_all_addresses_failing_raises_the_last_connect_error():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        raise httpx.ConnectError("refused", request=request)
+
+    async with _client(handler, resolver=DUAL_STACK) as client:
+        with pytest.raises(httpx.ConnectError):
+            await client.get("http://dual.example/")
+    assert hosts == [V6, "93.184.216.34"]
+
+
+async def test_read_errors_are_not_retried_on_another_address():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        raise httpx.ReadTimeout("slow", request=request)
+
+    async with _client(handler, resolver=DUAL_STACK) as client:
+        with pytest.raises(httpx.ReadTimeout):
+            await client.get("http://dual.example/")
+    assert hosts == [V6]
+
+
+async def test_redirect_hops_also_fall_back():
+    hosts = []
+
+    def handler(request):
+        hosts.append((request.url.host, request.headers["host"]))
+        if request.headers["host"] == "dual.example":
+            if request.url.host == V6:
+                raise httpx.ConnectError("no route", request=request)
+            return httpx.Response(200, text="done")
+        return httpx.Response(302, headers={"location": "http://dual.example/final"})
+
+    resolver = _resolver({"example.com": ["93.184.216.34"],
+                          "dual.example": ["2606:4700:4700::1111", "93.184.216.34"]})
+    async with _client(handler, resolver=resolver) as client:
+        resp = await client.get("http://example.com/")
+    assert resp.text == "done"
+    assert hosts[-1] == ("93.184.216.34", "dual.example")
+
+
+async def test_proxy_mode_makes_a_single_attempt():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        raise httpx.ConnectError("refused", request=request)
+
+    async with _client(handler, policy=UrlPolicy(trust_proxy_env=True), resolver=DUAL_STACK) as client:
+        with pytest.raises(httpx.ConnectError):
+            await client.get("http://dual.example/")
+    assert hosts == ["dual.example"]

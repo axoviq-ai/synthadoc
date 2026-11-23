@@ -118,7 +118,7 @@ def fake_public_dns(monkeypatch):
     async def resolve(host, port):
         return ["93.184.216.34"]
 
-    def unpinned(self, target, headers):
+    def unpinned(self, target, headers, address=None):
         return target.url, {k: v for k, v in headers.items() if k.lower() != "host"}, {}
 
     monkeypatch.setattr(ssrf, "_system_resolver", resolve)
