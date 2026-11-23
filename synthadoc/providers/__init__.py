@@ -14,9 +14,34 @@ def _require_env(var: str, provider: str, url: str, config_path=None) -> str:
     return value
 
 
-def make_provider(agent_name: str, config: Config) -> LLMProvider:
+def _make_ollama_provider(agent_cfg: AgentConfig, timeout: int) -> LLMProvider:
+    """Build an OllamaProvider, forwarding base_url/max_num_ctx only when set
+    so OllamaProvider's own defaults apply otherwise (base_url=localhost,
+    max_num_ctx=65536)."""
+    from synthadoc.providers.ollama import OllamaProvider
+    kwargs: dict = {"config": agent_cfg, "timeout": timeout}
+    if agent_cfg.base_url:
+        kwargs["base_url"] = agent_cfg.base_url
+    if agent_cfg.max_num_ctx > 0:
+        kwargs["max_num_ctx"] = agent_cfg.max_num_ctx
+    return OllamaProvider(**kwargs)
+
+
+def make_provider(agent_name: str, config: Config, min_timeout: int | None = None) -> LLMProvider:
+    """*min_timeout* raises the provider's own HTTP client timeout floor.
+
+    A caller that also enforces its own outer deadline (e.g. the CLI's
+    --timeout, via asyncio.timeout_at around the whole query) must pass that
+    deadline here too — otherwise a provider's inner HTTP client can time out
+    first with a raw exception (httpx.ReadTimeout) instead of letting the
+    outer mechanism produce the clean "Query timed out after Ns" message.
+    Only ever raises the timeout, never lowers it below llm_timeout_seconds
+    or the provider's own default.
+    """
     agent_cfg = config.agents.resolve(agent_name)
     timeout = config.agents.llm_timeout_seconds
+    if min_timeout is not None and min_timeout > timeout:
+        timeout = min_timeout
     cfg_path = config.config_path
     name = agent_cfg.provider
     if name == Provider.ANTHROPIC:
@@ -127,11 +152,9 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
                 "https://bailian.console.aliyun.com/", config_path=cfg_path,
             )
         else:
-            from synthadoc.providers.ollama import OllamaProvider
-            return OllamaProvider(config=agent_cfg, timeout=timeout)
+            return _make_ollama_provider(agent_cfg, timeout)
     if name == Provider.OLLAMA:
-        from synthadoc.providers.ollama import OllamaProvider
-        return OllamaProvider(config=agent_cfg, timeout=timeout)
+        return _make_ollama_provider(agent_cfg, timeout)
     if name == Provider.CLAUDE_CODE:
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         return ClaudeCodeCLIProvider(

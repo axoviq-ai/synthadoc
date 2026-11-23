@@ -1549,7 +1549,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 async with _asyncio.timeout_at(_ot_deadline) as _outer_to:
                     async for evt in orch.query_stream(q, session_id=session_id,
                                                        session_mode=session_mode,
-                                                       history=_history):
+                                                       history=_history,
+                                                       timeout_seconds=timeout_seconds):
                         # Change 4: emit notice SSE before first token/clarify
                         if _summary_notice:
                             yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"

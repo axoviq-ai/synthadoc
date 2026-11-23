@@ -36,6 +36,50 @@ async def test_orchestrator_ingest_returns_job_id(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_query_stream_raises_provider_timeout_to_match_outer_deadline(tmp_wiki):
+    """query_stream must pass min_timeout=timeout_seconds+30 to make_provider
+    so the provider's own HTTP client timeout can never fire before the
+    caller's outer deadline (http_server's asyncio.timeout_at) — otherwise a
+    slow provider raises a raw exception instead of the clean "Query timed
+    out" path. Reproduced live with local Ollama: CLI --timeout 500 still
+    died at the provider's hardcoded 300s default."""
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        mock_agent = MagicMock()
+
+        async def _fake_run_stream(*args, **kwargs):
+            yield {"event": "done", "data": {}}
+        mock_agent.run_stream = _fake_run_stream
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()) as mock_mp, \
+             patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent):
+            events = [evt async for evt in orch.query_stream("hi", timeout_seconds=500)]
+
+        assert events == [{"event": "done", "data": {}}]
+        _, kwargs = mock_mp.call_args
+        assert kwargs.get("min_timeout") == 530
+
+
+@pytest.mark.asyncio
+async def test_query_stream_omits_provider_timeout_floor_when_no_outer_deadline(tmp_wiki):
+    """timeout_seconds=0 (no outer deadline) must not force a min_timeout —
+    the provider's own default (llm_timeout_seconds, or its own fallback)
+    should apply unchanged."""
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        mock_agent = MagicMock()
+
+        async def _fake_run_stream(*args, **kwargs):
+            yield {"event": "done", "data": {}}
+        mock_agent.run_stream = _fake_run_stream
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()) as mock_mp, \
+             patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent):
+            [evt async for evt in orch.query_stream("hi", timeout_seconds=0)]
+
+        _, kwargs = mock_mp.call_args
+        assert kwargs.get("min_timeout") is None
+
+
+@pytest.mark.asyncio
 async def test_run_ingest_http_404_skips_job(tmp_wiki):
     """A 404 response must skip the job immediately with no retry and no exception raised."""
     async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:

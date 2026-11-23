@@ -84,6 +84,21 @@ def _resolve_manifest_source(line: str, base: Path) -> str:
     return str(candidate if candidate.is_absolute() else (base / candidate).resolve())
 
 
+def _make_query_provider(cfg: Config, timeout_seconds: int):
+    """Build the "query" provider with its HTTP timeout floor raised to match
+    the caller's own outer deadline.
+
+    +30s so the provider's own HTTP client timeout never fires before that
+    outer deadline (asyncio.wait_for in query(), asyncio.timeout_at in
+    http_server's query_stream route) — otherwise a slow provider (e.g.
+    local Ollama on CPU) raises a raw httpx.ReadTimeout instead of the
+    clean "Query timed out" path. Shared by query() and query_stream(),
+    which otherwise enforce that same outer deadline in different ways.
+    """
+    min_timeout = timeout_seconds + 30 if timeout_seconds > 0 else None
+    return make_provider("query", cfg, min_timeout=min_timeout)
+
+
 class Orchestrator:
     def __init__(self, wiki_root: Path, config: Optional[Config] = None) -> None:
         self._root = wiki_root
@@ -555,7 +570,7 @@ class Orchestrator:
     async def query(self, question: str, timeout_seconds: int = 60):
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
-        _provider = make_provider("query", self._cfg)
+        _provider = _make_query_provider(self._cfg, timeout_seconds)
         _query_cfg = self._cfg.agents.resolve("query")
         result = await asyncio.wait_for(
             QueryAgent(
@@ -596,10 +611,17 @@ class Orchestrator:
         self, question: str, session_id: str | None = None,
         session_mode: str = "POWER_USER",
         history: list[dict] | None = None,
+        timeout_seconds: int = 0,
     ):
-        """Async generator yielding SSE event dicts for streaming query response."""
+        """Async generator yielding SSE event dicts for streaming query response.
+
+        *timeout_seconds* is the caller's own outer deadline (e.g.
+        http_server's asyncio.timeout_at around this whole generator) — see
+        _make_query_provider for why the provider's HTTP client timeout must
+        be raised to match it.
+        """
         from synthadoc.agents.query_agent import QueryAgent
-        _provider = make_provider("query", self._cfg)
+        _provider = _make_query_provider(self._cfg, timeout_seconds)
         _routing_path = self._root / "ROUTING.md"
         _model = self._cfg.agents.resolve("query").model
         agent = QueryAgent(

@@ -53,6 +53,11 @@ class AgentConfig:
     base_url: str = ""
     thinking: str = ""  # "disabled" | "enabled" | "adaptive" | "" (provider default)
     effort: str = ""    # "low" | "medium" | "high" | "xhigh" | "max" | "" (provider default)
+    max_num_ctx: int = 0  # Ollama only: caps the KV-cache context window (tokens).
+    # 0 = provider default (65536, sized for a CPU/system-RAM machine). Lower
+    # this on a GPU with limited VRAM — the KV cache competes with the model
+    # weights for the same VRAM pool, which is typically much smaller than
+    # system RAM on consumer GPUs.
 
     @property
     def is_local(self) -> bool:
@@ -95,6 +100,7 @@ class AgentsConfig:
             base_url=override.base_url,
             thinking=override.thinking,
             effort=override.effort,
+            max_num_ctx=override.max_num_ctx,
         )
 
 
@@ -331,12 +337,19 @@ def _parse_agent(raw: dict) -> AgentConfig:
             f"Invalid effort value '{effort}'. "
             f"Must be one of: low, medium, high, xhigh, max (or omit for provider default)."
         )
+    max_num_ctx = int(raw.get("max_num_ctx", 0))
+    if max_num_ctx < 0:
+        raise ValueError(
+            f"Invalid max_num_ctx value '{max_num_ctx}'. Must be a positive integer "
+            f"(or omit/0 for the provider default)."
+        )
     return AgentConfig(
         provider=raw["provider"],
         model=raw.get("model", ""),
         base_url=raw.get("base_url", ""),
         thinking=thinking,
         effort=effort,
+        max_num_ctx=max_num_ctx,
     )
 
 
@@ -473,6 +486,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
                 "base_url": default_agent.base_url,
                 "thinking": default_agent.thinking,
                 "effort": default_agent.effort,
+                "max_num_ctx": default_agent.max_num_ctx,
             }
             base_vals.update(a[name])
             parsed = _parse_agent(base_vals)
