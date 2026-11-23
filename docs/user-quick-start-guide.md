@@ -1133,7 +1133,7 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 
 The CLI renders the same approval prompts and diff previews as the web UI.
 
-**Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to restore the page to its pre-fix content — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
+**Rollback after the fact:** every resolved orphan's wikilink insertion is preceded by a snapshot. Say "roll back ada-lovelace" (web UI or CLI) to undo the link insertion. This restores the host page that was edited to add the `[[ada-lovelace]]` link, which puts ada-lovelace back into orphan status (ada-lovelace itself was never changed) — the same mechanism used by [content health fixes](#demo--content-health-resolver) and the [contradiction resolver](#step-9--resolve-a-contradiction).
 
 ### Option 2 — Manual link insertion
 
@@ -1371,7 +1371,7 @@ If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file ch
 
 When a page accumulates too many adversarial warnings it is a signal that its claims are contested and it should not be serving as an authoritative source in query answers. The **adversarial gate** automates this: at the end of every lint run, any `active` or `stale` page whose warning count reaches or exceeds the threshold is automatically transitioned to `contradicted`.
 
-New wikis created with `synthadoc init` have the gate enabled at `2` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
+New wikis created with `synthadoc install` have the gate enabled at `2` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
 
 ```toml
 # config.toml
