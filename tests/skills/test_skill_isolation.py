@@ -28,6 +28,7 @@ _BLOCKED_PREFIXES = (
     "synthadoc.integration",
     "synthadoc.observability",
     "synthadoc.demos",
+    "synthadoc.security",
 )
 
 

@@ -24,7 +24,9 @@ from synthadoc.agents.content_health_scanner import (
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
+from synthadoc.core.url_policy import url_policy_from_config
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.security.ssrf import UrlPolicy, make_fetcher
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
 from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage, LifecycleState, is_url, TriggerSource
@@ -652,7 +654,8 @@ class IngestAgent(BaseAgent):
                  fetch_timeout: int = 30,
                  routing_path: Optional[Path] = None,
                  cfg=None,
-                 allow_external_paths: bool = False) -> None:
+                 allow_external_paths: bool = False,
+                 url_policy: Optional[UrlPolicy] = None) -> None:
         super().__init__(provider, cfg)
         self._store = store
         self._search = search
@@ -665,7 +668,8 @@ class IngestAgent(BaseAgent):
         self._allow_external_paths = allow_external_paths
         self._cache_version = cache_version
         self._skill_agent = SkillAgent(skill_kwargs={
-            "url": {"fetch_timeout": fetch_timeout},
+            "url": {"fetch_timeout": fetch_timeout,
+                    "fetcher": make_fetcher(url_policy or url_policy_from_config(cfg))},
             "youtube": {"provider": self._provider},
             "image": {"provider": self._provider},
         })
