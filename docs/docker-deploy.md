@@ -1258,6 +1258,8 @@ The **Synthadoc Open Source Community Edition** does not yet include built-in au
 
 **`allow_external_paths` and reverse proxies:** do **not** set `allow_external_paths = true` (or `SYNTHADOC_ALLOW_EXTERNAL_PATHS=1`) on any instance reachable through a reverse proxy. When a proxy forwards requests to the container over loopback, every remote caller appears to come from `127.0.0.1`. That made the old IP-based guard ineffective; the flag is now a server-side config key precisely to prevent that. Leave it `false` (the default) on any proxy-fronted deployment. It is only safe to enable on a purely local `synthadoc serve` instance where no proxy or loopback bridge exists between the network and the server process.
 
+**URLs on your host or intranet:** inside a container, `localhost` means the container itself, and a host service reached as `host.docker.internal` (or a LAN address) is a private address that the URL guard refuses by default. If you deliberately ingest from such a URL, set `SYNTHADOC_ALLOW_PRIVATE_URLS=1` in the container environment; cloud-metadata addresses and the ports of your wiki servers stay blocked even then.
+
 **API keys:** always use `--env-file ~/wikis/.env`, never `-e KEY=value` on the command line. Restrict who can read the `.env` file: `chmod 600 ~/wikis/.env` on Linux/macOS; on Windows, keep it under your user profile, which other standard users cannot read.
 
 ---
