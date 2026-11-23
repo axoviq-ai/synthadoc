@@ -1584,3 +1584,49 @@ def test_analyse_oversized_url_response_is_413(tmp_wiki, _no_registry):
             with TestClient(app) as client:
                 resp = _analyse(client, "http://127.0.0.1:8323/big")
     assert resp.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# API output is redacted even for data stored before redaction existed (v1.5.4)
+# ---------------------------------------------------------------------------
+
+def test_job_endpoints_redact_legacy_raw_errors_and_source_tokens(tmp_wiki):
+    import sqlite3
+    from synthadoc.integration.http_server import create_app
+
+    app = create_app(wiki_root=tmp_wiki)
+    with TestClient(app) as client:
+        job_id = asyncio.run(app.state.orch.queue.enqueue(
+            "ingest", {"source": "https://h.example/feed?api_key=SECRET123&page=2"}))
+        db = sqlite3.connect(str(tmp_wiki / ".synthadoc" / "jobs.db"))
+        db.execute("UPDATE jobs SET status='dead', error=? WHERE id=?",
+                   ("boom Authorization: Bearer abcdefgh12345678", job_id))
+        db.commit()
+        db.close()
+
+        one = client.get(f"/jobs/{job_id}")
+        listing = client.get("/jobs")
+
+    for resp in (one, listing):
+        assert resp.status_code == 200
+        assert "abcdefgh12345678" not in resp.text and "SECRET123" not in resp.text
+    assert one.json()["error"].startswith("boom")
+    assert "page=2" in one.json()["payload"]["source"]
+
+
+def test_audit_endpoints_redact_secrets_in_stored_records(tmp_wiki):
+    from synthadoc.integration.http_server import create_app
+
+    app = create_app(wiki_root=tmp_wiki)
+    with TestClient(app) as client:
+        audit = app.state.orch._audit
+        asyncio.run(audit.record_ingest(
+            "h1", 10, "https://h.example/feed?api_key=SECRET123&page=2", "page-a", 5, 0.01))
+        asyncio.run(audit.record_query("why does password=hunter2value fail?", 0, 3, 0.0))
+        responses = [client.get("/audit/history"), client.get("/audit/queries"),
+                     client.get("/audit/events"), client.get("/audit/costs")]
+
+    for resp in responses:
+        assert resp.status_code == 200
+        assert "SECRET123" not in resp.text and "hunter2value" not in resp.text
+    assert "page=2" in responses[0].text            # the non-secret part survives
