@@ -59,6 +59,10 @@ class UrlPolicy:
     connect_timeout: float = 10.0
     total_timeout: float = 30.0
     always_block: frozenset = frozenset()
+    # Ports blocked on EVERY loopback/private address, not just the exact ones listed in
+    # always_block. A server bound to 0.0.0.0 answers on 127.0.0.2, its LAN address and
+    # every other local address, so blocking only the bound addresses would leave a bypass.
+    always_block_private_ports: frozenset = frozenset()
     ssl_context: Optional[ssl.SSLContext] = None
 
     def __post_init__(self) -> None:
@@ -67,6 +71,9 @@ class UrlPolicy:
             ipaddress.ip_address(ip)
             if port is not None and not 0 < port < 65536:
                 raise ValueError(f"always_block port out of range: {port}")
+        for port in self.always_block_private_ports:
+            if not isinstance(port, int) or not 0 < port < 65536:
+                raise ValueError(f"always_block_private_ports port out of range: {port}")
 
 
 @dataclass(frozen=True)
@@ -140,6 +147,8 @@ def classify_address(
         return None if classify_address(embedded, _DEFAULT_POLICY) is None else "nat64-embedded"
 
     if _always_blocked(addr, policy, port):
+        return "always-block"
+    if port in policy.always_block_private_ports and _in(addr, _RELAXABLE):
         return "always-block"
     if addr in _METADATA:
         return "metadata"
