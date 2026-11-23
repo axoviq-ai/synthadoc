@@ -10,6 +10,7 @@ address, rule hit) live in ``detail`` for the server log only.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import ipaddress
 import logging
 import socket
@@ -380,3 +381,33 @@ def guarded_client(
 ) -> GuardedClient:
     """Async context manager. ``resolver`` and ``transport`` are test hooks only."""
     return GuardedClient(policy, resolver=resolver, transport=transport)
+
+
+Fetcher = Callable[..., Awaitable[httpx.Response]]
+
+
+def make_fetcher(
+    policy: UrlPolicy, *, resolver: Optional[Resolver] = None,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> Fetcher:
+    """Return ``fetch(url, *, headers=None, timeout=None, ssl_context=None)``.
+
+    Skills receive this callable instead of importing the guard, so they stay usable
+    without the rest of Synthadoc. ``timeout`` bounds the whole request; the caller's
+    ``ssl_context`` is used unless the policy carries its own.
+    """
+    async def fetch(
+        url: str, *, headers: Optional[dict] = None, timeout: Optional[float] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
+    ) -> httpx.Response:
+        changes: dict = {}
+        if timeout is not None:
+            changes["total_timeout"] = float(timeout)
+            changes["connect_timeout"] = min(policy.connect_timeout, float(timeout))
+        if ssl_context is not None and policy.ssl_context is None:
+            changes["ssl_context"] = ssl_context
+        effective = dataclasses.replace(policy, **changes) if changes else policy
+        async with guarded_client(effective, resolver=resolver, transport=transport) as client:
+            return await client.get(url, headers=headers)
+
+    return fetch

@@ -183,7 +183,12 @@ class SkillAgent:
             self._check_requires(meta)
             cls = _import_class(meta.skill_dir / meta.entry_script, meta.entry_class)
             self._loaded[name] = cls
-        kwargs = self._skill_kwargs.get(name, {})
+        kwargs = dict(self._skill_kwargs.get(name, {}))
+        if name == "url" and "fetcher" not in kwargs:
+            # Fail closed: inside Synthadoc a URL skill never fetches unguarded, even when the
+            # caller (e.g. /analyse) builds a bare SkillAgent().
+            from synthadoc.security.ssrf import get_default_policy, make_fetcher
+            kwargs["fetcher"] = make_fetcher(get_default_policy())
         instance = self._loaded[name](**kwargs)
         instance.skill_dir = self._registry[name].skill_dir
         return instance

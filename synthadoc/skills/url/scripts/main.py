@@ -34,16 +34,26 @@ class UrlSkill(BaseSkill):
     meta = SkillMeta(name="url", description="Fetch and extract text from web URLs",
                      extensions=["https://", "http://"])
 
-    def __init__(self, fetch_timeout: int = 30) -> None:
+    def __init__(self, fetch_timeout: int = 30, fetcher=None) -> None:
         super().__init__()
         self._fetch_timeout = fetch_timeout
+        # Optional async callable fetch(url, *, headers, timeout, ssl_context) -> httpx.Response.
+        # A host application (Synthadoc) injects a hardened fetcher here; without one the
+        # skill fetches directly, so it still works with nothing outside synthadoc/skills.
+        self._fetcher = fetcher
+
+    async def _fetch(self, source: str) -> httpx.Response:
+        if self._fetcher is not None:
+            return await self._fetcher(
+                source, headers=_HEADERS, timeout=self._fetch_timeout, ssl_context=_SSL_CONTEXT)
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=self._fetch_timeout, headers=_HEADERS, verify=_SSL_CONTEXT
+        ) as client:
+            return await client.get(source)
 
     async def extract(self, source: str) -> ExtractedContent:
         try:
-            async with httpx.AsyncClient(
-                follow_redirects=True, timeout=self._fetch_timeout, headers=_HEADERS, verify=_SSL_CONTEXT
-            ) as client:
-                resp = await client.get(source)
+            resp = await self._fetch(source)
         except httpx.ConnectError as exc:
             err_str = str(exc)
             if "CERTIFICATE_VERIFY_FAILED" in err_str or "SSL" in err_str.upper():
