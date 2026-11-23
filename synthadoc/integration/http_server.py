@@ -1792,7 +1792,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             cache_version=orch._cfg.cache.version,
             fetch_timeout=orch._cfg.ingest.fetch_timeout_seconds,
         )
-        skill = SkillAgent()
+        # URL sources go through the SSRF guard with the freshly loaded config, so
+        # allow_private_urls matches what `ingest` does and hot-reloads like other settings.
+        from synthadoc.core.url_policy import url_policy_from_config
+        from synthadoc.security.ssrf import ResponseTooLarge, SsrfBlocked, make_fetcher
+        runtime_cfg = orch.runtime_config()
+        skill = SkillAgent(skill_kwargs={"url": {
+            "fetch_timeout": runtime_cfg.ingest.fetch_timeout_seconds,
+            "fetcher": make_fetcher(url_policy_from_config(runtime_cfg)),
+        }})
         # Security: restrict local file sources to within the wiki root so this
         # endpoint cannot be used to read arbitrary server files. Mirrors the
         # containment enforced by /ingest and IngestAgent, including the
@@ -1822,6 +1830,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 status_code=422,
                 detail="No matching source type for the given input. Provide a URL, file path, or search query.",
             )
+        except SsrfBlocked as exc:
+            raise HTTPException(status_code=403, detail=exc.public_message)
+        except ResponseTooLarge as exc:
+            raise HTTPException(status_code=413, detail=exc.public_message)
         text = extracted.text[:8000]
         analysis = await agent._analyse(text, bust_cache=False)
         analysis.pop("_tokens", None)
