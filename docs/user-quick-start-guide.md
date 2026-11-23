@@ -3901,6 +3901,7 @@ Common reason to edit: switching from the Anthropic default to Gemini Flash (fre
 [server]
 port = 7071          # required if running more than one wiki simultaneously
 allow_external_paths = false  # set true only on a local-only instance not reachable via a reverse proxy
+allow_private_urls = false    # set true to ingest URLs on your intranet or http://localhost (see below)
 
 [cost]
 soft_warn_usd = 0.50
@@ -3908,6 +3909,7 @@ hard_gate_usd = 2.00
 
 [ingest]
 fetch_timeout_seconds = 60   # increase if slow sites time out during web search
+max_download_bytes = 26214400  # largest web page or file download accepted (25 MiB)
 
 [web_search]
 provider    = "tavily"
@@ -3924,6 +3926,8 @@ on_ingest_complete = "python git-auto-commit.py"
 ```
 
 Common reason to edit: each wiki needs its own port when running multiple wikis at the same time.
+
+**Ingesting a URL on your intranet or localhost.** Synthadoc fetches web sources through a guard that refuses private, loopback and cloud-metadata addresses, so a pasted URL cannot be used to reach internal services. If you deliberately ingest from an internal site or a local docs server, set `allow_private_urls = true` in the `[server]` section of `.synthadoc/config.toml` (or export `SYNTHADOC_ALLOW_PRIVATE_URLS=1` before `synthadoc serve`). Edits to `config.toml` apply to the next ingest without a restart; the environment variable needs a restart and wins over the file in both directions. Cloud-metadata addresses and the ports of your wiki servers stay blocked even then. A refused URL fails the job immediately with *URL is not permitted.*; the reason is in the server log.
 
 Full config reference including all keys, defaults, and multi-wiki setup: [docs/design.md — Configuration](design.md#configuration).
 
