@@ -644,19 +644,19 @@ curl http://localhost:7070/health
 
 **Windows:**
 ```bat
-docker pull chenp/synthadoc:1.5.3
-docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.3
+docker pull chenp/synthadoc:1.5.4
+docker run -d --name history-of-computing -v "%USERPROFILE%\wikis\history-of-computing:/wiki" -p 7070:7070 --env-file "%USERPROFILE%\wikis\.env" chenp/synthadoc:1.5.4
 ```
 
 **Linux / macOS:**
 ```bash
-docker pull chenp/synthadoc:1.5.3
+docker pull chenp/synthadoc:1.5.4
 docker run -d \
   --name history-of-computing \
   -v ~/wikis/history-of-computing:/wiki \
   -p 7070:7070 \
   --env-file ~/wikis/.env \
-  chenp/synthadoc:1.5.3
+  chenp/synthadoc:1.5.4
 ```
 
 ### Viewing logs
