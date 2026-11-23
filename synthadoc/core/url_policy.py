@@ -62,11 +62,16 @@ def url_policy_from_config(cfg: object, *, registry: Optional[dict] = None) -> U
     ingest = getattr(cfg, "ingest", None)
 
     blocked: set = set()
+    private_ports: set = set()
 
     def block_port(port: object, hosts: list) -> None:
         valid = _valid_port(port)
         if valid is None:
             return
+        # Every loopback/private address, not only the bound ones: a server bound to
+        # 0.0.0.0 also answers on 127.0.0.2, its LAN address and so on.
+        private_ports.add(valid)
+        # Exact entries still matter for non-private (public) registry hosts.
         for ip in set(hosts) | set(_LOOPBACK):
             blocked.add((ip, valid))
 
@@ -83,4 +88,5 @@ def url_policy_from_config(cfg: object, *, registry: Optional[dict] = None) -> U
         trust_proxy_env=_flag(server, "trust_proxy_env"),
         max_bytes=_positive_int(getattr(ingest, "max_download_bytes", None), _DEFAULT_MAX_BYTES),
         always_block=frozenset(blocked),
+        always_block_private_ports=frozenset(private_ports),
     )

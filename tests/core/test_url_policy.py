@@ -90,3 +90,30 @@ def test_mock_config_fails_closed():
     assert policy.allow_private is False
     assert policy.trust_proxy_env is False
     assert policy.max_bytes == 25 * 1024 * 1024
+
+
+def test_wildcard_bind_blocks_the_wiki_port_on_every_local_address():
+    """Server bound to 0.0.0.0 (the Docker case) answers on every local address."""
+    cfg = _Cfg(ServerConfig(host="0.0.0.0", port=7070, allow_private_urls=True))
+    policy = url_policy_from_config(cfg, registry={})
+    for ip in ("127.0.0.2", "192.168.1.5", "10.1.2.3", "172.20.0.9", "::1", "fd00::5"):
+        assert classify_address(ip, policy, port=7070) == "always-block", ip
+        assert classify_address(ip, policy, port=9999) is None, ip
+
+
+def test_default_bind_also_blocks_any_loopback_address():
+    policy = url_policy_from_config(_Cfg(ServerConfig(allow_private_urls=True)), registry={})
+    assert classify_address("127.0.0.2", policy, port=7070) == "always-block"
+
+
+def test_registered_wiki_ports_are_blocked_on_every_private_address():
+    registry = {"alpha": {"path": "/w/a", "port": 7071}, "beta": {"path": "/w/b", "port": 7072}}
+    policy = url_policy_from_config(_Cfg(ServerConfig(allow_private_urls=True)), registry=registry)
+    for port in (7071, 7072):
+        assert classify_address("192.168.1.5", policy, port=port) == "always-block"
+    assert classify_address("192.168.1.5", policy, port=7073) is None
+
+
+def test_public_hosts_on_a_wiki_port_stay_reachable():
+    policy = url_policy_from_config(_Cfg(ServerConfig(port=7070, allow_private_urls=True)), registry={})
+    assert classify_address("8.8.8.8", policy, port=7070) is None
