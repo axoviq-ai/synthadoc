@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import socket
 import ssl
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional, Union
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+import httpx
+
+logger = logging.getLogger("synthadoc.security.ssrf")
 
 _IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 Resolver = Callable[[str, int], Awaitable[list]]
@@ -217,3 +222,161 @@ async def validate_url(
         if rule is not None:
             raise SsrfBlocked(f"{host} -> {address}: {rule}")
     return ResolvedTarget(scheme, host, port, tuple(addresses), url)
+
+
+class ResponseTooLarge(Exception):
+    """The response body exceeded ``UrlPolicy.max_bytes`` (counted after decoding)."""
+
+    public_message = "Response is too large."
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(self.public_message)
+        self.detail = detail
+
+
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_CREDENTIAL_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
+# The body is returned already decoded, so these would mislead a later reader.
+_STALE_RESPONSE_HEADERS = frozenset({"content-encoding", "content-length", "transfer-encoding"})
+
+
+def _origin(url: str) -> tuple:
+    parts = urlsplit(url)
+    return parts.hostname, parts.port or _DEFAULT_PORTS.get(parts.scheme.lower())
+
+
+class GuardedClient:
+    """GET/HEAD client that validates every hop and pins the connection to the checked IP."""
+
+    def __init__(
+        self, policy: UrlPolicy, *, resolver: Optional[Resolver] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ) -> None:
+        self._policy = policy
+        self._resolver = resolver
+        self._transport = transport
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def __aenter__(self) -> "GuardedClient":
+        kwargs: dict = {
+            "trust_env": self._policy.trust_proxy_env,
+            "follow_redirects": False,
+            "timeout": httpx.Timeout(self._policy.total_timeout,
+                                     connect=self._policy.connect_timeout),
+        }
+        if self._policy.ssl_context is not None:
+            kwargs["verify"] = self._policy.ssl_context
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+        self._client = httpx.AsyncClient(**kwargs)
+        if self._policy.trust_proxy_env:
+            logger.warning("SSRF guard: proxy mode is on, so connections cannot be pinned "
+                           "to the validated address (best-effort pre-check only)")
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        assert self._client is not None
+        await self._client.aclose()
+
+    async def get(self, url: str, *, headers: Optional[dict] = None) -> httpx.Response:
+        return await self._fetch("GET", url, headers)
+
+    async def head(self, url: str, *, headers: Optional[dict] = None) -> httpx.Response:
+        return await self._fetch("HEAD", url, headers)
+
+    async def _fetch(self, method: str, url: str, headers: Optional[dict]) -> httpx.Response:
+        try:
+            async with asyncio.timeout(self._policy.total_timeout):
+                return await self._follow(method, url, dict(headers or {}))
+        except TimeoutError:
+            raise httpx.TimeoutException("request exceeded the total time limit") from None
+
+    async def _follow(self, method: str, url: str, headers: dict) -> httpx.Response:
+        assert self._client is not None
+        current, hops = url, 0
+        while True:
+            try:
+                target = await validate_url(current, self._policy, resolver=self._resolver)
+            except SsrfResolutionError as exc:
+                logger.info("guarded fetch: %s", exc.detail)
+                raise httpx.ConnectError("name resolution failed") from None
+            except SsrfBlocked as exc:
+                logger.warning("guarded fetch blocked: %s", exc.detail)
+                raise
+            pinned_url, send_headers, extensions = self._pin(target, headers)
+            request = self._client.build_request(
+                method, pinned_url, headers=send_headers, extensions=extensions)
+            response = await self._client.send(request, stream=True, follow_redirects=False)
+            try:
+                location = response.headers.get("location")
+                if response.status_code in _REDIRECT_STATUSES and location:
+                    hops += 1
+                    if hops > self._policy.max_redirects:
+                        raise httpx.TooManyRedirects(
+                            "Exceeded maximum allowed redirects.", request=request)
+                    following = urljoin(current, location)
+                    headers = self._headers_for_hop(headers, current, following)
+                    current = following
+                    continue
+                body = await self._read_capped(response)
+                return self._materialise(response, method, current, body)
+            finally:
+                await response.aclose()
+
+    def _pin(self, target: ResolvedTarget, headers: dict) -> tuple:
+        try:
+            ascii_host = target.host.encode("idna").decode("ascii")
+        except UnicodeError:
+            raise SsrfBlocked(f"host {target.host!r} is not encodable") from None
+        send = {k: v for k, v in headers.items() if k.lower() != "host"}
+        if self._policy.trust_proxy_env:
+            return target.url, send, {}
+        default_port = _DEFAULT_PORTS.get(target.scheme)
+        host_header = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
+        ip = target.addresses[0]
+        ip_host = f"[{ip}]" if ":" in ip else ip
+        netloc = ip_host
+        if target.port != default_port:
+            host_header = f"{host_header}:{target.port}"
+            netloc = f"{ip_host}:{target.port}"
+        send["Host"] = host_header
+        parts = urlsplit(target.url)
+        pinned = urlunsplit((parts.scheme, netloc, parts.path or "/", parts.query, ""))
+        extensions = {"sni_hostname": ascii_host} if parts.scheme == "https" else {}
+        return pinned, send, extensions
+
+    @staticmethod
+    def _headers_for_hop(headers: dict, current: str, following: str) -> dict:
+        downgrade = (urlsplit(current).scheme.lower() == "https"
+                     and urlsplit(following).scheme.lower() != "https")
+        if _origin(current) == _origin(following) and not downgrade:
+            return headers
+        return {k: v for k, v in headers.items() if k.lower() not in _CREDENTIAL_HEADERS}
+
+    async def _read_capped(self, response: httpx.Response) -> bytes:
+        limit = self._policy.max_bytes
+        declared = response.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > limit:
+            raise ResponseTooLarge(f"declared length {declared} exceeds {limit}")
+        chunks, total = [], 0
+        async for chunk in response.aiter_bytes():
+            total += len(chunk)
+            if total > limit:
+                raise ResponseTooLarge(f"decoded body exceeds {limit} bytes")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    @staticmethod
+    def _materialise(response: httpx.Response, method: str, url: str, body: bytes) -> httpx.Response:
+        headers = [(k, v) for k, v in response.headers.multi_items()
+                   if k.lower() not in _STALE_RESPONSE_HEADERS]
+        return httpx.Response(response.status_code, headers=headers, content=body,
+                              request=httpx.Request(method, url))
+
+
+def guarded_client(
+    policy: UrlPolicy, *, resolver: Optional[Resolver] = None,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> GuardedClient:
+    """Async context manager. ``resolver`` and ``transport`` are test hooks only."""
+    return GuardedClient(policy, resolver=resolver, transport=transport)
