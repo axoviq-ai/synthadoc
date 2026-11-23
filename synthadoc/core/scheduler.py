@@ -16,6 +16,7 @@ from synthadoc.utils import fmt_ts as _fmt_ts
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthadoc.security.redact import redact_text
 from synthadoc.utils import atomic_write_text
 
 if TYPE_CHECKING:
@@ -180,7 +181,8 @@ async def _run_scheduled_job(
             proc.communicate(), timeout=job_timeout_seconds
         )
         duration = time.monotonic() - t0
-        out = _truncate_output(stdout.decode(errors="replace").strip() if stdout else "")
+        # Redact before truncating: a secret cut at the boundary would no longer match a pattern.
+        out = _truncate_output(redact_text(stdout.decode(errors="replace").strip()) if stdout else "")
 
         if proc.returncode == 0:
             await audit_db.record_scheduled_run_finish(run_id, "success", duration, output=out)
@@ -188,7 +190,7 @@ async def _run_scheduled_job(
         else:
             err = f"exit code {proc.returncode}"
             if stderr:
-                err += f": {stderr.decode(errors='replace').strip()[:300]}"
+                err += f": {redact_text(stderr.decode(errors='replace').strip())[:300]}"
             await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err, out)
             logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
     except asyncio.TimeoutError:
@@ -207,8 +209,9 @@ async def _run_scheduled_job(
         raise
     except Exception as exc:
         duration = time.monotonic() - t0
-        await audit_db.record_scheduled_run_finish(run_id, "failed", duration, str(exc))
-        logger.error("[schedule] %s  %s  failed: %s", run_id, op, exc)
+        detail = redact_text(str(exc))
+        await audit_db.record_scheduled_run_finish(run_id, "failed", duration, detail)
+        logger.error("[schedule] %s  %s  failed: %s", run_id, op, detail)
 
 
 # ------------------------------------------------------------------
