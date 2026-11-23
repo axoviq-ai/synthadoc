@@ -56,7 +56,12 @@ def _disable_mcp_when_unavailable(monkeypatch):
     """
     if _MCP_AVAILABLE:
         return
-    import synthadoc.integration.http_server as _hs
+    try:
+        import synthadoc.integration.http_server as _hs
+    except ImportError:
+        # Lean environment (the security-package CI job installs no server
+        # dependencies): there is no create_app to patch.
+        return
     _orig = _hs.create_app
 
     def _patched(wiki_root, *, enable_mcp=True, **kwargs):
