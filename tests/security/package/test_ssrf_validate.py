@@ -238,3 +238,37 @@ async def test_odd_ip_notations_are_never_allowed(url):
     # or fail to resolve; they must never be treated as a public host.
     with pytest.raises((SsrfBlocked, SsrfResolutionError)):
         await validate_url(url, STRICT)
+
+
+# ---- wiki ports are blocked on EVERY private/loopback address -----------------
+
+_LOCAL_ADDRESSES = [
+    "127.0.0.1", "127.0.0.2", "127.255.255.254", "10.1.2.3", "172.20.0.9", "192.168.1.5",
+    "::1", "fd00::5", "::ffff:127.0.0.2", "::ffff:192.168.1.5",
+]
+
+
+@pytest.mark.parametrize("ip", _LOCAL_ADDRESSES)
+def test_port_block_covers_every_private_and_loopback_address(ip):
+    policy = UrlPolicy(allow_private=True, always_block_private_ports=frozenset({7070}))
+    assert classify_address(ip, policy, port=7070) == "always-block"
+    assert classify_address(ip, policy, port=7071) is None
+
+
+def test_port_block_leaves_public_addresses_alone():
+    policy = UrlPolicy(allow_private=True, always_block_private_ports=frozenset({7070}))
+    assert classify_address("8.8.8.8", policy, port=7070) is None
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536, 70000])
+def test_port_block_rejects_out_of_range_ports(port):
+    with pytest.raises(ValueError):
+        UrlPolicy(always_block_private_ports=frozenset({port}))
+
+
+async def test_lan_address_on_a_wiki_port_is_refused_end_to_end():
+    policy = UrlPolicy(allow_private=True, always_block_private_ports=frozenset({7070}))
+    with pytest.raises(SsrfBlocked):
+        await validate_url("http://192.168.1.5:7070/shutdown", policy)
+    target = await validate_url("http://192.168.1.5:8080/doc", policy)
+    assert target.port == 8080
