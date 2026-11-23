@@ -669,3 +669,58 @@ def test_server_allow_external_paths_toml_string_false_is_false(tmp_path):
     )
     cfg = load_config(project_config=cfg_file)
     assert cfg.server.allow_external_paths is False
+
+
+# ---------------------------------------------------------------------------
+# URL fetch guard settings (v1.5.4): allow_private_urls, trust_proxy_env,
+# max_download_bytes.  Same precedence rules as allow_external_paths.
+# ---------------------------------------------------------------------------
+
+_AGENTS = '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+
+_URL_FLAGS = [
+    ("allow_private_urls", "SYNTHADOC_ALLOW_PRIVATE_URLS"),
+    ("trust_proxy_env", "SYNTHADOC_TRUST_PROXY_ENV"),
+]
+
+
+def _load(tmp_path, body: str = ""):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(_AGENTS + body)
+    return load_config(project_config=cfg_file)
+
+
+@pytest.mark.parametrize("key, env", _URL_FLAGS)
+def test_url_guard_flags_default_false(tmp_path, monkeypatch, key, env):
+    monkeypatch.delenv(env, raising=False)
+    assert getattr(_load(tmp_path).server, key) is False
+
+
+@pytest.mark.parametrize("key, env", _URL_FLAGS)
+def test_url_guard_flags_toml_true(tmp_path, monkeypatch, key, env):
+    monkeypatch.delenv(env, raising=False)
+    assert getattr(_load(tmp_path, f"[server]\n{key} = true\n").server, key) is True
+
+
+@pytest.mark.parametrize("key, env", _URL_FLAGS)
+def test_url_guard_flags_env_enables_over_toml(tmp_path, monkeypatch, key, env):
+    monkeypatch.setenv(env, "1")
+    assert getattr(_load(tmp_path, f"[server]\n{key} = false\n").server, key) is True
+
+
+@pytest.mark.parametrize("key, env", _URL_FLAGS)
+def test_url_guard_flags_env_disables_over_toml(tmp_path, monkeypatch, key, env):
+    """The env var is authoritative in both directions (operator safety override)."""
+    monkeypatch.setenv(env, "0")
+    assert getattr(_load(tmp_path, f"[server]\n{key} = true\n").server, key) is False
+
+
+@pytest.mark.parametrize("key, env", _URL_FLAGS)
+def test_url_guard_flags_quoted_false_is_false(tmp_path, monkeypatch, key, env):
+    monkeypatch.delenv(env, raising=False)
+    assert getattr(_load(tmp_path, f'[server]\n{key} = "false"\n').server, key) is False
+
+
+def test_max_download_bytes_default_and_override(tmp_path):
+    assert _load(tmp_path).ingest.max_download_bytes == 25 * 1024 * 1024
+    assert _load(tmp_path, "[ingest]\nmax_download_bytes = 1048576\n").ingest.max_download_bytes == 1048576
