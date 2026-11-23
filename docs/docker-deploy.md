@@ -228,7 +228,7 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "anthropic", model = "claude-sonnet-4-6", effort = "low" }
 # default = { provider = "anthropic", model = "claude-opus-4-8",   effort = "low" }
 # default = { provider = "deepseek",  model = "deepseek-flash" }
-# default = { provider = "ollama",    model = "llama3.2" }
+# default = { provider = "ollama",    model = "qwen3.5:4b", thinking = "disabled" }  # see §Ollama sidecar below for thinking/timeout notes
 # NOTE: opencode / claude-code providers require a local binary — not supported in Docker
 # ...
 ```
@@ -1063,19 +1063,21 @@ curl -fsSL -o with-ollama.yml https://raw.githubusercontent.com/axoviq-ai/syntha
 docker compose -f with-ollama.yml up -d
 
 # Pull a model into Ollama
-docker compose -f with-ollama.yml exec ollama ollama pull llama3.2
+docker compose -f with-ollama.yml exec ollama ollama pull qwen3.5:4b
 ```
 
 Then point the wiki at Ollama: in `config.toml`, comment out the active `default =` line under `[agents]` and add this one (don't add a separate `[agents.default]` table, which would duplicate `default`). Restart the stack afterwards:
 
 ```toml
 [agents]
-default = { provider = "ollama", model = "llama3.2", base_url = "http://ollama:11434" }
+default = { provider = "ollama", model = "qwen3.5:4b", thinking = "disabled", base_url = "http://ollama:11434" }
 ```
 
 ```bash
 docker compose -f with-ollama.yml restart sd-server
 ```
+
+**The local Ollama LLM needs a GPU to be usable — not Synthadoc itself or the `sd-server` container.** CPU-only inference of the model is impractically slow for real wiki queries. On a Linux host with an NVIDIA GPU, uncomment the `deploy:` GPU reservation block in `with-ollama.yml`'s `ollama` service (requires the `nvidia-container-toolkit`). **On macOS, Docker Desktop cannot pass a Metal GPU through to a Linux container at all** — run `ollama serve` natively on the host instead (it gets full Metal acceleration there) and point `base_url` at `http://host.docker.internal:11434` rather than using the Compose file's `ollama` sidecar service. `thinking = "disabled"` above also matters: local models default to extended chain-of-thought that adds latency for no quality benefit. If your GPU's VRAM is limited, add `max_num_ctx = <N>` to the `default =` line too — the provider's own default (65536) is sized for system RAM, not VRAM.
 
 ---
 

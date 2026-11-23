@@ -1392,7 +1392,9 @@ Required environment variables per provider:
 | `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
 | `kimi`      | `KIMI_API_KEY` (or `QWEN_API_KEY`) | No — `kimi-k3` ($3/$15/1M, 1M ctx), `kimi-k2.6` ($0.95/$4/1M, 256K ctx) | No (text-only)                       |
 | `qwen`      | `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`) | Yes — free tier on `qwen3.8-flash` ($0.15/$0.47/1M) and `qwen3.8-max` ($2/$6/1M); paid: `qwen-plus`, `qwen-max` | Model-dependent |
-| `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
+| `ollama`    | _(none)_            | **Yes** — fully local; **the local LLM needs a GPU** — CPU-only inference is too slow for interactive use | Model-dependent                       |
+
+**The local Ollama LLM needs a GPU to be usable — not Synthadoc itself, and not wiki queries in general** (those run fine with any provider, local or cloud). CPU-only inference of the model is impractically slow for real wiki queries. With a GPU, also set `thinking = "disabled"` on the `agents.default` line: Ollama models default to extended chain-of-thought, which inflates response time for no quality benefit on Synthadoc's tasks. `agents.default.max_num_ctx` caps the KV-cache context window (default 65536); lower it if your GPU's VRAM is limited — the default is sized for system RAM, not VRAM.
 
 ### Cost-optimised workflow config
 

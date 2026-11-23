@@ -14,7 +14,7 @@ def test_query_stream_returns_event_stream(tmp_wiki):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_wiki)
 
-    async def _fake_stream(question, session_id=None, session_mode="POWER_USER"):
+    async def _fake_stream(question, session_id=None, session_mode="POWER_USER", **_kw):
         yield {"event": "status", "data": {"phase": "retrieving"}}
         yield {"event": "token", "data": {"text": "hello"}}
         yield {"event": "done", "data": {"next_hints": []}}
@@ -175,7 +175,7 @@ def test_query_stream_with_session_updates_cursor(tmp_wiki):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_wiki)
 
-    async def _fake_stream(question, session_id=None, session_mode="NEW_WIKI", history=None):
+    async def _fake_stream(question, session_id=None, session_mode="NEW_WIKI", history=None, **_kw):
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": 0}}
         yield {"event": "token", "data": {"text": "your wiki covers several topics"}}
         yield {"event": "done", "data": {"cacheable": True}}
@@ -197,7 +197,7 @@ def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_wiki)
 
-    async def _gap_stream(question, session_id=None, session_mode="POWER_USER", history=None):
+    async def _gap_stream(question, session_id=None, session_mode="POWER_USER", history=None, **_kw):
         yield {"event": "status", "data": {"phase": "retrieving"}}
         yield {"event": "token", "data": {"text": "No pages on this topic."}}
         yield {"event": "citations", "data": {"citations": []}}
@@ -217,7 +217,7 @@ def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
 
         # Second request — served from cache; the gap event must still appear
         # (verifies both that cache stored knowledge_gap=True and that _cached_stream replays it)
-        async def _no_gap_stream(question, session_id=None, session_mode="POWER_USER", history=None):
+        async def _no_gap_stream(question, session_id=None, session_mode="POWER_USER", history=None, **_kw):
             raise AssertionError("live stream must not be called on cache hit")
             yield  # make it a generator
 
