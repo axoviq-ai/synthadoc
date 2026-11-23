@@ -11,6 +11,7 @@ import logging
 from synthadoc.config import Config, load_config
 from synthadoc.utils import atomic_write_text
 from synthadoc.errors import DomainBlockedException
+from synthadoc.security.ssrf import ResponseTooLarge, SsrfBlocked
 from synthadoc.core.cache import CacheManager
 from synthadoc.core.domain_guard import load_blocked_domains, is_domain_blocked
 from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
@@ -223,6 +224,12 @@ class Orchestrator:
             await self._queue.retry(job.id)
         return len(jobs)
 
+    def runtime_config(self):
+        """Config re-read from disk so staging_policy, allow_private_urls and other
+        runtime settings take effect without a server restart."""
+        cfg_path = self._root / ".synthadoc" / "config.toml"
+        return load_config(project_config=cfg_path) if cfg_path.exists() else self._cfg
+
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
                           force: bool = False, bust_cache: bool | None = None,
                           max_results: int | None = None,
@@ -261,10 +268,7 @@ class Orchestrator:
                 return
 
         try:
-            # Reload config from disk so staging_policy and other runtime settings
-            # take effect without a server restart.
-            _cfg_path = self._root / ".synthadoc" / "config.toml"
-            cfg = load_config(project_config=_cfg_path) if _cfg_path.exists() else self._cfg
+            cfg = self.runtime_config()
             # Apply per-run override without mutating the global config object.
             if max_source_chars is not None:
                 import copy as _copy
@@ -373,8 +377,9 @@ class Orchestrator:
                     "tokens_used": result.tokens_used,
                     "cost_usd": result.cost_usd,
                 })
-        except (NotImplementedError, FileNotFoundError) as e:
-            # Permanent failures — source is invalid, retry can never help
+        except (NotImplementedError, FileNotFoundError, SsrfBlocked, ResponseTooLarge) as e:
+            # Permanent failures — source is invalid or not permitted, retry can never help.
+            # SsrfBlocked/ResponseTooLarge carry a generic message; their detail is already logged.
             await self._queue.fail_permanent(job_id, str(e))
         except EnvironmentError as e:
             # Provider binary not installed (ERR-PROV-003) — log cleanly, no traceback

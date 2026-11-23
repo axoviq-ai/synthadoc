@@ -488,3 +488,33 @@ async def test_run_ingest_transient_error_uses_retryable_fail(tmp_wiki):
         mock_fail.assert_awaited_once()
     finally:
         await orch.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc_factory", [
+    lambda: __import__("synthadoc.security.ssrf", fromlist=["SsrfBlocked"]).SsrfBlocked(
+        "internal.example -> 10.9.8.7: private"),
+    lambda: __import__("synthadoc.security.ssrf", fromlist=["ResponseTooLarge"]).ResponseTooLarge(
+        "decoded body exceeds 1024 bytes"),
+])
+async def test_run_ingest_blocked_url_is_a_permanent_failure_with_a_generic_message(
+        tmp_wiki, exc_factory):
+    """A blocked or oversized URL can never succeed on retry, and the stored job error
+    (returned by GET /jobs) must not carry the resolved address or rule detail."""
+    cfg = _cfg()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+    try:
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()):
+            with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
+                       new=AsyncMock(side_effect=exc_factory())):
+                with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
+                    with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
+                        await orch._run_ingest("job-3", "http://internal.example/", auto_confirm=True)
+
+        mock_fail.assert_not_awaited()
+        mock_perm.assert_awaited_once()
+        stored = mock_perm.await_args.args[1]
+        assert "10.9.8.7" not in stored and "1024" not in stored
+    finally:
+        await orch.close()

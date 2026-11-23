@@ -1009,9 +1009,14 @@ class LintAgent(BaseAgent):
         # Generic URL: HTTP HEAD
         _log.debug("lifecycle url-check [http-head] url=%s", url)
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.head(url, follow_redirects=True)
+            import dataclasses
+            from synthadoc.core.url_policy import url_policy_from_config
+            from synthadoc.security.ssrf import guarded_client
+            if getattr(self, "_url_check_policy", None) is None:
+                self._url_check_policy = dataclasses.replace(
+                    url_policy_from_config(self._cfg), total_timeout=5.0, connect_timeout=5.0)
+            async with guarded_client(self._url_check_policy) as client:
+                resp = await client.head(url)
                 _log.debug("lifecycle url-check [http-head] status=%d url=%s", resp.status_code, url)
                 return resp.status_code in (404, 410)
         except Exception as exc:
