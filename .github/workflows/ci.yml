@@ -42,6 +42,27 @@ jobs:
       - run: python scripts/update_badges.py --check
       - run: pytest --cov=synthadoc --cov-report=term-missing -v
 
+  # The shared security package is a leaf: stdlib, httpx and filelock only. Its tests run
+  # on every supported Python version in a LEAN environment on purpose. Installing the
+  # full dev extras would pull heavy optional dependencies (embedding runtime) that may
+  # have no wheels on the newest Python, and would hide an accidental import of
+  # synthadoc.core, agents or config from the package. cryptography is only for the
+  # real-TLS pinning test; pytest-timeout stops a runaway regex from hanging the job.
+  security-package:
+    name: security package (Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install httpx filelock cryptography pytest pytest-asyncio pytest-timeout
+      - run: python -m pytest tests/security/package -v
+
   coverage-badge:
     needs: test
     runs-on: ubuntu-latest
