@@ -69,7 +69,7 @@ def url_policy_from_config(cfg: object, *, registry: Optional[dict] = None) -> U
         if valid is None:
             return
         # Every loopback/private address, not only the bound ones: a server bound to
-        # 0.0.0.0 also answers on 127.0.0.2, its LAN address and so on.
+        # 0.0.0.0 also answers on any other loopback address, its LAN address and so on.
         private_ports.add(valid)
         # Exact entries still matter for non-private (public) registry hosts.
         for ip in set(hosts) | set(_LOOPBACK):
