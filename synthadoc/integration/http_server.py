@@ -1803,7 +1803,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         runtime_cfg = orch.runtime_config()
         skill = SkillAgent(skill_kwargs={"url": {
             "fetch_timeout": runtime_cfg.ingest.fetch_timeout_seconds,
-            "fetcher": make_fetcher(url_policy_from_config(runtime_cfg)),
+            # May resolve registry host names (blocking), so keep it off the event loop.
+            "fetcher": make_fetcher(await asyncio.to_thread(url_policy_from_config, runtime_cfg)),
         }})
         # Security: restrict local file sources to within the wiki root so this
         # endpoint cannot be used to read arbitrary server files. Mirrors the
