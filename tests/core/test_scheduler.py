@@ -199,3 +199,38 @@ def test_save_raw_uses_unix_line_endings(tmp_path):
         assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
     # Also verify the on-disk bytes contain no CRLF
     assert b"\r\n" not in sched._path.read_bytes()
+
+
+# ---- redaction of captured output (v1.5.4) ---------------------------------
+
+async def test_scheduled_run_output_and_errors_are_redacted_before_recording(tmp_path):
+    audit_db = AsyncMock()
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+    mock_proc.communicate = AsyncMock(return_value=(
+        b"fetched https://h.example/f?api_key=SECRET123&p=1\n",
+        b"HTTP 401 Authorization: Bearer abcdefgh12345678"))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        await _run_scheduled_job({"id": "sched-r", "op": "ingest"}, "w", tmp_path, audit_db,
+                                 job_timeout_seconds=30)
+
+    call = audit_db.record_scheduled_run_finish.call_args
+    recorded = " ".join(str(a) for a in list(call.args) + list(call.kwargs.values()))
+    assert "SECRET123" not in recorded and "abcdefgh12345678" not in recorded
+    assert "exit code 1" in recorded and "p=1" in recorded
+
+
+async def test_scheduled_success_output_is_redacted(tmp_path):
+    audit_db = AsyncMock()
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"token=hunter2value done", b""))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        await _run_scheduled_job({"id": "sched-s", "op": "lint"}, "w", tmp_path, audit_db,
+                                 job_timeout_seconds=30)
+
+    call = audit_db.record_scheduled_run_finish.call_args
+    recorded = " ".join(str(a) for a in list(call.args) + list(call.kwargs.values()))
+    assert "hunter2value" not in recorded and "done" in recorded
