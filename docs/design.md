@@ -996,6 +996,12 @@ Both flags are operator decisions, never per-request, and follow the same rules 
 
 **Known limitation.** A secret embedded in the query string of a source URL (a token or a presigned link) is stored as written in page frontmatter, the audit database and the extracted text, and therefore also in backups. Logs, job errors and API output are redacted. Prefer URLs that do not embed secrets.
 
+### Secret redaction
+
+Secrets are masked wherever text leaves the server: the console and file logs (message and exception text), job errors before they are stored and again when jobs are returned by the API, the output and errors of scheduled runs before they are recorded, and the audit history, cost, query and event endpoints. Masked values include authorization and cookie headers, bearer tokens, common provider API keys, JWTs, credentials embedded in URLs (`user:password@host`), and secret-looking URL parameters such as `token`, `api_key` and `X-Amz-Signature`.
+
+Redaction is a safety net, not a substitute for keeping secrets out of logs. It is applied at output boundaries and does **not** rewrite stored data: the audit database keeps source paths exactly as ingested because they are used as lookup keys. Log and API masking uses a deliberately broad list of parameter names (over-masking a log line is harmless), so a URL like `...?code=US` shows as `?code=[REDACTED]` in logs and API output while the stored URL is unchanged. See the known limitation under *URL fetching and the SSRF guard*.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
