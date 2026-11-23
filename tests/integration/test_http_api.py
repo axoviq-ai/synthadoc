@@ -1484,3 +1484,103 @@ def test_ingest_endpoint_ignores_allow_external_paths_in_body(tmp_wiki):
     assert resp.status_code == 200
     queued_payload = mock_enqueue.call_args[0][1]
     assert "allow_external_paths" not in queued_payload
+
+
+# ---------------------------------------------------------------------------
+# /analyse URL fetches go through the SSRF guard (v1.5.4)
+# ---------------------------------------------------------------------------
+
+_ANALYSIS = {"entities": [], "tags": [], "summary": "s", "relevant": True}
+
+
+@pytest.fixture
+def _no_registry(monkeypatch):
+    monkeypatch.setattr("synthadoc.cli._wiki.read_registry_all", lambda: {})
+    monkeypatch.delenv("SYNTHADOC_ALLOW_PRIVATE_URLS", raising=False)
+
+
+def _analyse(client, source):
+    with patch("synthadoc.agents.ingest_agent.IngestAgent._analyse",
+               new=AsyncMock(return_value=_ANALYSIS)):
+        return client.post("/analyse", json={"source": source})
+
+
+@pytest.mark.parametrize("url", [
+    "http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:1/", "http://10.0.0.5/admin",
+])
+def test_analyse_blocks_internal_urls_with_a_generic_403(tmp_wiki, _no_registry, url):
+    from synthadoc.integration.http_server import create_app
+
+    app = create_app(wiki_root=tmp_wiki)
+    with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+        with TestClient(app) as client:
+            resp = _analyse(client, url)
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "URL is not permitted."
+    assert "169.254" not in resp.text and "10.0.0.5" not in resp.text
+
+
+def test_analyse_allows_a_private_url_when_the_server_opts_in(tmp_wiki, _no_registry):
+    import httpx
+    import respx
+    from synthadoc.integration.http_server import create_app
+
+    (tmp_wiki / ".synthadoc" / "config.toml").write_text(
+        "[server]\nallow_private_urls = true\n", encoding="utf-8")
+    app = create_app(wiki_root=tmp_wiki)
+    with respx.mock:
+        route = respx.get("http://127.0.0.1:8321/doc").mock(
+            return_value=httpx.Response(200, text="<html><body><p>intranet doc</p></body></html>"))
+        with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+            with TestClient(app) as client:
+                resp = _analyse(client, "http://127.0.0.1:8321/doc")
+
+    assert resp.status_code == 200 and route.called
+
+
+def test_analyse_private_url_setting_hot_reloads(tmp_wiki, _no_registry):
+    import httpx
+    import respx
+    from synthadoc.integration.http_server import create_app
+
+    app = create_app(wiki_root=tmp_wiki)
+    with respx.mock:
+        respx.get("http://127.0.0.1:8322/doc").mock(
+            return_value=httpx.Response(200, text="<html><body><p>doc</p></body></html>"))
+        with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+            with TestClient(app) as client:
+                assert _analyse(client, "http://127.0.0.1:8322/doc").status_code == 403
+                (tmp_wiki / ".synthadoc" / "config.toml").write_text(
+                    "[server]\nallow_private_urls = true\n", encoding="utf-8")
+                assert _analyse(client, "http://127.0.0.1:8322/doc").status_code == 200
+
+
+def test_analyse_never_reaches_this_servers_own_port_even_when_private_urls_are_allowed(
+        tmp_wiki, _no_registry):
+    from synthadoc.integration.http_server import create_app
+
+    (tmp_wiki / ".synthadoc" / "config.toml").write_text(
+        "[server]\nport = 7099\nallow_private_urls = true\n", encoding="utf-8")
+    app = create_app(wiki_root=tmp_wiki)
+    with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+        with TestClient(app) as client:
+            resp = _analyse(client, "http://127.0.0.1:7099/query?q=x")
+    assert resp.status_code == 403
+
+
+def test_analyse_oversized_url_response_is_413(tmp_wiki, _no_registry):
+    import httpx
+    import respx
+    from synthadoc.integration.http_server import create_app
+
+    (tmp_wiki / ".synthadoc" / "config.toml").write_text(
+        "[server]\nallow_private_urls = true\n[ingest]\nmax_download_bytes = 1000\n", encoding="utf-8")
+    app = create_app(wiki_root=tmp_wiki)
+    with respx.mock:
+        respx.get("http://127.0.0.1:8323/big").mock(
+            return_value=httpx.Response(200, text="x" * 5000))
+        with patch("synthadoc.providers.make_provider", return_value=AsyncMock()):
+            with TestClient(app) as client:
+                resp = _analyse(client, "http://127.0.0.1:8323/big")
+    assert resp.status_code == 413
