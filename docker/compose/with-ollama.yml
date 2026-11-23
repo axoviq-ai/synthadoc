@@ -1,8 +1,9 @@
 # docker/compose/with-ollama.yml
 # Synthadoc + Ollama for fully local LLM — no cloud API keys required.
 #
-# Requirements: GPU required — CPU-only inference is impractically slow for
-# real wiki queries.
+# Requirements: the local Ollama LLM needs a GPU to be usable — not
+# Synthadoc itself or the sd-server container. CPU-only inference of the
+# model is impractically slow for real wiki queries.
 #   - Linux host with an NVIDIA GPU: install the nvidia-container-toolkit,
 #     then uncomment the `deploy:` block in the ollama service below.
 #   - macOS: Docker Desktop CANNOT pass a Metal GPU through to a Linux
