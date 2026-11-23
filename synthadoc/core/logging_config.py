@@ -40,6 +40,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from synthadoc.security.redact import install_log_filter, redact_text
+
 if TYPE_CHECKING:
     from synthadoc.config import LogsConfig
 
@@ -64,10 +66,10 @@ class _ConsoleFormatter(logging.Formatter):
         level = self._LEVEL_ABBREV.get(record.levelno, record.levelname[:5])
         # Shorten the logger name: "synthadoc.agents.ingest_agent" → "agents.ingest_agent"
         name = record.name.removeprefix("synthadoc.")
-        msg = record.getMessage()
+        msg = redact_text(record.getMessage())
         base = f"{ts} {level}  {name} — {msg}"
         if record.exc_info:
-            base += "\n" + self.formatException(record.exc_info)
+            base += "\n" + redact_text(self.formatException(record.exc_info))
         return base
 
 
@@ -83,14 +85,14 @@ class _JsonlFormatter(logging.Formatter):
             "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level":   record.levelname,
             "logger":  record.name,
-            "msg":     record.getMessage(),
+            "msg":     redact_text(record.getMessage()),
         }
         # Structured extras injected via LoggerAdapter.extra
         for key in ("job_id", "operation", "wiki", "trace_id"):
             if hasattr(record, key):
                 obj[key] = getattr(record, key)
         if record.exc_info:
-            obj["exc"] = self.formatException(record.exc_info)
+            obj["exc"] = redact_text(self.formatException(record.exc_info))
         return json.dumps(obj, ensure_ascii=False)
 
 
@@ -175,6 +177,10 @@ def setup_logging(
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(_JsonlFormatter())
     root.addHandler(file_handler)
+
+    # Defence in depth: both formatters redact, and the filter covers any handler
+    # (or formatter) added later to these handlers.
+    install_log_filter([""])
 
     # --- Suppress noisy third-party loggers ---
     for noisy in ("httpx", "httpcore", "uvicorn.access", "anthropic", "openai",
