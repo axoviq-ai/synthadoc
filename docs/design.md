@@ -988,7 +988,7 @@ A refused URL fails the job at once with the generic message *URL is not permitt
 
 | Setting | Default | Effect |
 |---|---|---|
-| `[server] allow_private_urls`, env `SYNTHADOC_ALLOW_PRIVATE_URLS` | `false` | Lets URL fetches reach private and loopback addresses (intranet wikis, `http://localhost` documentation). Cloud-metadata addresses, this server's own port and the port of every registered wiki stay blocked even when on, because those servers answer unauthenticated `GET` requests such as `/query`. |
+| `[server] allow_private_urls`, env `SYNTHADOC_ALLOW_PRIVATE_URLS` | `false` | Lets URL fetches reach private and loopback addresses (intranet wikis, `http://localhost` documentation). Cloud-metadata addresses stay blocked, and so do this server's own port and the port of every registered wiki on **every** loopback and private address (a server bound to `0.0.0.0` also answers on `127.0.0.2` and its LAN address), because those servers answer unauthenticated `GET` requests such as `/query`. Carrier-grade NAT addresses (`100.64.0.0/10`, as used by Tailscale) are not treated as private and stay blocked. |
 | `[server] trust_proxy_env`, env `SYNTHADOC_TRUST_PROXY_ENV` | `false` | Honour the proxy environment variables. The proxy resolves names itself, so the connection cannot be pinned; the address check becomes a best-effort pre-check and a warning is logged. |
 | `[ingest] max_download_bytes` | `26214400` | Largest URL response body accepted. |
 
