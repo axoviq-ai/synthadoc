@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, quote, urlparse
 
 from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta
 import re
@@ -45,13 +45,14 @@ async def _fetch_video_title(video_id: str) -> str | None:
         import httpx
     except ImportError:
         return None
-    url = (
-        f"https://www.youtube.com/oembed"
-        f"?url=https://www.youtube.com/watch?v={video_id}&format=json"
-    )
+    # video_id comes from user-supplied URLs: encode it so it cannot add query parameters.
+    params = {
+        "url": f"https://www.youtube.com/watch?v={quote(video_id, safe='')}",
+        "format": "json",
+    }
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(url)
+            resp = await client.get("https://www.youtube.com/oembed", params=params)
             if resp.status_code == 200:
                 return resp.json().get("title") or None
     except Exception:
