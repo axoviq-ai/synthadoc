@@ -187,3 +187,59 @@ def test_suppress_shutdown_noise_passes_records_with_none_exc_type():
         msg="cleared", args=(), exc_info=(None, None, None),
     )
     assert f.filter(record) is True
+
+
+# ---- redaction in the log pipeline (v1.5.4) --------------------------------
+
+def _record(msg, *args, exc=None):
+    import sys
+    exc_info = None
+    if exc is not None:
+        try:
+            raise exc
+        except Exception:
+            exc_info = sys.exc_info()
+    return logging.LogRecord("synthadoc.t", logging.ERROR, __file__, 1, msg, args, exc_info)
+
+
+def test_jsonl_formatter_redacts_message_and_exception_text():
+    from synthadoc.core.logging_config import _JsonlFormatter
+    record = _record("call failed: %s", "Authorization: Bearer abcdefgh12345678",
+                     exc=ValueError("bad token=hunter2value"))
+    line = _JsonlFormatter().format(record)
+    obj = json.loads(line)                       # still valid JSON after redaction
+    assert "abcdefgh12345678" not in line and "hunter2value" not in line
+    assert "call failed" in obj["msg"] and "ValueError" in obj["exc"]
+
+
+def test_console_formatter_redacts_message_and_exception_text():
+    from synthadoc.core.logging_config import _ConsoleFormatter
+    record = _record("GET https://h.example/f?api_key=SECRET123&p=1",
+                     exc=RuntimeError("Authorization: Bearer abcdefgh12345678"))
+    out = _ConsoleFormatter().format(record)
+    assert "SECRET123" not in out and "abcdefgh12345678" not in out
+    assert "p=1" in out and "RuntimeError" in out
+
+
+def test_setup_logging_attaches_the_redacting_filter_to_its_handlers(tmp_path):
+    _reset_root_logger()
+    from synthadoc.core.logging_config import setup_logging
+    from synthadoc.security.redact import RedactingFilter
+    setup_logging(tmp_path, cfg=_cfg())
+    root = logging.getLogger()
+    assert root.handlers and all(
+        any(isinstance(f, RedactingFilter) for f in h.filters) for h in root.handlers)
+    _reset_root_logger()
+
+
+def test_secrets_never_reach_the_log_file(tmp_path):
+    _reset_root_logger()
+    from synthadoc.core.logging_config import setup_logging
+    setup_logging(tmp_path, cfg=_cfg())
+    logging.getLogger("synthadoc.leaky").error(
+        "refresh failed: %s", "Authorization: Bearer abcdefgh12345678", exc_info=False)
+    for h in logging.getLogger().handlers:
+        h.flush()
+    text = (tmp_path / ".synthadoc" / "logs" / "synthadoc.log").read_text(encoding="utf-8")
+    assert "refresh failed" in text and "abcdefgh12345678" not in text
+    _reset_root_logger()
