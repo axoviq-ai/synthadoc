@@ -13,6 +13,7 @@ import asyncio
 import dataclasses
 import ipaddress
 import logging
+import re
 import socket
 import ssl
 from dataclasses import dataclass
@@ -27,6 +28,11 @@ _IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 Resolver = Callable[[str, int], Awaitable[list]]
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+
+# Dotted/decimal/hex numeric hosts that are not a canonical IP literal (2130706433, 0x7f.1,
+# 0177.0.0.1, 127.1). Resolvers disagree on them, so they are refused outright.
+_NUMERIC_HOST_RE = re.compile(
+    r"(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+)){0,3}\.?", re.IGNORECASE)
 
 
 class SsrfBlocked(Exception):
@@ -213,6 +219,11 @@ async def validate_url(
         raise SsrfBlocked("zone id or encoded host")
     if port == 0:
         raise SsrfBlocked("port 0")
+    if not _is_ip_literal(host) and _NUMERIC_HOST_RE.fullmatch(host):
+        # macOS reads 0177.0.0.1 as decimal (a public address), Linux and Windows as octal
+        # (loopback). Validating whichever reading this OS happens to give would make the
+        # decision OS-dependent and unsafe behind a proxy that resolves the name itself.
+        raise SsrfBlocked("non-canonical numeric host")
     port = port or _DEFAULT_PORTS.get(scheme, 443)
 
     if _is_ip_literal(host):

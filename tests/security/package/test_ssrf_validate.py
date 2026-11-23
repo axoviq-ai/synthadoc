@@ -232,12 +232,26 @@ async def test_real_resolver_blocks_loopback_literals_and_localhost():
 
 @pytest.mark.parametrize("url", [
     "http://2130706433/", "http://0x7f.1/", "http://0177.0.0.1/", "http://127.1/",
+    "http://127.0.1/", "http://0x7f.0x0.0x0.0x1/", "http://010.1.1.1/", "http://1.2.3.4./",
+    "http://4294967295/", "http://0/",
 ])
-async def test_odd_ip_notations_are_never_allowed(url):
-    # Depending on the OS resolver these either resolve to 127.0.0.1 (blocked)
-    # or fail to resolve; they must never be treated as a public host.
-    with pytest.raises((SsrfBlocked, SsrfResolutionError)):
-        await validate_url(url, STRICT)
+async def test_non_canonical_numeric_hosts_are_refused_whatever_the_os_resolver_says(url):
+    # macOS reads 0177.0.0.1 as DECIMAL (177.0.0.1, a public address) while Linux and Windows
+    # read it as OCTAL (127.0.0.1). The resolver here always answers with a public address, so
+    # the only thing that can refuse these is the ambiguity rule: the decision must not depend
+    # on the OS, and must stay safe behind a proxy that resolves the name itself.
+    with pytest.raises(SsrfBlocked):
+        await validate_url(url, STRICT, resolver=_resolver("8.8.8.8"))
+
+
+@pytest.mark.parametrize("url", [
+    "http://8.8.8.8/", "http://example.com/", "http://a1.example.com/", "http://123abc.example/",
+    "http://1e100.net/", "http://0x41.example/", "http://[2606:4700:4700::1111]/",
+])
+async def test_canonical_literals_and_ordinary_hostnames_are_still_accepted(url):
+    target = await validate_url(url, STRICT, resolver=_resolver("8.8.8.8"))
+    assert target.port == 80
+
 
 
 # ---- wiki ports are blocked on EVERY private/loopback address -----------------
@@ -272,3 +286,13 @@ async def test_lan_address_on_a_wiki_port_is_refused_end_to_end():
         await validate_url("http://192.168.1.5:7070/shutdown", policy)
     target = await validate_url("http://192.168.1.5:8080/doc", policy)
     assert target.port == 8080
+
+
+def test_numeric_host_pattern_is_linear_time():
+    import time
+    from synthadoc.security.ssrf import _NUMERIC_HOST_RE
+
+    for host in ("0" * 200_000 + "z", "1." * 100_000, "0x" + "f" * 200_000 + "g", "9" * 200_000):
+        start = time.perf_counter()
+        _NUMERIC_HOST_RE.fullmatch(host)
+        assert time.perf_counter() - start < 1.0, host[:12]
