@@ -118,3 +118,14 @@ class TestTemplateCompleteness:
                 if required_key not in fm:
                     bad.append(f"{stub.name}: missing '{required_key}' in frontmatter")
         assert not bad, f"{template_ref} frontmatter issues:\n" + "\n".join(f"  {b}" for b in bad)
+
+
+def test_personal_learning_purpose_accepts_meeting_and_class_notes():
+    """Regression: supervisor-meeting and study-group notes were rejected as
+    out of scope because the Exclude line banned 'personal journal content'."""
+    text = (_TEMPLATES_ROOT / "education" / "personal-learning" / "wiki" / "purpose.md").read_text(
+        encoding="utf-8")
+    include = next(l for l in text.splitlines() if l.startswith("**Include:**"))
+    exclude = next(l for l in text.splitlines() if l.startswith("**Exclude:**"))
+    assert "supervisor meetings, classes and study groups" in include
+    assert "unrelated to learning" in exclude
