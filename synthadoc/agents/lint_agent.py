@@ -54,8 +54,18 @@ class LintReport:
     lifecycle_synced: int = 0
     adversarial_demotions: int = 0
     adversarial_gate_skipped_resolve: list[str] = field(default_factory=list)
+    # Pages held in 'contradicted' by the adversarial gate alone: no source
+    # conflict is recorded (no contradiction_note), so there is nothing for the
+    # contradiction resolver to fix. Reported separately from contradictions.
+    adversarial_held: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
+
+# A page the adversarial gate demoted to 'contradicted' carries a contradiction
+# note starting with this prefix. It tells lint the page is held for its
+# warnings, not for a source conflict, so it is not counted or resolved as a
+# contradiction.
+ADVERSARIAL_HOLD_NOTE_PREFIX = "adversarial gate:"
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 # Captures only the slug portion of a [[slug]], [[slug|display]], or [[slug#anchor]] link.
@@ -915,15 +925,39 @@ class LintAgent(BaseAgent):
         if threshold is None or threshold <= 0:
             return False
         if len(warnings) < threshold:
+            await self._release_adversarial_hold(slug, page, len(warnings), threshold)
             return False
         if page.status not in (LifecycleState.ACTIVE, LifecycleState.STALE):
             return False
+        if not page.contradiction_note:
+            page.contradiction_note = (
+                f"{ADVERSARIAL_HOLD_NOTE_PREFIX} {len(warnings)} warning(s) >= "
+                f"threshold {threshold}; edit the flagged claims to release it"
+            )
         await self._transition(
             slug, page, page.status, LifecycleState.CONTRADICTED,
             f"auto-demoted: adversarial gate — "
             f"{len(warnings)} warning(s) ≥ threshold {threshold}",
         )
         return True
+
+    async def _release_adversarial_hold(
+        self, slug: str, page: "WikiPage", warning_count: int, threshold: int
+    ) -> None:
+        """Release a page the gate holds once a fresh pass is below the threshold.
+
+        Only pages held by the gate alone (marked with ADVERSARIAL_HOLD_NOTE_PREFIX)
+        are released; a page with a real source conflict is never touched here.
+        """
+        if page.status != LifecycleState.CONTRADICTED:
+            return
+        if not (page.contradiction_note or "").startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
+            return
+        page.contradiction_note = None
+        await self._transition(
+            slug, page, LifecycleState.CONTRADICTED, LifecycleState.ACTIVE,
+            f"adversarial hold released — {warning_count} warning(s) < threshold {threshold}",
+        )
 
     async def _skip_resolve_for_gate(
         self, slug: str, page: "WikiPage", report: LintReport
@@ -1333,6 +1367,18 @@ class LintAgent(BaseAgent):
                             )
                             await self._audit.record_audit_event(
                                 job_id, "stale_contradiction_cleared", {"slug": slug})
+                        continue
+                    if note.startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
+                        # Demoted by the adversarial gate, not by a source conflict:
+                        # there is no disputed claim to resolve. Report it as an
+                        # adversarial hold instead of a contradiction, so a
+                        # contradiction the resolver just fixed does not appear to
+                        # come back.
+                        report.adversarial_held.append(slug)
+                        _log.info(
+                            "[lint] %s held in 'contradicted' by the adversarial gate "
+                            "(%d warning(s)); no source conflict recorded",
+                            slug, len(page.lint_warnings or []))
                         continue
                     report.contradictions_found += 1
                     if self._audit:
