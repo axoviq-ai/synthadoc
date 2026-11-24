@@ -1023,12 +1023,35 @@ async def test_workflow_run_logs_the_provider_and_model_that_does_the_work(tmp_p
     async def _fake_loop(**kw):
         yield {"event": "token", "data": {"text": "ok"}}
 
+    wf_provider = MagicMock()
+    wf_provider._config = AgentConfig(provider="deepseek", model="deepseek-flash")
     with caplog.at_level(logging.INFO, logger="synthadoc.agents.action_agent"), \
-         _patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+         _patch("synthadoc.providers.make_provider", return_value=wf_provider), \
          _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
         _ = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("workflow ")]
     assert lines == ["workflow wf-stub — deepseek/deepseek-flash (role=workflow)"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_without_override_names_the_session_provider(tmp_path, caplog):
+    """With no [agents].workflow, the work runs on the session provider. The log
+    names that provider and does not claim a default/workflow role."""
+    import logging
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    session = MagicMock()
+    session._config = AgentConfig(provider="minimax", model="MiniMax-M3")
+    agent = _workflow_agent(tmp_path, default_provider=session, workflow_cfg=None)
+
+    async def _fake_loop(**kw):
+        yield {"event": "token", "data": {"text": "ok"}}
+
+    with caplog.at_level(logging.INFO, logger="synthadoc.agents.action_agent"), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+        _ = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("workflow ")]
+    assert lines == ["workflow wf-stub — minimax/MiniMax-M3 (role=session)"]
 
 
 @pytest.mark.asyncio
