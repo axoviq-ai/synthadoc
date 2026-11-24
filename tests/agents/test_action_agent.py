@@ -1013,6 +1013,25 @@ async def test_cli_guard_checks_workflow_provider_not_default(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_workflow_run_logs_the_provider_and_model_that_does_the_work(tmp_path, caplog):
+    import logging
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    agent = _workflow_agent(tmp_path, default_provider=MagicMock(),
+                            workflow_cfg=AgentConfig(provider="deepseek", model="deepseek-flash"))
+
+    async def _fake_loop(**kw):
+        yield {"event": "token", "data": {"text": "ok"}}
+
+    with caplog.at_level(logging.INFO, logger="synthadoc.agents.action_agent"), \
+         _patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+        _ = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("workflow ")]
+    assert lines == ["workflow wf-stub — deepseek/deepseek-flash (role=workflow)"]
+
+
+@pytest.mark.asyncio
 async def test_cli_guard_fires_when_workflow_provider_is_cli(tmp_path):
     """default = a normal provider, workflow = claude-code: the guard must fire."""
     from unittest.mock import patch as _patch
