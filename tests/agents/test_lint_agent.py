@@ -2100,3 +2100,88 @@ async def test_lint_transition_invalidates_search_index(tmp_wiki):
 
     mock_search.invalidate_index.assert_called_once()
     assert store.read_page("test-page").status == "contradicted" # type: ignore
+
+
+# ── Adversarial hold is not a contradiction ───────────────────────────────────
+
+def _two_warnings():
+    return [{"claim": "Claim A", "concern": "unverified"},
+            {"claim": "Claim B", "concern": "disputed"}]
+
+
+def _held_agent(tmp_wiki, store, threshold=2):
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(text="", input_tokens=1, output_tokens=0)
+    return LintAgent(provider=provider, store=store, log_writer=log,
+                     cfg=_gate_cfg(threshold))  # type: ignore
+
+
+@pytest.mark.asyncio
+async def test_gate_demotion_is_reported_as_hold_not_contradiction(tmp_wiki):
+    """A page the adversarial gate demoted must not come back as a contradiction
+    on the next lint: it is held for its warnings, with no source conflict."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("suspect", WikiPage(
+        title="Suspect", tags=[], content="A disputed factual claim lives here.",
+        status="active", confidence="high", sources=[]))
+    agent = _held_agent(tmp_wiki, store)
+
+    async def _mock_single(slug, content):
+        return (_two_warnings(), 5) if slug == "suspect" else ([], 1)
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        first = await agent.run(scope="all", adversarial=True, lifecycle=False)
+    held = store.read_page("suspect")
+    assert held.status == "contradicted"
+    assert held.contradiction_note.startswith("adversarial gate:")
+    assert first.adversarial_demotions == 1
+
+    second = await _held_agent(tmp_wiki, store).run(scope="contradictions")
+    assert second.contradictions_found == 0
+    assert second.adversarial_held == ["suspect"]
+    assert store.read_page("suspect").status == "contradicted"  # the hold itself is kept
+
+
+@pytest.mark.asyncio
+async def test_real_contradiction_is_still_counted_alongside_a_hold(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("held", WikiPage(
+        title="Held", tags=[], content="Held page text.", status="contradicted",
+        confidence="high", sources=[],
+        contradiction_note="adversarial gate: 2 warning(s) >= threshold 2"))
+    store.write_page("real", WikiPage(
+        title="Real", tags=[], content="Real conflict text.", status="contradicted",
+        confidence="low", sources=[], contradiction_note="Source B disputes the date."))
+    report = await _held_agent(tmp_wiki, store).run(scope="contradictions")
+    assert report.contradictions_found == 1
+    assert report.adversarial_held == ["held"]
+
+
+@pytest.mark.asyncio
+async def test_hold_is_released_when_a_fresh_pass_is_below_threshold(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("held", WikiPage(
+        title="Held", tags=[], content="Edited text with the claims fixed.",
+        status="contradicted", confidence="high", sources=[],
+        contradiction_note="adversarial gate: 2 warning(s) >= threshold 2"))
+    agent = _held_agent(tmp_wiki, store)
+    async def _clean(slug, content):
+        return [], 1
+
+    with patch.object(agent, "_adversarial_single", side_effect=_clean):
+        await agent.run(scope="all", adversarial=True, lifecycle=False)
+    page = store.read_page("held")
+    assert page.status == "active" and page.contradiction_note is None
+
+
+@pytest.mark.asyncio
+async def test_gate_release_never_touches_a_real_contradiction(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Real", tags=[], content="Text.", status="contradicted",
+                    confidence="low", sources=[], contradiction_note="Source B disputes the date.")
+    store.write_page("real", page)
+    agent = _held_agent(tmp_wiki, store)
+    await agent._apply_adversarial_gate("real", page, [])
+    assert store.read_page("real").status == "contradicted"
+
