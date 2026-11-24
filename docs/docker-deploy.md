@@ -1481,22 +1481,9 @@ If the server started but `/health` does not respond, the wiki may have failed v
 
 **Running the host `synthadoc serve` for a wiki installed via Docker**
 
-When a wiki is created with `docker run --rm … synthadoc install`, the one-off container writes its registry entry inside the container and then exits — the host's `~/.synthadoc/wikis.json` is never touched. If you later want to run `synthadoc serve` directly on the host (without Docker), you have two options:
+When a wiki is created with `docker run --rm … synthadoc install`, the one-off container writes its registry entry inside the container and then exits — the host's `~/.synthadoc/wikis.json` is never touched. If you later want to run `synthadoc serve` directly on the host (without Docker), register the wiki by name on the host first. Starting the server with a path instead of a name is not enough: a wiki that is not in the registry still fails every command that looks it up by name (`status`, `stop`, `use`, `list`, cross-wiki queries).
 
-*Option A — pass the full path instead of the name (no configuration needed):*
-
-```bash
-synthadoc serve -w ~/wikis/history-of-computing
-```
-
-Or from inside the wiki directory:
-
-```bash
-cd ~/wikis/history-of-computing
-synthadoc serve
-```
-
-*Option B — register the wiki by name on the host (needed if you want `synthadoc serve -w history-of-computing` to work):*
+*Register the wiki by name on the host:*
 
 Open `~/.synthadoc/wikis.json` in a text editor (create it if it does not exist) and add an entry for the wiki. Use the absolute path from your host filesystem and the port set in the wiki's `config.toml`:
 
@@ -1521,7 +1508,7 @@ Stop one before starting the other — both bind the same port.
 
 ```bash
 docker stop history-of-computing
-synthadoc serve -w ~/wikis/history-of-computing
+synthadoc serve -w history-of-computing
 ```
 
 *Host → Docker:*
