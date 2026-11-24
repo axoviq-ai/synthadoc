@@ -391,6 +391,51 @@ def test_adversarial_agent_config_fallback_to_default(tmp_path):
     assert adv.model == "claude-opus-4-6"
 
 
+def test_workflow_agent_config_parses_and_resolves(tmp_path, monkeypatch):
+    """Regression: [agents].workflow was silently ignored, so maintenance
+    workflows always ran on the default provider."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\n'
+        'default  = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }\n'
+        'workflow = { provider = "deepseek", model = "deepseek-flash", thinking = "disabled" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.workflow is not None
+    wf = cfg.agents.resolve("workflow")
+    assert (wf.provider, wf.model, wf.thinking) == ("deepseek", "deepseek-flash", "disabled")
+    # Every other role keeps using the default provider.
+    for role in ("ingest", "query", "lint", "adversarial", "skill"):
+        r = cfg.agents.resolve(role)
+        assert (r.provider, r.model) == ("minimax", "MiniMax-M3"), role
+
+
+def test_workflow_provider_is_built_for_the_workflow_role(tmp_path, monkeypatch):
+    from synthadoc.providers import make_provider
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setenv("MINIMAX_API_KEY", "k")
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\n'
+        'default  = { provider = "minimax", model = "MiniMax-M3" }\n'
+        'workflow = { provider = "deepseek", model = "deepseek-flash" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    wf, default = make_provider("workflow", cfg), make_provider("default", cfg)
+    assert (wf._config.provider, wf._config.model) == ("deepseek", "deepseek-flash")
+    assert (default._config.provider, default._config.model) == ("minimax", "MiniMax-M3")
+
+
+def test_workflow_agent_config_inherits_unset_keys(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        'workflow = { model = "claude-haiku-5-5" }\n'
+    )
+    wf = load_config(project_config=cfg_file).agents.resolve("workflow")
+    assert (wf.provider, wf.model) == ("anthropic", "claude-haiku-5-5")
+
+
 def test_chat_config_defaults():
     cfg = ChatConfig()
     assert cfg.conversation_history_turns == 5

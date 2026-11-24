@@ -461,7 +461,7 @@ def _apply_provider_override(cfg, provider_name: str) -> None:
             f"Supported providers: {', '.join(sorted(KNOWN_PROVIDERS))}",
         )
     cfg.agents.default.provider = provider_name
-    for slot in ("ingest", "query", "lint", "skill"):
+    for slot in ("ingest", "query", "lint", "skill", "workflow"):
         override = getattr(cfg.agents, slot, None)
         if override is not None:
             override.provider = provider_name
@@ -611,7 +611,7 @@ def serve_cmd(
         mode = "MCP (stdio)" if mcp_only else "HTTP" if http_only else "HTTP + MCP"
         _agent_cfg = cfg.agents.resolve("default")
         _override_count = sum(
-            1 for slot in ("ingest", "query", "lint", "skill")
+            1 for slot in ("ingest", "query", "lint", "skill", "workflow")
             if getattr(cfg.agents, slot, None) is not None
         )
         _llm_note = f"(+ {_override_count} override{'s' if _override_count != 1 else ''})" if _override_count else ""
