@@ -945,7 +945,6 @@ def _workflow_agent(tmp_path, *, default_provider, workflow_cfg):
     orch._store = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
-    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     orch._cfg.agents.workflow = workflow_cfg
     orch._cfg.agents.resolve.return_value = workflow_cfg
     return ActionAgent(provider=default_provider, orchestrator=orch, wiki_root=tmp_path)
@@ -982,7 +981,8 @@ async def test_workflow_provider_missing_key_is_an_error_not_a_silent_fallback(t
     wf_cfg = AgentConfig(provider="deepseek", model="deepseek-flash")
     agent = _workflow_agent(tmp_path, default_provider=default, workflow_cfg=wf_cfg)
     with _patch("synthadoc.providers.make_provider",
-                side_effect=MissingApiKeyError("DEEPSEEK_API_KEY", "DeepSeek", "https://x")),          _patch("synthadoc.agents.workflows._loop.run_tool_call_loop") as loop:
+                side_effect=MissingApiKeyError("DEEPSEEK_API_KEY", "DeepSeek", "https://x")), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop") as loop:
         events = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
     text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
     assert "deepseek" in text.lower() and "DEEPSEEK_API_KEY" in text
@@ -1005,7 +1005,8 @@ async def test_cli_guard_checks_workflow_provider_not_default(tmp_path):
         assert kw["provider"] is api_provider
         yield {"event": "token", "data": {"text": "ok"}}
 
-    with _patch("synthadoc.providers.make_provider", return_value=api_provider),          _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+    with _patch("synthadoc.providers.make_provider", return_value=api_provider), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
         events = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
     text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
     assert "not supported" not in text and "ok" in text
