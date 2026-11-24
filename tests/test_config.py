@@ -436,6 +436,21 @@ def test_workflow_agent_config_inherits_unset_keys(tmp_path):
     assert (wf.provider, wf.model) == ("anthropic", "claude-haiku-5-5")
 
 
+def test_describe_provider_reads_the_provider_object():
+    from types import SimpleNamespace
+    from synthadoc.config import AgentConfig
+    from synthadoc.providers import describe_provider
+    p = SimpleNamespace(_config=AgentConfig(provider="deepseek", model="deepseek-flash"))
+    assert describe_provider(p) == "deepseek/deepseek-flash"
+
+
+def test_describe_provider_for_cli_provider_without_config():
+    from types import SimpleNamespace
+    from synthadoc.providers import describe_provider
+    assert describe_provider(SimpleNamespace(_tool_binary="claude", _model="opus")) == "claude/opus"
+    assert describe_provider(SimpleNamespace(_tool_binary="claude", _model=None)) == "claude/default"
+
+
 def test_chat_config_defaults():
     cfg = ChatConfig()
     assert cfg.conversation_history_turns == 5

@@ -608,13 +608,11 @@ class ActionAgent(BaseAgent):
         # Record which provider/model does the work, so an operator (or a demo
         # viewer) can see the [agents].workflow split in action, not just in the
         # startup summary.
-        _role = "workflow" if getattr(getattr(_cfg, "agents", None), "workflow", None) is not None else "default"
-        try:
-            _eff = _cfg.agents.resolve(_role)
-            _who = f"{_eff.provider}/{_eff.model}"
-        except Exception:  # config shape unavailable (e.g. stub orchestrator)
-            _who = type(_workflow_provider).__name__
-        logger.info("workflow %s — %s (role=%s)", wf.NAME or type(wf).__name__, _who, _role)
+        from synthadoc.providers import describe_provider as _describe  # noqa: PLC0415
+        _role = ("workflow" if getattr(getattr(_cfg, "agents", None), "workflow", None) is not None
+                 else "session")
+        logger.info("workflow %s — %s (role=%s)", wf.NAME or type(wf).__name__,
+                    _describe(_workflow_provider), _role)
 
         # ── Provider compatibility guard ──────────────────────────────────────
         # Coding-tool CLI providers (claude-code, opencode) are themselves full

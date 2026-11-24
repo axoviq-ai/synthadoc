@@ -14,6 +14,21 @@ def _require_env(var: str, provider: str, url: str, config_path=None) -> str:
     return value
 
 
+def describe_provider(provider: object) -> str:
+    """Return "provider/model" for the provider object that actually runs.
+
+    Read from the provider itself rather than the config, so a log line can
+    never name a role that is not the one doing the work.
+    """
+    cfg = getattr(provider, "_config", None)
+    name, model = getattr(cfg, "provider", None), getattr(cfg, "model", None)
+    if name and model:
+        return f"{name}/{model}"
+    # CLI-delegation providers keep only the model; the class names the tool.
+    tool = getattr(provider, "_tool_binary", None) or type(provider).__name__
+    return f"{tool}/{getattr(provider, '_model', None) or 'default'}"
+
+
 def _make_ollama_provider(agent_cfg: AgentConfig, timeout: int) -> LLMProvider:
     """Build an OllamaProvider, forwarding base_url/max_num_ctx only when set
     so OllamaProvider's own defaults apply otherwise (base_url=localhost,
