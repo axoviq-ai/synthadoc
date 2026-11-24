@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.5.3
+    Community Edition  v1.5.4
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -33,10 +33,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
 <a href="https://hub.docker.com/r/chenp/synthadoc"><img src="https://img.shields.io/docker/pulls/chenp/synthadoc?label=Docker+pulls" alt="Docker pulls"/></a>
 <a href="https://pepy.tech/projects/synthadoc"><img src="https://static.pepy.tech/personalized-badge/synthadoc?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=PyPI+downloads" alt="PyPI downloads"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.3-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.4-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.5.3**
+**Document version: v1.5.4**
 
 **An LLM wiki you can trust and operate: compiled at ingest, cited to the source line, governed by an audit trail and spend limits, and kept accurate by agentic maintenance. Built for solo users and enterprises alike.**
 
@@ -442,7 +442,7 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 
 > **Which model do you need?** A small model is enough for every Synthadoc task: ingest, query, lint, and the agentic maintenance resolvers. **Claude Haiku 5.5** (smaller model), or **DeepSeek** (`deepseek-flash`, non-thinking) and **MiniMax M3** with `thinking = "disabled"`, covered the whole History of Computing demo in our testing; Sonnet or Opus are optional. Measured with Haiku 5.5: batch ingest of 17 pages about 4 cents, one lint run about 1 cent, the contradiction resolver on 2 pages about 2 cents, the orphan resolver on 5 pages about 7 cents. Details: [Appendix C](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers).
 
-> **Going local with Ollama?** The LLM itself needs a GPU to be usable — not Synthadoc, and not wiki queries in general (those run fine with any provider, local or cloud). CPU-only inference of the local model is impractically slow for real wiki queries; without a GPU, switch to a free cloud provider (Gemini 2.5 Flash Lite) instead. Also add `thinking = "disabled"` to your `agents.default` line — local models default to extended chain-of-thought that adds latency for no quality benefit. If VRAM is limited, lower `max_num_ctx` too (default 65536 is sized for system RAM on CPU, not VRAM). Details: [Appendix C](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers).
+> **Going local with Ollama?** The LLM itself needs a GPU to be usable — not Synthadoc, and not wiki queries in general (those run fine with any provider, local or cloud). CPU-only inference of the local model is impractically slow for real wiki queries (about 15 minutes for one query on an i7 laptop; [measured numbers and tips](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#running-ollama-without-a-gpu)); without a GPU, switch to a free cloud provider (Gemini 2.5 Flash Lite) instead. Also add `thinking = "disabled"` to your `agents.default` line — local models default to extended chain-of-thought that adds latency for no quality benefit. If VRAM is limited, lower `max_num_ctx` too (default 65536 is sized for system RAM on CPU, not VRAM). Details: [Appendix C](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers).
 
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
