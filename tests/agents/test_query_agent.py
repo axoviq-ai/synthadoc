@@ -3964,3 +3964,31 @@ async def test_run_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
     result = await agent.run("quantum error correction")
     assert result.knowledge_gap is True
     assert not result.answer.startswith("[GAP]") and result.answer.startswith("Quantum error")
+
+
+# ── live-data triggers match whole words, not substrings ─────────────────────
+
+@pytest.mark.parametrize("question", [
+    "how many draft pages do I have",
+    "how many drafts are there",
+    "what did I change last week",
+    "which pages need review",
+    "show lint results",
+    "any pages archived?",
+    "pages marked stale",
+])
+def test_live_data_trigger_matches_whole_words(question):
+    from synthadoc.agents.query_agent import _has_live_data_trigger
+    assert _has_live_data_trigger(question.lower()), question
+
+
+@pytest.mark.parametrize("question", [
+    "summarise the literature review chapter",   # "review" alone is not a page-state word
+    "you have drafted three sections",           # "draft" must not match "drafted"
+    "explain interactive learning",              # "active" must not match "interactive"
+    "what is the spacing effect",
+    "a peer review of the method",
+])
+def test_live_data_trigger_ignores_substring_lookalikes(question):
+    from synthadoc.agents.query_agent import _has_live_data_trigger
+    assert not _has_live_data_trigger(question.lower()), question
