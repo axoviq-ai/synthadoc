@@ -160,9 +160,10 @@ def test_serve_error_shows_absolute_path_when_wiki_on_disk():
         f"install suggestion must not appear when wiki exists on disk, got: {output}"
 
 
-def test_serve_error_mentions_path_escape_hatch_when_wiki_on_disk():
-    """ERR-WIKI-006 hint must mention that a path can be passed instead of
-    registering the name — B-7 follow-up (v1.5.0-code-review.md)."""
+def test_serve_error_gives_registry_entry_and_no_path_alternative_when_wiki_on_disk():
+    """ERR-WIKI-006 hint gives the registry entry for the real path and does not
+    suggest starting by path instead: a path-started wiki is not registered, so
+    name-based commands would still fail."""
     cfg = _make_cfg()
     abs_path = MagicMock()
     abs_path.__str__ = lambda self: "/home/user/wikis/my-wiki"  # type: ignore
@@ -179,5 +180,7 @@ def test_serve_error_mentions_path_escape_hatch_when_wiki_on_disk():
         result = runner.invoke(app, ["serve", "-w", "my-wiki", "--http-only"])
     assert result.exit_code != 0
     output = result.output or ""
-    assert "-w /home/user/wikis/my-wiki" in output, \
-        f"Expected the path escape-hatch option in the hint, got: {output}"
+    assert "/home/user/wikis/my-wiki" in output and "wikis.json" in output, \
+        f"Expected the registry entry with the real path in the hint, got: {output}"
+    assert "-w /home/user/wikis/my-wiki" not in output and "skip the registry" not in output, \
+        f"The hint must not suggest starting by path instead of registering: {output}"

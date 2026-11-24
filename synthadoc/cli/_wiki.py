@@ -85,7 +85,7 @@ def _docker_wiki_hint(wiki_name: str, *, known_root: Path | None = None,
     the real values directly instead of re-detecting them from CWD/env —
     this is also what lets the "exists on disk" branch below omit the
     misleading `synthadoc install` suggestion (which would fail with
-    WIKI_ALREADY_EXISTS) and add the path escape-hatch option instead.
+    WIKI_ALREADY_EXISTS) and give the registry entry for the real path.
     A caller passing *known_root* has already confirmed the wiki is not
     registered, so this skips the registry-existence/membership guards
     below — those only apply to the auto-detection path, where a missing
@@ -138,9 +138,7 @@ def _docker_wiki_hint(wiki_name: str, *, known_root: Path | None = None,
         return (
             f"The wiki exists on disk but is not registered.\n"
             f"  Add it manually to {_REGISTRY}:\n"
-            f"    {_entry_json}\n"
-            f"  Or skip the registry entirely by passing the path instead of the name:\n"
-            f"    -w {root}"
+            f"    {_entry_json}"
         )
     _entry_json = json.dumps({wiki_name: {"path": str(root), "port": "<port>"}})
     return (
