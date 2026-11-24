@@ -3838,7 +3838,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 
 It works, but expect it to be very slow. Measured on an Intel i7 laptop with no GPU and `qwen3.5:4b`, one query over a ~25,000-token retrieved wiki context (`synthadoc query "Turing's major contributions in the field." --timeout 3600`) took about **11.5 minutes to produce the first token** and roughly **15-16 minutes in total** to finish a ~1,150-token answer.
 
-On Apple Silicon (M1 or newer, GPU-accelerated through Metal) the same query should be far faster. We have not measured it ourselves, but small quantized models are commonly reported to run at least an order of magnitude faster there than on a CPU-only x86 laptop, for both prompt processing and generation.
+On Apple Silicon (M1 or newer, GPU-accelerated through Metal) the same query should take roughly one to three minutes, depending on the chip: about one to one and a half minutes on a Pro or Max chip, two to three on a base M1-M3. This is an estimate scaled from published llama.cpp benchmarks for a 7B model ([M-series performance thread](https://github.com/ggml-org/llama.cpp/discussions/4167), [M2 Max and M4 Pro results](https://github.com/ggml-org/llama.cpp/discussions/12985)), adjusted for a 4B model and a 25,000-token context. We have not measured it ourselves.
 
 If you want to try it without a GPU anyway:
 
