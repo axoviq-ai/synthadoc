@@ -192,7 +192,7 @@ class Orchestrator:
 
     def _log_agent_config(self) -> None:
         """Log the effective provider/model for each named agent slot at startup."""
-        slots = ["default", "ingest", "query", "lint", "skill", "adversarial"]
+        slots = ["default", "ingest", "query", "lint", "skill", "adversarial", "workflow"]
         parts = []
         seen: dict[str, str] = {}
         for slot in slots:
