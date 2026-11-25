@@ -136,7 +136,8 @@ class QueryResult:
 # Keywords that indicate the question is asking about live wiki state
 _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "stale", "archived", "archive", "draft", "active", "contradicted",
-    "contradictions", "contradiction", "review", "lifecycle", "lifecycle state",
+    "contradictions", "contradiction", "lifecycle", "lifecycle state",
+    "needs review", "need review", "under review", "review status", "review queue",
     "pages marked", "which pages", "how many pages", "page count",
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
@@ -151,6 +152,26 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "recent fix", "list fixes", "fix history", "fixes applied",
     "content health fixes", "recent rollback", "rollback history",
 })
+
+def _compile_word_triggers(triggers: "frozenset[str]") -> "re.Pattern[str]":
+    """Compile *triggers* into one whole-word matcher (case-insensitive).
+
+    Triggers are matched as whole words or phrases, with an optional plural
+    ``s``/``es``. A plain substring test made "draft" fire on "drafted" and
+    "active" fire on "interactive", which turned ordinary content questions
+    into live-data (page-count) answers.
+    """
+    alts = "|".join(re.escape(t) for t in sorted(triggers, key=len, reverse=True))
+    return re.compile(r"(?<!\w)(?:" + alts + r")(?:es|s)?(?!\w)", re.IGNORECASE)
+
+
+_LIVE_DATA_RE = _compile_word_triggers(_LIVE_DATA_TRIGGERS)
+
+
+def _has_live_data_trigger(text: str) -> bool:
+    """True when *text* contains a live-data trigger as a whole word/phrase."""
+    return _LIVE_DATA_RE.search(text) is not None
+
 
 _LINT_TRIGGERS: frozenset[str] = frozenset({
     "lint", "lint report", "lint run", "lint results", "lint check", "lint status",
@@ -258,7 +279,7 @@ def _select_live_data_question(question: str, retrieval_question: str) -> str:
        retrieval_question so the resolved intent triggers the correct live-data path.
     """
     q_lower = question.lower()
-    if any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+    if _has_live_data_trigger(q_lower):
         return question
     content_term_count = sum(
         1 for w in question.split()
@@ -685,7 +706,7 @@ class QueryAgent(BaseAgent):
         does not exist yet (fresh install before first ingest).
         """
         q_lower = question.lower()
-        if not any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+        if not _has_live_data_trigger(q_lower):
             return ""
 
         audit_path = self._store._root.parent / ".synthadoc" / "audit.db"
