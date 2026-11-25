@@ -18,7 +18,7 @@ from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
 from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
 from synthadoc.observability.telemetry import get_tracer, setup_telemetry
-from synthadoc.providers import make_provider
+from synthadoc.providers import describe_provider, make_provider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch, fastembed_installed
@@ -192,7 +192,7 @@ class Orchestrator:
 
     def _log_agent_config(self) -> None:
         """Log the effective provider/model for each named agent slot at startup."""
-        slots = ["default", "ingest", "query", "lint", "skill", "adversarial"]
+        slots = ["default", "ingest", "query", "lint", "skill", "adversarial", "workflow"]
         parts = []
         seen: dict[str, str] = {}
         for slot in slots:
@@ -772,23 +772,24 @@ class Orchestrator:
         try:
             adv_provider = make_provider("adversarial", self._cfg) if adversarial else None
             if adversarial:
-                adv_cfg = self._cfg.agents.resolve("adversarial")
                 if self._cfg.agents.adversarial is None:
                     logger.info(
-                        "Adversarial pass: %s/%s (default — tip: set [agents].adversarial in "
+                        "Adversarial pass: %s (default — tip: set [agents].adversarial in "
                         "config.toml to use a dedicated judge model)",
-                        adv_cfg.provider, adv_cfg.model,
+                        describe_provider(adv_provider),
                     )
                 else:
                     logger.info(
-                        "Adversarial pass: %s/%s (dedicated judge)",
-                        adv_cfg.provider, adv_cfg.model,
+                        "Adversarial pass: %s (dedicated judge)",
+                        describe_provider(adv_provider),
                     )
             async def _progress(data: dict) -> None:
                 await self._queue.update_progress(job_id, data)
 
+            lint_provider = make_provider("lint", self._cfg)
+            logger.info("lint %s — %s", scope, describe_provider(lint_provider))
             report = await LintAgent(
-                provider=make_provider("lint", self._cfg),
+                provider=lint_provider,
                 adversarial_provider=adv_provider,
                 store=self._store, log_writer=self._log,
                 confidence_threshold=self._cfg.cost.auto_resolve_confidence_threshold,
