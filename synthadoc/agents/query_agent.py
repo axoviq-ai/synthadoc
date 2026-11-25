@@ -698,6 +698,9 @@ class QueryAgent(BaseAgent):
             _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._store.page_exists(slug)
             all_page_states = await audit.get_live_page_states(_live)
             counts: dict[str, int] = await audit.get_live_lifecycle_summary(_live)
+            from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+            held_slugs = set(await split_held_from_lifecycle_counts(
+                counts, audit, self._store, _live))
 
             lines: list[str] = []
 
@@ -707,6 +710,10 @@ class QueryAgent(BaseAgent):
                     n = counts.get(state, 0)
                     hint = f"  {_HINTS[state]}" if state in _HINTS and n > 0 else ""
                     lines.append(f"  {state:<14} {n}{hint}")
+                if counts.get("held", 0) > 0:
+                    lines.append(
+                        f"  {'held':<14} {counts['held']}  "
+                        f"(adversarial check, no source conflict; not contradictions)")
 
                 # For specific state questions, list the actual page slugs
                 detected_state: str | None = None
@@ -716,7 +723,8 @@ class QueryAgent(BaseAgent):
                         break
 
                 if detected_state:
-                    matching = [p for p in all_page_states if p["state"] == detected_state]
+                    matching = [p for p in all_page_states if p["state"] == detected_state
+                                and p["slug"] not in held_slugs]
                     if matching:
                         lines.append(f"\n### Pages currently marked '{detected_state}'")
                         for p in matching:

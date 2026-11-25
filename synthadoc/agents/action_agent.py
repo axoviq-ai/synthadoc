@@ -929,6 +929,8 @@ class ActionAgent(BaseAgent):
         await audit.init()
         _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._orch._store.page_exists(slug)
         counts = await audit.get_live_lifecycle_summary(_live)
+        from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+        await split_held_from_lifecycle_counts(counts, audit, self._orch._store, _live)
         all_pages = [s for s in self._orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         total = len(all_pages)
         unlinted = total - sum(counts.values())
@@ -954,6 +956,10 @@ class ActionAgent(BaseAgent):
         for state in state_order:
             n = counts.get(state, 0)
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
+        if counts.get("held", 0) > 0:
+            lines.append(
+                f"| held (adversarial check) | {counts['held']} | "
+                f"no source conflict — fix the flagged claims, then re-run lint |")
         if unlinted > 0:
             lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
         if counts.get(LifecycleState.STALE, 0) > 0:

@@ -305,3 +305,14 @@ def test_transition_cmd_prints_cascade_summary():
     assert "Cascade" in result.output
     assert "page-b" in result.output
     assert "page-c" in result.output
+
+
+def test_status_shows_held_pages_apart_from_contradicted():
+    status_resp = {"wiki": "test", "pages": 3, "jobs_pending": 0, "jobs_total": 0}
+    counts = {"active": 1, "contradicted": 1, "held": 1}
+    with patch("synthadoc.cli.status.get", side_effect=[status_resp, counts]), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "-w", "test"])
+    lines = {l.split()[0]: l for l in result.output.splitlines() if l.strip()}
+    assert lines["contradicted"].split()[1] == "1"
+    assert lines["held"].split()[1] == "1"
