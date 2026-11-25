@@ -140,6 +140,7 @@ def candidates_promote(
             typer.echo(f"  Promoted {s} -> wiki/{s}.md")
         if count:
             typer.echo(f"  Overview refresh queued ({count} page(s) promoted)")
+            typer.echo("  Cross-linking queued (links promoted pages to related pages)")
         else:
             typer.echo("  No candidates to promote.")
     elif slug:
@@ -147,6 +148,7 @@ def candidates_promote(
         action = "Updated" if result.get("updated") else "Promoted"
         typer.echo(f"  {action} {slug} -> wiki/{slug}.md")
         typer.echo("  Overview refresh queued")
+        typer.echo("  Cross-linking queued")
     else:
         typer.echo("Specify a slug or use --all.")
 
