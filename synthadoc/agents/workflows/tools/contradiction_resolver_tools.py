@@ -114,6 +114,9 @@ async def tool_read_source_content(ctx: "WorkflowContext", slug: str) -> dict:
         if not src.file:
             continue
         raw_path = ctx.wiki_root / "raw_sources" / src.file
+        if not raw_path.exists():
+            # Sources are stored relative to the wiki root ("raw_sources/x.md").
+            raw_path = ctx.wiki_root / src.file
         if raw_path.exists():
             try:
                 text = raw_path.read_text(encoding="utf-8", errors="replace")
