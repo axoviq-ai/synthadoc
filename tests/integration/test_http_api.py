@@ -1630,3 +1630,19 @@ def test_audit_endpoints_redact_secrets_in_stored_records(tmp_wiki):
         assert resp.status_code == 200
         assert "SECRET123" not in resp.text and "hunter2value" not in resp.text
     assert "page=2" in responses[0].text            # the non-secret part survives
+
+
+def test_lint_report_lists_adversarial_holds_apart_from_contradictions(tmp_wiki):
+    """A page the adversarial gate holds must not be reported as a contradiction."""
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "held-page.md").write_text("---\nstatus: contradicted\ncontradiction_note: 'adversarial gate: 2 warning(s) >= threshold 2'\nlint_warnings:\n  - {claim: A, concern: x}\n  - {claim: B, concern: y}\n---\n# Held", encoding="utf-8")
+    (wiki_dir / "legacy-held.md").write_text("---\nstatus: contradicted\nlint_warnings:\n  - {claim: A, concern: x}\n---\n# Legacy held", encoding="utf-8")
+    (wiki_dir / "real-conflict.md").write_text("---\nstatus: contradicted\ncontradiction_note: Source B disputes the date.\n---\n# Real", encoding="utf-8")
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        data = client.get("/lint/report").json()
+    assert data["contradictions"] == ["real-conflict"]
+    assert sorted(data["held"]) == ["held-page", "legacy-held"]
+    by_slug = {d["slug"]: d for d in data["held_details"]}
+    assert by_slug["held-page"]["warning_count"] == 2
+    assert by_slug["held-page"]["note"].startswith("adversarial gate:")

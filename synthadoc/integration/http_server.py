@@ -1946,7 +1946,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lint/report")
     async def lint_report():
-        from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS
+        from synthadoc.agents.lint_agent import (
+            find_orphan_slugs, is_adversarial_hold, LINT_SKIP_SLUGS,
+        )
         from synthadoc.cli.lint import _is_reingestable
         from synthadoc.storage.wiki import LifecycleState
         wiki_dir = wiki_root / "wiki"
@@ -1955,6 +1957,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         page_texts: dict[str, str] = {p.stem: p.read_text(encoding="utf-8") for p in pages}
 
         contradiction_details = []
+        held_details = []   # contradicted only because the adversarial gate holds them
         for stem, text in page_texts.items():
             if stem in LINT_SKIP_SLUGS:
                 continue
@@ -1968,7 +1971,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             # Check only the parsed frontmatter status — a full-text search for
             # "status: contradicted" can produce false positives when old page
             # content or LLM reasoning text is accidentally embedded in the body.
-            if fm.get("status") == LifecycleState.CONTRADICTED:
+            if is_adversarial_hold(fm.get("status") or "", fm.get("contradiction_note"),
+                                   bool(fm.get("lint_warnings"))):
+                held_details.append({
+                    "slug": stem,
+                    "note": fm.get("contradiction_note") or None,
+                    "warning_count": len(fm.get("lint_warnings") or []),
+                })
+            elif fm.get("status") == LifecycleState.CONTRADICTED:
                 contradiction_details.append({
                     "slug": stem,
                     "contradiction_note": fm.get("contradiction_note") or None,
@@ -2071,6 +2081,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             content={
                 "contradictions": [d["slug"] for d in contradiction_details],
                 "contradiction_details": contradiction_details,
+                "held": [d["slug"] for d in held_details],
+                "held_details": held_details,
                 "orphans": [d["slug"] for d in orphan_details],
                 "orphan_details": orphan_details,
                 "adversarial_warnings": adversarial_warnings,
