@@ -397,6 +397,29 @@ export default class SynthadocPlugin extends Plugin {
 
 }
 
+/** Abbreviate the home directory to "~" for display, so the OS user name is never shown. */
+export function tildePath(p: string, home?: string): string {
+    try {
+        const h = home ?? ((window as any).require?.("os")?.homedir?.() ?? "");
+        if (h) {
+            const norm = (x: string) => x.replace(/\\/g, "/");
+            const np = norm(p), nh = norm(h).replace(/\/+$/, "");
+            if (np.toLowerCase() === nh.toLowerCase()) return "~";
+            if (np.toLowerCase().startsWith(nh.toLowerCase() + "/")) return "~" + np.slice(nh.length);
+        }
+    } catch { /* fall through */ }
+    return p;
+}
+
+/** Expand a leading "~" to the home directory (inverse of tildePath). */
+export function expandHome(p: string, home?: string): string {
+    if (p !== "~" && !p.startsWith("~/") && !p.startsWith("~\\")) return p;
+    try {
+        const h = home ?? (window as any).require("os").homedir();
+        return h.replace(/[/\\]+$/, "") + p.slice(1);
+    } catch { return p; }
+}
+
 class IngestModal extends Modal {
     private _rawSourcesFolder: string;
     private _pollTimer: number | null = null;
@@ -805,12 +828,15 @@ class IngestModal extends Modal {
                 if (!result.canceled && result.filePaths?.[0]) {
                     const absPath: string = result.filePaths[0];
                     const basePath: string = (this.app.vault.adapter as any).getBasePath?.() ?? "";
-                    const rel = (basePath && absPath.toLowerCase().startsWith(basePath.toLowerCase()))
+                    const insideVault = !!basePath && absPath.toLowerCase().startsWith(basePath.toLowerCase());
+                    const rel = insideVault
                         ? absPath.slice(basePath.length).replace(/^[/\\]+/, "").replace(/\\/g, "/")
                         : absPath.replace(/\\/g, "/");
                     selectedAbsPath = absPath;
                     selectedFolder = rel;          // may be "" when vault root is selected
-                    folderDisplay.value = absPath; // always show the full OS path
+                    // Vault-relative like the file list below; outside the vault, ~-abbreviated.
+                    // Never show the OS user name.
+                    folderDisplay.value = insideVault ? (rel || "/") : tildePath(absPath);
                     folderDisplay.style.color = "var(--text-normal)";
                     scanBtn.disabled = false;
                 }
@@ -5483,9 +5509,8 @@ class ExportModal extends Modal {
         const defaultPath = (fmt: string): string => {
             if (fmt === "okf") {
                 const vaultName = this.app.vault.getName?.() ?? "wiki";
-                const home = _nodeRequire ? _nodeRequire("os").homedir() : "~";
-                const sep = _nodeRequire ? _nodeRequire("path").sep : "/";
-                return [home, "exports", `${vaultName}-okf-${today}`].join(sep);
+                // Shown as ~/exports/... so the OS user name is not on screen; expanded when writing.
+                return `~/exports/${vaultName}-okf-${today}`;
             }
             const stems: Record<string, string> = {
                 "json":          `wiki-${today}.json`,
@@ -5568,13 +5593,13 @@ class ExportModal extends Modal {
                     const fs = _nodeRequire("fs");
                     const nodePath = _nodeRequire("path");
                     const manifest = await api.exportWikiOkf(this._statusFilter);
-                    const outDir = pathInput.value.trim();
+                    const outDir = expandHome(pathInput.value.trim());
                     for (const [relPath, fileContent] of Object.entries(manifest)) {
                         const dest = nodePath.join(outDir, ...relPath.split("/"));
                         fs.mkdirSync(nodePath.dirname(dest), { recursive: true });
                         fs.writeFileSync(dest, fileContent, "utf8");
                     }
-                    new Notice(`Synthadoc: OKF bundle written to ${outDir} (${Object.keys(manifest).length} files)`);
+                    new Notice(`Synthadoc: OKF bundle written to ${tildePath(outDir)} (${Object.keys(manifest).length} files)`);
                     this.close();
                     return;
                 }

@@ -29,7 +29,7 @@ from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.security.ssrf import UrlPolicy, make_fetcher
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
-from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage, LifecycleState, is_url, TriggerSource
+from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage, LifecycleState, is_url, TriggerSource, portable_source_path
 from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_INTENT_RE
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 from synthadoc.core.sanitizer import sanitize as _sanitize_source
@@ -411,6 +411,11 @@ def _files_match(a: str, b: str) -> bool:
     if abs_b and not abs_a:
         pa_parts, pb_parts = pa.parts, pb.parts
         return pb_parts[-len(pa_parts):] == pa_parts if pa_parts else False
+    if not abs_a and not abs_b:
+        # Legacy pages stored "notes.pdf"; current ones store "raw_sources/notes.pdf".
+        def _bare(parts: tuple) -> tuple:
+            return parts[1:] if len(parts) > 1 and parts[0] == "raw_sources" else parts
+        return _bare(pa.parts) == _bare(pb.parts)
     return False
 
 
@@ -477,6 +482,7 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
     # Update in place if the file (in any abs/rel form) is already present
     for s in page.sources:
         if _files_match(s.file, ref.file):
+            s.file = ref.file  # upgrades a legacy absolute path to the portable form
             s.hash = ref.hash
             s.size = ref.size
             s.ingested = ref.ingested
@@ -1374,7 +1380,8 @@ class IngestAgent(BaseAgent):
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name, bust_cache=bust_cache
                         )
-                        _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
+                        _merge_section_into_page(page, section, portable_source_path(source, self._wiki_root),
+                                                  src_hash or "", _source_len, _truncated)
                         staged = self._write_or_stage(target, page, policy)
                         if not staged:
                             await self._snapshot_before_update(target, _before_state, _before_content, p.name)
@@ -1444,7 +1451,8 @@ class IngestAgent(BaseAgent):
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name, bust_cache=bust_cache
                             )
-                            _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
+                            _merge_section_into_page(page, section, portable_source_path(source, self._wiki_root),
+                                                  src_hash or "", _source_len, _truncated)
                             staged = self._write_or_stage(slug, page, policy)
                             if not staged:
                                 await self._snapshot_before_update(slug, _before_state, _before_content, p.name)
@@ -1479,7 +1487,7 @@ class IngestAgent(BaseAgent):
                         content=body,
                         status=LifecycleState.DRAFT, confidence="medium",
                         sources=[SourceRef(
-                            file=source,
+                            file=portable_source_path(source, self._wiki_root),
                             hash=src_hash or "",
                             size=_source_len,
                             ingested=today,
