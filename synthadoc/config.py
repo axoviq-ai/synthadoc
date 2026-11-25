@@ -478,7 +478,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         workflow_max_tokens=int(a.get("workflow_max_tokens", 16384)),
     )
 
-    for name in ("ingest", "query", "lint", "adversarial", "skill"):
+    for name in ("ingest", "query", "lint", "adversarial", "skill", "workflow"):
         if name in a:
             base_vals = {
                 "provider": default_agent.provider,
