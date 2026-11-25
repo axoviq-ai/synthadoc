@@ -1850,6 +1850,27 @@ describe("LintReportModal", () => {
         expect(modal.contentEl.innerHTML).toContain("No contradictions found");
     });
 
+    it("lists a page held by the adversarial check apart from contradictions", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
+        apiMock.lintReport.mockResolvedValueOnce({
+            contradictions: [], contradiction_details: [],
+            held: ["spacing-effect"],
+            held_details: [{ slug: "spacing-effect", warning_count: 2, note: "adversarial gate: 2 warning(s)" }],
+            orphans: [], adversarial_warnings: [],
+        });
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("No contradictions found");
+        expect(html).toContain("Held by the adversarial check (1)");
+        expect(html).toContain("spacing-effect");
+        expect(html).toContain("1 held");
+    });
+
     it("renders contradicted page slug and contradiction note", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
         apiMock.lintReport.mockResolvedValueOnce({

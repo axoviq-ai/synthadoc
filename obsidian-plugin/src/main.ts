@@ -1640,6 +1640,7 @@ class LintRunModal extends Modal {
                                 const report = await api.lintReport() as any;
                                 const details: any[] = report.contradiction_details ?? [];
                                 const contradictions: string[] = report.contradictions ?? [];
+                                const heldSlugs: string[] = report.held ?? [];
                                 const orphans: string[] = report.orphans ?? [];
                                 const adversarialWarnings: any[] = report.adversarial_warnings ?? [];
                                 const truncatedSources: any[] = report.truncated_sources ?? [];
@@ -1651,7 +1652,8 @@ class LintRunModal extends Modal {
                                 const summary = out.createEl("p");
                                 summary.style.cssText = "font-weight:bold;margin-bottom:6px";
                                 const demotionStr = demotions > 0 ? `, ${demotions} gate-demoted` : "";
-                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s)${demotionStr}, ${truncatedSources.length} truncated source(s).`);
+                                const heldStr = heldSlugs.length > 0 ? `, ${heldSlugs.length} held by the adversarial check` : "";
+                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s)${heldStr}, ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s)${demotionStr}, ${truncatedSources.length} truncated source(s).`);
                                 if (adversarialWarnings.length > 0 || truncatedSources.length > 0) {
                                     const advHint = out.createEl("p", { text: "Open Lint report → to see full details." });
                                     advHint.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
@@ -1670,11 +1672,17 @@ class LintRunModal extends Modal {
                                         block.createEl("div", { text: "⚔ auto-demoted by adversarial gate — check Lint report → Adversarial tab" }).style.cssText = "font-size:11px;color:var(--color-orange,#f59e0b);margin-top:2px";
                                     }
                                 }
+                                for (const slug of heldSlugs) {
+                                    const block = out.createEl("div");
+                                    block.style.cssText = "margin-bottom:6px";
+                                    block.createEl("span", { text: `⚔ ${slug}` }).style.cssText = "font-size:12px;color:var(--color-orange,#f59e0b);font-weight:600";
+                                    block.createEl("div", { text: "Held by the adversarial check — fix the flagged claims (Lint report → Adversarial tab)" }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:2px";
+                                }
                                 if (orphans.length > 0) {
                                     out.createEl("p", { text: `Orphans: ${orphans.join(", ")}` }).style.cssText = "font-size:12px;color:var(--text-muted)";
                                 }
                                 const noticeStr = demotions > 0
-                                    ? `Synthadoc: lint done — ${contradictions.length} contradictions (${demotions} gate-demoted), ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`
+                                    ? `Synthadoc: lint done — ${contradictions.length} contradictions (${demotions} gate-demoted), ${heldSlugs.length} held, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`
                                     : `Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`;
                                 new Notice(noticeStr);
                             } catch {
@@ -1771,6 +1779,8 @@ class LintReportModal extends Modal {
             out.empty();
             const details: any[] = r.contradiction_details ??
                 (r.contradictions ?? []).map((s: string) => ({ slug: s }));
+            const heldDetails: any[] = r.held_details ??
+                (r.held ?? []).map((s: string) => ({ slug: s }));
             const orphanDetails: any[] = r.orphan_details ??
                 (r.orphans ?? []).map((s: string) => ({ slug: s, index_suggestion: `- [[${s}]]` }));
             const adversarialWarnings: any[] = r.adversarial_warnings ?? [];
@@ -1792,7 +1802,7 @@ class LintReportModal extends Modal {
             type TabName = "Contradictions" | "Orphans" | "Adversarial" | "Truncated" | "Citations";
             const tabNames: TabName[] = ["Contradictions", "Orphans", "Adversarial", "Truncated", "Citations"];
             const tabLabels: Record<TabName, string> = {
-                "Contradictions": `❗ Contradictions (${details.length})`,
+                "Contradictions": `❗ Contradictions (${details.length})${heldDetails.length > 0 ? ` · ⚔ ${heldDetails.length} held` : ""}`,
                 "Orphans": `🔗 Orphans (${orphanDetails.length})`,
                 "Adversarial": `🔍 Adversarial (${totalAdvWarnings})`,
                 "Truncated": `✂ Truncated (${truncatedSources.length})`,
@@ -1823,9 +1833,28 @@ class LintReportModal extends Modal {
 
             tabNames.forEach(name => { tabBtns[name].onclick = () => switchTab(name); });
 
+            // Pages the adversarial check holds in "contradicted": no source conflict exists.
+            const renderHeld = () => {
+                if (heldDetails.length === 0) return;
+                const h = panels["Contradictions"].createEl("h4", { text: `⚔ Held by the adversarial check (${heldDetails.length})` });
+                h.style.cssText = "margin:12px 0 4px";
+                panels["Contradictions"].createEl("p", {
+                    text: "No source conflict is recorded for these pages. Fix the flagged claims (see the Adversarial tab) and run lint again to release them.",
+                }).style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 4px";
+                const hul = panels["Contradictions"].createEl("ul");
+                heldDetails.forEach(({ slug, warning_count }) => {
+                    const li = hul.createEl("li");
+                    const a = li.createEl("a", { text: slug });
+                    a.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    a.onclick = () => this.app.workspace.openLinkText(slug, "", false);
+                    if (warning_count) li.appendText(` — ${warning_count} adversarial warning(s)`);
+                });
+            };
+
             // Contradictions panel
             if (details.length === 0) {
                 panels["Contradictions"].createEl("p", { text: "✅ No contradictions found." });
+                renderHeld();
             } else {
                 const ul = panels["Contradictions"].createEl("ul");
                 details.forEach(({ slug, contradiction_note, unresolved_note }) => {
@@ -1856,6 +1885,7 @@ class LintReportModal extends Modal {
                         }
                     }
                 });
+                renderHeld();
             }
 
             // Orphans panel
