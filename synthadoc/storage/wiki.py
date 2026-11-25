@@ -104,6 +104,26 @@ def is_url(path: str) -> bool:
     return path.startswith(("http://", "https://"))
 
 
+def portable_source_path(source: str, wiki_root: "Path | None") -> str:
+    """The form of *source* stored in page frontmatter.
+
+    A local file inside the wiki is stored relative to the wiki root with forward
+    slashes (``raw_sources/books/x.docx``), so a shared vault, repo or export does
+    not reveal the OS user name or folder layout. URLs, sources outside the wiki
+    root and anything unresolvable are returned unchanged. Readers resolve relative
+    values against the wiki root (see ``_local_source_exists``).
+    """
+    if not source or wiki_root is None or is_url(source):
+        return source
+    p = Path(source)
+    if not p.is_absolute():
+        return source
+    try:
+        return p.resolve().relative_to(Path(wiki_root).resolve()).as_posix()
+    except (ValueError, OSError):
+        return source
+
+
 class TriggerSource:
     """Constants for lifecycle event triggered_by field."""
     INGEST      = "ingest"
@@ -145,22 +165,22 @@ class WikiPage:
     last_fix_record: Optional[dict] = None
 
 
-def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
+def _sources_to_dicts(sources: list[SourceRef], root: Optional[Path] = None) -> list[dict]:
     result = []
     for s in sources:
-        d = {"file": s.file, "hash": s.hash, "size": s.size, "ingested": s.ingested}
+        d = {"file": portable_source_path(s.file, root), "hash": s.hash, "size": s.size, "ingested": s.ingested}
         if s.truncated:
             d["truncated"] = True
         result.append(d)
     return result
 
 
-def _sources_from_dicts(raw: list) -> list[SourceRef]:
+def _sources_from_dicts(raw: list, root: Optional[Path] = None) -> list[SourceRef]:
     result = []
     for item in (raw or []):
         if isinstance(item, dict):
             result.append(SourceRef(
-                file=item.get("file", ""),
+                file=portable_source_path(item.get("file", ""), root),
                 hash=item.get("hash", ""),
                 size=item.get("size", 0),
                 ingested=item.get("ingested", ""),
@@ -215,7 +235,7 @@ class WikiStorage:
                 "status": page.status,
                 "confidence": page.confidence,
                 "created": page.created,
-                "sources": _sources_to_dicts(page.sources),
+                "sources": _sources_to_dicts(page.sources, self._root),
                 "orphan": page.orphan,
             }
             if page.categories:
@@ -268,7 +288,7 @@ class WikiStorage:
                     fm = {}
                 body = parts[2].lstrip("\n")
 
-        sources = _sources_from_dicts(fm.get("sources", []))
+        sources = _sources_from_dicts(fm.get("sources", []), self._root)
         raw_cats = fm.get("categories", [])
         categories = raw_cats if isinstance(raw_cats, list) else [raw_cats] if raw_cats else []
         raw_aliases = fm.get("aliases", [])
