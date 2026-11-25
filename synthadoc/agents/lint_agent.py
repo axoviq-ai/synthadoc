@@ -85,6 +85,29 @@ def is_adversarial_hold(status: str, contradiction_note: Optional[str],
         return True
     return not note and has_warnings
 
+
+async def split_held_from_lifecycle_counts(counts: dict, audit, store, live) -> list[str]:
+    """Move adversarial-hold pages from counts["contradicted"] into counts["held"].
+
+    The audit database records a held page as lifecycle state 'contradicted', so
+    every status view would otherwise report a contradiction that the lint report
+    (rightly) does not. The total is unchanged. Returns the held slugs.
+    """
+    if not counts.get(LifecycleState.CONTRADICTED):
+        return []
+    held: list[str] = []
+    for entry in await audit.get_live_page_states(live):
+        if entry.get("state") != LifecycleState.CONTRADICTED:
+            continue
+        page = store.read_page(entry["slug"])
+        if page and is_adversarial_hold(page.status, page.contradiction_note,
+                                        bool(page.lint_warnings)):
+            held.append(entry["slug"])
+    if held:
+        counts[LifecycleState.CONTRADICTED] -= len(held)
+        counts["held"] = len(held)
+    return held
+
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 # Captures only the slug portion of a [[slug]], [[slug|display]], or [[slug#anchor]] link.
 _WIKILINK_SLUG_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
@@ -917,9 +940,14 @@ class LintAgent(BaseAgent):
                     "will retry on next lint run", slug,
                 )
                 continue
+            # Evidence the gate holds this page, taken before the fresh warnings
+            # replace the old ones: a page demoted before the marker note existed
+            # is recognised by its old warnings.
+            was_hold = is_adversarial_hold(page.status, page.contradiction_note,
+                                           bool(page.lint_warnings))
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
-            if await self._apply_adversarial_gate(slug, page, warnings):
+            if await self._apply_adversarial_gate(slug, page, warnings, was_hold=was_hold):
                 adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
@@ -939,7 +967,8 @@ class LintAgent(BaseAgent):
         return all_warnings, total_tokens, adv_demotions
 
     async def _apply_adversarial_gate(
-        self, slug: str, page: "WikiPage", warnings: list[dict]
+        self, slug: str, page: "WikiPage", warnings: list[dict],
+        was_hold: Optional[bool] = None,
     ) -> bool:
         """Demote *page* to contradicted if its warning count meets the gate threshold.
 
@@ -952,7 +981,11 @@ class LintAgent(BaseAgent):
         if threshold is None or threshold <= 0:
             return False
         if len(warnings) < threshold:
-            await self._release_adversarial_hold(slug, page, len(warnings), threshold)
+            if was_hold is None:
+                was_hold = is_adversarial_hold(page.status, page.contradiction_note,
+                                               bool(page.lint_warnings))
+            if was_hold:
+                await self._release_adversarial_hold(slug, page, len(warnings), threshold)
             return False
         if page.status not in (LifecycleState.ACTIVE, LifecycleState.STALE):
             return False
@@ -973,12 +1006,14 @@ class LintAgent(BaseAgent):
     ) -> None:
         """Release a page the gate holds once a fresh pass is below the threshold.
 
-        Only pages held by the gate alone (marked with ADVERSARIAL_HOLD_NOTE_PREFIX)
-        are released; a page with a real source conflict is never touched here.
+        The caller has already established that the gate held the page (the marker
+        note, or old warnings on a page demoted before the marker existed). A page
+        with its own contradiction note is a real conflict and is never released.
         """
-        if not (page.contradiction_note or "").startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
-            return
         if page.status != LifecycleState.CONTRADICTED:
+            return
+        note = (page.contradiction_note or "").strip()
+        if note and not note.startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
             return
         page.contradiction_note = None
         await self._transition(

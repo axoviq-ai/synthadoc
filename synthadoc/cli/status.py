@@ -94,6 +94,7 @@ def status_cmd(
             "draft_candidates": "<- promote from candidates/ first, then lint",
             "stale":            "<- re-ingest needed",
             "contradicted":     "<- review required",
+            "held":             "<- adversarial check; fix flagged claims, re-run lint",
             "unlinted":         "<- run `synthadoc lint run`",
         }
         _LABELS = {
@@ -103,6 +104,9 @@ def status_cmd(
         if counts.get("draft_candidates", 0) > 0:
             idx = display_states.index("draft") + 1
             display_states.insert(idx, "draft_candidates") # type: ignore
+        if counts.get("held", 0) > 0:
+            idx = display_states.index("contradicted") + 1
+            display_states.insert(idx, "held") # type: ignore
         if counts.get("unlinted", 0) > 0:
             display_states.append("unlinted") # type: ignore
         for state in display_states:
