@@ -2435,6 +2435,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _queue_overview_if_empty(background_tasks, cd, f"promoted {len(promoted)} page(s) to wiki")
             orch = app.state.orch
             await orch.wiki_changed()
+            background_tasks.add_task(orch.link_promoted_pages, [s for s, _ in promoted])
         return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
 
     @app.post("/candidates/discard-all")
@@ -2468,6 +2469,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         _queue_overview_if_empty(background_tasks, cd, f"promoted slug={slug} to wiki")
         orch = app.state.orch
         await orch.wiki_changed()
+        background_tasks.add_task(orch.link_promoted_pages, [slug])
         return {"slug": slug, "promoted": True, "updated": not is_new}
 
     @app.post("/candidates/{slug}/discard")
