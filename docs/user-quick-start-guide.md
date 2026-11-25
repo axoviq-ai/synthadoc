@@ -1954,6 +1954,8 @@ synthadoc candidates discard punch-card-era           # delete
 synthadoc candidates promote --all                    # promote everything
 ```
 
+**Promoted pages are cross-linked.** When you promote, Synthadoc links the promoted pages to their closest pages (and each of those back), under a `## Related` heading at the end of each page. This is what stops a batch import from showing up as all orphans in `synthadoc lint report`. It makes no LLM call, never edits the body of a page, and does nothing the second time. To turn it off, set `link_on_promote = false` under `[ingest]` in `config.toml`; `link_max_per_page` (default 3) sets how many related pages each page gets.
+
 ### Manage staging from Obsidian
 
 **Set the policy** — Command Palette → `Synthadoc: Staging: manage staging policy...`:
@@ -3925,6 +3927,8 @@ hard_gate_usd = 2.00
 [ingest]
 fetch_timeout_seconds = 60   # increase if slow sites time out during web search
 max_download_bytes = 26214400  # largest web page or file download accepted (25 MiB)
+link_on_promote = true         # cross-link pages after `candidates promote` (no LLM call)
+link_max_per_page = 3          # related pages linked from each promoted page
 
 [web_search]
 provider    = "tavily"
