@@ -83,6 +83,36 @@ def test_a_batch_of_unlinked_pages_stops_being_orphans(tmp_wiki):
     assert result.pages_changed >= 4
 
 
+def test_a_freshly_promoted_batch_of_drafts_is_linked(tmp_wiki):
+    """Regression: promoted pages are drafts until the next lint run, and the wiki's
+    query index holds only active and stale pages, so a pass built on that index found
+    nothing ("0 link(s) added") in exactly the case it exists for."""
+    store, search = _wiki(tmp_wiki, status="draft")
+    assert search.bm25_search(["spacing", "retrieval"]) == []      # the query index is blind to drafts
+    result = link_promoted_pages(store, search, _BATCH)
+    assert result.links_added > 0
+    assert "[[spacing-effect]]" in store.read_page("spaced-retrieval").content
+    # The pages are still drafts: the pass must not activate anything.
+    assert {store.read_page(s).status for s in _PAGES} == {"draft"}
+
+
+def test_the_pass_does_not_let_drafts_answer_queries(tmp_wiki):
+    store, search = _wiki(tmp_wiki, status="draft")
+    link_promoted_pages(store, search, _BATCH)
+    assert search.bm25_search(["spacing", "retrieval"]) == []
+
+
+def test_drafts_link_to_the_active_pages_already_in_the_wiki(tmp_wiki):
+    store, search = _wiki(tmp_wiki)                               # an existing, active wiki
+    store.write_page("new-note", WikiPage(
+        title="New Note", tags=[], status="draft", confidence="high", sources=[],
+        content="Notes on the spacing effect and spaced retrieval practice for memory."))
+    link_promoted_pages(store, search, ["new-note"])
+    assert "[[" in store.read_page("new-note").content
+    assert "[[new-note]]" in "".join(
+        store.read_page(s).content for s in ("spaced-retrieval", "spacing-effect"))
+
+
 def test_related_pages_are_the_topically_close_ones(tmp_wiki):
     store, search = _wiki(tmp_wiki)
     link_promoted_pages(store, search, _BATCH, max_per_page=1)
@@ -159,7 +189,7 @@ def _candidate(tmp_wiki, slug, title, text):
     cdir = tmp_wiki / "wiki" / "candidates"
     cdir.mkdir(parents=True, exist_ok=True)
     (cdir / f"{slug}.md").write_text(
-        f"---\ntitle: {title}\nstatus: active\nconfidence: high\ntags: []\nsources: []\n---\n\n{text}\n",
+        f"---\ntitle: {title}\nstatus: draft\nconfidence: high\ntags: []\nsources: []\n---\n\n{text}\n",
         encoding="utf-8")
 
 
@@ -171,7 +201,13 @@ def test_promote_all_cross_links_the_promoted_pages(tmp_wiki):
          TestClient(create_app(wiki_root=tmp_wiki)) as client:
         assert client.post("/candidates/promote-all").json()["count"] == len(_PAGES)
     store = WikiStorage(tmp_wiki / "wiki")
+    assert {store.read_page(s).status for s in _PAGES} == {"draft"}   # as ingest writes them
     assert "[[spacing-effect]]" in store.read_page("spaced-retrieval").content
+    # The next lint run activates drafts; only then do orphans count. None should remain.
+    for slug in _PAGES:
+        page = store.read_page(slug)
+        page.status = "active"
+        store.write_page(slug, page)
     assert not (set(_BATCH) & set(read_current_lint_state(store).orphans))
 
 
