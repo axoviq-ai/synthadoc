@@ -2217,3 +2217,82 @@ def test_is_adversarial_hold_predicate():
     assert not h("contradicted", "Source B disputes the date.", True)
     assert not h("contradicted", None, False)       # hand-flagged: nothing says it is a hold
     assert not h("active", "adversarial gate: 2 warning(s)", True)
+
+
+# ── status counts and release of older holds ─────────────────────────────────
+
+async def _audit_with_states(tmp_wiki, states: dict):
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    for slug, state in states.items():
+        await db.set_page_state(slug, state, "test")
+    return db
+
+
+@pytest.mark.asyncio
+async def test_split_held_from_lifecycle_counts_moves_holds_out_of_contradicted(tmp_wiki):
+    from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("held", WikiPage(
+        title="Held", tags=[], content="x", status="contradicted", confidence="high", sources=[],
+        contradiction_note="adversarial gate: 2 warning(s) >= threshold 2",
+        lint_warnings=[{"claim": "A", "concern": "x"}]))
+    store.write_page("real", WikiPage(
+        title="Real", tags=[], content="y", status="contradicted", confidence="low", sources=[],
+        contradiction_note="Source B disputes the date."))
+    db = await _audit_with_states(tmp_wiki, {"held": "contradicted", "real": "contradicted"})
+    live = lambda slug: store.page_exists(slug)
+    counts = await db.get_live_lifecycle_summary(live)
+    total = sum(counts.values())
+    held = await split_held_from_lifecycle_counts(counts, db, store, live)
+    assert held == ["held"]
+    assert counts["contradicted"] == 1 and counts["held"] == 1
+    assert sum(counts.values()) == total          # nothing lost, so the "unlinted" maths still holds
+
+
+@pytest.mark.asyncio
+async def test_split_held_is_a_noop_without_contradicted_pages(tmp_wiki):
+    from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+    store = WikiStorage(tmp_wiki / "wiki")
+    db = await _audit_with_states(tmp_wiki, {})
+    counts = {"active": 3}
+    assert await split_held_from_lifecycle_counts(counts, db, store, lambda s: True) == []
+    assert counts == {"active": 3}
+
+
+@pytest.mark.asyncio
+async def test_older_hold_without_marker_is_released_when_the_page_now_passes(tmp_wiki):
+    """A page demoted before the marker note existed has no note but old warnings.
+    Once the page is edited and a fresh pass is below the threshold, release it."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("legacy", WikiPage(
+        title="Legacy", tags=[], content="Edited text with the claims fixed.",
+        status="contradicted", confidence="high", sources=[],
+        lint_warnings=_two_warnings()))                      # old warnings, no note
+    agent = _held_agent(tmp_wiki, store)
+
+    async def _clean(slug, content):
+        return [], 1
+
+    with patch.object(agent, "_adversarial_single", side_effect=_clean):
+        await agent.run(scope="all", adversarial=True, lifecycle=False)
+    page = store.read_page("legacy")
+    assert page.status == "active" and page.contradiction_note is None
+
+
+@pytest.mark.asyncio
+async def test_hand_flagged_page_is_not_released_by_a_clean_pass(tmp_wiki):
+    """Contradicted with no note and no old warnings is a hand-flagged page, not a
+    hold, so a clean adversarial pass must leave it alone."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("hand", WikiPage(
+        title="Hand", tags=[], content="Flagged by hand.", status="contradicted",
+        confidence="low", sources=[]))
+    agent = _held_agent(tmp_wiki, store)
+
+    async def _clean(slug, content):
+        return [], 1
+
+    with patch.object(agent, "_adversarial_single", side_effect=_clean):
+        await agent.run(scope="all", adversarial=True, lifecycle=False)
+    assert store.read_page("hand").status == "contradicted"

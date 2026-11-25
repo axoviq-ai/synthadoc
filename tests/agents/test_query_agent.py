@@ -3964,3 +3964,31 @@ async def test_run_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
     result = await agent.run("quantum error correction")
     assert result.knowledge_gap is True
     assert not result.answer.startswith("[GAP]") and result.answer.startswith("Quantum error")
+
+
+@pytest.mark.asyncio
+async def test_live_data_counts_adversarial_holds_apart(tmp_wiki):
+    """'how many pages are contradicted' must not count a held page as a contradiction."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("held-page", WikiPage(
+        title="Held", tags=[], content="x", status="contradicted", confidence="high", sources=[],
+        contradiction_note="adversarial gate: 2 warning(s) >= threshold 2",
+        lint_warnings=[{"claim": "A", "concern": "x"}]))
+    store.write_page("real-page", WikiPage(
+        title="Real", tags=[], content="y", status="contradicted", confidence="low", sources=[],
+        contradiction_note="Source B disputes the date."))
+    await audit.set_page_state("held-page", "contradicted", "lint")
+    await audit.set_page_state("real-page", "contradicted", "ingest")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    data = await agent._fetch_live_wiki_data("how many pages are contradicted?")
+    import re as _re
+    assert _re.search(r"contradicted\s+1", data)
+    assert _re.search(r"held\s+1", data)
+    assert "held" in data and "no source conflict" in data
+    listing = data.split("Pages currently marked 'contradicted'")[1]
+    assert "real-page" in listing and "held-page" not in listing

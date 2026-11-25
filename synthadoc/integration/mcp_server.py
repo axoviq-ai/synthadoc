@@ -233,6 +233,9 @@ def create_mcp_server(orchestrator):
             "draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0,
         }
         lifecycle.update(await orchestrator._audit.get_live_lifecycle_summary(_live))
+        from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+        await split_held_from_lifecycle_counts(
+            lifecycle, orchestrator._audit, orchestrator._store, _live)
         unlinted = len(user_slugs) - sum(lifecycle.values())
         if unlinted > 0:
             lifecycle["unlinted"] = unlinted

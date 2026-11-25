@@ -2527,7 +2527,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/status")
     async def lifecycle_status():
-        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS, split_held_from_lifecycle_counts
         orch = app.state.orch
         audit = orch._audit
         counts: dict[str, int] = {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
@@ -2535,6 +2535,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         # Pages count in /status, which applies the same exclusion list.
         _live = lambda slug: slug not in LINT_SKIP_SLUGS and orch._store.page_exists(slug)
         counts.update(await audit.get_live_lifecycle_summary(_live))
+        # Pages the adversarial gate holds are not contradictions: count them apart.
+        await split_held_from_lifecycle_counts(counts, audit, orch._store, _live)
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
             cdir = _cand_dir()

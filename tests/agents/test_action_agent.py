@@ -3482,3 +3482,31 @@ async def test_lint_report_action_lists_hold_apart_from_contradictions(tmp_path)
         result = await agent.run("please run synthadoc lint report")
     assert "Contradicted pages (1)" in result.message and "real-page" in result.message
     assert "Held by the adversarial check (1)" in result.message and "held-page" in result.message
+
+
+@pytest.mark.asyncio
+async def test_wiki_status_lists_adversarial_holds_apart(tmp_path):
+    from types import SimpleNamespace
+    extraction = '{"action": "wiki_status", "params": {}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.touch()
+    counts = {"active": 3, "contradicted": 2}
+    agent._orch._store.list_pages.return_value = [f"page-{i}" for i in range(5)]
+    held_page = SimpleNamespace(
+        status="contradicted", contradiction_note="adversarial gate: 2 warning(s) >= threshold 2",
+        lint_warnings=[{"claim": "A"}])
+    real_page = SimpleNamespace(
+        status="contradicted", contradiction_note="Source B disputes the date.", lint_warnings=[])
+    agent._orch._store.read_page.side_effect = lambda slug: {"held": held_page, "real": real_page}[slug]
+    with patch("synthadoc.storage.log.AuditDB") as MockAudit:
+        inst = AsyncMock()
+        inst.init = AsyncMock()
+        inst.get_live_lifecycle_summary = AsyncMock(return_value=counts)
+        inst.get_live_page_states = AsyncMock(return_value=[
+            {"slug": "held", "state": "contradicted"}, {"slug": "real", "state": "contradicted"}])
+        MockAudit.return_value = inst
+        result = await agent.run("show wiki status")
+    assert "| contradicted | 1 |" in result.message
+    assert "held (adversarial check) | 1 |" in result.message
