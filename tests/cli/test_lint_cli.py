@@ -511,3 +511,29 @@ def test_lint_run_check_urls_flag(tmp_path, monkeypatch):
         result = runner.invoke(app, ["lint", "run", "--check-urls", "-w", "mywiki"])
     assert result.exit_code == 0, result.output
     assert captured["payload"].get("check_url_availability") is True
+
+
+def test_lint_report_shows_hold_apart_from_contradictions(tmp_path, monkeypatch):
+    import synthadoc.cli.install as install_mod
+    _make_wiki(tmp_path, {
+        "index": "# Index\n",
+        "held-page": "---\nstatus: contradicted\ncontradiction_note: 'adversarial gate: 2 warning(s) >= threshold 2'\nlint_warnings:\n  - {claim: A, concern: x}\n  - {claim: B, concern: y}\n---\n# Held",
+        "real-conflict": "---\nstatus: contradicted\ncontradiction_note: Source B disputes the date.\n---\n# Real",
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "Held by the adversarial check (1)" in result.output
+    assert "Contradicted pages (1)" in result.output
+    assert "1 contradiction(s), 1 held by the adversarial check" in result.output
+
+
+def test_lint_report_with_only_a_hold_is_not_all_clear(tmp_path, monkeypatch):
+    import synthadoc.cli.install as install_mod
+    _make_wiki(tmp_path, {"index": "# Index\n", "held-page": "---\nstatus: contradicted\ncontradiction_note: 'adversarial gate: 2 warning(s) >= threshold 2'\nlint_warnings:\n  - {claim: A, concern: x}\n  - {claim: B, concern: y}\n---\n# Held"})
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert "All clear" not in result.output
+    assert "0 contradiction(s), 1 held" in result.output

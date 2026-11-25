@@ -169,6 +169,7 @@ def create_mcp_server(orchestrator):
         adv_count = sum(len(p["warnings"]) for p in state.adv_pages)
         return {
             "contradicted": state.contradicted,
+            "held_by_adversarial_check": state.held,
             "orphans": state.orphans,
             "adversarial_warnings": adv_count,
             "adversarial_pages": [p["slug"] for p in state.adv_pages],

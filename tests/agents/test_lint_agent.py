@@ -2185,3 +2185,35 @@ async def test_gate_release_never_touches_a_real_contradiction(tmp_wiki):
     await agent._apply_adversarial_gate("real", page, [])
     assert store.read_page("real").status == "contradicted"
 
+
+# ── read_current_lint_state: a hold is listed apart from contradictions ──────
+
+def test_read_current_lint_state_separates_holds_from_contradictions(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("held", WikiPage(
+        title="Held", tags=[], content="Held text.", status="contradicted",
+        confidence="high", sources=[],
+        contradiction_note="adversarial gate: 2 warning(s) >= threshold 2",
+        lint_warnings=[{"claim": "A", "concern": "x"}, {"claim": "B", "concern": "y"}]))
+    store.write_page("legacy", WikiPage(
+        title="Legacy", tags=[], content="Demoted before the marker existed.",
+        status="contradicted", confidence="high", sources=[],
+        lint_warnings=[{"claim": "A", "concern": "x"}]))
+    store.write_page("real", WikiPage(
+        title="Real", tags=[], content="Real conflict.", status="contradicted",
+        confidence="low", sources=[], contradiction_note="Source B disputes the date."))
+    store.write_page("hand-flagged", WikiPage(
+        title="Hand", tags=[], content="Flagged by hand.", status="contradicted",
+        confidence="low", sources=[]))
+    state = read_current_lint_state(store)
+    assert sorted(state.held) == ["held", "legacy"]
+    assert sorted(state.contradicted) == ["hand-flagged", "real"]
+
+
+def test_is_adversarial_hold_predicate():
+    from synthadoc.agents.lint_agent import is_adversarial_hold as h
+    assert h("contradicted", "adversarial gate: 2 warning(s)", True)
+    assert h("contradicted", None, True)            # demoted before the marker existed
+    assert not h("contradicted", "Source B disputes the date.", True)
+    assert not h("contradicted", None, False)       # hand-flagged: nothing says it is a hold
+    assert not h("active", "adversarial gate: 2 warning(s)", True)

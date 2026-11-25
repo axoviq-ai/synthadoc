@@ -3470,3 +3470,15 @@ def test_affirmative_re_many_spaces_does_not_hang():
     start = time.monotonic()
     _AFFIRMATIVE_RE.match(question)
     assert time.monotonic() - start < 1.0
+
+
+@pytest.mark.asyncio
+async def test_lint_report_action_lists_hold_apart_from_contradictions(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(
+            contradicted=["real-page"], orphans=[], adv_pages=[], held=["held-page"])
+        result = await agent.run("please run synthadoc lint report")
+    assert "Contradicted pages (1)" in result.message and "real-page" in result.message
+    assert "Held by the adversarial check (1)" in result.message and "held-page" in result.message
