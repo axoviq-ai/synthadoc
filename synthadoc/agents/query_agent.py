@@ -136,7 +136,8 @@ class QueryResult:
 # Keywords that indicate the question is asking about live wiki state
 _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "stale", "archived", "archive", "draft", "active", "contradicted",
-    "contradictions", "contradiction", "review", "lifecycle", "lifecycle state",
+    "contradictions", "contradiction", "lifecycle", "lifecycle state",
+    "needs review", "need review", "under review", "review status", "review queue",
     "pages marked", "which pages", "how many pages", "page count",
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
@@ -151,6 +152,26 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "recent fix", "list fixes", "fix history", "fixes applied",
     "content health fixes", "recent rollback", "rollback history",
 })
+
+def _compile_word_triggers(triggers: "frozenset[str]") -> "re.Pattern[str]":
+    """Compile *triggers* into one whole-word matcher (case-insensitive).
+
+    Triggers are matched as whole words or phrases, with an optional plural
+    ``s``/``es``. A plain substring test made "draft" fire on "drafted" and
+    "active" fire on "interactive", which turned ordinary content questions
+    into live-data (page-count) answers.
+    """
+    alts = "|".join(re.escape(t) for t in sorted(triggers, key=len, reverse=True))
+    return re.compile(r"(?<!\w)(?:" + alts + r")(?:es|s)?(?!\w)", re.IGNORECASE)
+
+
+_LIVE_DATA_RE = _compile_word_triggers(_LIVE_DATA_TRIGGERS)
+
+
+def _has_live_data_trigger(text: str) -> bool:
+    """True when *text* contains a live-data trigger as a whole word/phrase."""
+    return _LIVE_DATA_RE.search(text) is not None
+
 
 _LINT_TRIGGERS: frozenset[str] = frozenset({
     "lint", "lint report", "lint run", "lint results", "lint check", "lint status",
@@ -258,7 +279,7 @@ def _select_live_data_question(question: str, retrieval_question: str) -> str:
        retrieval_question so the resolved intent triggers the correct live-data path.
     """
     q_lower = question.lower()
-    if any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+    if _has_live_data_trigger(q_lower):
         return question
     content_term_count = sum(
         1 for w in question.split()
@@ -685,7 +706,7 @@ class QueryAgent(BaseAgent):
         does not exist yet (fresh install before first ingest).
         """
         q_lower = question.lower()
-        if not any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+        if not _has_live_data_trigger(q_lower):
             return ""
 
         audit_path = self._store._root.parent / ".synthadoc" / "audit.db"
@@ -905,6 +926,7 @@ class QueryAgent(BaseAgent):
         gap: bool,
         system_ctx: str,
         is_live_data: bool,
+        has_pages: bool = False,
         history: list[dict] | None = None,
     ) -> str:
         """Build the LLM synthesis prompt. When history is provided it is prepended."""
@@ -929,8 +951,27 @@ class QueryAgent(BaseAgent):
                 f"Angle-bracket placeholders like <schedule-id> or <slug> are literal CLI arguments — "
                 f"copy them verbatim, do not omit or paraphrase them. "
                 f"Keep the answer concise; do not add a verification or troubleshooting section. "
-                f"Do not reference or cite wiki pages.\n\n"
-                f"Question: {question}\n\nDocumentation:\n{context}"
+                + (
+                    f"The context also holds the user's own wiki pages. If the question asks about "
+                    f"the content of those pages (their notes, plans, dates, progress), answer from "
+                    f"them and cite them with [[PageTitle]]; use the documentation only for how to "
+                    f"use Synthadoc. Never say a content item does not exist because a count is zero."
+                    if has_pages else "Do not reference or cite wiki pages."
+                )
+                + f"\n\nQuestion: {question}\n\nDocumentation:\n{context}"
+            )
+        if is_live_data and has_pages:
+            return prefix + (
+                f"The context has two parts: the user's wiki pages (cite them with [[PageTitle]]) "
+                f"and Live Wiki Data fetched from Synthadoc's audit log and page-state database. "
+                f"If the question asks about the content of the pages (what the notes say, plans, "
+                f"dates, progress, facts), answer from the wiki pages and cite them. "
+                f"Use the Live Wiki Data only for questions about the wiki itself (counts, page "
+                f"states, recent changes, jobs) and to add detail to a content answer. "
+                f"Never say a content item does not exist because a count is zero: a page-state "
+                f"count says nothing about what the pages contain.\n"
+                f"Respond in the same language as the Question.\n\n"
+                f"Question: {question}\n\n{context}"
             )
         if is_live_data:
             return prefix + (
@@ -1186,6 +1227,10 @@ class QueryAgent(BaseAgent):
                              used_tf_fallback=_used_tf_fallback, original_q=question)
         _system_ctx = self._get_relevant_system_pages(question)
         _live_data = await self._fetch_live_wiki_data(question)
+        # True when the retrieved pages actually cover the question. Computed before the
+        # help/live-data override below clears the gap, so a content question that
+        # happens to contain a trigger word still gets its own pages.
+        _pages_cover = bool(candidates) and not _gap
         if _system_ctx or _live_data:
             _gap = False
         if _gap and _is_introspective(question):
@@ -1204,18 +1249,30 @@ class QueryAgent(BaseAgent):
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
+        _has_pages = False
         if _system_ctx:
-            # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
+            # System knowledge matched. Wiki pages are noise for a how-to question, so
+            # they are dropped unless they actually cover the question.
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
-            citations = []
+            if _pages_cover:
+                _has_pages = True
+                _ctx_parts.append(f"## Wiki Pages\n{_pages_ctx}")
+            else:
+                citations = []
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
         elif _live_data:
-            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
-            citations = []
+            # Live-data query (no system knowledge page matched). The retrieved wiki
+            # pages stay in the context beside the live data: a trigger word must be
+            # able to add information, never wipe out the user's own notes.
             _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
             _is_live_data = True
+            _has_pages = _pages_cover
+            if _has_pages:
+                _ctx_parts.append(f"## Wiki Pages\n{_pages_ctx}")
+            else:
+                citations = []
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -1224,6 +1281,7 @@ class QueryAgent(BaseAgent):
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            has_pages=_has_pages,
             history=_trimmed_history if _trimmed_history else None,
         )
         _synthesis_system = self._build_synthesis_system(question)
@@ -1549,6 +1607,16 @@ class QueryAgent(BaseAgent):
         sub_questions, candidates, routing_warning = await self._run_search(retrieval_question)
 
         citations = [r.slug for r in candidates]
+        _max_score = max((r.score for r in candidates), default=0.0)
+        _gap_q = question if has_cjk(question) else (
+            " ".join(sub_questions) if sub_questions else question
+        )
+        _used_tf_fallback = any(r.tf_fallback for r in candidates)
+        _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
+            self._detect_gap(_gap_q, candidates, _max_score,
+                             used_tf_fallback=_used_tf_fallback, original_q=question)
+        # True when the retrieved pages actually cover the question (see run()).
+        _pages_cover = bool(candidates) and not _gap
         _purpose_ctx = self._load_purpose_context()
         # Use retrieval_question (history-enriched) for keyword/trigger matching so
         # follow-up messages like "check it again" resolve to the correct live data
@@ -1559,33 +1627,36 @@ class QueryAgent(BaseAgent):
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
+        _has_pages = False
         _live_data = await self._fetch_live_wiki_data(
             _select_live_data_question(question, retrieval_question)
         )
         if _system_ctx:
-            # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
+            # System knowledge matched. Wiki pages are noise for a how-to question, so
+            # they are dropped unless they actually cover the question.
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
-            citations = []
+            if _pages_cover:
+                _has_pages = True
+                _ctx_parts.append(f"## Wiki Pages\n{_pages_ctx}")
+            else:
+                citations = []
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
         elif _live_data:
-            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
-            citations = []
+            # Live-data query (no system knowledge page matched). The retrieved wiki
+            # pages stay in the context beside the live data: a trigger word must be
+            # able to add information, never wipe out the user's own notes.
             _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
             _is_live_data = True
+            _has_pages = _pages_cover
+            if _has_pages:
+                _ctx_parts.append(f"## Wiki Pages\n{_pages_ctx}")
+            else:
+                citations = []
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
-
-        _max_score = max((r.score for r in candidates), default=0.0)
-        _gap_q = question if has_cjk(question) else (
-            " ".join(sub_questions) if sub_questions else question
-        )
-        _used_tf_fallback = any(r.tf_fallback for r in candidates)
-        _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score,
-                             used_tf_fallback=_used_tf_fallback, original_q=question)
 
         if _system_ctx or _live_data:
             _gap = False
@@ -1596,6 +1667,7 @@ class QueryAgent(BaseAgent):
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            has_pages=_has_pages,
             history=_trimmed_history if _trimmed_history else None,
         )
         _synthesis_system = self._build_synthesis_system(question)

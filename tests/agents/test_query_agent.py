@@ -3966,6 +3966,136 @@ async def test_run_keeps_a_gap_the_llm_declares_in_gap_mode(tmp_wiki):
     assert not result.answer.startswith("[GAP]") and result.answer.startswith("Quantum error")
 
 
+# ── live-data triggers match whole words, not substrings ─────────────────────
+
+@pytest.mark.parametrize("question", [
+    "how many draft pages do I have",
+    "how many drafts are there",
+    "what did I change last week",
+    "which pages need review",
+    "show lint results",
+    "any pages archived?",
+    "pages marked stale",
+])
+def test_live_data_trigger_matches_whole_words(question):
+    from synthadoc.agents.query_agent import _has_live_data_trigger
+    assert _has_live_data_trigger(question.lower()), question
+
+
+@pytest.mark.parametrize("question", [
+    "summarise the literature review chapter",   # "review" alone is not a page-state word
+    "you have drafted three sections",           # "draft" must not match "drafted"
+    "explain interactive learning",              # "active" must not match "interactive"
+    "what is the spacing effect",
+    "a peer review of the method",
+])
+def test_live_data_trigger_ignores_substring_lookalikes(question):
+    from synthadoc.agents.query_agent import _has_live_data_trigger
+    assert not _has_live_data_trigger(question.lower()), question
+
+
+# ── a live-data trigger adds to the answer; it never replaces the user's pages ──
+
+async def _thesis_wiki(tmp_wiki):
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("thesis-plan", "active", "test")
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("thesis-plan", WikiPage(
+        title="Thesis Plan", tags=["thesis"],
+        content="Two of seven thesis sections have been drafted. The literature review "
+                "draft is due on 14 March.",
+        status="active", confidence="high", sources=[]))
+    store.write_page("pad-a", WikiPage(title="Pad A", tags=[], content="Unrelated alpha.",
+                                       status="active", confidence="high", sources=[]))
+    store.write_page("pad-b", WikiPage(title="Pad B", tags=[], content="Unrelated beta.",
+                                       status="active", confidence="high", sources=[]))
+    return store, HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+
+@pytest.mark.asyncio
+async def test_live_data_trigger_keeps_retrieved_pages_in_context(tmp_wiki):
+    """'the draft' is a live-data trigger. The retrieved thesis page must still
+    reach the synthesis prompt and be citable, beside the live data."""
+    store, search = await _thesis_wiki(tmp_wiki)
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["thesis sections drafted draft due"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Two of seven are drafted, due 14 March [[Thesis Plan]].",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.run("How many thesis sections have I drafted, and when is the draft due?")
+
+    prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in prompt
+    assert "Two of seven thesis sections have been drafted" in prompt
+    assert "Do not reference or cite wiki page content" not in prompt
+    assert "thesis-plan" in result.citations
+
+
+@pytest.mark.asyncio
+async def test_wiki_state_question_with_no_relevant_pages_adds_no_page_block(tmp_wiki):
+    """A wiki-state question with no relevant pages adds no page block and cites
+    nothing (unchanged behaviour)."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("my-page", "stale", "test")
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["which pages are stale?"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="my-page is stale.", input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.run("which pages are stale?")
+    prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in prompt and "## Wiki Pages" not in prompt
+    assert result.citations == []
+
+
+@pytest.mark.asyncio
+async def test_run_stream_live_data_trigger_keeps_retrieved_pages(tmp_wiki):
+    store, search = await _thesis_wiki(tmp_wiki)
+    seen = {}
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["thesis sections drafted draft due"]', input_tokens=5, output_tokens=5)
+
+    async def _fake_stream(**kw):
+        seen["prompt"] = kw["messages"][0].content
+        yield "Two of seven are drafted [[Thesis Plan]]."
+    provider.complete_stream = _fake_stream
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    events = await _collect_events(agent.run_stream(
+        "How many thesis sections have I drafted, and when is the draft due?"))
+    assert "Two of seven thesis sections have been drafted" in seen["prompt"]
+    assert "Live Wiki Data" in seen["prompt"]
+    cites = next(e for e in events if e["event"] == "citations")["data"]["citations"]
+    assert "thesis-plan" in cites
+
+
+@pytest.mark.asyncio
+async def test_how_to_question_does_not_pull_in_unrelated_pages(tmp_wiki):
+    """A genuine Synthadoc how-to question keeps the help-only context even when
+    the wiki holds unrelated pages."""
+    store, search = await _thesis_wiki(tmp_wiki)
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["how do I run a lint report"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Run synthadoc lint report.", input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.run("how do I run a lint report")
+    prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "## Wiki Pages" not in prompt
+    assert result.citations == []
+
 @pytest.mark.asyncio
 async def test_live_data_counts_adversarial_holds_apart(tmp_wiki):
     """'how many pages are contradicted' must not count a held page as a contradiction."""
