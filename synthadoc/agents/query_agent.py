@@ -31,6 +31,7 @@ from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB
 from synthadoc.storage.search import HybridSearch, SearchResult, merge_results
 from synthadoc.storage.wiki import WikiStorage
+from synthadoc.utils import fmt_ts
 
 logger = logging.getLogger(__name__)
 
@@ -749,7 +750,7 @@ class QueryAgent(BaseAgent):
                     if matching:
                         lines.append(f"\n### Pages currently marked '{detected_state}'")
                         for p in matching:
-                            ts = p.get("updated_at", "")[:10]
+                            ts = fmt_ts(p.get("updated_at"), "%Y-%m-%d") if p.get("updated_at") else ""
                             lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
                     else:
                         lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
@@ -796,7 +797,7 @@ class QueryAgent(BaseAgent):
                     for r in recent:
                         slug = r.get("wiki_page") or ""
                         src = r.get("source_path") or ""
-                        date = (r.get("ingested_at") or "")[:10]
+                        date = fmt_ts(r.get("ingested_at"), "%Y-%m-%d") if r.get("ingested_at") else ""
                         if slug and slug not in seen:
                             seen.add(slug)
                             lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
@@ -807,12 +808,12 @@ class QueryAgent(BaseAgent):
             if any(kw in q_lower for kw in _LINT_TRIGGERS):
                 lint_summary = await audit.get_last_lint_summary()
                 if lint_summary:
-                    ts = (lint_summary.get("timestamp") or "")[:16].replace("T", " ")
+                    ts = fmt_ts(lint_summary.get("timestamp")) if lint_summary.get("timestamp") else ""
                     dangling = lint_summary.get("dangling_removed", 0)
                     orphans_n = lint_summary.get("orphans", 0)
                     c_res = lint_summary.get("contradictions_resolved", 0)
                     c_flag = lint_summary.get("contradictions_flagged", 0)
-                    lines.append(f"\n### Last lint run ({ts} UTC)")
+                    lines.append(f"\n### Last lint run ({ts} local time)")
                     if dangling:
                         lines.append(f"  Dangling links removed : {dangling}")
                     lines.append(f"  Orphans found          : {orphans_n}")
@@ -828,7 +829,7 @@ class QueryAgent(BaseAgent):
                 if contradicted_pages:
                     lines.append("\n### Currently contradicted pages")
                     for p in contradicted_pages:
-                        since = p.get("updated_at", "")[:10]
+                        since = fmt_ts(p.get("updated_at"), "%Y-%m-%d") if p.get("updated_at") else ""
                         lines.append(f"  - {p['slug']}  (since {since})" if since else f"  - {p['slug']}")
                 else:
                     lines.append("\n### Currently contradicted pages\n  (none)")
@@ -869,7 +870,7 @@ class QueryAgent(BaseAgent):
                         if _job.error:
                             lines.append(f"  error     : {_job.error}")
                         if _job.created_at:
-                            lines.append(f"  created   : {(_job.created_at or '')[:19]}")
+                            lines.append(f"  created   : {fmt_ts(_job.created_at, '%Y-%m-%d %H:%M:%S')}")
                     else:
                         lines.append(f"\n### Job {_job_id}\n  (not found)")
                 else:
@@ -877,7 +878,7 @@ class QueryAgent(BaseAgent):
                     if _recent_jobs:
                         lines.append("\n### Recent jobs")
                         for _j in _recent_jobs[:10]:
-                            _ts = (_j.created_at or "")[:10]
+                            _ts = fmt_ts(_j.created_at, "%Y-%m-%d") if _j.created_at else ""
                             _err = f"  — {_j.error}" if _j.error else ""
                             lines.append(f"  - [{_j.id}] {_j.operation}  {_j.status.value}  {_ts}{_err}")
                     else:
