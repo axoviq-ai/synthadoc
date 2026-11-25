@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter White / axoviq.com
 """Link pass: pages promoted together are cross-linked, so a batch is not all orphans."""
 from __future__ import annotations
 
