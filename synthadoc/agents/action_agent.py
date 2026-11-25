@@ -547,6 +547,30 @@ class ActionAgent(BaseAgent):
         _cfg = getattr(self._orch, "_cfg", None)
         _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
         from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
+
+        # Use the [agents].workflow provider when one is configured; otherwise
+        # the session provider. An explicitly configured workflow provider that
+        # cannot be built (e.g. its API key is missing) is an error, never a
+        # silent fallback: running on a different provider than the one the
+        # operator chose would misreport which model did the work and who
+        # received the wiki content.
+        _workflow_provider: LLMProvider = self._provider
+        if getattr(getattr(_cfg, "agents", None), "workflow", None) is not None:
+            try:
+                from synthadoc.providers import make_provider as _mp
+                _workflow_provider = _mp("workflow", _cfg)
+            except Exception as _exc:
+                logger.error("workflow provider could not be built: %s", _exc)
+                _wf_cfg = _cfg.agents.resolve("workflow")
+                yield {"event": "token", "data": {"text": (
+                    f"**Cannot start the workflow: the configured workflow provider "
+                    f"`{_wf_cfg.provider}` is unavailable.**\n\n{_exc}\n\n"
+                    f"Fix `[agents].workflow` in `.synthadoc/config.toml`, or remove it "
+                    f"to run workflows on the default provider."
+                )}}
+                yield {"event": "done", "data": {"citations": [], "hints": [], "cacheable": False}}
+                return
+
         ctx = WorkflowContext(
             session_id=_session_id,
             wiki_root=self._wiki_root,
@@ -562,7 +586,7 @@ class ActionAgent(BaseAgent):
                 getattr(self._orch, "_search", None), "invalidate_index", None
             ),
             search=getattr(self._orch, "_search", None),
-            is_cli_provider=isinstance(self._provider, CodingToolCLIProvider),
+            is_cli_provider=isinstance(_workflow_provider, CodingToolCLIProvider),
             run_id=_run_id,
         )
 
@@ -581,15 +605,14 @@ class ActionAgent(BaseAgent):
             getattr(_agents_cfg, "workflow_max_tokens", 16384) or 16384
         )
 
-        # Use agents.workflow provider override when explicitly configured.
-        # Falls back to the session provider so existing behaviour is unchanged.
-        _workflow_provider: LLMProvider = self._provider
-        if _cfg is not None and getattr(getattr(_cfg, "agents", None), "workflow", None) is not None:
-            try:
-                from synthadoc.providers import make_provider as _mp
-                _workflow_provider = _mp("workflow", _cfg)
-            except Exception:
-                pass  # Missing API key surfaces at workflow run time
+        # Record which provider/model does the work, so an operator (or a demo
+        # viewer) can see the [agents].workflow split in action, not just in the
+        # startup summary.
+        from synthadoc.providers import describe_provider as _describe  # noqa: PLC0415
+        _role = ("workflow" if getattr(getattr(_cfg, "agents", None), "workflow", None) is not None
+                 else "session")
+        logger.info("workflow %s — %s (role=%s)", wf.NAME or type(wf).__name__,
+                    _describe(_workflow_provider), _role)
 
         # ── Provider compatibility guard ──────────────────────────────────────
         # Coding-tool CLI providers (claude-code, opencode) are themselves full
@@ -600,9 +623,9 @@ class ActionAgent(BaseAgent):
         # Workflows that set SUPPORTS_CLI_PROVIDER = True implement a one-shot
         # Python-driven path via ``run_for_cli_provider`` that avoids fake tools
         # entirely.  Others receive a clear error message with guidance.
-        if isinstance(self._provider, CodingToolCLIProvider):
+        if isinstance(_workflow_provider, CodingToolCLIProvider):
             if not wf.SUPPORTS_CLI_PROVIDER:
-                binary = getattr(self._provider, "_tool_binary", "this CLI tool")
+                binary = getattr(_workflow_provider, "_tool_binary", "this CLI tool")
                 msg = (
                     f"**Agentic workflows are not supported with the `{binary}` provider.**\n\n"
                     f"`{binary}` is itself an agent — it has its own identity, tool-calling "
@@ -850,6 +873,15 @@ class ActionAgent(BaseAgent):
             elif focus == LintFocus.CONTRADICTED:
                 parts.append("**Contradicted pages (0)** — no contradictions found.")
 
+        if focus in (None, LintFocus.CONTRADICTED, LintFocus.ADVERSARIAL) and state.held:
+            lines = [
+                f"**Held by the adversarial check ({len(state.held)})** — no source "
+                f"conflict is recorded; fix the flagged claims and re-run lint:\n"
+            ]
+            for slug in state.held:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
         if focus in (None, LintFocus.ORPHANS):
             if state.orphans:
                 lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
@@ -920,6 +952,8 @@ class ActionAgent(BaseAgent):
         await audit.init()
         _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._orch._store.page_exists(slug)
         counts = await audit.get_live_lifecycle_summary(_live)
+        from synthadoc.agents.lint_agent import split_held_from_lifecycle_counts
+        await split_held_from_lifecycle_counts(counts, audit, self._orch._store, _live)
         all_pages = [s for s in self._orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         total = len(all_pages)
         unlinted = total - sum(counts.values())
@@ -945,6 +979,10 @@ class ActionAgent(BaseAgent):
         for state in state_order:
             n = counts.get(state, 0)
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
+        if counts.get("held", 0) > 0:
+            lines.append(
+                f"| held (adversarial check) | {counts['held']} | "
+                f"no source conflict — fix the flagged claims, then re-run lint |")
         if unlinted > 0:
             lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
         if counts.get(LifecycleState.STALE, 0) > 0:

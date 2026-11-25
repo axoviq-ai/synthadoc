@@ -24,6 +24,7 @@ def _make_agent(tmp_path, extraction_json: str, provider=None):
     orch._bump_epoch = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     return ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path), provider
 
 
@@ -908,6 +909,7 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     orch._bump_epoch = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
     # Collect all SSE events yielded by _run_orchestrate.
@@ -930,6 +932,139 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     assert "anthropic" in token_text.lower()
     # Crucially: the loop was never started — confirm and tool_fns are never wired.
     orch.lint.assert_not_called()
+
+
+# ── [agents].workflow provider selection ──────────────────────────────────────
+
+def _workflow_agent(tmp_path, *, default_provider, workflow_cfg):
+    """ActionAgent whose orchestrator config has an [agents].workflow override."""
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.config import AgentConfig
+    orch = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = workflow_cfg
+    orch._cfg.agents.resolve.return_value = workflow_cfg
+    return ActionAgent(provider=default_provider, orchestrator=orch, wiki_root=tmp_path)
+
+
+def _stub_workflow(supports_cli=False):
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    class _Stub(AgenticWorkflow):
+        NAME = "wf-stub"
+        DESCRIPTION = "stub"
+        SUPPORTS_CLI_PROVIDER = supports_cli
+        async def build_system_prompt(self) -> str: return "x"
+        def build_initial_message(self, user_input: str) -> str: return user_input
+        def get_tool_fns(self, ctx) -> dict: return {}
+    return _Stub()
+
+
+def _cli_provider():
+    from unittest.mock import patch as _patch
+    with _patch("synthadoc.providers.coding_tool._find_binary", return_value="/usr/bin/claude"):
+        from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
+        return ClaudeCodeCLIProvider(model=None, timeout=30)
+
+
+@pytest.mark.asyncio
+async def test_workflow_provider_missing_key_is_an_error_not_a_silent_fallback(tmp_path):
+    """A configured workflow provider that cannot be built must stop the run with
+    a visible error. It must not quietly run on the default provider."""
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    from synthadoc.errors import MissingApiKeyError
+    default = MagicMock()
+    wf_cfg = AgentConfig(provider="deepseek", model="deepseek-flash")
+    agent = _workflow_agent(tmp_path, default_provider=default, workflow_cfg=wf_cfg)
+    with _patch("synthadoc.providers.make_provider",
+                side_effect=MissingApiKeyError("DEEPSEEK_API_KEY", "DeepSeek", "https://x")), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop") as loop:
+        events = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "deepseek" in text.lower() and "DEEPSEEK_API_KEY" in text
+    assert events[-1]["event"] == "done"
+    loop.assert_not_called()
+    default.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cli_guard_checks_workflow_provider_not_default(tmp_path):
+    """default = claude-code, workflow = a normal API provider: the workflow runs
+    the normal tool-call loop; the CLI guard must not block it."""
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    api_provider = MagicMock()
+    agent = _workflow_agent(tmp_path, default_provider=_cli_provider(),
+                            workflow_cfg=AgentConfig(provider="deepseek", model="deepseek-flash"))
+
+    async def _fake_loop(**kw):
+        assert kw["provider"] is api_provider
+        yield {"event": "token", "data": {"text": "ok"}}
+
+    with _patch("synthadoc.providers.make_provider", return_value=api_provider), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+        events = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "not supported" not in text and "ok" in text
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_logs_the_provider_and_model_that_does_the_work(tmp_path, caplog):
+    import logging
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    agent = _workflow_agent(tmp_path, default_provider=MagicMock(),
+                            workflow_cfg=AgentConfig(provider="deepseek", model="deepseek-flash"))
+
+    async def _fake_loop(**kw):
+        yield {"event": "token", "data": {"text": "ok"}}
+
+    wf_provider = MagicMock()
+    wf_provider._config = AgentConfig(provider="deepseek", model="deepseek-flash")
+    with caplog.at_level(logging.INFO, logger="synthadoc.agents.action_agent"), \
+         _patch("synthadoc.providers.make_provider", return_value=wf_provider), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+        _ = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("workflow ")]
+    assert lines == ["workflow wf-stub — deepseek/deepseek-flash (role=workflow)"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_without_override_names_the_session_provider(tmp_path, caplog):
+    """With no [agents].workflow, the work runs on the session provider. The log
+    names that provider and does not claim a default/workflow role."""
+    import logging
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    session = MagicMock()
+    session._config = AgentConfig(provider="minimax", model="MiniMax-M3")
+    agent = _workflow_agent(tmp_path, default_provider=session, workflow_cfg=None)
+
+    async def _fake_loop(**kw):
+        yield {"event": "token", "data": {"text": "ok"}}
+
+    with caplog.at_level(logging.INFO, logger="synthadoc.agents.action_agent"), \
+         _patch("synthadoc.agents.workflows._loop.run_tool_call_loop", _fake_loop):
+        _ = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("workflow ")]
+    assert lines == ["workflow wf-stub — minimax/MiniMax-M3 (role=session)"]
+
+
+@pytest.mark.asyncio
+async def test_cli_guard_fires_when_workflow_provider_is_cli(tmp_path):
+    """default = a normal provider, workflow = claude-code: the guard must fire."""
+    from unittest.mock import patch as _patch
+    from synthadoc.config import AgentConfig
+    agent = _workflow_agent(tmp_path, default_provider=MagicMock(),
+                            workflow_cfg=AgentConfig(provider="claude-code", model="m"))
+    with _patch("synthadoc.providers.make_provider", return_value=_cli_provider()):
+        events = [e async for e in agent._run_orchestrate("go", workflow=_stub_workflow())]
+    text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "not supported" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -967,6 +1102,7 @@ async def test_run_orchestrate_uses_cli_path_for_supported_workflow(tmp_path):
     orch._bump_epoch = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
     events = []
@@ -1030,6 +1166,7 @@ async def test_run_orchestrate_done_includes_pre_prompt_from_final_text(tmp_path
     orch._bump_epoch = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
     events = []
@@ -1089,6 +1226,7 @@ async def test_run_orchestrate_done_no_pre_prompt_when_all_clear(tmp_path):
     orch._bump_epoch = MagicMock()
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
     events = []
@@ -2702,6 +2840,7 @@ async def test_run_orchestrate_surfaces_max_tokens_exception(tmp_path):
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
     orch._cfg.agents = MagicMock()
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     orch._cfg.agents.workflow_max_tokens = 16384
 
     agent = ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path)
@@ -2748,6 +2887,7 @@ async def test_run_orchestrate_surfaces_generic_exception(tmp_path):
     orch._cfg = MagicMock()
     orch._cfg.chat.clarify_lookback = 5
     orch._cfg.agents = MagicMock()
+    orch._cfg.agents.workflow = None  # no workflow override: default provider is used
     orch._cfg.agents.workflow_max_tokens = 16384
 
     agent = ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path)
@@ -3470,3 +3610,43 @@ def test_affirmative_re_many_spaces_does_not_hang():
     start = time.monotonic()
     _AFFIRMATIVE_RE.match(question)
     assert time.monotonic() - start < 1.0
+
+
+@pytest.mark.asyncio
+async def test_lint_report_action_lists_hold_apart_from_contradictions(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(
+            contradicted=["real-page"], orphans=[], adv_pages=[], held=["held-page"])
+        result = await agent.run("please run synthadoc lint report")
+    assert "Contradicted pages (1)" in result.message and "real-page" in result.message
+    assert "Held by the adversarial check (1)" in result.message and "held-page" in result.message
+
+
+@pytest.mark.asyncio
+async def test_wiki_status_lists_adversarial_holds_apart(tmp_path):
+    from types import SimpleNamespace
+    extraction = '{"action": "wiki_status", "params": {}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.touch()
+    counts = {"active": 3, "contradicted": 2}
+    agent._orch._store.list_pages.return_value = [f"page-{i}" for i in range(5)]
+    held_page = SimpleNamespace(
+        status="contradicted", contradiction_note="adversarial gate: 2 warning(s) >= threshold 2",
+        lint_warnings=[{"claim": "A"}])
+    real_page = SimpleNamespace(
+        status="contradicted", contradiction_note="Source B disputes the date.", lint_warnings=[])
+    agent._orch._store.read_page.side_effect = lambda slug: {"held": held_page, "real": real_page}[slug]
+    with patch("synthadoc.storage.log.AuditDB") as MockAudit:
+        inst = AsyncMock()
+        inst.init = AsyncMock()
+        inst.get_live_lifecycle_summary = AsyncMock(return_value=counts)
+        inst.get_live_page_states = AsyncMock(return_value=[
+            {"slug": "held", "state": "contradicted"}, {"slug": "real", "state": "contradicted"}])
+        MockAudit.return_value = inst
+        result = await agent.run("show wiki status")
+    assert "| contradicted | 1 |" in result.message
+    assert "held (adversarial check) | 1 |" in result.message

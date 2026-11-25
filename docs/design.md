@@ -1526,6 +1526,8 @@ chunk_size            = 1500
 chunk_overlap         = 150
 fetch_timeout_seconds = 30   # seconds to wait for a URL response before retrying
 max_download_bytes    = 26214400  # cap on a URL response body, counted after decompression (25 MiB)
+link_on_promote       = true      # after `candidates promote`, cross-link the promoted pages (no LLM call)
+link_max_per_page     = 3         # related pages linked from each promoted page
 # Citation pass (Pass 4) tuning — these two settings work together:
 #   citation_source_lines — how many lines of the source the LLM sees when placing ^[...] markers.
 #                           Increase if lint reports out_of_range on long sources (transcripts, PDFs).
@@ -2268,6 +2270,17 @@ New pages can be routed to `wiki/candidates/` instead of `wiki/` based on the `[
 | `synthadoc candidates discard --all`                | Delete all candidates                             |
 
 Policy changes take effect on the next ingest job — no server restart needed.
+
+### Cross-linking on promote
+
+With staging on, every source of a batch is decided while `wiki/` holds only the template pages, and the ingest prompt may only link pages that already exist. So no page of the batch links to another, and lint reports nearly all of them as orphans. After `candidates promote` (one page or `--all`) the server queues a **link pass** as a background task, once all the pages exist together.
+
+- **No LLM call.** For each promoted page the pass takes its title, tags and opening words, asks the wiki's own BM25 search for the closest pages, and keeps up to `[ingest] link_max_per_page` (default 3). A match must score at least 30% of the page's best match, so weak matches are not linked to fill the quota. Archived and contradicted pages, and system pages (`index`, `overview`, `dashboard`, `log`, `purpose`), are never linked.
+- **Both directions.** Each link is written on both pages, because an orphan needs an *inbound* link. A page that links to a neighbour but is never linked back would still be an orphan.
+- **Body untouched.** Links go in a `## Related` section, under a `<!-- synthadoc:related -->` marker, at the end of the page. A link the page already has (`[[slug]]`, `[[slug|alias]]` or `[[slug#anchor]]`) is not added again, so running the pass twice changes nothing.
+- **Switch.** `[ingest] link_on_promote = false` turns it off. It runs only on promote: a batch ingested with staging off is not cross-linked by this pass.
+
+Implementation: `synthadoc/agents/link_pass.py`; `Orchestrator.link_promoted_pages()` runs it off the event loop and bumps the wiki epoch when it changed anything.
 
 ### HTTP API
 

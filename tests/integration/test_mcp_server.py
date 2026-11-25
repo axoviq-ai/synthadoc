@@ -978,3 +978,15 @@ def test_mcp_mounted_on_http_app(tmp_wiki):
         if hasattr(route, "path")
     ]
     assert "/mcp" in mounted_paths, f"MCP not mounted. Routes: {mounted_paths}"
+
+
+@pytest.mark.asyncio
+async def test_mcp_lint_report_lists_holds_apart(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.lint_agent import LintStateSummary
+    mcp = create_mcp_server(mock_orch)
+    fake = LintStateSummary(contradicted=["real"], orphans=[], adv_pages=[], held=["held"])
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state", return_value=fake):
+        result = await mcp._tool_manager.call_tool("synthadoc_lint_report", {}, convert_result=False)
+    assert result["contradicted"] == ["real"]
+    assert result["held_by_adversarial_check"] == ["held"]

@@ -1850,6 +1850,27 @@ describe("LintReportModal", () => {
         expect(modal.contentEl.innerHTML).toContain("No contradictions found");
     });
 
+    it("lists a page held by the adversarial check apart from contradictions", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
+        apiMock.lintReport.mockResolvedValueOnce({
+            contradictions: [], contradiction_details: [],
+            held: ["spacing-effect"],
+            held_details: [{ slug: "spacing-effect", warning_count: 2, note: "adversarial gate: 2 warning(s)" }],
+            orphans: [], adversarial_warnings: [],
+        });
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("No contradictions found");
+        expect(html).toContain("Held by the adversarial check (1)");
+        expect(html).toContain("spacing-effect");
+        expect(html).toContain("1 held");
+    });
+
     it("renders contradicted page slug and contradiction note", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
         apiMock.lintReport.mockResolvedValueOnce({
@@ -3095,4 +3116,21 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
             expect(pageSnapshot).not.toHaveBeenCalled();
         },
     );
+});
+
+describe("home-path display helpers (no OS user name on screen)", () => {
+    it("tildePath abbreviates the home directory on both separators", async () => {
+        const { tildePath } = await import("./main");
+        expect(tildePath(String.raw`C:\Users\jane\exports\x`, String.raw`C:\Users\jane`)).toBe("~/exports/x");
+        expect(tildePath("/home/jane/exports/x", "/home/jane")).toBe("~/exports/x");
+        expect(tildePath("/home/jane", "/home/jane")).toBe("~");
+        expect(tildePath("/home/janet/x", "/home/jane")).toBe("/home/janet/x");
+        expect(tildePath("/srv/data", "/home/jane")).toBe("/srv/data");
+    });
+    it("expandHome is the inverse for ~ paths and leaves others alone", async () => {
+        const { expandHome } = await import("./main");
+        expect(expandHome("~/exports/x", "/home/jane")).toBe("/home/jane/exports/x");
+        expect(expandHome("/tmp/out", "/home/jane")).toBe("/tmp/out");
+        expect(expandHome("~other/x", "/home/jane")).toBe("~other/x");
+    });
 });

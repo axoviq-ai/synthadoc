@@ -54,8 +54,59 @@ class LintReport:
     lifecycle_synced: int = 0
     adversarial_demotions: int = 0
     adversarial_gate_skipped_resolve: list[str] = field(default_factory=list)
+    # Pages held in 'contradicted' by the adversarial gate alone: no source
+    # conflict is recorded (no contradiction_note), so there is nothing for the
+    # contradiction resolver to fix. Reported separately from contradictions.
+    adversarial_held: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
+
+# A page the adversarial gate demoted to 'contradicted' carries a contradiction
+# note starting with this prefix. It tells lint the page is held for its
+# warnings, not for a source conflict, so it is not counted or resolved as a
+# contradiction.
+ADVERSARIAL_HOLD_NOTE_PREFIX = "adversarial gate:"
+
+
+def is_adversarial_hold(status: str, contradiction_note: Optional[str],
+                        has_warnings: bool) -> bool:
+    """True when a 'contradicted' page is held by the adversarial gate alone.
+
+    A page demoted by the gate carries the marker note. Pages demoted before the
+    marker existed have no note at all but do have adversarial warnings, and a
+    real source conflict always has a note from ingest, so "contradicted, no
+    note, has warnings" is also a hold. Anything with its own note is a real
+    contradiction.
+    """
+    if status != LifecycleState.CONTRADICTED:
+        return False
+    note = (contradiction_note or "").strip()
+    if note.startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
+        return True
+    return not note and has_warnings
+
+
+async def split_held_from_lifecycle_counts(counts: dict, audit, store, live) -> list[str]:
+    """Move adversarial-hold pages from counts["contradicted"] into counts["held"].
+
+    The audit database records a held page as lifecycle state 'contradicted', so
+    every status view would otherwise report a contradiction that the lint report
+    (rightly) does not. The total is unchanged. Returns the held slugs.
+    """
+    if not counts.get(LifecycleState.CONTRADICTED):
+        return []
+    held: list[str] = []
+    for entry in await audit.get_live_page_states(live):
+        if entry.get("state") != LifecycleState.CONTRADICTED:
+            continue
+        page = store.read_page(entry["slug"])
+        if page and is_adversarial_hold(page.status, page.contradiction_note,
+                                        bool(page.lint_warnings)):
+            held.append(entry["slug"])
+    if held:
+        counts[LifecycleState.CONTRADICTED] -= len(held)
+        counts["held"] = len(held)
+    return held
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 # Captures only the slug portion of a [[slug]], [[slug|display]], or [[slug#anchor]] link.
@@ -462,6 +513,9 @@ class LintStateSummary:
     orphans: list[str]
     adv_pages: list[dict]                                   # [{slug, warnings: list[dict]}]
     truncated_pages: list[dict] = field(default_factory=list)  # [{slug, file, size}]
+    # Pages the adversarial gate holds in 'contradicted' (no source conflict).
+    # Listed apart from `contradicted` so a held page is not counted as one.
+    held: list[str] = field(default_factory=list)
 
 
 def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
@@ -471,6 +525,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
     """
     slugs = store.list_pages()
     contradicted: list[str] = []
+    held: list[str] = []
     page_bodies: dict[str, str] = {}      # active only — orphan candidates
     all_page_bodies: dict[str, str] = {}  # active + contradicted — link-graph sources
     adv_pages: list[dict] = []
@@ -498,7 +553,11 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
         if slug in LINT_SKIP_SLUGS:
             continue
         if page.status == LifecycleState.CONTRADICTED:
-            contradicted.append(slug)
+            if is_adversarial_hold(page.status, page.contradiction_note,
+                                   bool(page.lint_warnings)):
+                held.append(slug)
+            else:
+                contradicted.append(slug)
         if page.lint_warnings:
             adv_pages.append({"slug": slug, "warnings": list(page.lint_warnings)})
         for src in (page.sources or []):
@@ -511,6 +570,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
         orphans=orphans,
         adv_pages=adv_pages,
         truncated_pages=truncated_pages,
+        held=held,
     )
 
 
@@ -880,9 +940,14 @@ class LintAgent(BaseAgent):
                     "will retry on next lint run", slug,
                 )
                 continue
+            # Evidence the gate holds this page, taken before the fresh warnings
+            # replace the old ones: a page demoted before the marker note existed
+            # is recognised by its old warnings.
+            was_hold = is_adversarial_hold(page.status, page.contradiction_note,
+                                           bool(page.lint_warnings))
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
-            if await self._apply_adversarial_gate(slug, page, warnings):
+            if await self._apply_adversarial_gate(slug, page, warnings, was_hold=was_hold):
                 adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
@@ -902,7 +967,8 @@ class LintAgent(BaseAgent):
         return all_warnings, total_tokens, adv_demotions
 
     async def _apply_adversarial_gate(
-        self, slug: str, page: "WikiPage", warnings: list[dict]
+        self, slug: str, page: "WikiPage", warnings: list[dict],
+        was_hold: Optional[bool] = None,
     ) -> bool:
         """Demote *page* to contradicted if its warning count meets the gate threshold.
 
@@ -915,15 +981,45 @@ class LintAgent(BaseAgent):
         if threshold is None or threshold <= 0:
             return False
         if len(warnings) < threshold:
+            if was_hold is None:
+                was_hold = is_adversarial_hold(page.status, page.contradiction_note,
+                                               bool(page.lint_warnings))
+            if was_hold:
+                await self._release_adversarial_hold(slug, page, len(warnings), threshold)
             return False
         if page.status not in (LifecycleState.ACTIVE, LifecycleState.STALE):
             return False
+        if not page.contradiction_note:
+            page.contradiction_note = (
+                f"{ADVERSARIAL_HOLD_NOTE_PREFIX} {len(warnings)} warning(s) >= "
+                f"threshold {threshold}; edit the flagged claims to release it"
+            )
         await self._transition(
             slug, page, page.status, LifecycleState.CONTRADICTED,
             f"auto-demoted: adversarial gate — "
             f"{len(warnings)} warning(s) ≥ threshold {threshold}",
         )
         return True
+
+    async def _release_adversarial_hold(
+        self, slug: str, page: "WikiPage", warning_count: int, threshold: int
+    ) -> None:
+        """Release a page the gate holds once a fresh pass is below the threshold.
+
+        The caller has already established that the gate held the page (the marker
+        note, or old warnings on a page demoted before the marker existed). A page
+        with its own contradiction note is a real conflict and is never released.
+        """
+        if page.status != LifecycleState.CONTRADICTED:
+            return
+        note = (page.contradiction_note or "").strip()
+        if note and not note.startswith(ADVERSARIAL_HOLD_NOTE_PREFIX):
+            return
+        page.contradiction_note = None
+        await self._transition(
+            slug, page, LifecycleState.CONTRADICTED, LifecycleState.ACTIVE,
+            f"adversarial hold released — {warning_count} warning(s) < threshold {threshold}",
+        )
 
     async def _skip_resolve_for_gate(
         self, slug: str, page: "WikiPage", report: LintReport
@@ -1333,6 +1429,18 @@ class LintAgent(BaseAgent):
                             )
                             await self._audit.record_audit_event(
                                 job_id, "stale_contradiction_cleared", {"slug": slug})
+                        continue
+                    if is_adversarial_hold(page.status, note, bool(page.lint_warnings)):
+                        # Demoted by the adversarial gate, not by a source conflict:
+                        # there is no disputed claim to resolve. Report it as an
+                        # adversarial hold instead of a contradiction, so a
+                        # contradiction the resolver just fixed does not appear to
+                        # come back.
+                        report.adversarial_held.append(slug)
+                        _log.info(
+                            "[lint] %s held in 'contradicted' by the adversarial gate "
+                            "(%d warning(s)); no source conflict recorded",
+                            slug, len(page.lint_warnings or []))
                         continue
                     report.contradictions_found += 1
                     if self._audit:

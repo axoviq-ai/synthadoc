@@ -320,6 +320,40 @@ async def test_run_lint_passes_adversarial_false(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_run_lint_logs_the_provider_that_runs_lint_and_adversarial(tmp_wiki, caplog):
+    """Lint and the adversarial pass each log provider/model taken from the
+    provider object that actually runs, not from the config."""
+    import logging
+    from types import SimpleNamespace
+    from synthadoc.config import AgentConfig, load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.lint_agent import LintReport
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+
+    def _provider_for(role, _cfg):
+        cfg = {"lint": AgentConfig(provider="deepseek", model="deepseek-flash"),
+               "adversarial": AgentConfig(provider="gemini", model="gemini-2.5-flash")}[role]
+        return SimpleNamespace(_config=cfg)
+
+    async def fake_run(self, **kwargs):
+        return LintReport(adversarial_warnings=[])
+
+    with caplog.at_level(logging.INFO, logger="synthadoc.core.orchestrator"), \
+         patch("synthadoc.agents.lint_agent.LintAgent.run", new=fake_run), \
+         patch("synthadoc.core.orchestrator.make_provider", side_effect=_provider_for), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.complete = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        mock_queue.fail_permanent = AsyncMock()
+        await orch._run_lint("job-1", adversarial=True)
+
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any(m == "lint all — deepseek/deepseek-flash" for m in msgs), msgs
+    assert any(m.startswith("Adversarial pass: gemini/gemini-2.5-flash") for m in msgs), msgs
+
+
+@pytest.mark.asyncio
 async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
     """_run_scaffold() must not pass meta slugs (index, overview, purpose, dashboard, log)
     as protected_slugs — they must never appear as categorised content in the index."""

@@ -128,6 +128,8 @@ class IngestConfig:
     citation_source_lines: int = 400      # lines of source text shown to the citation LLM (Pass 4)
     citation_max_tokens: int = 8192       # output token budget for the citation LLM response
     max_download_bytes: int = 25 * 1024 * 1024  # cap on a URL response body, counted after decoding
+    link_on_promote: bool = True          # cross-link pages after candidates promote (no LLM call)
+    link_max_per_page: int = 3            # related pages linked from each promoted page
 
 
 @dataclass
@@ -478,7 +480,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         workflow_max_tokens=int(a.get("workflow_max_tokens", 16384)),
     )
 
-    for name in ("ingest", "query", "lint", "adversarial", "skill"):
+    for name in ("ingest", "query", "lint", "adversarial", "skill", "workflow"):
         if name in a:
             base_vals = {
                 "provider": default_agent.provider,
@@ -514,6 +516,8 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         citation_source_lines=int(ig.get("citation_source_lines", 400)),
         citation_max_tokens=int(ig.get("citation_max_tokens", 8192)),
         max_download_bytes=int(ig.get("max_download_bytes", 25 * 1024 * 1024)),
+        link_on_promote=bool(ig.get("link_on_promote", True)),
+        link_max_per_page=int(ig.get("link_max_per_page", 3)),
     )
     _validate_ingest_staging(ingest.staging_policy, ingest.staging_confidence_min)
 

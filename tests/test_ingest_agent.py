@@ -253,3 +253,46 @@ async def test_sanitizer_warning_logged_at_warn_level(tmp_path, mock_provider, c
     with caplog.at_level("WARNING"):
         await agent.run(str(source))
     assert any("bidi" in r.message.lower() for r in caplog.records)
+
+
+def test_files_match_legacy_bare_name_vs_raw_sources_prefix():
+    assert _files_match("notes.pdf", "raw_sources/notes.pdf")
+    assert not _files_match("a/notes.pdf", "raw_sources/b/notes.pdf")
+
+
+# ---------------------------------------------------------------------------
+# portable source paths: no OS user name / folder layout in page frontmatter
+# ---------------------------------------------------------------------------
+
+def test_portable_source_path_inside_wiki_is_relative_posix(tmp_path):
+    from synthadoc.storage.wiki import portable_source_path
+    f = tmp_path / "raw_sources" / "books" / "a.docx"
+    f.parent.mkdir(parents=True)
+    f.write_text("x")
+    assert portable_source_path(str(f), tmp_path) == "raw_sources/books/a.docx"
+
+
+def test_portable_source_path_leaves_urls_relative_and_outside_paths_alone(tmp_path):
+    from synthadoc.storage.wiki import portable_source_path
+    assert portable_source_path("https://e.com/a", tmp_path) == "https://e.com/a"
+    assert portable_source_path("raw_sources/a.md", tmp_path) == "raw_sources/a.md"
+    outside = str(tmp_path.parent / "elsewhere" / "a.md")
+    assert portable_source_path(outside, tmp_path) == outside
+    assert portable_source_path(outside, None) == outside
+
+
+def test_storage_migrates_absolute_source_paths_on_read_and_write(tmp_path):
+    from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage
+    store = WikiStorage(tmp_path / "wiki")
+    root = tmp_path / "wiki"
+    src = root / "raw_sources" / "a.md"
+    src.parent.mkdir(parents=True)
+    src.write_text("x")
+    page = WikiPage(title="T", tags=[], content="body", status="active", confidence="high",
+                    sources=[SourceRef(file=str(src), hash="h", size=1, ingested="2026-01-01")])
+    store.write_page("t", page)
+    text = (root / "wiki" / "t.md").read_text(encoding="utf-8") if (root / "wiki" / "t.md").exists() \
+        else next(root.rglob("t.md")).read_text(encoding="utf-8")
+    assert str(tmp_path) not in text
+    assert "raw_sources/a.md" in text
+    assert store.read_page("t").sources[0].file == "raw_sources/a.md"
