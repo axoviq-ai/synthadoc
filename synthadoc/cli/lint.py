@@ -210,6 +210,7 @@ def lint_report(
     from synthadoc.agents.lint_agent import read_current_lint_state
     _state = read_current_lint_state(WikiStorage(wiki_dir))
     contradicted = _state.contradicted
+    held = _state.held
     orphans = _state.orphans
 
     # Augment adv_pages with re-ingest suggestions (CLI-only)
@@ -253,7 +254,7 @@ def lint_report(
     truncated_pages = _state.truncated_pages  # [{slug, file, size}]
 
     # --- Report ---
-    has_issues = contradicted or orphans or adv_pages or citation_issues or truncated_pages
+    has_issues = contradicted or held or orphans or adv_pages or citation_issues or truncated_pages
     if not has_issues:
         # Still sync frontmatter to clear stale orphan: true flags from previous runs.
         _sync_orphan_frontmatter(wiki_dir, page_texts, set())
@@ -271,6 +272,15 @@ def lint_report(
                 typer.echo(f"    Auto-resolve failed: {fm['unresolved_note']}")
             typer.echo(f"    -> Open wiki/{slug}.md, resolve the conflict, then set status: active")
             typer.echo(f"    -> Or re-run: synthadoc lint -w {wiki} --auto-resolve")
+
+    if held:
+        typer.echo(f"\nHeld by the adversarial check ({len(held)}) - no source conflict recorded:\n")
+        for slug in held:
+            fm = _parse_frontmatter(page_texts.get(slug, ""))
+            n_warn = len(fm.get("lint_warnings") or [])
+            typer.echo(f"  {slug}  ({n_warn} adversarial warning(s))")
+            typer.echo("    -> Fix the flagged claims (see Adversarial Warnings below), then re-run lint;")
+            typer.echo("       the hold is released once the page passes the check.")
 
     if orphans:
         typer.echo(f"\nOrphan pages ({len(orphans)}) - active pages with no inbound links:\n")
@@ -329,7 +339,8 @@ def lint_report(
 
     adv_count = sum(len(p["warnings"]) for p in adv_pages)
     typer.echo(
-        f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s), "
+        f"\n{len(contradicted)} contradiction(s), {len(held)} held by the adversarial check, "
+        f"{len(orphans)} orphan(s), "
         f"{adv_count} adversarial warning(s), {len(citation_issues)} citation issue(s), "
         f"{len(truncated_pages)} truncated source(s)."
         f"\nDashboard: open wiki/dashboard.md in Obsidian for a live view."

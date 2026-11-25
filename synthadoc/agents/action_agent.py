@@ -873,6 +873,15 @@ class ActionAgent(BaseAgent):
             elif focus == LintFocus.CONTRADICTED:
                 parts.append("**Contradicted pages (0)** — no contradictions found.")
 
+        if focus in (None, LintFocus.CONTRADICTED, LintFocus.ADVERSARIAL) and state.held:
+            lines = [
+                f"**Held by the adversarial check ({len(state.held)})** — no source "
+                f"conflict is recorded; fix the flagged claims and re-run lint:\n"
+            ]
+            for slug in state.held:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
         if focus in (None, LintFocus.ORPHANS):
             if state.orphans:
                 lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
