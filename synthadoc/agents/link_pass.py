@@ -20,10 +20,12 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from rank_bm25 import BM25Okapi
+
+from synthadoc.storage.search import HybridSearch, page_search_text
 from synthadoc.storage.wiki import LifecycleState, SYSTEM_PAGE_SLUGS
 
 if TYPE_CHECKING:  # pragma: no cover
-    from synthadoc.storage.search import HybridSearch
     from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -32,8 +34,11 @@ RELATED_HEADING = "## Related"
 RELATED_MARKER = "<!-- synthadoc:related -->"
 
 # Only pages in circulation are linked to or from. Archived pages are retired, and a
-# contradicted page is in dispute, so neither should gain new inbound links.
-_LINKABLE_STATES = frozenset({LifecycleState.ACTIVE, LifecycleState.DRAFT, ""})
+# contradicted page is in dispute, so neither should gain new inbound links. Drafts
+# count: pages are promoted as drafts and only become active at the next lint run, so
+# at promote time a batch is nothing but drafts.
+_LINKABLE_STATES = frozenset(
+    {LifecycleState.ACTIVE, LifecycleState.DRAFT, LifecycleState.STALE, ""})
 
 # A related page must score at least this fraction of the best match for the same
 # page, so a long tail of weak matches is not linked just to fill the quota.
@@ -94,6 +99,45 @@ def _is_linkable(page: "WikiPage | None") -> bool:
     return page is not None and (page.status or "") in _LINKABLE_STATES
 
 
+class _RelatedIndex:
+    """BM25 over every linkable page, drafts included.
+
+    The wiki's query index deliberately holds only active and stale pages, so drafts
+    cannot answer queries. A page that has just been promoted is still a draft until
+    the next lint run, so the query index cannot see it. This pass needs the opposite
+    view, so it builds its own small index and leaves the query index alone.
+    """
+
+    def __init__(self, store: "WikiStorage") -> None:
+        self.pages: dict[str, "WikiPage"] = {}
+        self._slugs: list[str] = []
+        self._docs: list[list[str]] = []
+        for slug in store.list_pages():
+            if slug in SYSTEM_PAGE_SLUGS:
+                continue
+            page = store.read_page(slug)
+            if not _is_linkable(page):
+                continue
+            self.pages[slug] = page
+            self._slugs.append(slug)
+            self._docs.append(HybridSearch._tokenize(page_search_text(page)))
+        self._bm25 = BM25Okapi(self._docs) if self._docs else None
+
+    def related(self, slug: str, top_n: int) -> list[tuple[str, float]]:
+        """The (slug, score) of the pages closest to *slug*, best first."""
+        if self._bm25 is None or slug not in self.pages:
+            return []
+        query = HybridSearch._tokenize(" ".join(_query_terms(self.pages[slug])))
+        scores = list(self._bm25.get_scores(query))
+        if not any(s > 0 for s in scores):
+            # BM25 IDF breaks down on a tiny corpus; fall back to normalised term frequency.
+            wanted = set(query)
+            scores = [sum(1 for t in doc if t in wanted) / max(len(doc), 1) for doc in self._docs]
+        ranked = sorted(((s, sc) for s, sc in zip(self._slugs, scores) if s != slug and sc > 0),
+                        key=lambda pair: pair[1], reverse=True)
+        return ranked[:top_n]
+
+
 def link_promoted_pages(
     store: "WikiStorage",
     search: "HybridSearch",
@@ -101,60 +145,48 @@ def link_promoted_pages(
     *,
     max_per_page: int = 3,
 ) -> LinkPassResult:
-    """Link each of *slugs* to its closest pages, and each of those back to it."""
+    """Link each of *slugs* to its closest pages, and each of those back to it.
+
+    *search* is only used to drop the query index's cache after pages are written.
+    """
     result = LinkPassResult()
     if max_per_page <= 0 or not slugs:
         return result
 
-    search.invalidate_index()   # the promoted pages were just moved into wiki/
+    index = _RelatedIndex(store)
     titles: dict[str, str] = {}
 
-    def _title(slug: str, page: "WikiPage") -> str:
-        titles.setdefault(slug, page.title or slug.replace("-", " ").title())
-        return titles[slug]
+    def _title(slug: str) -> str:
+        page = index.pages[slug]
+        return titles.setdefault(slug, page.title or slug.replace("-", " ").title())
 
     # slug -> {target slug, ...}; every pair is recorded in both directions
     wanted: dict[str, dict[str, None]] = {}
 
     for slug in slugs:
-        if slug in SYSTEM_PAGE_SLUGS:
-            continue
-        page = store.read_page(slug)
-        if not _is_linkable(page):
-            continue
-        _title(slug, page)
-        hits = [h for h in search.bm25_search(_query_terms(page), top_n=max_per_page + 6)
-                if h.slug != slug and h.slug not in SYSTEM_PAGE_SLUGS and h.score > 0]
+        hits = index.related(slug, top_n=max_per_page + 6)
         if not hits:
             continue
-        floor = hits[0].score * _MIN_RELATIVE_SCORE
-        chosen = 0
-        for hit in hits:
-            if chosen >= max_per_page:
+        floor = hits[0][1] * _MIN_RELATIVE_SCORE
+        for target, score in hits[:max_per_page]:
+            if score < floor:
                 break
-            if hit.score < floor:
-                break
-            target = store.read_page(hit.slug)
-            if not _is_linkable(target):
-                continue
-            _title(hit.slug, target)
-            wanted.setdefault(slug, {})[hit.slug] = None
-            wanted.setdefault(hit.slug, {})[slug] = None
-            chosen += 1
+            wanted.setdefault(slug, {})[target] = None
+            wanted.setdefault(target, {})[slug] = None
 
     for slug, targets in wanted.items():
-        pairs = [(t, titles[t]) for t in targets]
-        before: list[str] = []
+        pairs = [(t, _title(t)) for t in targets]
+        added: list[str] = []
 
-        def _apply(page: "WikiPage", _pairs=pairs, _before=before) -> None:
+        def _apply(page: "WikiPage", _pairs=pairs, _added=added) -> None:
             updated = add_related_links(page.content or "", _pairs)
             if updated != (page.content or ""):
-                _before.extend(t for t, _ in _pairs if not _links_to(page.content or "", t))
+                _added.extend(t for t, _ in _pairs if not _links_to(page.content or "", t))
                 page.content = updated
 
         store.update_page(slug, _apply)
-        if before:
-            result.added[slug] = before
+        if added:
+            result.added[slug] = added
 
     if result.added:
         search.invalidate_index()
