@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 Peter White / axoviq.com
 """Cross-link pages that were promoted together, so a batch import is not all orphans.
 
 With staging on, every source of a batch is decided while the wiki holds only the
