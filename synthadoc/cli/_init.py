@@ -304,6 +304,11 @@ max_pages_per_ingest = 15
 citation_source_lines = 400
 citation_max_tokens = 8192
 max_download_bytes = 26214400  # cap on a URL response body (decoded bytes, 25 MiB)
+#   link_on_promote   — after `candidates promote`, cross-link the promoted pages with their closest
+#                       pages (a "Related" section, no LLM call) so a batch import is not all orphans.
+#   link_max_per_page — related pages linked from each promoted page.
+link_on_promote = true
+link_max_per_page = 3
 
 [cost]
 soft_warn_usd = 0.50

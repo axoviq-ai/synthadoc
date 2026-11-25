@@ -482,6 +482,27 @@ class Orchestrator:
         except Exception:
             logger.exception("overview: failed to regenerate wiki/overview.md")
 
+    async def link_promoted_pages(self, slugs: list[str]) -> None:
+        """Cross-link just-promoted pages with their closest pages (no LLM call).
+
+        Run as a background task after candidates are promoted. With staging on,
+        every page of a batch is decided before any of them exists, so none of them
+        links to another and lint reports them all as orphans.
+        """
+        ig = self._cfg.ingest
+        if not ig.link_on_promote or not slugs:
+            return
+        import asyncio
+        from synthadoc.agents.link_pass import link_promoted_pages
+        try:
+            result = await asyncio.to_thread(
+                link_promoted_pages, self._store, self._search, list(slugs),
+                max_per_page=ig.link_max_per_page)
+            if result.pages_changed:
+                await self.wiki_changed()
+        except Exception:
+            logger.exception("link pass: failed after candidate promotion")
+
     async def _pre_check_ingest_cost(
         self, job_id: str, source: str, cfg: "Config"
     ) -> bool:
