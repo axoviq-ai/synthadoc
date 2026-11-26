@@ -2,25 +2,49 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 """
-Count CLI commands, Obsidian plugin commands, and skills, then write docs/badges.json.
+Count CLI commands, Obsidian plugin commands, and skills, write docs/badges.json,
+and bake the computed values into static shields.io badge URLs in README.md.
+
+Badges are rendered as self-contained `img.shields.io/badge/<label>-<value>-<color>`
+URLs (no secondary fetch) rather than `badge/dynamic/json?url=...` — the latter
+requires GitHub's/PyPI's image proxy to do a live fetch of docs/badges.json on
+every render, and a transient failure in that chain gets cached as a permanently
+broken badge image.
 
 Run before committing when you add/remove commands or skills:
     python scripts/update_badges.py
 
-CI runs this with --check to fail the build if badges.json is out of date:
+CI runs this with --check to fail the build if badges.json or README.md's
+embedded badge values are out of date:
     python scripts/update_badges.py --check
 
-To also update the coverage field (CI only — requires a coverage.json from pytest-cov):
+To also update the coverage badge (CI only — requires a coverage.json from pytest-cov):
     python scripts/update_badges.py --coverage-json coverage.json
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).parent.parent
+README_PATH = ROOT / "README.md"
+
+# key in badges.json -> (alt text of the <img> tag in README.md, badge label,
+# fixed color, or None to derive the color from the value via _coverage_color)
+_BADGE_SPECS: dict[str, tuple[str, str, str | None, str]] = {
+    "coverage": ("Coverage", "Coverage", None, "%"),
+    "agents": ("AI agents", "AI agents", "crimson", ""),
+    "skills": ("Skills", "Skills", "purple", ""),
+    "mcp_tools": ("MCP tools", "MCP tools", "orange", ""),
+    "hooks": ("Hook events", "Hook events", "teal", ""),
+    "cli_commands": ("CLI commands", "CLI commands", "darkblue", ""),
+    "obsidian_commands": ("Obsidian commands", "Obsidian commands", "blueviolet", ""),
+    "maintenance_workflows": ("Maintenance workflows", "Maintenance workflows", "green", ""),
+}
 
 
 def count_cli_commands() -> int:
@@ -134,6 +158,32 @@ def _coverage_color(pct: int) -> str:
     return "red"
 
 
+def _static_badge_url(label: str, value: object, color: str, suffix: str) -> str:
+    """Build a self-contained shields.io static badge URL — no secondary fetch."""
+    message = f"{value}{suffix}"
+    return f"https://img.shields.io/badge/{quote(label)}-{quote(message)}-{color}"
+
+
+def rewrite_readme_badges(readme_text: str, data: dict) -> str:
+    """Replace each badge's <img src> with a freshly computed static shields.io URL.
+
+    Matches on the <img>'s alt text (stable across rewrites) rather than the old
+    URL, so this works both for the one-time dynamic->static conversion and for
+    every later re-run once the badges are already static.
+    """
+    out = readme_text
+    for key, (alt_text, label, fixed_color, suffix) in _BADGE_SPECS.items():
+        if key not in data:
+            continue  # e.g. coverage not yet known outside CI's --coverage-json run
+        color = fixed_color if fixed_color is not None else _coverage_color(data[key])
+        url = _static_badge_url(label, data[key], color, suffix)
+        pattern = re.compile(rf'(<img src=")[^"]*(" alt="{re.escape(alt_text)}"/>)')
+        out, n = pattern.subn(lambda m, u=url: f"{m.group(1)}{u}{m.group(2)}", out)
+        if n == 0:
+            print(f'WARNING: no <img alt="{alt_text}"/> found in README.md — badge not updated')
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Update docs/badges.json")
     parser.add_argument("--check", action="store_true",
@@ -168,7 +218,15 @@ def main() -> None:
             print(f"  Stale fields: {stale}")
             print("Run: python scripts/update_badges.py")
             sys.exit(1)
-        print(f"OK: docs/badges.json is up to date — {static}")
+
+        readme_text = README_PATH.read_text(encoding="utf-8")
+        expected_readme = rewrite_readme_badges(readme_text, {**current, **static})
+        if expected_readme != readme_text:
+            print("ERROR: README.md's badge values are out of date.")
+            print("Run: python scripts/update_badges.py")
+            sys.exit(1)
+
+        print(f"OK: docs/badges.json and README.md badges are up to date — {static}")
         return
 
     # Load existing badges.json to preserve fields we are not recomputing.
@@ -190,6 +248,12 @@ def main() -> None:
 
     badges_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     print(f"Updated docs/badges.json: {data}")
+
+    readme_text = README_PATH.read_text(encoding="utf-8")
+    new_readme = rewrite_readme_badges(readme_text, data)
+    if new_readme != readme_text:
+        README_PATH.write_text(new_readme, encoding="utf-8")
+        print("Updated README.md badge URLs")
 
 
 if __name__ == "__main__":
