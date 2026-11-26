@@ -206,11 +206,18 @@ def test_the_same_folder_spelled_differently_is_accepted(home, wiki):
     assert P.secret_dir("auth", wid, wiki_root=roundabout) == home / "auth" / wid
 
 
-@pytest.mark.skipif(not WINDOWS, reason="Windows path rules")
-def test_windows_drive_and_folder_case_do_not_defeat_the_binding(home, wiki):
+def test_a_different_spelling_of_the_path_is_judged_by_what_the_filesystem_says(home, wiki):
+    """Windows and default macOS ignore case, so a case-variant IS the same folder and must be
+    accepted. On a case-sensitive filesystem it is a different (here non-existent) folder and
+    must be refused. The test asks the filesystem which one it is, so it runs everywhere."""
     wid = P.ensure_wiki_id(wiki)
     P.secret_dir("auth", wid, wiki_root=wiki)
-    assert P.secret_dir("auth", wid, wiki_root=Path(str(wiki).swapcase())) == home / "auth" / wid
+    variant = Path(str(wiki).swapcase())
+    if variant.exists() and os.path.samefile(variant, wiki):
+        assert P.secret_dir("auth", wid, wiki_root=variant) == home / "auth" / wid
+    else:
+        with pytest.raises(P.SecretPathError):
+            P.secret_dir("auth", wid, wiki_root=variant)
 
 
 def test_home_inside_the_wiki_is_refused(tmp_path, wiki, monkeypatch):
@@ -246,67 +253,72 @@ def test_areas_are_separate_directories(home, wiki):
     assert len(set(dirs.values())) == 3
 
 
-# ---------------------------------------------------- POSIX permissions (real test)
-
-@pytest.mark.skipif(WINDOWS, reason="POSIX modes; the Windows ACL has its own test")
-def test_posix_directories_are_0700_and_owned_by_the_user(home, wiki):
-    wid = P.ensure_wiki_id(wiki)
-    d = P.secret_dir("auth", wid, wiki_root=wiki)
-    for p in (d, d.parent):
-        st = p.lstat()
-        assert (st.st_mode & 0o777) == 0o700 and st.st_uid == os.getuid()
-
-
-@pytest.mark.skipif(WINDOWS, reason="POSIX modes")
-def test_posix_loose_existing_modes_are_tightened(home, wiki):
-    wid = P.ensure_wiki_id(wiki)
-    d = P.secret_dir("auth", wid, wiki_root=wiki)
-    os.chmod(d, 0o755)
-    assert (P.secret_dir("auth", wid, wiki_root=wiki).lstat().st_mode & 0o077) == 0
-
-
-@pytest.mark.skipif(WINDOWS, reason="POSIX symlink semantics")
-def test_posix_a_symlinked_secret_dir_is_refused(home, tmp_path, wiki):
-    wid = P.ensure_wiki_id(wiki)
-    (home / "auth").mkdir(parents=True, mode=0o700)
-    target = tmp_path / "elsewhere"
-    target.mkdir()
-    (home / "auth" / wid).symlink_to(target, target_is_directory=True)
-    with pytest.raises(P.SecretPathError):
-        P.secret_dir("auth", wid, wiki_root=wiki)
-
-
-# ------------------------------------------------------- Windows ACL (real test)
+# ----------------------------------------- directory privacy: one test, every OS
+#
+# These run on Linux, macOS AND Windows with no skips. Only the mechanism behind the
+# three helpers differs (mode bits and owner on POSIX, the ACL on Windows), and each
+# helper reads the result back independently of the implementation under test.
 
 def _icacls_entries(path: Path) -> list:
-    """Independent read-back of the ACL (does not use the implementation's own code)."""
     out = subprocess.run(["icacls", str(path)], capture_output=True, text=True, check=True).stdout
     return [ln for ln in out.splitlines() if ":(" in ln]
 
 
-@pytest.mark.skipif(not WINDOWS, reason="Windows ACL")
-def test_windows_acl_grants_only_the_current_user_and_is_not_inherited(home, wiki):
-    wid = P.ensure_wiki_id(wiki)
-    d = P.secret_dir("auth", wid, wiki_root=wiki)
-    for p in (d, d.parent):
-        entries = _icacls_entries(p)
+def _assert_private(path: Path) -> None:
+    """Only the current user can use *path*."""
+    if WINDOWS:
+        entries = _icacls_entries(path)
         assert len(entries) == 1, entries            # nobody else: no Users, Everyone, Administrators
-        assert "(F)" in entries[0] and "(I)" not in entries[0], entries
+        assert "(F)" in entries[0] and "(I)" not in entries[0], entries   # full control, not inherited
         who = subprocess.run(["whoami"], capture_output=True, text=True).stdout.strip().lower()
         assert who.split("\\")[-1] in entries[0].lower(), (who, entries)
+    else:
+        st = path.lstat()
+        assert (st.st_mode & 0o777) == 0o700, oct(st.st_mode)
+        assert st.st_uid == os.getuid()
 
 
-@pytest.mark.skipif(not WINDOWS, reason="Windows ACL")
-def test_windows_a_widened_acl_is_repaired_or_refused(home, wiki):
+def _widen(path: Path) -> None:
+    """Let others in, as a careless chmod or an inherited ACL would."""
+    if WINDOWS:
+        subprocess.run(["icacls", str(path), "/grant", "*S-1-1-0:(R)"], capture_output=True, check=True)
+        assert len(_icacls_entries(path)) == 2       # the widening really happened
+    else:
+        os.chmod(path, 0o755)
+        assert (path.lstat().st_mode & 0o077) != 0
+
+
+def _link(link: Path, target: Path) -> None:
+    """A symlink on POSIX, a junction on Windows (needs no privilege)."""
+    if WINDOWS:
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                       capture_output=True, check=True)
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_secret_directories_are_private_to_the_current_user(home, wiki):
+    d = P.secret_dir("auth", P.ensure_wiki_id(wiki), wiki_root=wiki)
+    _assert_private(d)
+    _assert_private(d.parent)
+
+
+def test_widened_permissions_on_an_existing_directory_are_repaired(home, wiki):
     wid = P.ensure_wiki_id(wiki)
     d = P.secret_dir("auth", wid, wiki_root=wiki)
-    subprocess.run(["icacls", str(d), "/grant", "*S-1-1-0:(R)"], capture_output=True, check=True)  # Everyone
-    assert len(_icacls_entries(d)) == 2
-    try:
-        d2 = P.secret_dir("auth", wid, wiki_root=wiki)
-    except P.SecretPathError:
-        return                                        # refusing is acceptable (fail closed)
-    assert len(_icacls_entries(d2)) == 1              # or it was repaired
+    _widen(d)
+    _assert_private(P.secret_dir("auth", wid, wiki_root=wiki))
+
+
+def test_a_link_in_place_of_the_secret_directory_is_refused(home, tmp_path, wiki):
+    wid = P.ensure_wiki_id(wiki)
+    (home / "auth").mkdir(parents=True)
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    _link(home / "auth" / wid, target)
+    with pytest.raises(P.SecretPathError):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+    assert not (target / "binding.json").exists()     # nothing was written through the link
 
 
 # ------------------------------------------------------------------------- rebind
