@@ -91,7 +91,7 @@ synthadoc = "synthadoc.cli.main:app"
 asyncio_mode = "auto"
 timeout = 60
 testpaths = ["tests"]
-addopts = "-m 'not integration and not charts and not known_bug'"
+addopts = "-m 'not integration and not charts'"
 norecursedirs = ["tests/live", "tests/performance"]
 markers = [
     "integration: marks tests that require real external tools (run explicitly with '-m integration')",
@@ -102,8 +102,10 @@ markers = [
     "posix: marks tests that run only on Linux or macOS",
     "charts: marks tests that generate performance charts (run explicitly with '-m charts')",
     "benchmark: marks pytest-benchmark tests (run with --benchmark-only)",
-    "known_bug: marks tests for confirmed pre-existing bugs; excluded from default runs",
 ]
+# A confirmed bug is tracked with @pytest.mark.xfail(strict=True, reason="..."), never by
+# deselecting the test: it still runs every time and the suite fails when the bug is fixed
+# without removing the marker.
 
 [tool.hatch.version]
 # Reads __version__ from synthadoc/__init__.py, which in turn reads the repo-root VERSION file.
