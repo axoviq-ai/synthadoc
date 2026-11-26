@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 
 import yaml
@@ -22,7 +22,7 @@ def load_yaml(text: str):
     return yaml.load(text, Loader=_YAML_LOADER)
 
 
-def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M", tz: tzinfo | None = None) -> str:
     """Convert a stored UTC timestamp to local time for display.
 
     Handles both ISO 8601 strings (``+00:00`` or ``Z`` suffix, as produced by
@@ -31,7 +31,8 @@ def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     assumed UTC).
 
     Returns a string in the local system timezone formatted with *fmt*, or
-    ``"—"`` when *ts* is ``None`` or empty.
+    ``"—"`` when *ts* is ``None`` or empty. *tz* overrides the target zone (used
+    by tests; callers normally leave it unset to get local time).
     """
     if not ts:
         return "—"
@@ -39,7 +40,7 @@ def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone().strftime(fmt)
+        return dt.astimezone(tz).strftime(fmt)
     except (ValueError, TypeError):
         return ts[:16] if ts else "—"
 
