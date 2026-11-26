@@ -220,11 +220,60 @@ def test_a_different_spelling_of_the_path_is_judged_by_what_the_filesystem_says(
             P.secret_dir("auth", wid, wiki_root=variant)
 
 
+def _pretend_case_insensitive(monkeypatch, *pair: Path) -> None:
+    """Make samefile report the given folders as one, as a case-insensitive filesystem
+    (default macOS, Windows) does for /x/Wiki and /x/wiki. Deterministic on every OS."""
+    real = os.path.samefile
+    folders = {os.path.normcase(os.path.realpath(str(p))) for p in pair}
+
+    def fake(a, b):
+        ka, kb = (os.path.normcase(os.path.realpath(str(x))) for x in (a, b))
+        return (ka in folders and kb in folders) or real(a, b)
+
+    monkeypatch.setattr(os.path, "samefile", fake)
+
+
+def test_binding_compares_folders_by_identity_not_by_spelling(home, tmp_path, wiki, monkeypatch):
+    """On a case-insensitive filesystem the same folder can be spelled two ways that differ as
+    strings. A string-only comparison refused the legitimate caller (seen on macOS CI)."""
+    wid = P.ensure_wiki_id(wiki)
+    P.secret_dir("auth", wid, wiki_root=wiki)
+    spelled_differently = tmp_path / "wikis" / "W1-other-spelling"
+    spelled_differently.mkdir()
+    with pytest.raises(P.SecretPathError):             # without the filesystem's say-so: different
+        P.secret_dir("auth", wid, wiki_root=spelled_differently)
+    _pretend_case_insensitive(monkeypatch, wiki, spelled_differently)
+    assert P.secret_dir("auth", wid, wiki_root=spelled_differently) == home / "auth" / wid
+
+
+def test_a_missing_recorded_folder_is_a_mismatch_not_a_crash(home, tmp_path, wiki):
+    import json
+    wid = P.ensure_wiki_id(wiki)
+    d = P.secret_dir("auth", wid, wiki_root=wiki)
+    (d / "binding.json").write_text(
+        json.dumps({"wiki_id": wid, "last_path": str(tmp_path / "gone")}), encoding="utf-8")
+    with pytest.raises(P.SecretPathError):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+
+
 def test_home_inside_the_wiki_is_refused(tmp_path, wiki, monkeypatch):
     monkeypatch.setenv("SYNTHADOC_HOME", str(wiki / "secrets"))
     wid = P.ensure_wiki_id(wiki)
     with pytest.raises(P.SecretPathError):
         P.secret_dir("auth", wid, wiki_root=wiki)
+
+
+def test_home_inside_the_wiki_is_refused_even_when_spelled_differently(tmp_path, wiki, monkeypatch):
+    """The fail-open direction: on a case-insensitive filesystem a home written as
+    /x/Wiki/secrets is inside /x/wiki, but a string comparison says it is not."""
+    alias = tmp_path / "alias"
+    alias.mkdir()
+    _pretend_case_insensitive(monkeypatch, alias, wiki)
+    monkeypatch.setenv("SYNTHADOC_HOME", str(alias / "secrets"))
+    wid = P.ensure_wiki_id(wiki)
+    with pytest.raises(P.SecretPathError):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+    assert not (alias / "secrets").exists()            # refused before creating anything
 
 
 def test_home_inside_a_git_work_tree_is_refused_and_names_the_fix(tmp_path, wiki, monkeypatch):
