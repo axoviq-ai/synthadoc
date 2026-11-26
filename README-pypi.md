@@ -21,16 +21,16 @@
 
 <p>
 <a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.coverage&label=Coverage&suffix=%25&color=brightgreen" alt="Coverage"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/Coverage-93%25-brightgreen" alt="Coverage"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License"/></a>
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11%2B-yellow.svg" alt="Python"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/agents"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.agents&label=AI%20agents&color=crimson" alt="AI agents"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple" alt="Skills"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange" alt="MCP tools"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/tree/main/hooks"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal" alt="Hook events"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/agents"><img src="https://img.shields.io/badge/AI%20agents-12-crimson" alt="AI agents"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills"><img src="https://img.shields.io/badge/Skills-10-purple" alt="Skills"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp"><img src="https://img.shields.io/badge/MCP%20tools-12-orange" alt="MCP tools"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/tree/main/hooks"><img src="https://img.shields.io/badge/Hook%20events-1-teal" alt="Hook events"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/CLI%20commands-63-darkblue" alt="CLI commands"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/Obsidian%20commands-15-blueviolet" alt="Obsidian commands"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/Maintenance%20workflows-9-green" alt="Maintenance workflows"/></a>
 <a href="https://hub.docker.com/r/chenp/synthadoc"><img src="https://img.shields.io/docker/pulls/chenp/synthadoc?label=Docker+pulls" alt="Docker pulls"/></a>
 <a href="https://pepy.tech/projects/synthadoc"><img src="https://static.pepy.tech/personalized-badge/synthadoc?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=PyPI+downloads" alt="PyPI downloads"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.5.4-brightgreen.svg" alt="Version"/></a>
