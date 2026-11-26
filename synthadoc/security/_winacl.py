@@ -21,6 +21,7 @@ TOKEN_USER = 1
 ACL_REVISION = 2
 ACL_SIZE_INFORMATION = 2
 SE_FILE_OBJECT = 1
+OWNER_SECURITY_INFORMATION = 0x1
 DACL_SECURITY_INFORMATION = 0x4
 PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
 SE_DACL_PROTECTED = 0x1000
@@ -102,8 +103,29 @@ def current_user_sid() -> bytes:
         _kernel32.CloseHandle(token)
 
 
+def _owner_sid(path: str) -> bytes:
+    """The SID that owns *path*, as raw bytes."""
+    _require_windows()
+    owner = ctypes.c_void_p()
+    descriptor = ctypes.c_void_p()
+    rc = _advapi32.GetNamedSecurityInfoW(
+        path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, ctypes.byref(owner), None,
+        None, None, ctypes.byref(descriptor))
+    if rc != 0:
+        raise AclError(f"GetNamedSecurityInfoW (owner) failed ({rc})")
+    try:
+        if not owner.value:
+            raise AclError("directory has no owner")
+        return ctypes.string_at(owner.value, _advapi32.GetLengthSid(owner.value))
+    finally:
+        if descriptor.value:
+            _kernel32.LocalFree(descriptor)
+
+
 def restrict_to_current_user(path: str) -> None:
-    """Replace the DACL of *path* with a single inheritable full-control entry for the user."""
+    """Replace the DACL of *path* with a single inheritable full-control entry for the user,
+    and make the user its owner (an elevated process creates folders owned by the
+    Administrators group; an owner can rewrite the ACL at will, so it must be the user)."""
     _require_windows()
     sid = current_user_sid()
     sid_buf = ctypes.create_string_buffer(sid, len(sid))
@@ -120,13 +142,21 @@ def restrict_to_current_user(path: str) -> None:
         None, None, acl, None)
     if rc != 0:
         raise AclError(f"SetNamedSecurityInfoW failed ({rc})")
+    if _owner_sid(path) != sid:        # the new ACL grants the user WRITE_OWNER, so this works
+        rc = _advapi32.SetNamedSecurityInfoW(
+            path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, sid_buf, None, None, None)
+        if rc != 0:
+            raise AclError(f"cannot make the current user the owner ({rc})")
 
 
 def verify_current_user_only(path: str) -> None:
-    """Read the DACL back; raise AclError unless it is protected and grants only the user."""
+    """Read back the owner and DACL; raise AclError unless the user owns *path* and the
+    DACL is protected and grants only the user."""
     _require_windows()
     sid = current_user_sid()
     sid_buf = ctypes.create_string_buffer(sid, len(sid))
+    if _owner_sid(path) != sid:
+        raise AclError("the directory is owned by another account")
     dacl = ctypes.c_void_p()
     descriptor = ctypes.c_void_p()
     rc = _advapi32.GetNamedSecurityInfoW(
