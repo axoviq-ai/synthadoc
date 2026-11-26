@@ -726,14 +726,17 @@ async def test_no_gap_search_decompose_not_called(tmp_wiki):
     assert result.knowledge_gap is False
 
 
-@pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_gap_detected_when_pages_are_off_topic(tmp_wiki):
-    """Signal 3: gap triggers when retrieved pages share vocabulary but lack key content words.
+    """A gardening wiki returns spring-flower pages for a vegetables query.
 
-    This covers the real-world case where a gardening wiki returns spring-flower
-    pages for a vegetables query — BM25 scores are high (shared: spring, Canada,
-    planting) but none of the pages actually contain the word 'vegetable'.
+    BM25 scores are high (shared: spring, Canada, planting) and every page matches the
+    shared terms, but none contains the word 'vegetable'. The pre-synthesis keyword
+    signals deliberately do NOT fire here: they treat pages that cover the shared terms as
+    on-topic, to avoid false gaps when a wiki covers a topic in different words (a page
+    about Python threads for a query that says "concurrency"). The post-synthesis guard
+    catches this case: given the pages, the LLM answers with a [GAP] marker (as the answer
+    prompt instructs), and the query is reported as a gap with search suggestions.
     """
     from synthadoc.storage.wiki import WikiPage
     store = WikiStorage(tmp_wiki / "wiki")
@@ -754,20 +757,23 @@ async def test_gap_detected_when_pages_are_off_topic(tmp_wiki):
         # decompose call — single sub-question
         CompletionResponse(text='["What vegetables grow in Canadian spring?"]',
                            input_tokens=5, output_tokens=5),
-        # SearchDecomposeAgent call for suggestions (gap triggered)
+        # answer synthesis call: the LLM judges the pages do not answer the question
+        CompletionResponse(text="[GAP]\nNo vegetable info found.", input_tokens=80, output_tokens=15),
+        # SearchDecomposeAgent call for suggestions (the gap was found after synthesis)
         CompletionResponse(text='["canadian spring vegetables planting", "frost dates vegetable Canada"]',
                            input_tokens=8, output_tokens=8),
-        # answer synthesis call
-        CompletionResponse(text="No vegetable info found.", input_tokens=80, output_tokens=15),
     ]
-    # Threshold high enough that signal 2 alone would not trigger (flowers pages will
-    # score well on BM25 for this query due to shared vocabulary).
+    # Threshold low enough that the score-based signal cannot fire (the flower pages
+    # score well on BM25 for this query because of the shared vocabulary).
     agent = QueryAgent(provider=provider, store=store, search=search,
-                       gap_score_threshold=0.01)   # signal 2 disabled; signal 3 must fire
+                       gap_score_threshold=0.01)
     result = await agent.run("What vegetables grow well in a Canadian spring?")
-    # Signal 3: none of the flower pages contain 'vegetabl' — gap must be detected.
+    # None of the flower pages contain 'vegetable': the query is reported as a gap.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
+    # The [GAP] marker is a verdict for the system, never text shown to the user.
+    assert "[GAP]" not in result.answer
+    assert "No vegetable info found." in result.answer
 
 
 def _fake_results(slugs: list[str], score: float = 5.0) -> list[SearchResult]:
