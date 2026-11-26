@@ -158,9 +158,31 @@ def _is_inside(child: str, parent: str) -> bool:
     return child == parent or child.startswith(parent + os.sep)
 
 
+def _same_folder(a: object, b: object) -> bool:
+    """True when *a* and *b* are the same directory, however they are spelled.
+
+    Resolved names are compared first (cheap), then file identity. Names alone are not
+    enough: on a case-insensitive filesystem (the macOS default, and Windows) /x/Wiki and
+    /x/wiki are one folder but different strings, and ``normcase`` only folds case on
+    Windows. A string-only comparison would refuse the legitimate caller and, worse, miss
+    a secret home placed inside the wiki under a different spelling.
+    """
+    if os.path.normcase(os.path.realpath(str(a))) == os.path.normcase(os.path.realpath(str(b))):
+        return True
+    try:
+        return os.path.samefile(str(a), str(b))
+    except OSError:                                   # one of them does not exist
+        return False
+
+
+def _inside_by_identity(home: Path, wiki_root: Path) -> bool:
+    """True when the home, or any existing folder above it, IS the wiki folder."""
+    return any(c.exists() and _same_folder(c, wiki_root) for c in (home, *home.parents))
+
+
 def _check_home_location(home: Path, wiki_root: Path) -> None:
     home_real = _real(home)
-    if _is_inside(home_real, _real(wiki_root)):
+    if _is_inside(home_real, _real(wiki_root)) or _inside_by_identity(Path(home_real), wiki_root):
         raise SecretPathError("the secret home is inside the wiki folder", _HOME_HINT)
     probe = Path(home_real)
     for candidate in (probe, *probe.parents):
@@ -287,8 +309,7 @@ def _check_binding(directory: Path, wiki_id: str, wiki_root: Path) -> None:
     text = _read_text_settled(binding)
     try:
         data = json.loads(text or "")
-        same = (data["wiki_id"] == wiki_id
-                and os.path.normcase(os.path.realpath(data["last_path"])) == os.path.normcase(root_real))
+        same = data["wiki_id"] == wiki_id and _same_folder(data["last_path"], root_real)
     except (ValueError, KeyError, TypeError) as exc:
         raise SecretPathError(f"{binding} is unreadable: {exc}", _REBIND_HINT) from exc
     if not same:
