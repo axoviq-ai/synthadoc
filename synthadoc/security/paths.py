@@ -34,7 +34,8 @@ AREAS = frozenset({"auth", "live", "peers"})
 
 _WINDOWS = sys.platform == "win32"
 _WIKI_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_REPARSE_POINT = 0x400          # Windows symlinks and junctions
+_BLANK_GRACE_SECONDS = 5.0      # a blank id file younger than this may still be being written
+_REPARSE_POINT = 0x400         # Windows symlinks and junctions
 _HOME_HINT = (
     f"Set {HOME_ENV} to a directory outside any git repository and outside the wiki "
     f"(for example {HOME_ENV}=/var/lib/synthadoc, or a path on a mounted volume in Docker)."
@@ -124,6 +125,13 @@ def _clear_blank(path: Path) -> None:
     then creates it exclusively and adopts whichever id wins, so two processes healing at
     once still agree.
     """
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        age = _BLANK_GRACE_SECONDS
+    if age < _BLANK_GRACE_SECONDS:      # another process may still be writing it
+        raise SecretPathError(f"{path} is blank and was created moments ago",
+                              "Another process may be creating it; try again in a few seconds.")
     logger.warning("replacing the blank wiki id file %s (an earlier write was interrupted)", path)
     try:
         path.unlink()

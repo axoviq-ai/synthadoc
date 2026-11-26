@@ -126,6 +126,7 @@ def test_a_blank_wiki_id_file_from_a_crash_is_healed(wiki, blank):
     f = wiki / ".synthadoc" / "wiki_id"
     f.parent.mkdir()
     f.write_text(blank, encoding="utf-8")
+    os.utime(f, (1_000_000_000, 1_000_000_000))        # long ago: nobody is still writing it
     wid = P.ensure_wiki_id(wiki)
     assert UUID_RE.match(wid)
     assert f.read_text(encoding="utf-8").strip() == wid
@@ -369,6 +370,12 @@ def _widen(path: Path) -> None:
         assert (path.lstat().st_mode & 0o077) != 0
 
 
+def _is_widened(path: Path) -> bool:
+    if WINDOWS:
+        return len(_icacls_entries(path)) > 1
+    return (path.lstat().st_mode & 0o077) != 0
+
+
 def _link(link: Path, target: Path) -> None:
     """A symlink on POSIX, a junction on Windows (needs no privilege)."""
     if WINDOWS:
@@ -406,10 +413,24 @@ def test_a_directory_owned_by_someone_else_is_refused(home, wiki, monkeypatch):
     """Whoever owns a directory can rewrite its permissions later, so a correct ACL or
     mode on a directory somebody else owns proves nothing. Same rule on every OS."""
     wid = P.ensure_wiki_id(wiki)
-    P.secret_dir("auth", wid, wiki_root=wiki)
+    d = P.secret_dir("auth", wid, wiki_root=wiki)
+    _widen(d.parent)                           # the first folder checked; a wrongly attempted
+    _widen(d)                                  # repair would be visible on both
     _pretend_owned_by_someone_else(monkeypatch)
     with pytest.raises(P.SecretPathError):
         P.secret_dir("auth", wid, wiki_root=wiki)
+    monkeypatch.undo()
+    assert _is_widened(d.parent) and _is_widened(d)    # refused, not adopted and quietly "fixed"
+
+
+def test_blank_wiki_id_file_that_is_still_fresh_is_left_alone(wiki):
+    """Another process may be mid-write; only a stale blank file is healed."""
+    f = wiki / ".synthadoc" / "wiki_id"
+    f.parent.mkdir()
+    f.write_text("", encoding="utf-8")
+    with pytest.raises(P.SecretPathError):
+        P.ensure_wiki_id(wiki)
+    assert f.exists() and f.read_text(encoding="utf-8") == ""
 
 
 def test_widened_permissions_are_repaired_with_a_warning(home, wiki, caplog):
