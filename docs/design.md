@@ -2474,6 +2474,16 @@ On `action=update` the LLM writes only what the page does not already cover (`up
 
 Replacing without that check lost text: the update section is a delta, so a demo batch ingest, which re-ingests each page's only source (the shipped pages record placeholder hashes), cut `alan-turing.md` from 55 KB to 2 KB and eight other pages likewise (v1.4.3–v1.5.0). Before each live update the page's previous text is stored as a lifecycle snapshot (`triggered_by = ingest`, reason `before ingest update from <source>`), so any ingest update can be rolled back with the snapshot tools.
 
+#### Locking rule: never `await` under a page lock
+
+`WikiStorage.page_lock(slug)` is a thread lock plus a file lock. A task that awaits while holding it leaves the lock taken while the event loop runs other tasks; the first one that asks for the same slug blocks the whole loop, so the holder can never resume (a deadlock). One sequential worker hides this, concurrent HTTP writers next to the worker expose it.
+
+The rule is therefore: do awaited work (LLM calls, audit writes) before or after the lock and keep only read, merge and write inside it. `IngestAgent._update_existing_page()` builds and annotates the section from a lock-free read, takes the lock, re-reads the page and checks that the full-rebuild decision still holds (otherwise it rebuilds the section), then writes. It retries up to three times; if the page's state keeps changing it raises `RuntimeError` and the job fails, which is intended: the job can be retried. The audit snapshot is written after the lock is released.
+
+`tests/agents/test_page_lock_async_safety.py` enforces the rule: an AST scan fails the build when an `await` appears inside a `with ...page_lock(...)` block, and concurrency tests run a second writer in the window where ingest awaits. The scan takes a list of lock names (`_GUARDED_LOCKS`), so any new lock helper, such as the cross-process lock planned for the secret store, registers its name there and follows the same rule.
+
+**Known limit (future work).** Even a short critical section can stall the event loop: the lock is taken from async code, so a cross-process holder (the CLI or a second server) makes the loop wait for the file lock. The proper fix is to run lock sections in `asyncio.to_thread`.
+
 ### IngestAgent Pass 4 — `_annotate_citations()`
 
 Called within the Write pass for each page section immediately before it is appended to the page. The LLM receives:

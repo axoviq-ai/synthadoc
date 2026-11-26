@@ -29,25 +29,50 @@ _PKG = Path(__file__).resolve().parents[2] / "synthadoc"
 _HANG_SECONDS = 20
 
 
-def _awaits_under_page_lock() -> list[str]:
+# Lock helpers that must never be held across an await. A module that adds a lock of
+# the same kind (for example a cross-process secret-store lock) registers its name here.
+_GUARDED_LOCKS = ("page_lock",)
+
+
+def awaits_under_locks(lock_names, paths) -> list[str]:
+    """``path:line`` of every ``await`` / ``async for`` / ``async with`` inside a
+    ``with <...lock_name...>`` block in the given files."""
     found: list[str] = []
-    for path in sorted(_PKG.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    for path in paths:
+        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.With):
                 continue
-            if not any("page_lock" in ast.unparse(item.context_expr) for item in node.items):
+            if not any(name in ast.unparse(item.context_expr)
+                       for item in node.items for name in lock_names):
                 continue
             for stmt in node.body:
                 for inner in ast.walk(stmt):
                     if isinstance(inner, (ast.Await, ast.AsyncFor, ast.AsyncWith)):
-                        found.append(f"{path.relative_to(_PKG.parent)}:{inner.lineno}")
+                        found.append(f"{Path(path).name}:{inner.lineno}")
     return found
 
 
-def test_no_await_inside_a_page_lock_block():
+def test_no_await_inside_a_guarded_lock_block():
     """Static guard: fails when a new ``await`` lands inside ``with ...page_lock(...)``."""
-    assert _awaits_under_page_lock() == []
+    assert awaits_under_locks(_GUARDED_LOCKS, sorted(_PKG.rglob("*.py"))) == []
+
+
+def test_the_guard_flags_an_await_under_a_lock(tmp_path):
+    """The scanner itself works, for any lock name it is given."""
+    bad = tmp_path / "bad.py"
+    source = [
+        'async def f(store, other):',
+        "    with store.page_lock('a'):",
+        '        await other()',
+        "    with store.secret_lock('b'):",
+        '        await other()',
+        "    with store.page_lock('c'):",
+        '        other()',
+    ]
+    bad.write_text(chr(10).join(source), encoding="utf-8")
+    assert awaits_under_locks(("page_lock",), [bad]) == ["bad.py:3"]
+    assert awaits_under_locks(("page_lock", "secret_lock"), [bad]) == ["bad.py:3", "bad.py:5"]
 
 
 def _run_with_watchdog(coro_factory) -> None:
@@ -69,28 +94,40 @@ def _run_with_watchdog(coro_factory) -> None:
         raise errors[0]
 
 
-def _provider(decision: str) -> AsyncMock:
+def _provider(decision: str, cited: str | None = None) -> AsyncMock:
+    """Answer each pass with its own kind of response. ``cited`` is what the citation
+    pass returns (the annotated section); without it that pass gets the decision JSON,
+    which ingest rejects and falls back to the unannotated section."""
     entity = CompletionResponse(
         text='{"entities":["Alan Turing"],"concepts":[],"tags":["history"]}',
         input_tokens=10, output_tokens=10)
-    decide = CompletionResponse(text=decision, input_tokens=10, output_tokens=10)
+
+    async def complete(*, messages, **_kwargs):
+        prompt = messages[0].content
+        if "citation annotator" in prompt and cited is not None:
+            return CompletionResponse(text=cited, input_tokens=10, output_tokens=10)
+        if "Decide how to handle" in prompt:
+            return CompletionResponse(text=decision, input_tokens=10, output_tokens=10)
+        return entity
+
     provider = AsyncMock()
-    provider.complete.side_effect = itertools.cycle([entity, decide])
+    provider.complete.side_effect = complete
     return provider
 
 
-async def _agent(tmp_wiki: Path, decision: str):
+async def _agent(tmp_wiki: Path, decision: str, cited: str | None = None,
+                 status: str = "active"):
     from synthadoc.core.cache import CacheManager
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("alan-turing", WikiPage(
         title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nMathematician.",
-        status="active", confidence="high", sources=[], created="2026-01-01"))
+        status=status, confidence="high", sources=[], created="2026-01-01"))
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
     agent = IngestAgent(
-        provider=_provider(decision), store=store,
+        provider=_provider(decision, cited), store=store,
         search=HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db"),
         log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), audit_db=audit,
         cache=cache, max_pages=15)
@@ -109,7 +146,8 @@ def test_a_concurrent_writer_is_not_blocked_while_an_update_ingest_awaits(tmp_wi
     async def scenario() -> None:
         store, _audit, agent, source = await _agent(
             tmp_wiki, '{"action":"update","target":"alan-turing","new_slug":"",'
-                      '"update_content":"## Enigma\\n\\nNew detail."}')
+                      '"update_content":"## Enigma\\n\\nNew detail."}',
+            cited="## Enigma\n\nNew detail. ^[enigma.md:1-1]")
         inside, release = asyncio.Event(), asyncio.Event()
         original = agent._annotate_citations
 
@@ -130,6 +168,8 @@ def test_a_concurrent_writer_is_not_blocked_while_an_update_ingest_awaits(tmp_wi
             page = store.read_page("alan-turing")
             assert "concurrent" in page.tags, "the concurrent change was overwritten"
             assert "Enigma" in page.content
+            assert "^[enigma.md:1-1]" in page.content, "the annotated section was not merged"
+            assert "^[enigma.md:1-1]" in page.content, "the annotated section was not merged"
         finally:
             await agent._cache.close()
 
@@ -185,5 +225,31 @@ def test_two_ingests_updating_the_same_page_both_land(tmp_wiki):
             assert "First detail" in content and "Second detail" in content
         finally:
             await first._cache.close()
+
+    _run_with_watchdog(scenario)
+
+
+def test_an_update_that_never_settles_fails_the_job(tmp_wiki):
+    """Intended: if the page's state keeps flipping while the section is annotated,
+    ingest stops after three attempts and raises, so the job fails and can be retried."""
+    async def scenario() -> None:
+        store, _audit, agent, source = await _agent(
+            tmp_wiki, '{"action":"update","target":"alan-turing","new_slug":"",'
+                      '"update_content":"## Enigma\\n\\nNew detail."}',
+            status="contradicted")
+        original = agent._annotate_citations
+
+        async def flip(*args, **kwargs):
+            def toggle(page) -> None:
+                page.status = "active" if page.status == "contradicted" else "contradicted"
+            store.update_page("alan-turing", toggle)   # changes the rebuild decision
+            return await original(*args, **kwargs)
+
+        agent._annotate_citations = flip
+        try:
+            with pytest.raises(RuntimeError, match="kept changing state"):
+                await agent.run(str(source), force=True)
+        finally:
+            await agent._cache.close()
 
     _run_with_watchdog(scenario)
