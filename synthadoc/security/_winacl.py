@@ -29,6 +29,8 @@ OBJECT_INHERIT_ACE = 0x1
 CONTAINER_INHERIT_ACE = 0x2
 FILE_ALL_ACCESS = 0x1F01FF
 ACCESS_ALLOWED_ACE_TYPE = 0
+# S-1-5-32-544, BUILTIN\Administrators: the owner of folders an elevated process creates.
+ADMINISTRATORS_SID = bytes([1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0])
 
 if _IS_WINDOWS:  # pragma: no branch
     _advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -125,9 +127,16 @@ def _owner_sid(path: str) -> bytes:
 def restrict_to_current_user(path: str) -> None:
     """Replace the DACL of *path* with a single inheritable full-control entry for the user,
     and make the user its owner (an elevated process creates folders owned by the
-    Administrators group; an owner can rewrite the ACL at will, so it must be the user)."""
+    Administrators group; an owner can rewrite the ACL at will, so it must be the user).
+
+    Ownership is taken ONLY from the user or the Administrators group. A folder owned by
+    any other account is refused before anything is changed, as on POSIX: an ACL that
+    happened to grant us full control must not let us adopt someone else's folder."""
     _require_windows()
     sid = current_user_sid()
+    owner = _owner_sid(path)
+    if owner != sid and owner != ADMINISTRATORS_SID:
+        raise AclError("the directory is owned by another account; not taking it over")
     sid_buf = ctypes.create_string_buffer(sid, len(sid))
     # ACL header (8) + ACCESS_ALLOWED_ACE without its SID (8, includes the 4-byte SidStart) - 4 + SID
     acl_size = (8 + 8 + len(sid) + 3) & ~3
@@ -142,7 +151,7 @@ def restrict_to_current_user(path: str) -> None:
         None, None, acl, None)
     if rc != 0:
         raise AclError(f"SetNamedSecurityInfoW failed ({rc})")
-    if _owner_sid(path) != sid:        # the new ACL grants the user WRITE_OWNER, so this works
+    if owner != sid:                   # the new ACL grants the user WRITE_OWNER, so this works
         rc = _advapi32.SetNamedSecurityInfoW(
             path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, sid_buf, None, None, None)
         if rc != 0:
