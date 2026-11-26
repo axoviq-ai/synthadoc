@@ -16,6 +16,7 @@ the location, ownership or permissions raises :class:`SecretPathError`.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import stat
@@ -25,6 +26,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 HOME_ENV = "SYNTHADOC_HOME"
 AREAS = frozenset({"auth", "live", "peers"})
@@ -100,14 +103,34 @@ def _read_text_settled(path: Path) -> Optional[str]:
 
 
 def _read_id(path: Path) -> Optional[str]:
+    """The id in *path*; None if the file is absent; "" if it is blank (see _clear_blank)."""
     text = _read_text_settled(path)
     if text is None:
         return None
     value = text.strip()
+    if not value:
+        return ""
     if not _valid_id(value):
         raise SecretPathError(f"{path} does not contain a valid wiki id",
                               "Fix or remove the file; it is never overwritten automatically.")
     return value
+
+
+def _clear_blank(path: Path) -> None:
+    """Remove a blank id file so it can be created again.
+
+    A crash between creating the file and writing the id leaves it empty, and every later
+    call would fail. Only a blank file is ever removed, never one with content. The caller
+    then creates it exclusively and adopts whichever id wins, so two processes healing at
+    once still agree.
+    """
+    logger.warning("replacing the blank wiki id file %s (an earlier write was interrupted)", path)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise SecretPathError(f"cannot replace the blank {path}: {exc}") from exc
 
 
 def ensure_wiki_id(wiki_root: Path, *, on_created: Optional[Callable[[str], None]] = None) -> str:
@@ -116,7 +139,10 @@ def ensure_wiki_id(wiki_root: Path, *, on_created: Optional[Callable[[str], None
     Existing wikis have no id, so it is created when first required. ``on_created`` is
     called once, with the new id, only by the caller that created it (the server uses it
     to record the event in the audit trail; this module cannot import the audit code).
-    Fails closed if the folder is missing or read-only, or the id file is corrupt.
+    The id file already exists by then, so the callback can never be retried: if it raises,
+    the error is logged and the id is still returned, so an audit outage cannot block the
+    wiki. Fails closed if the folder is missing or read-only, or the id file is corrupt.
+    A blank id file (an interrupted first write) is replaced; any other content is not.
     """
     root = Path(wiki_root)
     if not root.is_dir():
@@ -132,6 +158,8 @@ def ensure_wiki_id(wiki_root: Path, *, on_created: Optional[Callable[[str], None
     existing = _read_id(id_file)
     if existing:
         return existing
+    if existing == "":
+        _clear_blank(id_file)
     new_id = str(uuid.uuid4())
     try:
         _create_exclusive(id_file, new_id + "\n")
@@ -143,7 +171,11 @@ def ensure_wiki_id(wiki_root: Path, *, on_created: Optional[Callable[[str], None
     except OSError as exc:
         raise SecretPathError(f"cannot write {id_file}: {exc}") from exc
     if on_created is not None:
-        on_created(new_id)
+        try:
+            on_created(new_id)
+        except Exception:                        # noqa: BLE001 - must never block the wiki
+            logger.exception("on_created callback failed for new wiki id %s; "
+                             "the creation event was not recorded", new_id)
     return new_id
 
 
@@ -230,9 +262,14 @@ def _private_ok_windows(path: Path) -> bool:
 
 
 def _ensure_private_dir(path: Path) -> Path:
-    """Create *path* if needed and make sure only the current user can use it."""
+    """Create *path* if needed and make sure only the current user owns and can use it.
+
+    A directory that already exists with wider permissions is repaired (and a warning is
+    logged, because something loosened it); one owned by another user is refused.
+    """
     if _is_link(path):
         raise SecretPathError(f"{path} is a symbolic link or junction")
+    existed = path.exists()
     try:
         path.mkdir(mode=0o700, exist_ok=True)
     except OSError as exc:
@@ -241,6 +278,8 @@ def _ensure_private_dir(path: Path) -> Path:
         raise SecretPathError(f"{path} is not a plain directory")
     if _WINDOWS:
         if not _private_ok_windows(path):
+            if existed:
+                logger.warning("access list of %s was not private; repaired", path)
             from synthadoc.security import _winacl
             try:
                 _winacl.restrict_to_current_user(str(path))
@@ -252,6 +291,8 @@ def _ensure_private_dir(path: Path) -> Path:
         if path.lstat().st_uid != os.getuid():
             raise SecretPathError(f"{path} is owned by another user")
         if not _private_ok_posix(path):
+            if existed:
+                logger.warning("permissions of %s were not private; repaired", path)
             try:
                 os.chmod(path, 0o700)
             except OSError as exc:
@@ -323,8 +364,9 @@ def secret_dir(area: str, wiki_id: str, *, wiki_root: Path) -> Path:
     """The private directory for ``(area, wiki_id)``, created and verified on every call.
 
     Refuses: an unknown area or malformed id; a home inside the wiki folder or a git work
-    tree; a symlink; a directory another user owns or others can read; and a directory
-    bound to a different wiki folder (a copied or moved folder carrying the same id).
+    tree; a symlink; a directory another user owns; and a directory bound to a different
+    wiki folder (a copied or moved folder carrying the same id). A directory the user owns
+    but others can read is repaired to owner-only and a warning is logged.
     """
     _check_area(area)
     _check_id(wiki_id)
@@ -342,7 +384,8 @@ def rebind(wiki_id: str, wiki_root: Path) -> None:
 
     For a legitimate move, rename or restore. The id file in *wiki_root* is created if
     missing and must match if present, so a wrong folder cannot take over another
-    wiki's secrets by accident.
+    wiki's secrets by accident. The areas are updated one at a time, so a failure part-way
+    leaves some rebound and some not: fix the cause and run it again (it is idempotent).
     """
     _check_id(wiki_id)
     root = Path(wiki_root)
@@ -353,7 +396,9 @@ def rebind(wiki_id: str, wiki_root: Path) -> None:
         meta.mkdir(exist_ok=True)
         id_file = meta / "wiki_id"
         present = _read_id(id_file)
-        if present is None:
+        if present == "":
+            _clear_blank(id_file)
+        if not present:
             _create_exclusive(id_file, wiki_id + "\n")
         elif present != wiki_id:
             raise SecretPathError("the wiki folder has a different wiki id",

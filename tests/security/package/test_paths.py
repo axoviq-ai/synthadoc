@@ -102,7 +102,37 @@ def test_concurrent_first_use_agrees_on_one_id(wiki):
     assert len(results) == 8 and len(set(results)) == 1
 
 
-@pytest.mark.parametrize("bad", ["", "not-a-uuid", "../../etc/passwd",
+def test_a_failing_on_created_callback_does_not_block_or_repeat(wiki, caplog):
+    """The id file already exists when the callback runs, so it can never be retried;
+    an audit outage must not turn into a wiki that cannot get a secret directory."""
+    calls = []
+
+    def broken(new_id):
+        calls.append(new_id)
+        raise RuntimeError("audit database is down")
+
+    with caplog.at_level("ERROR", logger="synthadoc.security.paths"):
+        wid = P.ensure_wiki_id(wiki, on_created=broken)
+    assert UUID_RE.match(wid) and calls == [wid]
+    assert any("audit database is down" in (r.exc_text or r.getMessage()) or r.exc_info
+               for r in caplog.records)
+    assert P.ensure_wiki_id(wiki, on_created=broken) == wid       # later calls work
+    assert calls == [wid]
+
+
+@pytest.mark.parametrize("blank", ["", "  \n"])
+def test_a_blank_wiki_id_file_from_a_crash_is_healed(wiki, blank):
+    """A crash between creating the file and writing the id leaves it empty."""
+    f = wiki / ".synthadoc" / "wiki_id"
+    f.parent.mkdir()
+    f.write_text(blank, encoding="utf-8")
+    wid = P.ensure_wiki_id(wiki)
+    assert UUID_RE.match(wid)
+    assert f.read_text(encoding="utf-8").strip() == wid
+    assert P.ensure_wiki_id(wiki) == wid
+
+
+@pytest.mark.parametrize("bad", ["not-a-uuid", "../../etc/passwd",
                                  "12345678-1234-1234-1234-123456789012/../x",
                                  str(uuid.uuid4()).upper()])
 def test_a_corrupt_wiki_id_file_fails_closed_and_is_not_overwritten(wiki, bad):
@@ -321,6 +351,8 @@ def _assert_private(path: Path) -> None:
         assert "(F)" in entries[0] and "(I)" not in entries[0], entries   # full control, not inherited
         who = subprocess.run(["whoami"], capture_output=True, text=True).stdout.strip().lower()
         assert who.split("\\")[-1] in entries[0].lower(), (who, entries)
+        from synthadoc.security import _winacl      # an owner can rewrite the ACL later
+        assert _winacl._owner_sid(str(path)) == _winacl.current_user_sid()
     else:
         st = path.lstat()
         assert (st.st_mode & 0o777) == 0o700, oct(st.st_mode)
@@ -357,6 +389,46 @@ def test_widened_permissions_on_an_existing_directory_are_repaired(home, wiki):
     d = P.secret_dir("auth", wid, wiki_root=wiki)
     _widen(d)
     _assert_private(P.secret_dir("auth", wid, wiki_root=wiki))
+
+
+def _pretend_owned_by_someone_else(monkeypatch) -> None:
+    """Make the owner of every directory look like another account's, on any OS."""
+    if WINDOWS:
+        from synthadoc.security import _winacl
+        system_sid = bytes([1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0])       # S-1-5-18, LocalSystem
+        monkeypatch.setattr(_winacl, "_owner_sid", lambda path: system_sid)
+    else:
+        real = os.getuid()
+        monkeypatch.setattr(os, "getuid", lambda: real + 1)
+
+
+def test_a_directory_owned_by_someone_else_is_refused(home, wiki, monkeypatch):
+    """Whoever owns a directory can rewrite its permissions later, so a correct ACL or
+    mode on a directory somebody else owns proves nothing. Same rule on every OS."""
+    wid = P.ensure_wiki_id(wiki)
+    P.secret_dir("auth", wid, wiki_root=wiki)
+    _pretend_owned_by_someone_else(monkeypatch)
+    with pytest.raises(P.SecretPathError):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+
+
+def test_widened_permissions_are_repaired_with_a_warning(home, wiki, caplog):
+    wid = P.ensure_wiki_id(wiki)
+    d = P.secret_dir("auth", wid, wiki_root=wiki)
+    with caplog.at_level("WARNING", logger="synthadoc.security.paths"):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+    assert not caplog.records                          # a healthy directory is silent
+    _widen(d)
+    with caplog.at_level("WARNING", logger="synthadoc.security.paths"):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+    assert any("repaired" in r.getMessage() for r in caplog.records)
+
+
+def test_creating_a_directory_is_not_reported_as_a_repair(home, wiki, caplog):
+    wid = P.ensure_wiki_id(wiki)
+    with caplog.at_level("WARNING", logger="synthadoc.security.paths"):
+        P.secret_dir("auth", wid, wiki_root=wiki)
+    assert not caplog.records
 
 
 def test_a_link_in_place_of_the_secret_directory_is_refused(home, tmp_path, wiki):
