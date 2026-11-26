@@ -1002,6 +1002,20 @@ Secrets are masked wherever text leaves the server: the console and file logs (m
 
 Redaction is a safety net, not a substitute for keeping secrets out of logs. It is applied at output boundaries and does **not** rewrite stored data: the audit database keeps source paths exactly as ingested because they are used as lookup keys. Log and API masking uses a deliberately broad list of parameter names (over-masking a log line is harmless), so a URL like `...?code=US` shows as `?code=[REDACTED]` in logs and API output while the stored URL is unchanged. See the known limitation under *URL fetching and the SSRF guard*.
 
+### Secret locations and wiki identity
+
+Secrets (API-key hashes, the admin key, peer keys, live-source credentials) are never stored inside the wiki folder, because a wiki is routinely synced, committed to git, zipped and shared. They live under a per-user **secret home**, in `<home>/<area>/<wiki-id>/`, where `<home>` is `SYNTHADOC_HOME` if set (it must be an absolute path) and `~/.synthadoc` otherwise, and `<area>` is one of `auth`, `live` or `peers`. In Docker the default home is the container's throwaway filesystem, so set `SYNTHADOC_HOME` to a path on a mounted volume or the secrets disappear when the container is recreated.
+
+**Wiki id.** Each wiki has a random UUID in `.synthadoc/wiki_id`, created the first time it is needed (existing wikis have none). It identifies the wiki independently of its folder name or path, which change on restore, rename and in containers.
+
+**Protections, checked on every use**
+- The secret home must not be inside the wiki folder or inside a git work tree. If your home directory is under version control, point `SYNTHADOC_HOME` somewhere else; the error says so.
+- Each secret directory is readable only by its owner: mode `0700` and owner check on Linux and macOS; on Windows an access list granting only your user account, read back to confirm. If the permissions cannot be set or verified, the operation is refused. A symbolic link or junction in place of the directory is refused.
+- Each secret directory records which wiki folder it belongs to. The wiki id file travels with a copied, cloned or restored folder, so an id found in a different folder than the recorded one is **refused**, not just warned about; this stops a copy of a wiki from reaching the original's secrets. After a legitimate move or restore, an explicit rebind (an admin command) points the secrets at the new folder.
+- A restore onto another machine finds no secrets for the id, so credentials must be re-entered there. That is intended.
+
+Error messages shown to API clients are generic and never contain paths; the operator detail goes to the server log.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
