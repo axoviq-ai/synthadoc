@@ -320,6 +320,37 @@ async def test_run_lint_passes_adversarial_false(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_run_lint_includes_adversarial_gate_skipped_resolve_in_job_result(tmp_wiki):
+    """The job result must surface gate-skipped slugs (issue #584 — the skip
+    reason was collected on the report but never reached the job result)."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.lint_agent import LintReport
+
+    cfg = load_config()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+
+    lint_report = LintReport(
+        adversarial_warnings=[],
+        adversarial_gate_skipped_resolve=["flagged-page"],
+    )
+
+    async def fake_lint(self, **kwargs):
+        return lint_report
+
+    with patch("synthadoc.agents.lint_agent.LintAgent.run", new=fake_lint), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.complete = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        mock_queue.fail_permanent = AsyncMock()
+        await orch._run_lint("job-1")
+
+    result = mock_queue.complete.call_args.kwargs["result"]
+    assert result["adversarial_gate_skipped_resolve"] == ["flagged-page"]
+
+
+@pytest.mark.asyncio
 async def test_run_lint_logs_the_provider_that_runs_lint_and_adversarial(tmp_wiki, caplog):
     """Lint and the adversarial pass each log provider/model taken from the
     provider object that actually runs, not from the config."""

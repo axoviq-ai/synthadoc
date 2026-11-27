@@ -1865,6 +1865,12 @@ async def test_auto_resolve_skipped_when_gate_threshold_exceeded(tmp_wiki):
     # Report must record the skip
     assert "flagged-page" in report.adversarial_gate_skipped_resolve
 
+    # The reason must be written to the page so every report surface that
+    # reads unresolved_note shows it (issue #584 — the skip reason was
+    # collected but never surfaced to the user).
+    assert refreshed.unresolved_note
+    assert "adversarial" in refreshed.unresolved_note.lower()
+
     # LLM must NOT have been called
     provider.complete.assert_not_called()
 

@@ -600,6 +600,45 @@ async def test_job_status_with_error_and_flagged(tmp_path):
     assert "100" in result.message
 
 @pytest.mark.asyncio
+async def test_job_status_lint_surfaces_contradiction_outcome(tmp_path):
+    """A lint job's status must explain an unresolved contradiction and a
+    gate-skipped one, not just say 'completed' (issue #584)."""
+    job = MagicMock()
+    job.id = "job-lint-001"
+    job.operation = "lint"
+    job.status = "completed"
+    job.created_at = "2026-06-11 16:36:00"
+    job.error = None
+    job.result = {
+        "contradictions_resolved": 1,
+        "contradictions_found": 3,
+        "contradictions_unresolved": [
+            {"slug": "warp-drive", "reason": "No confident resolution found."},
+        ],
+        "adversarial_gate_skipped_resolve": ["spacing-effect"],
+        "adversarial_held": ["another-page"],
+    }
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": "job-lint-001"}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    gate_page = MagicMock()
+    gate_page.unresolved_note = (
+        "Auto-resolve skipped: the adversarial check flagged 3 claim(s) on "
+        "this page (threshold 2). Fix them, then run lint again."
+    )
+    agent._orch._store.read_page = MagicMock(return_value=gate_page)
+
+    result = await agent.run("check job job-lint-001")
+
+    assert result is not None
+    assert result.success is True
+    assert "warp-drive" in result.message
+    assert "No confident resolution found." in result.message
+    assert "spacing-effect" in result.message
+    assert "adversarial check flagged 3 claim(s)" in result.message
+    assert "another-page" in result.message
+
+
+@pytest.mark.asyncio
 async def test_job_list_with_errors_shows_error_column(tmp_path):
     job = MagicMock()
     job.id = "abc-123"

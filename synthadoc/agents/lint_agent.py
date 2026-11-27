@@ -53,6 +53,9 @@ class LintReport:
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
     adversarial_demotions: int = 0
+    # Slugs where auto-resolve was blocked by the adversarial gate. The reason
+    # is written to page.unresolved_note (not duplicated here) so every report
+    # surface that already reads unresolved_note picks it up for free.
     adversarial_gate_skipped_resolve: list[str] = field(default_factory=list)
     # Pages held in 'contradicted' by the adversarial gate alone: no source
     # conflict is recorded (no contradiction_note), so there is nothing for the
@@ -1040,6 +1043,10 @@ class LintAgent(BaseAgent):
         warning_count = len(page.lint_warnings or [])
         if warning_count < threshold:
             return False
+        reason = (
+            f"Auto-resolve skipped: the adversarial check flagged {warning_count} "
+            f"claim(s) on this page (threshold {threshold}). Fix them, then run lint again."
+        )
         _log.warning(
             "[lint] auto-resolve skipped: %s — adversarial gate: "
             "%d warning(s) ≥ threshold %d. Edit page content to "
@@ -1047,6 +1054,8 @@ class LintAgent(BaseAgent):
             slug, warning_count, threshold,
         )
         report.adversarial_gate_skipped_resolve.append(slug)
+        page.unresolved_note = reason
+        self._store.write_page(slug, page)
         if self._audit:
             await self._audit.record_lifecycle_event(
                 slug,

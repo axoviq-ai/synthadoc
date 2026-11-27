@@ -1292,6 +1292,27 @@ class ActionAgent(BaseAgent):
                 lines.append(f"- **Pages updated:** {', '.join(f'`{p}`' for p in result['pages_updated'])}")
             if result.get("pages_flagged"):
                 lines.append(f"- **Pages flagged:** {', '.join(f'`{p}`' for p in result['pages_flagged'])}")
+            # Lint-specific outcome — without this, a lint job just shows
+            # "completed" with no indication a contradiction is still
+            # unresolved, or why (see issue #584).
+            if "contradictions_resolved" in result or "contradictions_found" in result:
+                lines.append(
+                    f"- **Contradictions:** {result.get('contradictions_resolved', 0)} resolved, "
+                    f"{result.get('contradictions_found', 0)} found"
+                )
+            for item in result.get("contradictions_unresolved") or []:
+                lines.append(f"  - `{item['slug']}` still contradicted: {item['reason']}")
+            for slug in result.get("adversarial_gate_skipped_resolve") or []:
+                page = self._orch._store.read_page(slug)
+                note = (page.unresolved_note if page else None) or (
+                    "the adversarial gate blocked auto-resolve"
+                )
+                lines.append(f"  - `{slug}` still contradicted: {note}")
+            if result.get("adversarial_held"):
+                lines.append(
+                    f"- **Held by adversarial gate (no source conflict):** "
+                    f"{', '.join(f'`{s}`' for s in result['adversarial_held'])}"
+                )
             if result.get("tokens_used"):
                 lines.append(f"- **Tokens used:** {result['tokens_used']}")
             return ActionResult(action_type="job_status", success=True,
