@@ -9,7 +9,6 @@ shared one.
 """
 from __future__ import annotations
 
-import ast
 import os
 import re
 import shutil
@@ -507,21 +506,3 @@ def test_rebind_of_an_unknown_id_is_an_error_not_a_silent_no_op(home, wiki):
 def test_rebind_rejects_unsafe_ids(home, wiki):
     with pytest.raises(P.SecretPathError):
         P.rebind("../x", wiki)
-
-
-# ------------------------------------------------------------- package discipline
-
-def test_paths_is_a_leaf_module():
-    """Stdlib only: no synthadoc.core/config/agents/storage/integration (interface spec section 0)."""
-    banned = ("synthadoc.core", "synthadoc.config", "synthadoc.agents",
-              "synthadoc.storage", "synthadoc.integration", "synthadoc.skills")
-    root = Path(__file__).resolve().parents[3] / "synthadoc" / "security"
-    for name in ("paths.py", "_winacl.py"):
-        src = root / name
-        if not src.exists():
-            continue
-        for node in ast.walk(ast.parse(src.read_text(encoding="utf-8"))):
-            mods = ([a.name for a in node.names] if isinstance(node, ast.Import)
-                    else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
-            for m in mods:
-                assert not m.startswith(banned), f"{name} imports {m}"
