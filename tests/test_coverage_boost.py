@@ -326,7 +326,8 @@ def test_install_cmd_uses_explicit_port(tmp_path):
 
     with patch("synthadoc.cli.install._read_registry", return_value={}), \
          patch("synthadoc.cli.install._write_registry"), \
-         patch("synthadoc.cli._init.init_wiki"):
+         patch("synthadoc.cli._init.init_wiki"), \
+         patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"):   # no GitHub download
         result = runner.invoke(app, [
             "install", "test-wiki",
             "--target", str(target),
