@@ -10,7 +10,6 @@ Groups:
   4. Cache vs no-cache throughput     (queries/sec at increasing concurrency)
   5. Epoch invalidation cost          (O(1) key recomputation)
   6. pytest-benchmark variants        (steady-state throughput; run with --benchmark-only)
-  7. Chart generation                 (run with -m charts; saves PNGs to docs/png/cache-perf/)
 
 Run modes:
   # CI: assert SLOs only (no benchmark timing noise)
@@ -19,15 +18,14 @@ Run modes:
   # Local: full benchmark numbers
   pytest tests/performance/test_query_cache_perf.py --benchmark-only -v
 
-  # Generate charts (saves to docs/png/cache-perf/)
-  pytest tests/performance/test_query_cache_perf.py -m charts -v -s
+The four charts in docs/png/cache-perf/ are drawn from the same measurements by a script,
+not a test: python -m benchmarks.cache_perf (see benchmarks/README.md).
 """
 import asyncio
 import os
 import platform
 import statistics
 import time
-from pathlib import Path
 
 import pytest
 
@@ -49,48 +47,19 @@ def asyncio_event_loop_policy():
 
 from synthadoc.core.cache import CacheManager, make_query_cache_key
 
-# ── constants ─────────────────────────────────────────────────────────────────
-
-SIMULATED_LLM_MS = 50        # ms — fast end of real provider latency
-SIMULATED_PHASE1_MS = 20     # ms — BM25 retrieval baseline
-
-QUESTIONS = [
-    "What is Moore's Law?",
-    "How did Alan Turing influence computing?",
-    "What is the Von Neumann architecture?",
-    "Explain the Unix philosophy.",
-    "What is open source software?",
-    "How does BM25 search work?",
-    "What is machine learning?",
-    "Explain neural networks.",
-    "What is the Turing test?",
-    "How did the internet evolve?",
-]
-
-_RESULT = {
-    "question": "What is Moore's Law?",
-    "answer": (
-        "Moore's Law is the observation that the number of transistors on a "
-        "microchip doubles approximately every two years, first noted by "
-        "Gordon Moore in 1965. It has driven semiconductor roadmaps for "
-        "over five decades, though physical limits are now slowing the pace."
-    ),
-    "citations": ["moore-s-law", "semiconductor-history"],
-    "tokens_used": 120,
-    "knowledge_gap": False,
-    "suggested_searches": [],
-    "cacheable": True,
-}
-
-CHART_DIR = Path(__file__).resolve().parents[2] / "docs" / "png" / "cache-perf"
+# The constants, the sample result and the two helpers are shared with the chart script
+# (benchmarks/cache_perf.py) so the tests and the published charts measure the same thing.
+from benchmarks.cache_perf import (
+    QUESTIONS,
+    RESULT as _RESULT,
+    SIMULATED_LLM_MS,
+    SIMULATED_PHASE1_MS,
+    make_cache as _make_cache,
+    percentile as _percentile,
+)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-async def _make_cache(tmp_path: Path) -> CacheManager:
-    db = CacheManager(tmp_path / ".synthadoc" / "cache.db")
-    await db.init()
-    return db
 
 
 def _new_sync_loop() -> asyncio.AbstractEventLoop:
@@ -100,11 +69,6 @@ def _new_sync_loop() -> asyncio.AbstractEventLoop:
     if platform.system() == "Windows":
         return asyncio.SelectorEventLoop()
     return asyncio.new_event_loop()
-
-
-def _percentile(data: list[float], pct: float) -> float:
-    idx = max(0, int(pct * len(data)) - 1)
-    return sorted(data)[idx]
 
 
 # ── Group 1: Isolated cache layer latency ─────────────────────────────────────
@@ -440,273 +404,3 @@ def test_cache_write_benchmark(benchmark, tmp_path):
     benchmark(_write)
     loop.run_until_complete(cache.close())
     loop.close()
-
-
-# ── Group 7: Chart generation ─────────────────────────────────────────────────
-
-@pytest.mark.charts
-@pytest.mark.asyncio
-async def test_generate_cache_performance_charts(tmp_path):
-    """
-    Runs all measurements inline and saves four PNG charts to docs/png/cache-perf/.
-    Run with:  pytest tests/performance/test_query_cache_perf.py -m charts -v -s
-
-    Charts produced:
-      1. cache-read-latency.png      — P50/P95/P99 distribution (500 reads)
-      2. hit-vs-miss-latency.png     — cache hit vs miss per-query latency
-      3. concurrent-readers.png      — P95 per-query vs concurrency (WAL curve)
-      4. cache-vs-nocache-qps.png    — throughput comparison (queries/sec)
-    """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
-    import numpy as np
-
-    CHART_DIR.mkdir(parents=True, exist_ok=True)
-    _STYLE = {
-        "cache":   {"color": "#2196F3", "label": "Cache hit"},
-        "nocache": {"color": "#FF5722", "label": "No cache (simulated LLM)"},
-        "p50":     {"color": "#4CAF50"},
-        "p95":     {"color": "#FF9800"},
-        "p99":     {"color": "#F44336"},
-    }
-
-    # ── measurement 1: read latency distribution ──────────────────────────────
-    cache = await _make_cache(tmp_path)
-    keys = []
-    for i in range(200):
-        k = make_query_cache_key(QUESTIONS[i % len(QUESTIONS)], epoch=i % 20)
-        await cache.set_query(k, epoch=i % 20, result=_RESULT)
-        keys.append(k)
-
-    read_lats = []
-    for i in range(500):
-        k = keys[i % len(keys)]
-        t0 = time.perf_counter()
-        await cache.get_query(k)
-        read_lats.append((time.perf_counter() - t0) * 1000)
-
-    r_p50 = statistics.median(read_lats)
-    r_p95 = _percentile(read_lats, 0.95)
-    r_p99 = _percentile(read_lats, 0.99)
-
-    # ── measurement 2: hit vs miss at different simulated LLM speeds ──────────
-    llm_speeds_ms = [50, 200, 500, 2000]
-    miss_p50s, hit_p50s, speedups = [], [], []
-
-    for llm_ms in llm_speeds_ms:
-        cache2 = await _make_cache(tmp_path / f"llm{llm_ms}")
-        k = make_query_cache_key("What is Moore's Law?", epoch=0)
-
-        miss_samples = []
-        for _ in range(8):
-            t0 = time.perf_counter()
-            await asyncio.sleep(SIMULATED_PHASE1_MS / 1000)
-            await asyncio.sleep(llm_ms / 1000)
-            await cache2.set_query(k, epoch=0, result=_RESULT.copy())
-            miss_samples.append((time.perf_counter() - t0) * 1000)
-
-        hit_samples = []
-        for _ in range(30):
-            t0 = time.perf_counter()
-            await cache2.get_query(k)
-            hit_samples.append((time.perf_counter() - t0) * 1000)
-
-        mp50 = statistics.median(miss_samples)
-        hp50 = statistics.median(hit_samples)
-        miss_p50s.append(mp50)
-        hit_p50s.append(hp50)
-        speedups.append(mp50 / max(hp50, 0.001))
-
-    # ── measurement 3: concurrent reader P95 ─────────────────────────────────
-    concurrency_levels = [1, 5, 10, 25, 50, 100]
-    concurrent_p95s = []
-
-    cache3 = await _make_cache(tmp_path / "concurrent")
-    k = make_query_cache_key("What is Moore's Law?", epoch=0)
-    await cache3.set_query(k, epoch=0, result=_RESULT)
-
-    for n in concurrency_levels:
-        async def one_read(cache=cache3, key=k):
-            t0 = time.perf_counter()
-            await cache.get_query(key)
-            return (time.perf_counter() - t0) * 1000
-
-        outcomes = await asyncio.gather(*[one_read() for _ in range(n)])
-        concurrent_p95s.append(_percentile(list(outcomes), 0.95))
-
-    # ── measurement 4: throughput cache vs no-cache ───────────────────────────
-    concurrencies = [1, 5, 10, 25, 50, 100]
-    cache_qps_list, nocache_qps_list = [], []
-
-    cache4 = await _make_cache(tmp_path / "throughput")
-    for q in QUESTIONS:
-        kk = make_query_cache_key(q, epoch=0)
-        await cache4.set_query(kk, epoch=0, result=_RESULT.copy())
-
-    for n in concurrencies:
-        qs = (QUESTIONS * ((n // len(QUESTIONS)) + 1))[:n]
-
-        async def with_cache(q, c=cache4):
-            t0 = time.perf_counter()
-            kk = make_query_cache_key(q, epoch=0)
-            if await c.get_query(kk) is None:
-                await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
-                await c.set_query(kk, epoch=0, result=_RESULT.copy())
-            return time.perf_counter() - t0
-
-        async def no_cache_fn(q):
-            t0 = time.perf_counter()
-            await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
-            return time.perf_counter() - t0
-
-        t0 = time.perf_counter()
-        await asyncio.gather(*[with_cache(q) for q in qs])
-        cache_wall = time.perf_counter() - t0
-
-        t0 = time.perf_counter()
-        await asyncio.gather(*[no_cache_fn(q) for q in qs])
-        nocache_wall = time.perf_counter() - t0
-
-        cache_qps_list.append(n / max(cache_wall, 0.001))
-        nocache_qps_list.append(n / max(nocache_wall, 0.001))
-
-    # ── chart 1: cache read latency distribution ──────────────────────────────
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.hist(read_lats, bins=40, color="#2196F3", alpha=0.75, edgecolor="white", linewidth=0.5)
-    ax.axvline(r_p50, color=_STYLE["p50"]["color"], linewidth=2,
-               linestyle="--", label=f"P50 = {r_p50:.2f} ms")
-    ax.axvline(r_p95, color=_STYLE["p95"]["color"], linewidth=2,
-               linestyle="--", label=f"P95 = {r_p95:.2f} ms")
-    ax.axvline(r_p99, color=_STYLE["p99"]["color"], linewidth=2,
-               linestyle="--", label=f"P99 = {r_p99:.2f} ms")
-    ax.set_xlabel("Latency (ms)", fontsize=12)
-    ax.set_ylabel("Frequency", fontsize=12)
-    ax.set_title("Cache Read Latency Distribution\n(500 reads across 200 cached entries)", fontsize=13)
-    ax.legend(fontsize=11)
-    ax.set_xlim(left=0)
-    ax.annotate(
-        f"SLO: P99 < 10ms\nActual P99: {r_p99:.2f}ms  ({'✓ PASS' if r_p99 < 10 else '✗ FAIL'})",
-        xy=(0.97, 0.95), xycoords="axes fraction", ha="right", va="top",
-        fontsize=10, color="#333",
-        bbox=dict(boxstyle="round,pad=0.3", fc="#f5f5f5", ec="#ccc"),
-    )
-    plt.tight_layout()
-    out = CHART_DIR / "cache-read-latency.png"
-    plt.savefig(out, dpi=150)
-    plt.close()
-    print(f"\n  Chart 1 saved: {out}")
-
-    # ── chart 2: hit vs miss at different LLM latencies ──────────────────────
-    x = np.arange(len(llm_speeds_ms))
-    width = 0.35
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-
-    ax1 = axes[0]
-    bars_miss = ax1.bar(x - width / 2, miss_p50s, width, label="Cache miss (Phase1+LLM)",
-                        color=_STYLE["nocache"]["color"], alpha=0.85)
-    bars_hit = ax1.bar(x + width / 2, hit_p50s, width, label="Cache hit",
-                       color=_STYLE["cache"]["color"], alpha=0.85)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels([f"{ms}ms\nLLM" for ms in llm_speeds_ms])
-    ax1.set_ylabel("P50 Latency (ms)", fontsize=11)
-    ax1.set_title("Cache Hit vs Miss — P50 Latency\n(varying simulated LLM speed)", fontsize=12)
-    ax1.legend(fontsize=10)
-    ax1.set_yscale("log")
-    for bar in bars_miss:
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
-                 f"{bar.get_height():.0f}ms", ha="center", va="bottom", fontsize=8)
-    for bar in bars_hit:
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
-                 f"{bar.get_height():.2f}ms", ha="center", va="bottom", fontsize=8)
-
-    ax2 = axes[1]
-    bars_su = ax2.bar(x, speedups, color="#9C27B0", alpha=0.85)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels([f"{ms}ms\nLLM" for ms in llm_speeds_ms])
-    ax2.set_ylabel("Speedup (×)", fontsize=11)
-    ax2.set_title("Cache Speedup Factor\n(miss P50 ÷ hit P50)", fontsize=12)
-    for bar in bars_su:
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
-                 f"{bar.get_height():.0f}×", ha="center", va="bottom", fontsize=10, fontweight="bold")
-    ax2.axhline(1, color="#999", linewidth=1, linestyle="--")
-
-    plt.tight_layout()
-    out = CHART_DIR / "hit-vs-miss-latency.png"
-    plt.savefig(out, dpi=150)
-    plt.close()
-    print(f"  Chart 2 saved: {out}")
-
-    # ── chart 3: concurrent readers — WAL degradation curve ──────────────────
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(concurrency_levels, concurrent_p95s, "o-",
-            color=_STYLE["cache"]["color"], linewidth=2, markersize=7,
-            label="P95 per-query latency")
-    ax.fill_between(concurrency_levels, concurrent_p95s, alpha=0.15,
-                    color=_STYLE["cache"]["color"])
-    for x_val, y_val in zip(concurrency_levels, concurrent_p95s):
-        ax.annotate(f"{y_val:.1f}ms", (x_val, y_val),
-                    textcoords="offset points", xytext=(0, 10),
-                    ha="center", fontsize=9)
-    ax.set_xlabel("Concurrent Readers", fontsize=12)
-    ax.set_ylabel("P95 Latency per Query (ms)", fontsize=12)
-    ax.set_title("Concurrent Cache Readers — Persistent Connection Scaling\n"
-                 "(single aiosqlite connection, shared across all concurrent reads)", fontsize=12)
-    ax.legend(fontsize=11)
-    ax.set_xticks(concurrency_levels)
-    ax.set_ylim(bottom=0)
-    ax.annotate(
-        "One persistent connection shared\nacross all concurrent reads.\n"
-        "Requests queue through aiosqlite's\nbackground thread — smooth\nmonotonic scaling.",
-        xy=(0.97, 0.05), xycoords="axes fraction", ha="right", va="bottom",
-        fontsize=9, color="#555",
-        bbox=dict(boxstyle="round,pad=0.4", fc="#e8f5e9", ec="#4CAF50"),
-    )
-    plt.tight_layout()
-    out = CHART_DIR / "concurrent-readers.png"
-    plt.savefig(out, dpi=150)
-    plt.close()
-    print(f"  Chart 3 saved: {out}")
-
-    # ── chart 4: throughput comparison ───────────────────────────────────────
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-
-    ax1 = axes[0]
-    ax1.plot(concurrencies, cache_qps_list, "o-",
-             color=_STYLE["cache"]["color"], linewidth=2.5, markersize=8,
-             label="With cache")
-    ax1.plot(concurrencies, nocache_qps_list, "s--",
-             color=_STYLE["nocache"]["color"], linewidth=2.5, markersize=8,
-             label=f"No cache (LLM={SIMULATED_LLM_MS}ms simulated)")
-    ax1.fill_between(concurrencies, cache_qps_list, nocache_qps_list,
-                     alpha=0.10, color="#4CAF50", label="Cache advantage")
-    ax1.set_xlabel("Concurrent Queries", fontsize=11)
-    ax1.set_ylabel("Throughput (queries / second)", fontsize=11)
-    ax1.set_title("Cache vs No-Cache Throughput\n(concurrent queries, simulated LLM)", fontsize=12)
-    ax1.legend(fontsize=10)
-    ax1.set_xticks(concurrencies)
-
-    ax2 = axes[1]
-    ratios = [c / max(nc, 0.001) for c, nc in zip(cache_qps_list, nocache_qps_list)]
-    bars = ax2.bar(range(len(concurrencies)), ratios,
-                   color="#4CAF50", alpha=0.85, tick_label=[str(c) for c in concurrencies])
-    ax2.set_xlabel("Concurrent Queries", fontsize=11)
-    ax2.set_ylabel("Throughput Ratio (cache / no-cache)", fontsize=11)
-    ax2.set_title("Cache Throughput Advantage\n(ratio > 1 means cache wins)", fontsize=12)
-    ax2.axhline(1, color="#999", linewidth=1.5, linestyle="--", label="Break-even")
-    ax2.legend(fontsize=10)
-    for bar, ratio in zip(bars, ratios):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05,
-                 f"{ratio:.1f}×", ha="center", va="bottom", fontsize=10, fontweight="bold")
-
-    plt.tight_layout()
-    out = CHART_DIR / "cache-vs-nocache-qps.png"
-    plt.savefig(out, dpi=150)
-    plt.close()
-    print(f"  Chart 4 saved: {out}")
-
-    print(f"\n  All charts written to {CHART_DIR}")
-    print(f"  Summary — cache read: P50={r_p50:.2f}ms P95={r_p95:.2f}ms P99={r_p99:.2f}ms")
-    print(f"  Speedup at {SIMULATED_LLM_MS}ms LLM: {speedups[0]:.0f}×  |  "
-          f"at 2000ms LLM: {speedups[-1]:.0f}×")

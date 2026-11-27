@@ -35,7 +35,13 @@ Results: [Quick-Start Guide — Appendix H](../docs/user-quick-start-guide.md#ap
 ```bash
 pytest tests/performance/ -v --benchmark-only        # full timings
 pytest tests/performance/ -v --benchmark-disable     # pass/fail checks only, as in CI
-pytest tests/performance/test_query_cache_perf.py -m charts   # regenerate the cache charts in docs/png/cache-perf/
+```
+
+The four query-cache charts in `docs/png/cache-perf/` (read latency, hit versus miss, concurrent readers, throughput with and without the cache) are drawn from the same measurements by a script, not a test, because they write image files into the repository:
+
+```bash
+python -m benchmarks.cache_perf                      # regenerate docs/png/cache-perf/ (~30 s)
+python -m benchmarks.cache_perf --quick --out DIR    # small fast run into another folder
 ```
 
 ## Knowledge graph at scale
