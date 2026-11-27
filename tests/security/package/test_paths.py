@@ -506,3 +506,80 @@ def test_rebind_of_an_unknown_id_is_an_error_not_a_silent_no_op(home, wiki):
 def test_rebind_rejects_unsafe_ids(home, wiki):
     with pytest.raises(P.SecretPathError):
         P.rebind("../x", wiki)
+
+
+# ------------------------------------------------------------------- read_wiki_id
+# The read-only counterpart of ensure_wiki_id: for commands that must not create state.
+
+def _tree(root: Path) -> list:
+    return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+
+
+def test_read_wiki_id_returns_the_existing_id(wiki):
+    wid = P.ensure_wiki_id(wiki)
+    assert P.read_wiki_id(wiki) == wid
+    assert P.read_wiki_id(str(wiki)) == wid                    # a str path is fine too
+
+
+def test_read_wiki_id_tolerates_a_trailing_newline(wiki):
+    f = wiki / ".synthadoc" / "wiki_id"
+    f.parent.mkdir()
+    wid = str(uuid.uuid4())
+    f.write_text(wid + "\r\n", encoding="utf-8")
+    assert P.read_wiki_id(wiki) == wid
+
+
+def test_read_wiki_id_never_creates_anything(wiki, tmp_path):
+    before = _tree(tmp_path)
+    assert P.read_wiki_id(wiki) is None                          # no .synthadoc folder at all
+    (wiki / ".synthadoc").mkdir()
+    before = _tree(tmp_path)
+    assert P.read_wiki_id(wiki) is None                          # folder, but no id file
+    assert _tree(tmp_path) == before
+
+
+def test_read_wiki_id_of_a_missing_wiki_folder_is_none(tmp_path):
+    assert P.read_wiki_id(tmp_path / "does-not-exist") is None
+
+
+def test_read_wiki_id_when_the_meta_entry_is_a_file_is_none(wiki):
+    (wiki / ".synthadoc").write_text("x", encoding="utf-8")
+    assert P.read_wiki_id(wiki) is None
+
+
+@pytest.mark.parametrize("bad", ["", "  \n", "not-a-uuid", "../../etc/passwd",
+                                 "12345678-1234-1234-1234-123456789012/../x",
+                                 str(uuid.uuid4()).upper()])
+def test_read_wiki_id_of_a_blank_or_invalid_file_is_none_and_the_file_is_untouched(wiki, bad):
+    f = wiki / ".synthadoc" / "wiki_id"
+    f.parent.mkdir()
+    f.write_text(bad, encoding="utf-8")
+    assert P.read_wiki_id(wiki) is None
+    assert f.read_text(encoding="utf-8") == bad                  # not healed, not removed
+
+
+def test_read_wiki_id_does_not_wait_for_a_concurrent_writer(wiki):
+    """ensure_wiki_id waits up to a quarter of a second for a blank file to fill; a
+    read-only check must answer at once."""
+    import time
+    f = wiki / ".synthadoc" / "wiki_id"
+    f.parent.mkdir()
+    f.write_text("", encoding="utf-8")
+    start = time.monotonic()
+    assert P.read_wiki_id(wiki) is None
+    assert time.monotonic() - start < 0.15
+
+
+def test_read_wiki_id_of_an_unreadable_file_is_none(wiki, monkeypatch):
+    wid = P.ensure_wiki_id(wiki)
+    real = Path.read_text
+
+    def deny(self, *a, **k):
+        if self.name == "wiki_id":
+            raise PermissionError("denied")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", deny)
+    assert P.read_wiki_id(wiki) is None
+    monkeypatch.undo()
+    assert P.read_wiki_id(wiki) == wid

@@ -117,6 +117,23 @@ def _read_id(path: Path) -> Optional[str]:
     return value
 
 
+def read_wiki_id(wiki_root: Path) -> Optional[str]:
+    """The wiki's id if it already has a valid one, else None. Read-only.
+
+    For commands that must not create state (listing keys, say). Unlike
+    :func:`ensure_wiki_id` it never creates the folder, the file or an id, never repairs a
+    blank file and never waits for a concurrent writer: a missing, blank, unreadable or
+    invalid file all answer None. It does not distinguish them, so use ``ensure_wiki_id``
+    (which fails closed on a corrupt file) when an id is required.
+    """
+    try:
+        text = (Path(wiki_root) / ".synthadoc" / "wiki_id").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    value = text.strip()
+    return value if _valid_id(value) else None
+
+
 def _clear_blank(path: Path) -> None:
     """Remove a blank id file so it can be created again.
 
