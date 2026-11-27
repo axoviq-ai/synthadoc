@@ -432,6 +432,15 @@ class WikiStorage:
 
     @contextmanager
     def page_lock(self, slug: str):
+        """Exclusive access to one page, across threads and processes.
+
+        Never ``await`` inside this block. The lock is a thread lock, so a task that
+        awaits while holding it leaves it taken while the event loop runs other tasks,
+        and the first one that asks for the same slug blocks the whole loop: a
+        deadlock. Do awaited work (LLM calls, audit writes) before or after, and keep
+        only the read, modify and write inside. ``tests/agents/test_page_lock_async_safety.py``
+        fails the build when an ``await`` appears under it.
+        """
         lock = self._get_thread_lock(slug)
         lock_file = self._root / f".{slug}.lock"
         file_lock = FileLock(str(lock_file))
