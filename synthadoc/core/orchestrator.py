@@ -837,6 +837,7 @@ class Orchestrator:
                 "adversarial_warnings": sum(len(w["warnings"]) for w in report.adversarial_warnings),
                 "adversarial_demotions": report.adversarial_demotions,
                 "adversarial_held": report.adversarial_held,
+                "adversarial_gate_skipped_resolve": report.adversarial_gate_skipped_resolve,
                 "tokens_used": report.tokens_used,
             })
             self._hooks.fire("on_lint_complete", {

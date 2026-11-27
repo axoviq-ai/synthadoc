@@ -50,7 +50,7 @@ Output: {
     "timestamp": str, "dangling_removed": int, "orphans": int,
     "contradictions_resolved": int, "contradictions_flagged": int
   },
-  "contradicted_pages": [{"slug": str, "since": str}],
+  "contradicted_pages": [{"slug": str, "since": str, "unresolved_note": str|null}],
   "adversarial_warnings": [{"slug": str, "count": int}],
   "orphan_slugs": [str],
   "broken_citations": int,
@@ -82,7 +82,9 @@ When you have a final message for the user, respond with plain text only (no JSO
    - Broken citations: N  (omit this line if broken_citations == 0)
 
    **Contradicted Pages**
-   List each as "- slug  (since YYYY-MM-DD)".
+   List each as "- slug  (since YYYY-MM-DD)". If unresolved_note is set, add
+   an indented sub-bullet with it verbatim ("  - <unresolved_note>") so the
+   user knows WHY it's still contradicted instead of just that it is.
    If none: "(none)"
 
    **Adversarial Warnings**
@@ -234,6 +236,8 @@ class LintReportWorkflow(AgenticWorkflow):
                 since = item.get("since", "")
                 since_label = f"  (since {since})" if since else ""
                 contra_lines.append(f"- {item['slug']}{since_label}")
+                if item.get("unresolved_note"):
+                    contra_lines.append(f"  - {item['unresolved_note']}")
         else:
             contra_lines.append("(none)")
         parts.append("\n".join(contra_lines))

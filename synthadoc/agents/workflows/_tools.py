@@ -396,7 +396,7 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
             "timestamp": str, "dangling_removed": int, "orphans": int,
             "contradictions_resolved": int, "contradictions_flagged": int
           },
-          "contradicted_pages": [{"slug": str, "since": str}],
+          "contradicted_pages": [{"slug": str, "since": str, "unresolved_note": str | None}],
           "adversarial_warnings": [{"slug": str, "count": int}],
           "orphan_slugs": [str],
           "broken_citations": int,
@@ -405,6 +405,9 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
         }
 
     "last_run" is an empty dict if no lint run has been recorded yet.
+    "unresolved_note" explains why a contradicted page is still unresolved
+    (e.g. the adversarial gate blocked auto-resolve, or an auto-resolve
+    attempt gave up) — None if it simply hasn't been through auto-resolve yet.
     "thin_section_pages" lists sections below the minimum length, each as the
     scanner's description (heading, word count and minimum); the
     content-health resolver cannot fix them (they need new prose).
@@ -418,10 +421,20 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
     assert ctx.store is not None
     all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists) \
         if ctx.audit_db else []
-    contradicted = [
-        {"slug": p["slug"], "since": (p.get("updated_at") or "")[:10]}
-        for p in all_states if p.get("state") == "contradicted"
-    ]
+    contradicted = []
+    for p in all_states:
+        if p.get("state") != "contradicted":
+            continue
+        slug = p["slug"]
+        cpage = ctx.store.read_page(slug)
+        contradicted.append({
+            "slug": slug,
+            "since": (p.get("updated_at") or "")[:10],
+            # Why it's still contradicted — e.g. the adversarial gate blocking
+            # auto-resolve, or an LLM auto-resolve attempt that gave up.
+            # None when the page simply hasn't been through auto-resolve yet.
+            "unresolved_note": (cpage.unresolved_note if cpage else None) or None,
+        })
 
     warned: list[dict] = []
     orphan_slugs: list[str] = []

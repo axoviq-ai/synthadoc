@@ -1098,6 +1098,40 @@ async def test_tool_get_lint_report_returns_full_structure():
     assert any(e["event"] == "tool_progress" for e in events)
 
 
+async def test_tool_get_lint_report_surfaces_unresolved_note():
+    """contradicted_pages must include unresolved_note so the chat report can
+    explain WHY a page is still contradicted (issue #584) instead of just
+    that it is."""
+    audit_db = MagicMock()
+    audit_db.get_last_lint_summary = AsyncMock(return_value={})
+    audit_db.get_live_page_states = AsyncMock(return_value=[
+        {"slug": "spacing-effect", "state": "contradicted", "updated_at": "2026-07-01T09:00:00"},
+    ])
+
+    store = MagicMock()
+    store.page_exists = MagicMock(return_value=True)
+    store.list_pages = MagicMock(return_value=["spacing-effect"])
+
+    page = MagicMock()
+    page.lint_warnings = ["claim 1", "claim 2", "claim 3"]
+    page.orphan = False
+    page.content_health_issues = []
+    page.content = "Disputed content."
+    page.sources = []
+    page.status = "contradicted"
+    page.unresolved_note = (
+        "Auto-resolve skipped: the adversarial check flagged 3 claim(s) on "
+        "this page (threshold 2). Fix them, then run lint again."
+    )
+    store.read_page = MagicMock(return_value=page)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_get_lint_report(ctx)
+
+    entry = next(p for p in result["contradicted_pages"] if p["slug"] == "spacing-effect")
+    assert entry["unresolved_note"] == page.unresolved_note
+
+
 async def test_tool_get_lint_report_with_no_audit_db():
     """When audit_db is None, returns empty last_run and empty lists."""
     store = MagicMock()
