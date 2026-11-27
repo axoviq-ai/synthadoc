@@ -10,17 +10,18 @@ from typing import NoReturn, Optional
 import typer
 
 from synthadoc import errors as E
+from synthadoc.core.state_home import state_path
 
 ENV_VAR = "SYNTHADOC_WIKI"
-DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
-_REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
+DEFAULT_WIKI_FILE = state_path("default_wiki")
+_REGISTRY = state_path("wikis.json")
 
 # Canonical loopback address used for all CLI→server HTTP connections and for
 # the default peer host in the cross-wiki registry.  Change here to affect all
 # client-side URL constructors in the CLI.
 LOOPBACK_HOST = "127.0.0.1"
 
-CROSS_WIKI_ROUTING_PATH: Path = Path.home() / ".synthadoc" / "CROSS_WIKI_ROUTING.md"
+CROSS_WIKI_ROUTING_PATH: Path = state_path("CROSS_WIKI_ROUTING.md")
 
 
 def _read_registry() -> dict:

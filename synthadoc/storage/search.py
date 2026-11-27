@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Iterable, Optional
 import aiosqlite
 from rank_bm25 import BM25Okapi
 
+from synthadoc.core.state_home import state_path
 from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 if TYPE_CHECKING:
@@ -110,9 +111,9 @@ _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 def embed_model_cache_dir() -> Path:
     """Where the embedding model is cached: FASTEMBED_CACHE_PATH if set, else
-    ~/.synthadoc/models. (fastembed's own default is the system temp folder,
+    $SYNTHADOC_HOME/models (~/.synthadoc/models by default). (fastembed's own default is the system temp folder,
     which the OS clears, forcing a 65 MB re-download.)"""
-    return Path(os.environ.get("FASTEMBED_CACHE_PATH") or Path.home() / ".synthadoc" / "models")
+    return Path(os.environ.get("FASTEMBED_CACHE_PATH") or state_path("models"))
 
 
 def fastembed_installed() -> bool:

@@ -13,8 +13,9 @@ import typer
 from synthadoc.cli._port import assign_wiki_port as _assign_wiki_port, _DEFAULT_PORT
 from synthadoc.cli._wiki import _normalise_wiki_name, extract_purpose_summary
 from synthadoc import errors as E
+from synthadoc.core.state_home import state_path
 
-_REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
+_REGISTRY = state_path("wikis.json")
 
 _DEMOS = {
     "history-of-computing": Path(__file__).parent.parent / "demos" / "history-of-computing",
