@@ -268,6 +268,14 @@ class ChatConfig:
 
 
 @dataclass
+class AuthConfig:
+    # When true the server requires a valid API key on every request (v1.6.0 step 2
+    # enforces it; until then this is only read). Off by default so existing wikis and
+    # clients keep working; must be a TOML boolean, not the string "false".
+    enforce: bool = False
+
+
+@dataclass
 class ContentHealthConfig:
     token_budget: int = 50_000
     thin_section_min_words: int = 40
@@ -307,6 +315,7 @@ class Config:
     audit: AuditConfig = field(default_factory=AuditConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    auth: AuthConfig = field(default_factory=AuthConfig)
     content_health: ContentHealthConfig = field(default_factory=ContentHealthConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
@@ -643,6 +652,13 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         custom_patterns=list(sec.get("custom_patterns", [])),
     )
 
+    # --- auth ---
+    auth_raw = raw.get("auth", {})
+    enforce = auth_raw.get("enforce", False)
+    if not isinstance(enforce, bool):
+        raise ValueError("[auth] enforce must be true or false (a TOML boolean, not a string).")
+    auth = AuthConfig(enforce=enforce)
+
     return Config(
         agents=agents,
         cache=cache,
@@ -660,6 +676,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         audit=audit,
         chat=chat,
         security=security,
+        auth=auth,
         hooks=hooks,
         wikis=wikis,
     )

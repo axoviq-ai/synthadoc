@@ -148,3 +148,6 @@ app.add_typer(retract_app)
 from synthadoc.cli.cross_wiki import cross_wiki_app  # noqa: F401, E402
 app.add_typer(cross_wiki_app)
 from synthadoc.cli import stop  # noqa: F401, E402
+from synthadoc.cli.auth import key_app, wiki_app  # noqa: F401, E402
+app.add_typer(key_app)
+app.add_typer(wiki_app)

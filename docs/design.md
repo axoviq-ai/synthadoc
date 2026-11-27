@@ -1018,6 +1018,20 @@ Secrets (API-key hashes, the admin key, peer keys, live-source credentials) are 
 
 Error messages shown to API clients are generic and never contain paths; the operator detail goes to the server log.
 
+### API keys (`synthadoc/auth`)
+
+v1.6.0 step 1 adds the credential store; the server does not check keys yet (enforcement is a later step, `[auth] enforce` defaults to `false`). Keys are managed with `synthadoc key create | list | revoke` and `synthadoc wiki rebind`.
+
+- **Format.** `sd_<key_id>_<secret>`: `key_id` is 12 hex characters (not secret; names the key in lists and audit), `secret` is 64 hex characters (256 bits). Only `sha256(secret)` is stored. The key is shown once at creation; to replace it, create a new key and revoke the old one. `security/redact.py` masks the `sd_...` pattern in logs and job errors.
+- **Storage.** `auth.db` (SQLite, WAL, busy timeout) lives under `paths.secret_dir("auth", wiki_id)`, outside the wiki folder, so it is never synced, committed or included in `synthadoc backup`. `api_keys` holds one row per key (name, optional role label, **scopes**, created, expiry, revocation, last use); the stored scopes are authoritative, so redefining a role later never widens an existing key. `key_events` is an append-only trail (triggers abort `UPDATE` and `DELETE`) of `key_created`, `key_revoked` and `wiki_id_created`; it never holds a secret or hash.
+- **Roles and scopes.** `viewer` = `read`; `contributor` = `read, write`; `operator` = `read, write, operate`; `admin` = all four. A machine key can instead be created with `--scopes` and no role.
+- **Names.** `[A-Za-z0-9._@-]{1,64}`, unique ignoring case among active keys (a revoked key frees its name), and never shaped like a key id, so `revoke KEY_ID|NAME` is unambiguous.
+- **Expiry.** Stored in UTC in one fixed format and compared as datetimes. `--expires 30d` or `12h` is relative; a date such as `2027-03-01` means the end of that day in the local time zone.
+- **Verification** gives one answer (`None`) for every failure (malformed, unknown id, wrong secret, revoked, expired) and still does one constant-time comparison when the id is unknown, so timing does not reveal which ids exist.
+- **Who may run the key commands.** They open `auth.db` directly; the operating system is the authority, because the secret directory is private to the current user. The first admin key is therefore created with `synthadoc key create --name admin --role admin`, with no existing credential, and a lost admin key is replaced the same way. Anyone who can act as the OS user that owns the secret home is an admin; that is the intended trust boundary.
+- **No side effects on read.** `key list` and `key revoke` never create a wiki id, a secret directory or a database; on a wiki with no keys they say so. Only `key create` (and, with enforcement on, server start) creates `auth.db`.
+- **`secret_dir` is called once** per `AuthStore.open` and the path is held. Loosening the folder's permissions while a server runs is not noticed until restart (known limit). The store uses plain `sqlite3` with short-lived connections closed by `contextlib.closing`; async callers use `asyncio.to_thread`, the same discipline as the page-lock rule.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
