@@ -5,12 +5,43 @@ import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from synthadoc.cli.main import app
 from synthadoc.cli.plugin import _update_community_plugins, _install_dataview
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _dataview_is_not_downloaded():
+    """The CLI tests are about copying the plugin and writing settings, not about the
+    Dataview download (``_install_dataview`` has its own tests below, which call the real
+    function with ``httpx`` mocked). A test that wants a different outcome patches it."""
+    with patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network():
+    """Fail any test here that reaches the real network.
+
+    ``plugin install`` and ``plugin upgrade`` download Dataview from GitHub. A test that
+    forgets to mock that depends on GitHub being reachable and fast: on a slow CI runner
+    the TLS handshake hangs until the 60-second test timeout. The download is swallowed
+    by the code under test (it reports "failed"), so the guard records the attempt and
+    fails the test afterwards instead of raising inside it.
+    """
+    attempts = []
+
+    def refuse(url, *args, **kwargs):
+        attempts.append(str(url))
+        raise ConnectionError("network access is not allowed in unit tests")
+
+    with patch("httpx.get", refuse):
+        yield
+    assert not attempts, f"the test reached the real network: {attempts}"
 
 
 def _make_plugin_src(tmp_path: Path) -> Path:
