@@ -21,7 +21,7 @@
 
 <p>
 <a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/Coverage-93%25-brightgreen" alt="Coverage"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.coverage&label=Coverage&suffix=%25&color=brightgreen" alt="Coverage"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License"/></a>
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11%2B-yellow.svg" alt="Python"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/agents"><img src="https://img.shields.io/badge/AI%20agents-12-crimson" alt="AI agents"/></a>

@@ -102,20 +102,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: python scripts/prepare_pypi_readme.py
       - run: pip install -e ".[dev]"
       - run: pip install "mcp>=1.0,<2.0"
       - run: pytest --cov=synthadoc --cov-report=json -q
-      # Must run before prepare_pypi_readme.py: it bakes the fresh coverage %
-      # directly into README.md's badge <img> tags (static shields.io URLs, no
-      # secondary fetch — see scripts/update_badges.py's module docstring for why).
+      # Coverage is only known after this test run, so it can't go through a
+      # normal human-authored PR the way the other 7 badges do. main's branch
+      # ruleset requires a 2-review PR for every change, so this stays on the
+      # badge/dynamic/json mechanism (docs/badges.json on the badges branch)
+      # instead of being baked into README.md directly — see
+      # scripts/update_badges.py's module docstring for the full rationale.
       - run: python scripts/update_badges.py --coverage-json coverage.json
-      - run: python scripts/prepare_pypi_readme.py
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/badges.json README.md README-pypi.md
-          git diff --staged --quiet || git commit -m "ci: update badges [skip ci]"
-          git push origin HEAD:main
+          git add docs/badges.json
+          git diff --staged --quiet || git commit -m "ci: update coverage badge"
+          git push origin HEAD:badges --force
 
   build-plugin-pr:
     runs-on: ubuntu-latest

@@ -1002,6 +1002,21 @@ Secrets are masked wherever text leaves the server: the console and file logs (m
 
 Redaction is a safety net, not a substitute for keeping secrets out of logs. It is applied at output boundaries and does **not** rewrite stored data: the audit database keeps source paths exactly as ingested because they are used as lookup keys. Log and API masking uses a deliberately broad list of parameter names (over-masking a log line is harmless), so a URL like `...?code=US` shows as `?code=[REDACTED]` in logs and API output while the stored URL is unchanged. See the known limitation under *URL fetching and the SSRF guard*.
 
+### Secret locations and wiki identity
+
+Secrets (API-key hashes, the admin key, peer keys, live-source credentials) are never stored inside the wiki folder, because a wiki is routinely synced, committed to git, zipped and shared. They live under a per-user **secret home**, in `<home>/<area>/<wiki-id>/`, where `<home>` is `SYNTHADOC_HOME` if set (it must be an absolute path) and `~/.synthadoc` otherwise, and `<area>` is one of `auth`, `live` or `peers`. In Docker the default home is the container's throwaway filesystem, so set `SYNTHADOC_HOME` to a path on a mounted volume or the secrets disappear when the container is recreated.
+
+**Wiki id.** Each wiki has a random UUID in `.synthadoc/wiki_id`, created the first time it is needed (existing wikis have none). It identifies the wiki independently of its folder name or path, which change on restore, rename and in containers. If a crash leaves the file empty, it is replaced on next use once it is a few seconds old (a fresher blank file may still be being written, so that call is refused); a file with any other unexpected content is refused and never overwritten. The creation is also recorded in the audit trail, but a failure to record it is logged and does not block the wiki.
+
+**Protections, checked on every use**
+- The secret home must not be inside the wiki folder or inside a git work tree. If your home directory is under version control, point `SYNTHADOC_HOME` somewhere else; the error says so.
+- Each secret directory must be owned by you and usable only by you: mode `0700` and an owner check on Linux and macOS; on Windows an access list granting only your user account plus an owner check, both read back to confirm. A directory owned by another account is refused and left untouched, because its owner could loosen the permissions later; the one exception, on Windows, is a folder owned by the Administrators group (what an elevated process creates), which is taken over. A directory you own whose permissions have been widened is repaired to owner-only and a warning is logged, since something loosened it. If the permissions cannot be set or verified, the operation is refused. A symbolic link or junction in place of the directory is refused.
+- On Windows the restricted access list contains only your account, so SYSTEM and Administrators are removed. Backup tools and antivirus scans that run as those accounts cannot read the secret folder; exclude it, or run them as your user, if that matters.
+- Each secret directory records which wiki folder it belongs to. The wiki id file travels with a copied, cloned or restored folder, so an id found in a different folder than the recorded one is **refused**, not just warned about; this stops a copy of a wiki from reaching the original's secrets. After a legitimate move or restore, an explicit rebind (an admin command) points the secrets at the new folder. Rebind updates the areas one at a time; if it fails part-way, fix the cause and run it again, which is safe to repeat.
+- A restore onto another machine finds no secrets for the id, so credentials must be re-entered there. That is intended.
+
+Error messages shown to API clients are generic and never contain paths; the operator detail goes to the server log.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
@@ -2473,6 +2488,20 @@ On `action=update` the LLM writes only what the page does not already cover (`up
 - **Otherwise, and for a new source:** the section is appended and `merge_duplicate_sections()` folds a repeated heading into the existing one and drops paragraphs repeated word for word, keeping every sentence. If merging would still lose a sentence, the section is appended without merging.
 
 Replacing without that check lost text: the update section is a delta, so a demo batch ingest, which re-ingests each page's only source (the shipped pages record placeholder hashes), cut `alan-turing.md` from 55 KB to 2 KB and eight other pages likewise (v1.4.3–v1.5.0). Before each live update the page's previous text is stored as a lifecycle snapshot (`triggered_by = ingest`, reason `before ingest update from <source>`), so any ingest update can be rolled back with the snapshot tools.
+
+#### Fallback body when the LLM writes none
+
+On a create, or on a forced rebuild of a contradicted page, the page body is the LLM's `page_content`. If the model returns none, `_fallback_body()` builds the body from the title and the first `_FALLBACK_BODY_CHARS` (4,000) characters of the source. When the source is longer, the cut is logged as a warning (source, characters kept, total) and the page ends with a visible marker, `> Truncated: showing the first 4,000 of N characters of <source>. Re-ingest with --force to retry.` Re-ingesting retries the LLM call, which is the usual fix for an empty `page_content`. The cap is deliberately not configurable: pasting more raw text would still give an unsynthesised, uncited, unlinked page.
+
+#### Locking rule: never `await` under a page lock
+
+`WikiStorage.page_lock(slug)` is a thread lock plus a file lock. A task that awaits while holding it leaves the lock taken while the event loop runs other tasks; the first one that asks for the same slug blocks the whole loop, so the holder can never resume (a deadlock). One sequential worker hides this, concurrent HTTP writers next to the worker expose it.
+
+The rule is therefore: do awaited work (LLM calls, audit writes) before or after the lock and keep only read, merge and write inside it. `IngestAgent._update_existing_page()` builds and annotates the section from a lock-free read, takes the lock, re-reads the page and checks that the full-rebuild decision still holds (otherwise it rebuilds the section), then writes. It retries up to three times; if the page's state keeps changing it raises `RuntimeError` and the job fails, which is intended: the job can be retried. The audit snapshot is written after the lock is released.
+
+`tests/agents/test_page_lock_async_safety.py` enforces the rule: an AST scan fails the build when an `await` appears inside a `with ...page_lock(...)` block, and concurrency tests run a second writer in the window where ingest awaits. The scan takes a list of lock names (`_GUARDED_LOCKS`), so any new lock helper, such as the cross-process lock planned for the secret store, registers its name there and follows the same rule.
+
+**Known limit (future work).** Even a short critical section can stall the event loop: the lock is taken from async code, so a cross-process holder (the CLI or a second server) makes the loop wait for the file lock. The proper fix is to run lock sections in `asyncio.to_thread`.
 
 ### IngestAgent Pass 4 — `_annotate_citations()`
 

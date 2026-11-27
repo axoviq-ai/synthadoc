@@ -598,6 +598,37 @@ def _propagate_source_update(
             logger.debug("ingest: propagated truncation update to slug=%s source=%s", slug, source_url[:80])
 
 
+_FALLBACK_BODY_CHARS = 4000  # source characters kept when the LLM wrote no page body
+
+
+def _fallback_body(title: str, text: str, source_name: str, source_len: int) -> str:
+    """Page body built from the raw source when the LLM returned no ``page_content``.
+
+    Keeps the first ``_FALLBACK_BODY_CHARS`` characters. When the source is longer the cut
+    is logged and marked on the page, so a thin page is not mistaken for a complete one.
+    """
+    body = f"# {title}\n\n{text[:_FALLBACK_BODY_CHARS]}"
+    if source_len > _FALLBACK_BODY_CHARS:
+        logger.warning(
+            "ingest: no page_content from the LLM for %s; page body truncated to the first "
+            "%d of %d source characters",
+            source_name, _FALLBACK_BODY_CHARS, source_len,
+        )
+        body += (
+            f"\n\n> Truncated: showing the first {_FALLBACK_BODY_CHARS:,} of {source_len:,} "
+            f"characters of {source_name}. Re-ingest with `--force` to retry."
+        )
+    return body
+
+
+def _rebuilt_body(page_content: str, title: str, text: str, source_name: str, source_len: int) -> str:
+    """Full page body for a force re-ingest of a contradicted page: the LLM-generated
+    page_content when there is one, else the title and the start of the source."""
+    if page_content.strip():
+        return _strip_leading_frontmatter(page_content)
+    return _fallback_body(title, text, source_name, source_len)
+
+
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
@@ -940,6 +971,69 @@ class IngestAgent(BaseAgent):
                 TriggerSource.INGEST, content_snapshot=content)
         except Exception:  # noqa: BLE001
             logger.warning("ingest: could not snapshot %s before updating it", slug, exc_info=True)
+
+    async def _update_existing_page(
+        self, slug: str, *, force: bool, analysis: dict, source: str, p: Path, text: str,
+        extracted, policy: str, bust_cache: bool, src_hash: str, source_len: int,
+        truncated: bool, build_section,
+    ) -> "tuple[bool, list[dict] | None]":
+        """Merge an ingest into an existing page. Returns (staged, citations).
+
+        ``citations`` is None when the page no longer exists. The citation pass is an
+        LLM call and the snapshot is an audit write; both await, so neither may run
+        under the page lock (a thread lock held across an await blocks the event loop
+        when another task asks for the same slug). The section is built and annotated
+        first from a lock-free read, then the lock is taken for the read, merge and
+        write only. If the page's state changed while annotating, so that the
+        full-rebuild decision differs, the section is rebuilt for the new state.
+        """
+        for _attempt in range(3):
+            peek = self._store.read_page(slug)
+            if peek is None:
+                return False, None
+            rebuild = force and peek.status == LifecycleState.CONTRADICTED
+            section = build_section(rebuild)
+            # Pass 0: append Key Data section for deterministic numerical preservation
+            key_items = _extract_key_data(text)
+            if len(key_items) >= _KEY_DATA_MIN_ITEMS:
+                section = section + _format_key_section(key_items)
+            # Pass 4: annotate only the new section
+            section, citations = await self._annotate_citations(
+                section, extracted.text, p.name, bust_cache=bust_cache)
+
+            with self._store.page_lock(slug):
+                page = self._store.read_page(slug)
+                if page is None:
+                    return False, None
+                if (force and page.status == LifecycleState.CONTRADICTED) != rebuild:
+                    continue
+                before_state, before_content = page.status, page.content or ""
+                # Reset stale pages to draft on re-ingest
+                if page.status == LifecycleState.STALE:
+                    page.status = LifecycleState.DRAFT
+                    self._stale_to_draft_slug = slug
+                # Force re-ingest of a contradicted page: fully regenerate the page body
+                # from the source rather than appending sections. Appending corrupts it
+                # because _merge_section_into_page falls back to an append when the
+                # dropped-sentences check fails (contradiction notes were added after the
+                # original ingest). Do NOT change the lifecycle state here: the caller
+                # (contradiction resolver) owns the contradicted->active transition via
+                # tool_transition_lifecycle_state after re-lint.
+                if rebuild:
+                    _reset_for_force_rebuild(page)
+                if force:
+                    _purge_dead_sources(page, self._wiki_root)
+                _backfill_okf_fields(page, analysis, source)
+                page.updated = date.today().isoformat()
+                # Scrub stale out-of-range citations from previous reingests
+                page.content = _scrub_source_citations(page.content, p.name, extracted.text)
+                _merge_section_into_page(page, section, portable_source_path(source, self._wiki_root),
+                                         src_hash or "", source_len, truncated)
+                staged = self._write_or_stage(slug, page, policy)
+            if not staged:
+                await self._snapshot_before_update(slug, before_state, before_content, p.name)
+            return staged, citations
+        raise RuntimeError(f"page {slug} kept changing state during ingest; retry the job")
 
     def _write_or_stage(self, slug: str, page: "WikiPage", policy: str) -> bool:
         """Write page directly to wiki/ or to candidates/ when policy requires it.
@@ -1300,6 +1394,7 @@ class IngestAgent(BaseAgent):
         _any_live_write = False  # True only when a page lands in wiki/ directly (not candidates)
 
         if action == "flag" and target and target not in LINT_SKIP_SLUGS and self._store.page_exists(target):
+            flagged = None
             with self._store.page_lock(target):
                 page = self._store.read_page(target)
                 if page:
@@ -1313,12 +1408,15 @@ class IngestAgent(BaseAgent):
                     )
                     self._store.write_page(target, page)
                     self._search.invalidate_index()
-                    if self._audit:
-                        await self._audit.set_page_state(target, LifecycleState.CONTRADICTED, TriggerSource.INGEST)
-                        await self._audit.record_lifecycle_event(
-                            target, prev_status, LifecycleState.CONTRADICTED,
-                            page.contradiction_note, TriggerSource.INGEST,
-                        )
+                    flagged = (prev_status, page.contradiction_note)
+            # Audit writes await, so they run after the page lock is released: a lock
+            # held across an await blocks the event loop when another task wants the slug.
+            if flagged and self._audit:
+                await self._audit.set_page_state(target, LifecycleState.CONTRADICTED, TriggerSource.INGEST)
+                await self._audit.record_lifecycle_event(
+                    target, flagged[0], LifecycleState.CONTRADICTED,
+                    flagged[1], TriggerSource.INGEST,
+                )
             result.pages_flagged.append(target)
 
         elif action == "update" and target and self._store.page_exists(target):
@@ -1336,55 +1434,17 @@ class IngestAgent(BaseAgent):
                 # leave the old page in wiki/ and confuse lint/report.
                 policy = "off" if force else self._staging_policy()
                 staged = False
-                with self._store.page_lock(target):
-                    page = self._store.read_page(target)
-                    if page:
-                        _before_state, _before_content = page.status, page.content or ""
-                        # Reset stale pages to draft on re-ingest
-                        if page.status == LifecycleState.STALE:
-                            page.status = LifecycleState.DRAFT
-                            self._stale_to_draft_slug = target
-                        # Force re-ingest of a contradicted page: fully regenerate the page
-                        # body from the source rather than appending sections.  Appending
-                        # causes corruption because _merge_section_into_page falls back to
-                        # an append when the dropped-sentences check fails (contradiction
-                        # notes were added after the original ingest).
-                        # Do NOT change the lifecycle state here — the caller (contradiction
-                        # resolver) owns the contradicted→active transition via
-                        # tool_transition_lifecycle_state after re-lint.
-                        _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
-                        if _force_rebuild:
-                            _reset_for_force_rebuild(page)
-                        if force:
-                            _purge_dead_sources(page, self._wiki_root)
-                        _backfill_okf_fields(page, analysis, source)
-                        page.updated = date.today().isoformat()
-                        if extracted.metadata.get("has_summary"):
-                            section = extracted.text
-                        elif _force_rebuild:
-                            # Full page body — use LLM-generated page_content when available
-                            section = (_strip_leading_frontmatter(page_content)
-                                       if page_content.strip()
-                                       else f"# {title}\n\n{text[:4000]}")
-                        elif update_content:
-                            section = update_content
-                        else:
-                            section = f"## From {p.name}\n\n{text[:1000]}"
-                        # Pass 0: append Key Data section for deterministic numerical preservation
-                        _key_items = _extract_key_data(text)
-                        if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
-                            section = section + _format_key_section(_key_items)
-                        # Scrub stale out-of-range citations from previous reingests
-                        page.content = _scrub_source_citations(page.content, p.name, extracted.text)
-                        # Pass 4: annotate only the new update section
-                        section, citations = await self._annotate_citations(
-                            section, extracted.text, p.name, bust_cache=bust_cache
-                        )
-                        _merge_section_into_page(page, section, portable_source_path(source, self._wiki_root),
-                                                  src_hash or "", _source_len, _truncated)
-                        staged = self._write_or_stage(target, page, policy)
-                        if not staged:
-                            await self._snapshot_before_update(target, _before_state, _before_content, p.name)
+                staged, _updated_citations = await self._update_existing_page(
+                    target, force=force, analysis=analysis, source=source, p=p, text=text,
+                    extracted=extracted, policy=policy, bust_cache=bust_cache,
+                    src_hash=src_hash, source_len=_source_len, truncated=_truncated,
+                    build_section=lambda rebuild: (
+                        extracted.text if extracted.metadata.get("has_summary")
+                        else _rebuilt_body(page_content, title, text, p.name, _source_len) if rebuild
+                        else update_content if update_content
+                        else f"## From {p.name}\n\n{text[:1000]}"))
+                if _updated_citations is not None:
+                    citations = _updated_citations
                 if staged:
                     logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
                 else:
@@ -1417,45 +1477,16 @@ class IngestAgent(BaseAgent):
                     # branch above: the user is explicitly updating an existing page.
                     policy = "off" if force else self._staging_policy()
                     staged = False
-                    with self._store.page_lock(slug):
-                        page = self._store.read_page(slug)
-                        if page:
-                            _before_state, _before_content = page.status, page.content or ""
-                            # Reset stale pages to draft on re-ingest
-                            if page.status == LifecycleState.STALE:
-                                page.status = LifecycleState.DRAFT
-                                self._stale_to_draft_slug = slug
-                            # Force re-ingest of a contradicted page: fully regenerate
-                            _force_rebuild = force and _before_state == LifecycleState.CONTRADICTED
-                            if _force_rebuild:
-                                _reset_for_force_rebuild(page)
-                            if force:
-                                _purge_dead_sources(page, self._wiki_root)
-                            _backfill_okf_fields(page, analysis, source)
-                            page.updated = date.today().isoformat()
-                            if extracted.metadata.get("has_summary"):
-                                section = extracted.text
-                            elif _force_rebuild:
-                                section = (_strip_leading_frontmatter(page_content)
-                                           if page_content.strip()
-                                           else f"# {title}\n\n{text[:4000]}")
-                            else:
-                                section = f"## From {p.name}\n\n{text[:1500]}"
-                            # Pass 0: append Key Data section for deterministic numerical preservation
-                            _key_items = _extract_key_data(text)
-                            if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
-                                section = section + _format_key_section(_key_items)
-                            # Scrub stale out-of-range citations from previous reingests
-                            page.content = _scrub_source_citations(page.content, p.name, extracted.text)
-                            # Pass 4: annotate only the new section
-                            section, citations = await self._annotate_citations(
-                                section, extracted.text, p.name, bust_cache=bust_cache
-                            )
-                            _merge_section_into_page(page, section, portable_source_path(source, self._wiki_root),
-                                                  src_hash or "", _source_len, _truncated)
-                            staged = self._write_or_stage(slug, page, policy)
-                            if not staged:
-                                await self._snapshot_before_update(slug, _before_state, _before_content, p.name)
+                    staged, _updated_citations = await self._update_existing_page(
+                        slug, force=force, analysis=analysis, source=source, p=p, text=text,
+                        extracted=extracted, policy=policy, bust_cache=bust_cache,
+                        src_hash=src_hash, source_len=_source_len, truncated=_truncated,
+                        build_section=lambda rebuild: (
+                            extracted.text if extracted.metadata.get("has_summary")
+                            else _rebuilt_body(page_content, title, text, p.name, _source_len) if rebuild
+                            else f"## From {p.name}\n\n{text[:1500]}"))
+                    if _updated_citations is not None:
+                        citations = _updated_citations
                     if staged:
                         logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
                     else:
@@ -1469,7 +1500,7 @@ class IngestAgent(BaseAgent):
                     elif page_content.strip():
                         body = _strip_leading_frontmatter(page_content)
                     else:
-                        body = f"# {title}\n\n{text[:4000]}"
+                        body = _fallback_body(title, text, p.name, _source_len)
                     # Pass 0: append Key Data section for deterministic numerical preservation
                     _key_items = _extract_key_data(text)
                     if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
