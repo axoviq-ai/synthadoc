@@ -5,11 +5,19 @@
 Count CLI commands, Obsidian plugin commands, and skills, write docs/badges.json,
 and bake the computed values into static shields.io badge URLs in README.md.
 
-Badges are rendered as self-contained `img.shields.io/badge/<label>-<value>-<color>`
-URLs (no secondary fetch) rather than `badge/dynamic/json?url=...` — the latter
-requires GitHub's/PyPI's image proxy to do a live fetch of docs/badges.json on
-every render, and a transient failure in that chain gets cached as a permanently
-broken badge image.
+The 7 count-based badges are rendered as self-contained
+`img.shields.io/badge/<label>-<value>-<color>` URLs (no secondary fetch) rather
+than `badge/dynamic/json?url=...` — the latter requires GitHub's/PyPI's image
+proxy to do a live fetch of docs/badges.json on every render, and a transient
+failure in that chain gets cached as a permanently broken badge image. These 7
+only change when a human adds/removes a command/skill/agent/etc., so they are
+kept in sync through the normal PR flow (this script + `--check` in CI), no
+automated commit needed.
+
+Coverage is the one exception: it's known only after CI runs the test suite,
+so it stays on the `badge/dynamic/json` mechanism, sourced from docs/badges.json
+on the `badges` branch — main's branch ruleset requires a 2-review PR for every
+change, so CI cannot auto-commit a fresh coverage % into README.md on main.
 
 Run before committing when you add/remove commands or skills:
     python scripts/update_badges.py
@@ -18,7 +26,8 @@ CI runs this with --check to fail the build if badges.json or README.md's
 embedded badge values are out of date:
     python scripts/update_badges.py --check
 
-To also update the coverage badge (CI only — requires a coverage.json from pytest-cov):
+To also update the coverage field in docs/badges.json (CI only — requires a
+coverage.json from pytest-cov; does not touch README.md):
     python scripts/update_badges.py --coverage-json coverage.json
 """
 from __future__ import annotations
@@ -34,9 +43,9 @@ ROOT = Path(__file__).parent.parent
 README_PATH = ROOT / "README.md"
 
 # key in badges.json -> (alt text of the <img> tag in README.md, badge label,
-# fixed color, or None to derive the color from the value via _coverage_color)
-_BADGE_SPECS: dict[str, tuple[str, str, str | None, str]] = {
-    "coverage": ("Coverage", "Coverage", None, "%"),
+# fixed color, suffix). Coverage is deliberately excluded — it stays on the
+# dynamic/json mechanism (see module docstring).
+_BADGE_SPECS: dict[str, tuple[str, str, str, str]] = {
     "agents": ("AI agents", "AI agents", "crimson", ""),
     "skills": ("Skills", "Skills", "purple", ""),
     "mcp_tools": ("MCP tools", "MCP tools", "orange", ""),
@@ -172,10 +181,9 @@ def rewrite_readme_badges(readme_text: str, data: dict) -> str:
     every later re-run once the badges are already static.
     """
     out = readme_text
-    for key, (alt_text, label, fixed_color, suffix) in _BADGE_SPECS.items():
+    for key, (alt_text, label, color, suffix) in _BADGE_SPECS.items():
         if key not in data:
-            continue  # e.g. coverage not yet known outside CI's --coverage-json run
-        color = fixed_color if fixed_color is not None else _coverage_color(data[key])
+            continue
         url = _static_badge_url(label, data[key], color, suffix)
         pattern = re.compile(rf'(<img src=")[^"]*(" alt="{re.escape(alt_text)}"/>)')
         out, n = pattern.subn(lambda m, u=url: f"{m.group(1)}{u}{m.group(2)}", out)
