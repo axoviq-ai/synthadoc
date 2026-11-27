@@ -40,7 +40,7 @@ _TOKEN_PATTERNS = tuple(re.compile(p) for p in (
     r"\bxox[abprs]-[A-Za-z0-9\-]{10,}",
     r"\bAKIA[0-9A-Z]{16}\b",
     r"\beyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{5,}",
-    r"\bsd_[A-Za-z0-9]+_[A-Za-z0-9_\-]{16,}",
+    r"(?<![A-Za-z0-9])sd_[A-Za-z0-9]+_[A-Za-z0-9_\-]{16,}",   # not \b: "MY_KEY_sd_..." must match
 ))
 _PARAM_RE = re.compile(r"""([?&;#])([A-Za-z0-9_.\-]{1,40})=([^&#\s"'<>]*)""")
 _KV_RE = re.compile(

@@ -64,6 +64,32 @@ def test_secret_is_removed(text, secret):
     assert MASK in out
 
 
+_SECRET64 = "0f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff"
+_API_KEY = "sd_a1b2c3d4e5f6_" + _SECRET64          # the real format: sd_<12 hex>_<64 hex>
+
+
+@pytest.mark.parametrize("text", [
+    "created " + _API_KEY,
+    "key=" + _API_KEY + "&x=1",
+    '{"api_key": "' + _API_KEY + '"}',
+    "Authorization: " + _API_KEY,
+    "https://host/path?k=" + _API_KEY,
+    "(" + _API_KEY + ")",
+    "env MY_KEY_" + _API_KEY,                       # glued to a word character by an underscore
+    "api_key_" + _API_KEY + " leaked",
+    _API_KEY + _API_KEY,                            # two in a row
+])
+def test_a_real_format_api_key_never_survives(text):
+    out = redact_text(text)
+    assert _SECRET64 not in out and _SECRET64[:20] not in out
+    assert MASK in out
+
+
+def test_a_truncated_api_key_still_hides_its_secret_part():
+    out = redact_text("saw sd_a1b2c3d4e5f6_" + _SECRET64[:24] + "...")
+    assert _SECRET64[:24] not in out
+
+
 @pytest.mark.parametrize("text", [
     "plain log line with no secrets",
     "mail me at bob@example.com about max_tokens=500 and tokens_used: 5",
