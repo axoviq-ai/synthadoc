@@ -2474,6 +2474,10 @@ On `action=update` the LLM writes only what the page does not already cover (`up
 
 Replacing without that check lost text: the update section is a delta, so a demo batch ingest, which re-ingests each page's only source (the shipped pages record placeholder hashes), cut `alan-turing.md` from 55 KB to 2 KB and eight other pages likewise (v1.4.3–v1.5.0). Before each live update the page's previous text is stored as a lifecycle snapshot (`triggered_by = ingest`, reason `before ingest update from <source>`), so any ingest update can be rolled back with the snapshot tools.
 
+#### Fallback body when the LLM writes none
+
+On a create, or on a forced rebuild of a contradicted page, the page body is the LLM's `page_content`. If the model returns none, `_fallback_body()` builds the body from the title and the first `_FALLBACK_BODY_CHARS` (4,000) characters of the source. When the source is longer, the cut is logged as a warning (source, characters kept, total) and the page ends with a visible marker, `> Truncated: showing the first 4,000 of N characters of <source>. Re-ingest with --force to retry.` Re-ingesting retries the LLM call, which is the usual fix for an empty `page_content`. The cap is deliberately not configurable: pasting more raw text would still give an unsynthesised, uncited, unlinked page.
+
 #### Locking rule: never `await` under a page lock
 
 `WikiStorage.page_lock(slug)` is a thread lock plus a file lock. A task that awaits while holding it leaves the lock taken while the event loop runs other tasks; the first one that asks for the same slug blocks the whole loop, so the holder can never resume (a deadlock). One sequential worker hides this, concurrent HTTP writers next to the worker expose it.

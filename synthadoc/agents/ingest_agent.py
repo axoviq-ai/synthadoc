@@ -598,12 +598,35 @@ def _propagate_source_update(
             logger.debug("ingest: propagated truncation update to slug=%s source=%s", slug, source_url[:80])
 
 
-def _rebuilt_body(page_content: str, title: str, text: str) -> str:
+_FALLBACK_BODY_CHARS = 4000  # source characters kept when the LLM wrote no page body
+
+
+def _fallback_body(title: str, text: str, source_name: str, source_len: int) -> str:
+    """Page body built from the raw source when the LLM returned no ``page_content``.
+
+    Keeps the first ``_FALLBACK_BODY_CHARS`` characters. When the source is longer the cut
+    is logged and marked on the page, so a thin page is not mistaken for a complete one.
+    """
+    body = f"# {title}\n\n{text[:_FALLBACK_BODY_CHARS]}"
+    if source_len > _FALLBACK_BODY_CHARS:
+        logger.warning(
+            "ingest: no page_content from the LLM for %s; page body truncated to the first "
+            "%d of %d source characters",
+            source_name, _FALLBACK_BODY_CHARS, source_len,
+        )
+        body += (
+            f"\n\n> Truncated: showing the first {_FALLBACK_BODY_CHARS:,} of {source_len:,} "
+            f"characters of {source_name}. Re-ingest with `--force` to retry."
+        )
+    return body
+
+
+def _rebuilt_body(page_content: str, title: str, text: str, source_name: str, source_len: int) -> str:
     """Full page body for a force re-ingest of a contradicted page: the LLM-generated
     page_content when there is one, else the title and the start of the source."""
     if page_content.strip():
         return _strip_leading_frontmatter(page_content)
-    return f"# {title}\n\n{text[:4000]}"
+    return _fallback_body(title, text, source_name, source_len)
 
 
 def _extract_key_data(source_text: str) -> list[str]:
@@ -1417,7 +1440,7 @@ class IngestAgent(BaseAgent):
                     src_hash=src_hash, source_len=_source_len, truncated=_truncated,
                     build_section=lambda rebuild: (
                         extracted.text if extracted.metadata.get("has_summary")
-                        else _rebuilt_body(page_content, title, text) if rebuild
+                        else _rebuilt_body(page_content, title, text, p.name, _source_len) if rebuild
                         else update_content if update_content
                         else f"## From {p.name}\n\n{text[:1000]}"))
                 if _updated_citations is not None:
@@ -1460,7 +1483,7 @@ class IngestAgent(BaseAgent):
                         src_hash=src_hash, source_len=_source_len, truncated=_truncated,
                         build_section=lambda rebuild: (
                             extracted.text if extracted.metadata.get("has_summary")
-                            else _rebuilt_body(page_content, title, text) if rebuild
+                            else _rebuilt_body(page_content, title, text, p.name, _source_len) if rebuild
                             else f"## From {p.name}\n\n{text[:1500]}"))
                     if _updated_citations is not None:
                         citations = _updated_citations
@@ -1477,7 +1500,7 @@ class IngestAgent(BaseAgent):
                     elif page_content.strip():
                         body = _strip_leading_frontmatter(page_content)
                     else:
-                        body = f"# {title}\n\n{text[:4000]}"
+                        body = _fallback_body(title, text, p.name, _source_len)
                     # Pass 0: append Key Data section for deterministic numerical preservation
                     _key_items = _extract_key_data(text)
                     if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
