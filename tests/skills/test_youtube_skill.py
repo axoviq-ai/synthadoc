@@ -6,6 +6,19 @@ from unittest.mock import patch, AsyncMock
 from synthadoc.skills.base import ExtractedContent
 
 
+@pytest.fixture(autouse=True)
+def _offline_video_title():
+    """``extract`` also asks YouTube's oEmbed endpoint for the video title. With only the
+    transcript mocked that was a real HTTPS request in every test: slow, and flaky on a
+    CI runner with a slow network. The real function still runs, against a connection
+    that fails at once, which is the "title unavailable" path it already handles. Tests
+    in test_youtube_oembed.py cover the endpoint itself with respx."""
+    import httpx
+    offline = AsyncMock(side_effect=httpx.ConnectError("offline in unit tests"))
+    with patch.object(httpx.AsyncClient, "get", offline):
+        yield
+
+
 def _load_skill():
     from synthadoc.agents.skill_agent import SkillAgent
     from pathlib import Path
