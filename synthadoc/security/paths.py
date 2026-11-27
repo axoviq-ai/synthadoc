@@ -1,0 +1,429 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 William Johnason / axoviq.com
+"""Where Synthadoc keeps secrets, and the wiki identity that keys them.
+
+Secrets live under ``<home>/<area>/<wiki_id>/`` and never inside the wiki folder.
+``<home>`` is ``$SYNTHADOC_HOME`` or ``~/.synthadoc``; ``wiki_id`` is a random UUID
+stored in ``<wiki>/.synthadoc/wiki_id``. Because that file travels with the folder
+(copy, sync, git, restore), every secret directory also records which wiki folder
+it was created for (``binding.json``) and refuses a different one until an explicit
+:func:`rebind`. A restore onto another machine finds no directory for the id, which
+is the intended "needs re-authentication" outcome.
+
+Leaf module: stdlib only (interface spec section 0). Fail closed: any doubt about
+the location, ownership or permissions raises :class:`SecretPathError`.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import stat
+import sys
+import tempfile
+import time
+import uuid
+from pathlib import Path
+from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
+
+HOME_ENV = "SYNTHADOC_HOME"
+AREAS = frozenset({"auth", "live", "peers"})
+
+_WINDOWS = sys.platform == "win32"
+_WIKI_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_BLANK_GRACE_SECONDS = 5.0      # a blank id file younger than this may still be being written
+_REPARSE_POINT = 0x400         # Windows symlinks and junctions
+_HOME_HINT = (
+    f"Set {HOME_ENV} to a directory outside any git repository and outside the wiki "
+    f"(for example {HOME_ENV}=/var/lib/synthadoc, or a path on a mounted volume in Docker)."
+)
+_REBIND_HINT = ("If this wiki folder was legitimately moved or restored, run "
+                "`synthadoc wiki rebind`.")
+
+
+class SecretPathError(Exception):
+    """A secret location or wiki identity is missing, unsafe or does not match.
+
+    ``str(e)`` and ``public_message`` are generic and safe for API clients. ``detail``
+    is for the server log only (may contain paths). ``hint`` tells the operator how to
+    fix it and is meant for CLI output, not API responses.
+    """
+
+    public_message = "Secret storage location is not permitted."
+
+    def __init__(self, detail: str = "", hint: str = "") -> None:
+        super().__init__(self.public_message)
+        self.detail = detail
+        self.hint = hint
+
+
+# ------------------------------------------------------------------------- home
+
+def synthadoc_home() -> Path:
+    """``$SYNTHADOC_HOME`` if set (must be absolute), else ``~/.synthadoc``."""
+    raw = os.environ.get(HOME_ENV, "").strip()
+    if not raw:
+        return Path.home() / ".synthadoc"
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        raise SecretPathError(f"{HOME_ENV} must be an absolute path, got {raw!r}",
+                              f"Set {HOME_ENV} to an absolute path.")
+    return p
+
+
+# --------------------------------------------------------------------- wiki id
+
+def _valid_id(value: object) -> bool:
+    return isinstance(value, str) and bool(_WIKI_ID_RE.match(value))
+
+
+def _create_exclusive(path: Path, text: str) -> None:
+    """Create *path* with *text*; FileExistsError if it already exists."""
+    fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    try:
+        os.write(fd, text.encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _read_text_settled(path: Path) -> Optional[str]:
+    """File text, or None if absent. Waits briefly for a concurrent creator's first write."""
+    for _ in range(25):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        if text.strip():
+            return text
+        time.sleep(0.01)
+    return ""
+
+
+def _read_id(path: Path) -> Optional[str]:
+    """The id in *path*; None if the file is absent; "" if it is blank (see _clear_blank)."""
+    text = _read_text_settled(path)
+    if text is None:
+        return None
+    value = text.strip()
+    if not value:
+        return ""
+    if not _valid_id(value):
+        raise SecretPathError(f"{path} does not contain a valid wiki id",
+                              "Fix or remove the file; it is never overwritten automatically.")
+    return value
+
+
+def _clear_blank(path: Path) -> None:
+    """Remove a blank id file so it can be created again.
+
+    A crash between creating the file and writing the id leaves it empty, and every later
+    call would fail. Only a blank file is ever removed, never one with content. The caller
+    then creates it exclusively and adopts whichever id wins, so two processes healing at
+    once still agree.
+    """
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        age = _BLANK_GRACE_SECONDS
+    if age < _BLANK_GRACE_SECONDS:      # another process may still be writing it
+        raise SecretPathError(f"{path} is blank and was created moments ago",
+                              "Another process may be creating it; try again in a few seconds.")
+    logger.warning("replacing the blank wiki id file %s (an earlier write was interrupted)", path)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise SecretPathError(f"cannot replace the blank {path}: {exc}") from exc
+
+
+def ensure_wiki_id(wiki_root: Path, *, on_created: Optional[Callable[[str], None]] = None) -> str:
+    """The wiki's stable id, created lazily on first need.
+
+    Existing wikis have no id, so it is created when first required. ``on_created`` is
+    called once, with the new id, only by the caller that created it (the server uses it
+    to record the event in the audit trail; this module cannot import the audit code).
+    The id file already exists by then, so the callback can never be retried: if it raises,
+    the error is logged and the id is still returned, so an audit outage cannot block the
+    wiki. Fails closed if the folder is missing or read-only, or the id file is corrupt.
+    A blank id file (an interrupted first write) is replaced; any other content is not.
+    """
+    root = Path(wiki_root)
+    if not root.is_dir():
+        raise SecretPathError(f"wiki folder {root} does not exist")
+    meta = root / ".synthadoc"
+    try:
+        meta.mkdir(exist_ok=True)
+        if not meta.is_dir():
+            raise NotADirectoryError(str(meta))
+    except OSError as exc:
+        raise SecretPathError(f"cannot use {meta}: {exc}") from exc
+    id_file = meta / "wiki_id"
+    existing = _read_id(id_file)
+    if existing:
+        return existing
+    if existing == "":
+        _clear_blank(id_file)
+    new_id = str(uuid.uuid4())
+    try:
+        _create_exclusive(id_file, new_id + "\n")
+    except FileExistsError:                      # another process won the race
+        winner = _read_id(id_file)
+        if winner:
+            return winner
+        raise SecretPathError(f"{id_file} appeared but is empty") from None
+    except OSError as exc:
+        raise SecretPathError(f"cannot write {id_file}: {exc}") from exc
+    if on_created is not None:
+        try:
+            on_created(new_id)
+        except Exception:                        # noqa: BLE001 - must never block the wiki
+            logger.exception("on_created callback failed for new wiki id %s; "
+                             "the creation event was not recorded", new_id)
+    return new_id
+
+
+# ------------------------------------------------------------- location checks
+
+def _real(path: Path) -> str:
+    return os.path.normcase(os.path.realpath(str(path)))
+
+
+def _is_inside(child: str, parent: str) -> bool:
+    child, parent = child.rstrip("\\/"), parent.rstrip("\\/")
+    return child == parent or child.startswith(parent + os.sep)
+
+
+def _same_folder(a: object, b: object) -> bool:
+    """True when *a* and *b* are the same directory, however they are spelled.
+
+    Resolved names are compared first (cheap), then file identity. Names alone are not
+    enough: on a case-insensitive filesystem (the macOS default, and Windows) /x/Wiki and
+    /x/wiki are one folder but different strings, and ``normcase`` only folds case on
+    Windows. A string-only comparison would refuse the legitimate caller and, worse, miss
+    a secret home placed inside the wiki under a different spelling.
+    """
+    if os.path.normcase(os.path.realpath(str(a))) == os.path.normcase(os.path.realpath(str(b))):
+        return True
+    try:
+        return os.path.samefile(str(a), str(b))
+    except OSError:                                   # one of them does not exist
+        return False
+
+
+def _inside_by_identity(home: Path, wiki_root: Path) -> bool:
+    """True when the home, or any existing folder above it, IS the wiki folder."""
+    return any(c.exists() and _same_folder(c, wiki_root) for c in (home, *home.parents))
+
+
+def _check_home_location(home: Path, wiki_root: Path) -> None:
+    home_real = _real(home)
+    if _is_inside(home_real, _real(wiki_root)) or _inside_by_identity(Path(home_real), wiki_root):
+        raise SecretPathError("the secret home is inside the wiki folder", _HOME_HINT)
+    probe = Path(home_real)
+    for candidate in (probe, *probe.parents):
+        if (candidate / ".git").exists():
+            raise SecretPathError(f"the secret home is inside a git work tree ({candidate})",
+                                  _HOME_HINT)
+
+
+def _check_area(area: str) -> None:
+    if not isinstance(area, str) or area not in AREAS:
+        raise SecretPathError(f"unknown secret area {area!r}")
+
+
+def _check_id(wiki_id: str) -> None:
+    if not _valid_id(wiki_id):
+        raise SecretPathError("malformed wiki id")
+
+
+def _is_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if _WINDOWS:
+        try:
+            return bool(path.lstat().st_file_attributes & _REPARSE_POINT)
+        except (OSError, AttributeError):
+            return False
+    return False
+
+
+# ---------------------------------------------------------- private directories
+
+def _private_ok_posix(path: Path) -> bool:
+    st = path.lstat()
+    return (stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode)
+            and st.st_uid == os.getuid() and (st.st_mode & 0o077) == 0)
+
+
+def _private_ok_windows(path: Path) -> bool:
+    from synthadoc.security import _winacl
+    try:
+        _winacl.verify_current_user_only(str(path))
+        return True
+    except _winacl.AclError:
+        return False
+
+
+def _ensure_private_dir(path: Path) -> Path:
+    """Create *path* if needed and make sure only the current user owns and can use it.
+
+    A directory that already exists with wider permissions is repaired (and a warning is
+    logged, because something loosened it); one owned by another user is refused.
+    """
+    if _is_link(path):
+        raise SecretPathError(f"{path} is a symbolic link or junction")
+    existed = path.exists()
+    try:
+        path.mkdir(mode=0o700, exist_ok=True)
+    except OSError as exc:
+        raise SecretPathError(f"cannot create {path}: {exc}") from exc
+    if not path.is_dir() or _is_link(path):
+        raise SecretPathError(f"{path} is not a plain directory")
+    if _WINDOWS:
+        if not _private_ok_windows(path):
+            if existed:
+                logger.warning("access list of %s was not private; repaired", path)
+            from synthadoc.security import _winacl
+            try:
+                _winacl.restrict_to_current_user(str(path))
+            except _winacl.AclError as exc:
+                raise SecretPathError(f"cannot restrict {path}: {exc}") from exc
+            if not _private_ok_windows(path):
+                raise SecretPathError(f"cannot verify the ACL of {path}")
+    else:
+        if path.lstat().st_uid != os.getuid():
+            raise SecretPathError(f"{path} is owned by another user")
+        if not _private_ok_posix(path):
+            if existed:
+                logger.warning("permissions of %s were not private; repaired", path)
+            try:
+                os.chmod(path, 0o700)
+            except OSError as exc:
+                raise SecretPathError(f"cannot restrict {path}: {exc}") from exc
+            if not _private_ok_posix(path):
+                raise SecretPathError(f"cannot verify the mode of {path}")
+    return path
+
+
+def _ensure_home(home: Path) -> None:
+    try:
+        home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SecretPathError(f"cannot create {home}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------- binding
+
+def _write_private_atomic(path: Path, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _binding_text(wiki_id: str, root_real: str) -> str:
+    return json.dumps({"wiki_id": wiki_id, "last_path": root_real})
+
+
+def _check_binding(directory: Path, wiki_id: str, wiki_root: Path) -> None:
+    binding = directory / "binding.json"
+    root_real = os.path.realpath(str(wiki_root))
+    try:
+        fd = os.open(str(binding), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise SecretPathError(f"cannot create {binding}: {exc}") from exc
+    else:
+        try:
+            os.write(fd, _binding_text(wiki_id, root_real).encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return
+    text = _read_text_settled(binding)
+    try:
+        data = json.loads(text or "")
+        same = data["wiki_id"] == wiki_id and _same_folder(data["last_path"], root_real)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SecretPathError(f"{binding} is unreadable: {exc}", _REBIND_HINT) from exc
+    if not same:
+        raise SecretPathError(
+            f"{binding} is bound to a different wiki folder than {root_real}", _REBIND_HINT)
+
+
+# ------------------------------------------------------------------- public API
+
+def secret_dir(area: str, wiki_id: str, *, wiki_root: Path) -> Path:
+    """The private directory for ``(area, wiki_id)``, created and verified on every call.
+
+    Refuses: an unknown area or malformed id; a home inside the wiki folder or a git work
+    tree; a symlink; a directory another user owns; and a directory bound to a different
+    wiki folder (a copied or moved folder carrying the same id). A directory the user owns
+    but others can read is repaired to owner-only and a warning is logged.
+    """
+    _check_area(area)
+    _check_id(wiki_id)
+    root = Path(wiki_root)
+    home = synthadoc_home()
+    _check_home_location(home, root)
+    _ensure_home(home)
+    directory = _ensure_private_dir(_ensure_private_dir(home / area) / wiki_id)
+    _check_binding(directory, wiki_id, root)
+    return directory
+
+
+def rebind(wiki_id: str, wiki_root: Path) -> None:
+    """Point every secret directory of *wiki_id* at *wiki_root*. Explicit, admin CLI only.
+
+    For a legitimate move, rename or restore. The id file in *wiki_root* is created if
+    missing and must match if present, so a wrong folder cannot take over another
+    wiki's secrets by accident. The areas are updated one at a time, so a failure part-way
+    leaves some rebound and some not: fix the cause and run it again (it is idempotent).
+    """
+    _check_id(wiki_id)
+    root = Path(wiki_root)
+    if not root.is_dir():
+        raise SecretPathError(f"wiki folder {root} does not exist")
+    meta = root / ".synthadoc"
+    try:
+        meta.mkdir(exist_ok=True)
+        id_file = meta / "wiki_id"
+        present = _read_id(id_file)
+        if present == "":
+            _clear_blank(id_file)
+        if not present:
+            _create_exclusive(id_file, wiki_id + "\n")
+        elif present != wiki_id:
+            raise SecretPathError("the wiki folder has a different wiki id",
+                                  "Rebind with the id stored in that folder, or fix the folder.")
+    except OSError as exc:
+        raise SecretPathError(f"cannot prepare {meta}: {exc}") from exc
+    home = synthadoc_home()
+    _check_home_location(home, root)
+    updated = 0
+    for area in sorted(AREAS):
+        directory = home / area / wiki_id
+        if not directory.is_dir():
+            continue
+        _ensure_private_dir(directory)
+        _write_private_atomic(directory / "binding.json",
+                              _binding_text(wiki_id, os.path.realpath(str(root))))
+        updated += 1
+    if not updated:
+        raise SecretPathError("no secrets are bound to that wiki id",
+                              "Check the id; nothing was changed in the secret store.")
