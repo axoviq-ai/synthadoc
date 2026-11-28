@@ -1088,6 +1088,21 @@ class QueryAgent(BaseAgent):
         results are too weak (max_score below threshold), falls back to full-corpus BM25
         and returns a non-empty routing_warning string explaining the fallback.
         """
+        sub_questions, candidates, routing_warning, _gap_score = \
+            await self._search_for_gap(question)
+        return sub_questions, candidates, routing_warning
+
+    async def _search_for_gap(
+        self, question: str
+    ) -> tuple[list[str], list[SearchResult], str, float]:
+        """``_run_search`` plus the top score the knowledge-gap check must use.
+
+        The fourth value is the best candidate score, except when a weak routing scope is
+        kept because it agrees with the full-corpus search: then it is the full-corpus top
+        score. A narrow scope lowers every BM25 score (IDF is relative to the pages
+        searched), so its magnitude says nothing about whether the wiki covers the question;
+        judging the gap on it reported a gap for a correctly routed, well-covered question.
+        """
         retrieval_question = question
         if has_cjk(question):
             retrieval_question = await self._translate_for_retrieval(question)
@@ -1115,8 +1130,9 @@ class QueryAgent(BaseAgent):
         candidates = merge_results(results_per_sub, _CANDIDATE_POOL_SIZE)
 
         routing_warning = ""
+        gap_score = max((r.score for r in candidates), default=0.0)
         if scoped_slugs is not None:
-            max_score = max((r.score for r in candidates), default=0.0)
+            max_score = gap_score
             # Use 1.5× the gap threshold so borderline scoped results (score between
             # gap_threshold and 1.5×) also fall back.  This avoids Signal 6 false
             # positives where routing picks domain-A pages for a cross-domain query
@@ -1157,6 +1173,7 @@ class QueryAgent(BaseAgent):
                     and candidates[0].slug == full_candidates[0].slug
                 )
                 if routing_confirmed:
+                    gap_score = max((r.score for r in full_candidates), default=0.0)
                     logger.info(
                         "routing scope scored low (max_score=%.2f) but its top pick "
                         "%r is also the full-corpus search's top pick — trusting the "
@@ -1166,6 +1183,7 @@ class QueryAgent(BaseAgent):
                     )
                 elif full_candidates:
                     candidates = full_candidates
+                    gap_score = max((r.score for r in candidates), default=0.0)
                     routing_warning = (
                         "ROUTING.md may be incomplete or stale — search scope was expanded "
                         "to the full wiki. To fix: delete ROUTING.md and run "
@@ -1177,7 +1195,7 @@ class QueryAgent(BaseAgent):
                         max_score, len(scoped_slugs), len(candidates),
                     )
 
-        return sub_questions, candidates, routing_warning
+        return sub_questions, candidates, routing_warning, gap_score
 
     async def run(  # type: ignore[override]
         self, question: str, history: list[dict] | None = None
@@ -1213,9 +1231,8 @@ class QueryAgent(BaseAgent):
                         cacheable=False,
                     )
 
-        sub_questions, candidates, routing_warning = await self._run_search(question)
-
-        _max_score = max((r.score for r in candidates), default=0.0)
+        sub_questions, candidates, routing_warning, _max_score = \
+            await self._search_for_gap(question)
         # Use sub-questions for gap detection so decomposition strips request framing.
         # For CJK queries we keep the original question so _detect_gap's CJK guard
         # continues to suppress key-term signals on non-English content.
@@ -1605,10 +1622,10 @@ class QueryAgent(BaseAgent):
             rewritten = await RewriteAgent(self._provider).run(question, history)
             retrieval_question = rewritten or question
 
-        sub_questions, candidates, routing_warning = await self._run_search(retrieval_question)
+        sub_questions, candidates, routing_warning, _max_score = \
+            await self._search_for_gap(retrieval_question)
 
         citations = [r.slug for r in candidates]
-        _max_score = max((r.score for r in candidates), default=0.0)
         _gap_q = question if has_cjk(question) else (
             " ".join(sub_questions) if sub_questions else question
         )
