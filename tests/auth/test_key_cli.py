@@ -145,3 +145,18 @@ def test_a_secret_path_error_shows_only_the_public_message(env, tmp_path, monkey
     assert paths.SecretPathError.public_message in res.output
     assert "inside the wiki folder" not in res.output        # the log-only detail
     assert str(wiki / "inside") not in res.output
+
+
+def test_when_uses_a_fixed_width_utc_offset_not_a_zone_name():
+    from datetime import datetime, timedelta, timezone
+    from synthadoc.cli.auth import _when
+    moment = datetime(2026, 12, 28, 1, 59, tzinfo=timezone.utc)
+    assert _when(moment, timezone(timedelta(hours=-5))) == "2026-12-27 20:59 UTC-05:00"
+    assert _when(moment, timezone(timedelta(hours=5, minutes=30))) == "2026-12-28 07:29 UTC+05:30"
+    assert _when(None) == "never"
+
+
+def test_list_columns_never_run_together(env):
+    run(env[1], "key", "create", "--name", "ci", "--scopes", "read", "--expires", "30d")
+    row = run(env[1], "key", "list").stdout.splitlines()[-1]
+    assert re.search(r"UTC[+-]\d\d:\d\d +never$", row), row

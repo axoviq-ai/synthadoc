@@ -10,6 +10,7 @@ credential.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, tzinfo
 from typing import Optional
 
 import typer
@@ -18,14 +19,24 @@ from synthadoc.auth import keys
 from synthadoc.auth.store import AuthStore, AuthStoreError, KeyRecord
 from synthadoc.cli._wiki import resolve_wiki, resolve_wiki_path
 from synthadoc.security import paths
-from synthadoc.utils import fmt_ts
 
 logger = logging.getLogger(__name__)
 
 key_app = typer.Typer(name="key", help="Manage API keys for this wiki.")
 wiki_app = typer.Typer(name="wiki", help="Wiki identity and secret-storage maintenance.")
 
-_WHEN = "%Y-%m-%d %H:%M %Z"
+
+def _when(moment: Optional[datetime], tz: Optional[tzinfo] = None) -> str:
+    """Local time with a fixed-width UTC offset, e.g. ``2026-12-27 20:59 UTC-05:00``.
+
+    The offset replaces the zone name: on Windows the name is the long ``Eastern Standard
+    Time``, which broke the list columns and differs from other systems' ``EST``.
+    """
+    if moment is None:
+        return "never"
+    local = moment.astimezone(tz)
+    offset = local.strftime("%z")
+    return f"{local:%Y-%m-%d %H:%M} UTC{offset[:3]}:{offset[3:]}"
 
 
 def _fail(message: str, code: int = 1) -> None:
@@ -80,7 +91,7 @@ def key_create(
         return
     rec = made.record
     typer.echo(f"Created key '{rec.name}' ({rec.key_id}) with scopes: {', '.join(rec.scopes)}")
-    typer.echo(f"Expires: {fmt_ts(keys.format_utc(rec.expires_at), _WHEN) if rec.expires_at else 'never'}")
+    typer.echo(f"Expires: {_when(rec.expires_at)}")
     typer.echo("")
     typer.echo(f"  {made.key}")
     typer.echo("")
@@ -103,11 +114,10 @@ def key_list(
         typer.echo("No keys.")
         return
     now = store._clock()
-    typer.echo(f"{'KEY ID':<13}{'NAME':<22}{'GRANTS':<26}{'STATUS':<9}{'EXPIRES':<24}LAST USED")
+    typer.echo(f"{'KEY ID':<13}{'NAME':<22}{'GRANTS':<26}{'STATUS':<9}{'EXPIRES':<29}LAST USED")
     for r in records:
-        expires = fmt_ts(keys.format_utc(r.expires_at), _WHEN) if r.expires_at else "never"
-        used = fmt_ts(keys.format_utc(r.last_used_at), _WHEN) if r.last_used_at else "never"
-        typer.echo(f"{r.key_id:<13}{r.name:<22}{_grant(r):<26}{r.status(now):<9}{expires:<24}{used}")
+        typer.echo(f"{r.key_id:<13}{r.name:<22}{_grant(r):<26}{r.status(now):<9}"
+                   f"{_when(r.expires_at):<29}{_when(r.last_used_at)}")
 
 
 @key_app.command("revoke")
