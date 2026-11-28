@@ -2214,6 +2214,8 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 
 When `routing_path` is passed to `QueryAgent`, each query first picks the 1–2 most relevant branches via a lightweight LLM call (returns `[]` on any failure) and restricts the BM25 corpus to those slugs. Falls back to full-corpus search when no branch is selected.
 
+**Weak routing scope.** BM25's IDF is relative to the pages searched, so a correct but narrow branch (pages sharing vocabulary) scores low in absolute terms. When the scoped result's best score is below 1.5x `gap_score_threshold`, the full corpus is searched as well. If the scoped top page is also the full-corpus top page, the scoped pages are kept as the context; otherwise the full-corpus results replace them and the response carries a "ROUTING.md may be incomplete" warning. **The knowledge-gap check always uses the full-corpus top score in the first case** (`QueryAgent._search_for_gap`): a scope-lowered score says nothing about whether the wiki covers the question, and judging the gap on it reported a gap for well-covered questions (v1.5.4: "Who was Alan Turing?" with a 3-page "Foundations and Pioneers" branch). The other gap signals still read the pages actually kept.
+
 ### Ingest placement
 
 When `routing_path` is passed to `IngestAgent`, newly created pages are automatically placed into the most appropriate branch via a lightweight LLM call after the page is written.
