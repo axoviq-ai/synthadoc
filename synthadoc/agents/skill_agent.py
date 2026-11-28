@@ -23,13 +23,14 @@ def _normalize_url(source: str) -> str:
         return m.group(1) + "//" + source[m.end():].replace("\\", "/")
     return source
 
+from synthadoc.core.state_home import state_path
 from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta
 from synthadoc.skills.registry import build_registry_cache, parse_skill_md, SkillManifestError
 
 logger = logging.getLogger(__name__)
 
 _BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
-_GLOBAL_SKILLS_DIR = Path.home() / ".synthadoc" / "skills"
+_GLOBAL_SKILLS_DIR = state_path("skills")
 
 
 class SkillNotFoundError(Exception):

@@ -1264,6 +1264,12 @@ The **Synthadoc Open Source Community Edition** does not yet include built-in au
 
 **API keys:** always use `--env-file ~/wikis/.env`, never `-e KEY=value` on the command line. Restrict who can read the `.env` file: `chmod 600 ~/wikis/.env` on Linux/macOS; on Windows, keep it under your user profile, which other standard users cannot read.
 
+**Per-user state and secrets (`SYNTHADOC_HOME`):** besides the wiki, Synthadoc keeps per-user state under `~/.synthadoc` (inside a container, the container's own throwaway filesystem): the wiki registry, the default wiki, the cross-wiki routing file, global skills, the embedding model cache, and, from v1.6.0, API-key hashes (`auth/<wiki-id>/auth.db`). Set `SYNTHADOC_HOME` to an **absolute path on a mounted volume** so all of it survives a recreated container, for example `-e SYNTHADOC_HOME=/state -v synthadoc-state:/state`. Without it the keys, and the registry, disappear with the container. Set it before the process starts; a relative path is refused with a one-line message. `FASTEMBED_CACHE_PATH` still overrides only the model cache.
+
+- **Run key commands as the server's user.** `docker exec` as root against a server running as another user fails the owner check on the secret folder, by design. Use `docker exec --user <server-user> ...`.
+- **The wiki backup does not include the secret home.** `synthadoc backup` zips the wiki folder only; back up the `SYNTHADOC_HOME` volume separately and deliberately.
+- **On Windows hosts the secret folder is readable only by your own account.** SYSTEM and Administrators are removed from its access list on purpose, so backup tools and antivirus scans that run as those accounts cannot read it. Exclude the folder, or run those tools as the same user.
+
 ---
 
 ### G. Local Build and Test (Windows)

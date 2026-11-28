@@ -219,7 +219,9 @@ def create_mcp_server(orchestrator):
           jobs_pending  — jobs waiting to run
           jobs_total    — all jobs ever recorded
           lifecycle     — page counts by state: active, draft, stale, contradicted, archived
-                          (plus "unlinted" for pages with no lifecycle record yet)
+                          (plus "held" for pages held by the adversarial gate, which are
+                          not counted under contradicted, and "unlinted" for pages with no
+                          lifecycle record yet); the counts add up to pages
         """
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 
