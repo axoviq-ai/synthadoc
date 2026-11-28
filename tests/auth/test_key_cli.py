@@ -110,7 +110,9 @@ def test_revoke_by_name_and_by_id_and_twice(env):
 def test_revoking_the_last_admin_key_says_so(env):
     _home, wiki = env
     run(wiki, "key", "create", "--name", "root", "--role", "admin")
-    assert "no active admin key is left" in run(wiki, "key", "revoke", "root").output
+    out = run(wiki, "key", "revoke", "root").output
+    assert "no active admin key is left" in out
+    assert "synthadoc key create --name <name> --role admin" in out     # a command that actually works
 
 
 def test_rebind_after_a_move_uses_the_id_in_the_folder(env, tmp_path):

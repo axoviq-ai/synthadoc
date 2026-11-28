@@ -137,7 +137,7 @@ def key_revoke(
     typer.echo(f"{'Revoked' if changed else 'Already revoked'}: '{rec.name}' ({rec.key_id})")
     if changed and "admin" in rec.scopes and not any(
             "admin" in r.scopes for r in store.list_keys()):
-        typer.echo("Note: no active admin key is left. Run `synthadoc key create --role admin` to make one.")
+        typer.echo("Note: no active admin key is left. Run `synthadoc key create --name <name> --role admin` to make one.")
 
 
 @wiki_app.command("rebind")
