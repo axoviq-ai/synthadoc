@@ -133,7 +133,9 @@ async def run_tests():
                 lc = r["lifecycle"]
                 lc_keys = {"active", "draft", "stale", "contradicted", "archived"}
                 missing_lc = lc_keys - set(lc.keys())
-                lc_sum = sum(lc.get(s, 0) for s in lc_keys) + lc.get("unlinted", 0)
+                # Every count in the breakdown, including the optional "held" (adversarial-hold
+                # pages, split out of "contradicted") and "unlinted": together they are the page count.
+                lc_sum = sum(lc.values())
                 ok("synthadoc_status",
                    f"wiki={r['wiki']!r}  pages={r['pages']}  "
                    f"jobs_pending={r['jobs_pending']}  jobs_total={r['jobs_total']}  "

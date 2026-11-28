@@ -161,6 +161,28 @@ async def test_mcp_status_reports_unlinted_pages(mock_orch):
     assert result["lifecycle"]["unlinted"] == 2  # 3 pages - 1 active
 
 
+@pytest.mark.asyncio
+async def test_mcp_status_lifecycle_counts_add_up_to_pages_with_held(mock_orch):
+    """Held pages are split out of 'contradicted' into 'held'; every count together is still
+    the page count, which is what the live status check relies on."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    lc = {"active": 3, "draft": 0, "stale": 0, "contradicted": 2, "archived": 0}
+
+    async def split_one_held(counts, *_args, **_kwargs):
+        counts["contradicted"] -= 1
+        counts["held"] = 1
+        return ["held-page"]
+
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages",
+               return_value=["a", "b", "c", "d", "e"]),          patch.object(mock_orch.queue, "list_jobs", new=AsyncMock(return_value=[])),          patch.object(mock_orch._audit, "get_live_lifecycle_summary", new=AsyncMock(return_value=lc)),          patch("synthadoc.agents.lint_agent.split_held_from_lifecycle_counts", new=split_one_held):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_status", {}, convert_result=False
+        )
+    assert result["lifecycle"]["held"] == 1 and result["lifecycle"]["contradicted"] == 1
+    assert sum(result["lifecycle"].values()) == result["pages"] == 5
+
+
 # ── New tool: synthadoc_read_page ─────────────────────────────────────────────
 
 @pytest.mark.asyncio
