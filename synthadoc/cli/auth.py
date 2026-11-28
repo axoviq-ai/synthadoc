@@ -45,9 +45,11 @@ def _fail(message: str, code: int = 1) -> None:
 
 
 def _secret_error(exc: paths.SecretPathError) -> None:
-    """Public message and hint to the operator; the raw detail (paths) only to the log."""
+    """Public message and hint to the operator. The raw detail (it names local paths) is
+    logged at debug level only: the CLI sets up no logging, so a warning here would print
+    to the terminal through Python's fallback handler."""
     if exc.detail:
-        logger.warning("secret storage: %s", exc.detail)
+        logger.debug("secret storage: %s", exc.detail)
     _fail(f"{exc.public_message} {exc.hint}".strip())
 
 

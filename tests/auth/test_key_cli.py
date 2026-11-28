@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Peter White / axoviq.com
 from __future__ import annotations
 
+import os
 import re
 
 import pytest
@@ -162,3 +163,23 @@ def test_list_columns_never_run_together(env):
     run(env[1], "key", "create", "--name", "ci", "--scopes", "read", "--expires", "30d")
     row = run(env[1], "key", "list").stdout.splitlines()[-1]
     assert re.search(r"UTC[+-]\d\d:\d\d +never$", row), row
+
+
+def test_the_real_cli_shows_no_internal_path_detail_for_a_refused_folder(env, tmp_path):
+    """Run the CLI as a process (pytest's own log capture hides the fallback handler that
+    prints warnings to a terminal). A moved wiki is refused with the public message and the
+    hint, and the detail that names binding.json and paths stays out of the terminal."""
+    import subprocess
+    import sys
+    home, wiki = env
+    run(wiki, "key", "create", "--name", "ci", "--role", "viewer")
+    moved = tmp_path / "moved"
+    wiki.rename(moved)
+    done = subprocess.run(
+        [sys.executable, "-m", "synthadoc", "key", "list", "-w", str(moved)],
+        capture_output=True, text=True, env={**os.environ, "SYNTHADOC_HOME": str(home)})
+    terminal = done.stdout + done.stderr
+    assert done.returncode == 1
+    assert paths.SecretPathError.public_message in terminal and "synthadoc wiki rebind" in terminal
+    assert "binding.json" not in terminal and "bound to a different" not in terminal
+    assert str(home) not in terminal
