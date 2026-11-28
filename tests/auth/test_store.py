@@ -167,9 +167,17 @@ def test_a_newer_schema_is_refused(env):
         AuthStore.open(env[1])
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
-def test_the_database_file_is_private_on_posix(store):
-    assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+def test_the_database_is_private_to_the_user(store):
+    """POSIX: the file is mode 0600 inside a 0700 directory. Windows has no modes: the file
+    inherits the private directory's access list (only the user), so check the directory,
+    the same check ``paths.secret_dir`` makes."""
+    directory = store.path.parent
+    if os.name == "nt":
+        assert paths._private_ok_windows(directory)
+    else:
+        assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+        assert paths._private_ok_posix(directory)
+    assert store.path.is_file() and store.path.parent.parent.parent == paths.synthadoc_home()
 
 
 def test_wal_mode_is_on(store):
